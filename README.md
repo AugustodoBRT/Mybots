@@ -21,6 +21,10 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 <img src="docs/screenshots/rotinas.webp" width="200" alt="Rotinas do bot" />&nbsp;
 <img src="docs/screenshots/compartilhar.webp" width="200" alt="Compartilhar com um bot" />
 
+<br /><br />
+
+<img src="docs/screenshots/widget.webp" width="420" alt="Widget na tela inicial com os bots animados" />
+
 </div>
 
 ---
@@ -33,9 +37,12 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 | 💬 **Conversa de verdade** | Fila de mensagens enquanto o bot trabalha, ditado por voz, anexos (texto, imagem, PDF, Word, Excel, PowerPoint), tabelas, gráficos e fórmulas na resposta. |
 | 📤 **Compartilhar com o bot** | De qualquer app, em "Compartilhar → MyBots", ou direto no bot pelo Direct Share do Android. Links, textos e até 5 arquivos chegam ao campo de mensagem para você revisar antes de enviar. |
 | 🌐 **Navegador de cada bot** | Uma WebView com perfil isolado por bot. Você vê a página ao vivo, toca em **Assumir** para fazer um login e devolve o controle. Senhas nunca vão ao modelo. |
-| 📄 **Arquivos de ida e volta** | O bot baixa anexos de sites (com o login daquele navegador), lê e devolve PDF, Word ou planilha prontos, com **Abrir**, **Compartilhar** e **Salvar em Downloads**. |
+| 📄 **Arquivos de ida e volta** | O bot baixa anexos de sites (com o login daquele navegador), lê e devolve PDF, Word ou planilha prontos, com **Abrir**, **Compartilhar** e **Salvar em Downloads**. Também entrega um arquivo num site, como um trabalho no SIGAA, sempre com a sua aprovação. |
 | ⏰ **Rotinas e pendências** | Por horário ou quando chega uma notificação ("e-mail do SIGAA"). Prazos viram pendências sem duplicar, e o aviso de véspera chega como notificação do MyBots. |
 | 🌙 **Funciona com a tela apagada** | Serviço em primeiro plano, alarmes exatos que atravessam o Doze e reinício automático do supervisor quando o Android o mata. |
+| 🪄 **Widget animado** | Na tela inicial, os bots respiram, piscam, olham em volta enquanto trabalham e acendem a antena quando esperam você, com a última mensagem e o próximo prazo. |
+| 📊 **Uso e limites** | Tokens de cada bot e de cada resposta, e quanto do limite da sua assinatura (5 horas e semana) já foi usado. |
+| 🔄 **Atualiza sozinho** | O app avisa quando sai uma versão nova, baixa, confere a assinatura e instala, sem precisar de cabo ou de link. |
 | 🛡️ **Você no controle** | Três níveis de acesso por bot (Pouco, Médio, Total), cartões de aprovação para ações de escrita e permissões que um bot nunca herda de outro. |
 
 ## Como funciona

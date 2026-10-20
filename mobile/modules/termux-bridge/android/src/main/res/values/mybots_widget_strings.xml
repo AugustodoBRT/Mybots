@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="mybots_widget_label">MyBots</string>
+  <string name="mybots_widget_description">Seus bots ao vivo: quem está trabalhando, quem espera você e o próximo prazo.</string>
+</resources>

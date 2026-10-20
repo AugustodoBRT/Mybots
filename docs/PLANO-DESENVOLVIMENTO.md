@@ -13,11 +13,11 @@ Histórico detalhado: `docs/progresso.md`. Plano de produto original: `docs/PLAN
 ## 2. Como trabalhar neste projeto (regras que já custaram caro)
 
 - **Idioma**: tudo para o usuário em português do Brasil, com acentos.
-- **Testes**: `npm test` (100 testes hoje) antes de qualquer APK. Alguns testes usam o **Claude Code real** e o **Codex real** com API simulada; mantenha-os passando.
+- **Testes**: `npm test` (105 testes hoje) antes de qualquer APK. Alguns testes usam o **Claude Code real** e o **Codex real** com API simulada; mantenha-os passando.
 - **Testar no emulador antes de entregar** (o usuário pediu): ver `scripts/emulator/README.md`. Fluxo: `scripts/emulator/start.sh --window` → `install.sh` → `wait-supervisor.sh` → `node rpc.mjs ...` / `ask.sh <botId> "..."` / `screen.sh`. Ao testar com o Codex real, use o modelo **gpt-6-luna** (pedido do usuário). Pedir só dados mínimos das contas reais (ex.: contagem de e-mails, não conteúdo).
-- **Entrega**: subir `versionCode`/`versionName` em `mobile/android/app/build.gradle` e `mobile/app.json`, `scripts/build-apk.sh --offline` (ARM64), copiar para `dist/apk/mybots-vNN.apk` + `.sha256`, conferir certificado `fac61745…033b9c` com `apksigner`, atualizar `scripts/serve-apk.mjs` para vNN e rodá-lo (link na rede local). O usuário desliga o Play Protect para instalar (ou `scripts/install-adb.sh`).
+- **Entrega**: subir `versionCode`/`versionName` em `mobile/android/app/build.gradle` e `mobile/app.json`, `scripts/build-apk.sh --offline` (ARM64), copiar para `dist/apk/mybots-vNN.apk` + `.sha256`, conferir certificado `fac61745…033b9c` com `apksigner`, commit e push em `AugustodoBRT/Mybots` (público; **sem coautoria de IA nos commits**) e `scripts/publish-release.sh NN "novidades"`: o app se atualiza sozinho pela Release. O link local (`scripts/serve-apk.mjs`) fica como alternativa. Nunca publicar build x86_64 como Release normal (só para teste, apagando depois).
 - **Pacote do supervisor**: lista explícita de arquivos em `scripts/package-supervisor.mjs` (novo módulo = adicionar lá); testes embarcados listados também em `mobile/modules/termux-bridge/android/src/main/assets/mybots-pair.sh`. Acima de 60 KB vai em partes (`pairPart`).
-- **Banco**: migrações em `supervisor/database.mjs` (versão atual 4). Nova tabela = nova versão, nunca alterar uma migração já entregue.
+- **Banco**: migrações em `supervisor/database.mjs` (versão atual 5). Nova tabela = nova versão, nunca alterar uma migração já entregue.
 - **Armadilhas conhecidas**:
   - Codex novo esconde ferramentas MCP atrás da busca de ferramentas, que roda no `code_mode_host`: **não desligar `code_mode_host`** (há teste).
   - Acionar o Termux sempre com `startForegroundService` (com `startService` o Android recusa em segundo plano).
@@ -77,6 +77,12 @@ Fora por enquanto: entregar arquivos em sites (upload no SIGAA), que pediria apr
 ### Etapa E: identidade visual — concluída na v28 (emulador); aceite visual no POCO pendente
 
 Logo, ícone do app (todas as densidades + ícone adaptativo + ícone de notificação monocromático) e avatares dos bots. O usuário sugeriu gerar no **Gemini pelo Chrome** (ele está logado). Validar contraste no tema escuro do app.
+
+### Pacote de 20/10/2026 (v29) — concluído no emulador; aceite no POCO pendente
+
+Compartilhar com o bot (Direct Share), atualização dentro do app pelas Releases do GitHub, `browser_upload` (entregar arquivos em sites, sempre com aprovação), uso por bot com tokens e limites da assinatura, widget com rostos animados. Detalhes em `docs/progresso.md` (v29). Ideias que ficaram para depois: responder pela notificação e botão "Concluir" no aviso de prazo; prazos no Google Agenda.
+
+**Próxima etapa: G (salas com vários bots)**, que o usuário prefere fazer antes da F.
 
 ### Etapa F: vozes por bot e "ligação"
 

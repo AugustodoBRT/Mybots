@@ -10,6 +10,7 @@ module.exports = function withTermuxBridge(config) {
     // Screen-off work: foreground service, exact alarms for routines, restart after boot, wake lock while a bot works.
     for (const [name, extra] of [['android.permission.FOREGROUND_SERVICE'], ['android.permission.FOREGROUND_SERVICE_SPECIAL_USE'], ['android.permission.WAKE_LOCK'],
       ['android.permission.RECEIVE_BOOT_COMPLETED'], ['android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'], ['android.permission.USE_EXACT_ALARM'],
+      ['android.permission.REQUEST_INSTALL_PACKAGES'],
       ['android.permission.SCHEDULE_EXACT_ALARM', { 'android:maxSdkVersion': '32' }]]) {
       if (!manifest['uses-permission'].some(item => item.$['android:name'] === name)) manifest['uses-permission'].push({ $: { 'android:name': name, ...extra } });
     }
@@ -73,6 +74,16 @@ module.exports = function withTermuxBridge(config) {
     if (!application.provider.some(item => item.$['android:authorities'] === config.android.package + '.mybots.files')) {
       application.provider.push({ $: { 'android:name': 'androidx.core.content.FileProvider', 'android:authorities': config.android.package + '.mybots.files', 'android:exported': 'false', 'android:grantUriPermissions': 'true' },
         'meta-data': [{ $: { 'android:name': 'android.support.FILE_PROVIDER_PATHS', 'android:resource': '@xml/mybots_files' } }] });
+    }
+    // In-app updates: Android's installer reports the result here.
+    if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.AppUpdateReceiver')) {
+      application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.AppUpdateReceiver', 'android:exported': 'false' } });
+    }
+    // Home-screen widget with the bots' animated faces.
+    if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.MyBotsWidget')) {
+      application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.MyBotsWidget', 'android:exported': 'false', 'android:label': '@string/mybots_widget_label' },
+        'intent-filter': [{ action: [{ $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } }] }],
+        'meta-data': [{ $: { 'android:name': 'android.appwidget.provider', 'android:resource': '@xml/mybots_widget_info' } }] });
     }
     if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.KeepAliveReceiver')) {
       application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.KeepAliveReceiver', 'android:exported': 'true' },

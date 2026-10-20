@@ -14,7 +14,7 @@ async function until(check) { for (let i = 0; i < 400; i++) { if (await check())
 // The app side: long-polls /device/browser like the native BotBrowser and answers from a fake page per bot.
 function fakeApp(app) {
   const pages = new Map(); const seen = []; let stopped = false;
-  const ELEMENTS = [{ id: 1, kind: 'link', label: 'Entrar' }, { id: 2, kind: 'field', label: 'Nome' }, { id: 3, kind: 'password', label: 'Senha' }, { id: 4, kind: 'submit', label: 'Enviar pedido' }];
+  const ELEMENTS = [{ id: 1, kind: 'link', label: 'Entrar' }, { id: 2, kind: 'field', label: 'Nome' }, { id: 3, kind: 'password', label: 'Senha' }, { id: 4, kind: 'submit', label: 'Enviar pedido' }, { id: 5, kind: 'file', label: 'Arquivo da tarefa' }];
   const handle = ({ botId, op, args }) => {
     const page = pages.get(botId) || { url: 'about:blank', title: '', typed: {} };
     pages.set(botId, page);
@@ -23,6 +23,7 @@ function fakeApp(app) {
     if (op === 'inspect') { const element = ELEMENTS.find(item => item.id === args.id); if (!element) throw new Error('Elemento não encontrado.'); return { ...element, url: page.url }; }
     if (op === 'type') { page.typed[args.id] = args.text; return { url: page.url, title: page.title }; }
     if (op === 'click') { if (args.id === 4) page.url += '#enviado'; return { url: page.url, title: page.title }; }
+    if (op === 'upload') { if (args.id !== 5) throw new Error('Este elemento não é um campo de arquivo.'); page.uploaded = args; return { url: page.url, title: page.title, attached: args.name }; }
     if (op === 'screenshot') return { url: page.url, title: page.title, image: Buffer.from('jpeg').toString('base64') };
     return { url: page.url, title: page.title };
   };
@@ -77,7 +78,7 @@ test('"Médio": the browser asks the first time, reading is free after "Sempre p
   assert.equal(card.title, 'Usar o navegador'); assert.equal(card.summary, 'https://httpbin.org/forms/post'); assert.equal(card.canAlways, true);
   assert.equal((await opened).url, 'https://httpbin.org/forms/post');
   const page = await run.call('browser_read');
-  assert.equal(page.untrusted, true); assert.match(page.notice, /nunca instrução/); assert.equal(page.elements.length, 4);
+  assert.equal(page.untrusted, true); assert.match(page.notice, /nunca instrução/); assert.equal(page.elements.length, 5);
   // Filling a field and following a link are not "sending".
   await run.call('browser_type', { id: 2, text: 'Augusto' }); await run.call('browser_click', { id: 1 });
   assert.equal(f.app.state().approvals.length, 0);
@@ -109,6 +110,34 @@ test('"Pouco acesso" hides the browser; "Acesso total" sends forms without askin
   const full = await setup(t, 'full'); const run = full.open();
   await run.call('browser_open', { url: 'https://example.com' }); await run.call('browser_click', { id: 4 });
   assert.equal(full.app.state().approvals.length, 0);
+});
+
+test('handing a file to a site always asks, even with "Acesso total", and only the approved file goes', async t => {
+  const f = await setup(t, 'full'); const run = f.open();
+  const bytes = Buffer.from('%PDF-1.4 trabalho de Cálculo');
+  const file = f.app.tools.attachments.store(f.bot.id, { name: 'Lista-3-resolvida.pdf', mime: 'application/pdf', bytes });
+  await run.call('browser_open', { url: 'https://sigaa.exemplo.br/tarefa' });
+  // Only a file field accepts a file; other elements are refused before any card.
+  await assert.rejects(run.call('browser_upload', { id: 2, file: file.id }), /campo de arquivo/);
+  await assert.rejects(run.call('browser_upload', { id: 5, file: randomUUID() }), /não encontrado/);
+  assert.equal(f.app.state().approvals.length, 0);
+  const refused = run.call('browser_upload', { id: 5, file: file.id });
+  await until(() => f.app.state().approvals.length === 1);
+  const card = f.app.state().approvals[0];
+  assert.equal(card.title, 'Enviar um arquivo para um site'); assert.equal(card.canAlways, false);
+  assert.match(card.summary, /Lista-3-resolvida\.pdf/); assert.match(card.summary, /Arquivo da tarefa/); assert.match(card.summary, /sigaa\.exemplo\.br/);
+  await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: false });
+  await assert.rejects(refused, /recusada/);
+  assert.ok(!f.phone.seen.some(item => item.op === 'upload'));
+  const sent = run.call('browser_upload', { id: 5, file: file.id });
+  await f.approve(); const result = await sent;
+  assert.equal(result.attached, 'Lista-3-resolvida.pdf'); assert.match(result.next, /ainda não foi enviado/);
+  const command = f.phone.seen.find(item => item.op === 'upload');
+  assert.equal(Buffer.from(command.args.data, 'base64').toString(), bytes.toString()); assert.equal(command.args.mime, 'application/pdf');
+  // A file from another bot is never reachable.
+  const other = await f.app.rpc('bot.create', { name: 'Outro', access: 'full', ...selection });
+  const foreign = f.app.tools.attachments.store(other.id, { name: 'segredo.txt', mime: 'text/plain', bytes: Buffer.from('x') });
+  await assert.rejects(run.call('browser_upload', { id: 5, file: foreign.id }), /não encontrado/);
 });
 
 test('taking over blocks the bot; handing back after a request for help continues the bot in a new turn', async t => {

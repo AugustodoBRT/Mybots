@@ -9,6 +9,15 @@ export const now = () => new Date().toISOString();
 export const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
 
+const blank = () => ({ input: 0, cached: 0, output: 0, turns: 0 });
+// Token counts as the IA reported them for one reply (Codex turn.completed, Claude result.usage).
+function tokens(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  const count = value => Number.isFinite(value) && value >= 0 ? Math.min(Math.round(value), 1e9) : 0;
+  const result = { input: count(usage.input), cached: count(usage.cached), output: count(usage.output) };
+  return result.input || result.output ? result : null;
+}
+
 export class Database {
   constructor(directory) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -18,7 +27,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 4) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 5) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -66,6 +75,46 @@ export class Database {
         CREATE INDEX attachments_bot ON attachments(bot_id);
         PRAGMA user_version=4;`);
     });
+    // Tokens of each reply, per bot; the account's plan limits are kept in metadata (limits.codex, limits.claude).
+    if (version < 5) this.transaction(() => {
+      this.db.exec(`CREATE TABLE usage (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), task_id TEXT, provider TEXT NOT NULL, model TEXT,
+          input INTEGER NOT NULL, cached INTEGER NOT NULL, output INTEGER NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX usage_bot ON usage(bot_id, created_at);
+        PRAGMA user_version=5;`);
+    });
+  }
+  /** One reply's tokens. Codex reports the session's running totals: the reply is the difference from the last one. */
+  turnTokens(botId, reply) {
+    const usage = tokens(reply?.usage);
+    if (!usage || !reply.usage.session) return usage;
+    const key = 'usage.session.' + botId;
+    const last = JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', key)?.value || 'null');
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify({ session: reply.codexSessionId || null, ...usage }));
+    const known = last && last.session === (reply.codexSessionId || null) && last.input <= usage.input && last.output <= usage.output;
+    // A conversation resumed without a known total (the first reply after updating MyBots) only sets the starting point.
+    if (!known) return reply.usage.resumed ? null : usage;
+    return tokens({ input: usage.input - last.input, cached: Math.max(0, usage.cached - last.cached), output: usage.output - last.output });
+  }
+  /** The plan's usage windows (5 hours, week) as the IA last reported them. */
+  setLimits(provider, limits) {
+    const windows = Array.isArray(limits?.windows) ? limits.windows.filter(item => Number.isFinite(item?.used)).slice(0, 4).map(item => ({ key: String(item.key).slice(0, 20), used: Math.max(0, Math.min(100, Math.round(item.used))), resetsAt: Number.isFinite(item.resetsAt) ? new Date(item.resetsAt).toISOString() : null })) : [];
+    if (!windows.length) return;
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'limits.' + provider, JSON.stringify({ plan: typeof limits.plan === 'string' ? limits.plan.slice(0, 30) : null, windows, checkedAt: now() }));
+  }
+  limits() { return Object.fromEntries(['codex', 'claude'].map(provider => [provider, JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', 'limits.' + provider)?.value || 'null')]).filter(([, value]) => value)); }
+  /** Tokens per bot (today, 7 and 30 days) and per day for the last week, from the replies' usage. */
+  usage(days = 7) {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString(); const day = new Date(); day.setHours(0, 0, 0, 0);
+    const week = new Date(day.getTime() - (days - 1) * 86400000);
+    const bots = {}; const daily = new Map();
+    for (const row of this.all('SELECT bot_id,provider,input,cached,output,created_at FROM usage WHERE created_at>=?', since)) {
+      const at = Date.parse(row.created_at); const add = (target) => { target.input += row.input; target.cached += row.cached; target.output += row.output; target.turns += 1; };
+      const entry = bots[row.bot_id] ||= { today: blank(), week: blank(), month: blank(), provider: row.provider };
+      add(entry.month); if (at >= week.getTime()) add(entry.week); if (at >= day.getTime()) add(entry.today);
+      if (at >= week.getTime()) { const key = new Date(at - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 10); add(daily.get(key) || daily.set(key, blank()).get(key)); }
+    }
+    const series = [...Array(days)].map((_, index) => { const date = new Date(week.getTime() + index * 86400000); const key = new Date(date - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); return { date: key, ...(daily.get(key) || blank()) }; });
+    return { bots, days: series, limits: this.limits() };
   }
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }
   all(sql, ...args) { return this.db.prepare(sql).all(...args); }
@@ -256,8 +305,11 @@ export class Database {
       const messages = bot.messages.map(message => message.id === task.message_id ? { ...message,
         status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
       const files = reply?.attachments?.length ? { attachments: reply.attachments } : {};
-      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, reasoningEffort: reply.reasoningEffort, ...files, createdAt: now() });
+      const usage = state === 'done' ? this.turnTokens(bot.id, reply) : null;
+      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
       else if (files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
+      if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
+      if (reply?.limits && ['codex', 'claude'].includes(bot.provider || 'codex')) this.setLimits(bot.provider || 'codex', reply.limits);
       this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
       this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);
       this.event(id, state);

@@ -20,8 +20,8 @@ const CHANGE = /(send|delete|create|update|modify|archive|trash|move|remove|writ
 export const connectorRead = action => READ.test(action) && !CHANGE.test(action);
 
 const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
-  'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina', 'browser/submit': 'Enviar um formulário no navegador' };
-const BROWSER_LABELS = { 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher',
+  'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site' };
+const BROWSER_LABELS = { 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 function approvalText(tool, args, app) {
@@ -29,6 +29,7 @@ function approvalText(tool, args, app) {
   if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}\n${args.instructions}` };
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
   if (tool === 'browser/submit') return { title: APPROVAL_TITLES[tool], summary: [args.label && `Botão: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
+  if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
   if (BROWSER_TOOLS.includes(tool)) return { title: 'Usar o navegador', summary: args.url || args.reason || BROWSER_LABELS[tool] };
   // First use of a tool on the Médio level: the card names the tool ("Buscar e-mails"), not a generic action.
   return { title: APPROVAL_TITLES[tool] || TOOL_DEFINITIONS.find(item => item.name === tool)?.label || 'Executar uma ação', summary: Object.values(args).filter(value => typeof value === 'string' && value).join('\n') };
@@ -276,6 +277,18 @@ export class Tools {
         }
         this.requireGrant(run, 'browser');
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await this.browser.command(run.botId, tool.slice(8), args), next: 'Use browser_read para ver como a página ficou.' };
+      } else if (tool === 'browser.upload') {
+        // Handing a file to a site always asks, on every level: the card names the file and the site.
+        if (!this.attachments) throw new Error('Os arquivos não estão disponíveis.');
+        const file = this.attachments.meta(run.botId, args.file);
+        if (file.size > 10 * 1024 * 1024) throw new Error('Envie arquivos de até 10 MB.');
+        const target = await this.browser.command(run.botId, 'inspect', { id: args.id });
+        if (target.kind !== 'file') throw new Error('Este elemento não é um campo de arquivo. Em browser_read, procure um elemento do tipo file.');
+        if (!(await this.ask(run, 'browser/upload', { ...args, name: file.name, size: file.size, label: target.label || '', page: target.url || '' }, hash, null, null))) throw new Error(refused);
+        this.requireGrant(run, 'browser');
+        const data = this.attachments.bytes(run.botId, args.file).toString('base64');
+        result = { untrusted: true, notice: BROWSER_NOTICE, ...await this.browser.command(run.botId, 'upload', { id: args.id, name: file.name, mime: file.mime, data }), attached: file.name,
+          next: 'O arquivo está no campo, mas ainda não foi enviado. Use browser_read e clique no botão de enviar do formulário.' };
       } else if (tool === 'browser.screenshot') {
         const shot = await this.browser.command(run.botId, 'screenshot');
         if (typeof shot.image !== 'string' || shot.image.length > 4_000_000) throw new Error('Não consegui capturar a tela do navegador.');

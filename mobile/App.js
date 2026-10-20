@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { C, F, Icon } from './theme';
-import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
+import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, updateCheck, updateInstall, updateCanInstall, onUpdate, widgetStatus, requestWidget, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
 import { createId, emptyLocalStore, mergeBotLists, validateBackup } from './local';
 
 import { createTermuxBackup } from './backup';
@@ -285,7 +285,29 @@ function NavBar({ mode, onActivity, onMaintenance, onConnection, onMode, attenti
     </Pressable>)}</View>;
 }
 
-function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy }) {
+// A new MyBots version from GitHub Releases: what changed, then download → Android's confirmation → restart on it.
+const UPDATE_STEPS = { downloading: 'Baixando', installing: 'Conferindo e instalando…', confirm: 'Confirme a instalação na janela do Android.', permission: 'Permita "Instalar apps desconhecidos" para o MyBots e toque em Atualizar de novo.' };
+function UpdateCard({ update, onInstall, onDismiss, compact = false }) {
+  const [notes, setNotes] = useState(false);
+  const info = update?.info; const step = update?.step; const busy = ['downloading', 'installing', 'confirm'].includes(step?.state);
+  if (!info?.available) return null;
+  const body = (info.notes || '').replace(/\r/g, '').trim();
+  return <View style={styles.updateCard}>
+    <View style={styles.updateHead}>
+      <View style={styles.updateIcon}><Icon name="download" size={18} color={C.mint} /></View>
+      <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{info.latestName || 'Nova versão'} disponível</Text>
+        <Text style={styles.optionDetail}>Você está na {info.currentName}{info.size ? ` · ${formatSize(info.size)}` : ''}. Conversas e bots continuam.</Text></View>
+      {!compact && !busy ? <Pressable accessibilityRole="button" accessibilityLabel="Lembrar depois" hitSlop={10} onPress={onDismiss}><Icon name="close" size={16} color={C.faint} /></Pressable> : null}
+    </View>
+    {body ? <Pressable accessibilityRole="button" onPress={() => setNotes(value => !value)} style={styles.updateNotesToggle}><Text style={styles.updateNotesLink}>{notes ? 'Esconder novidades' : 'Ver novidades'}</Text><Icon name={notes ? 'back' : 'down'} size={13} color={C.mint} /></Pressable> : null}
+    {notes ? <View style={styles.updateNotes}><RichText text={body} textStyle={styles.updateNotesText} /></View> : null}
+    {step?.state === 'downloading' ? <View style={styles.updateBar}><View style={[styles.updateFill, { width: `${Math.max(3, step.percent || 0)}%` }]} /></View> : null}
+    {step ? <Text style={[styles.optionDetail, step.state === 'error' && { color: C.red }]}>{step.state === 'error' ? step.message : step.state === 'downloading' ? `${UPDATE_STEPS.downloading} · ${step.percent >= 0 ? step.percent + '%' : formatSize(step.done || 0)}` : UPDATE_STEPS[step.state] || ''}</Text> : null}
+    <PrimaryButton compact icon={busy ? undefined : 'download'} title={busy ? 'Atualizando…' : step?.state === 'error' ? 'Tentar de novo' : 'Atualizar agora'} disabled={busy} onPress={onInstall} style={{ marginTop: 10 }} />
+  </View>;
+}
+
+function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = data?.active?.length || 0;
@@ -302,6 +324,7 @@ function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnecti
     {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
     {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
     {data?.modelsError ? <Notice text={data.modelsError} onRetry={onConnection} /> : null}
+    {update?.info?.available && !update.dismissed ? <UpdateCard update={update} onInstall={onUpdate} onDismiss={onUpdateDismiss} /> : null}
     {bots.length ? <TodayStrip data={data} onActivity={mode === 'phone' ? onActivity : onConnection} /> : null}
     {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
     {bots.length ? <View style={styles.listHeading}><Text style={styles.sectionTitle}>Seus bots</Text>
@@ -368,7 +391,7 @@ function Message({ message, bot, models, onRetry, busy, onFile, fileBusy }) {
   return <View style={styles.messageRow}>
     <Avatar bot={bot} size={30} animated={false} tile={false} />
     <View style={[styles.messageBubble, styles.assistantBubble]}>
-      <View style={styles.messageMeta}><Text style={styles.messageSpeaker}>{bot.name}</Text><Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}</Text></View>
+      <View style={styles.messageMeta}><Text style={styles.messageSpeaker}>{bot.name}</Text><Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
       {files}
       <RichText text={message.text} textStyle={styles.messageText} />
       {error}
@@ -434,6 +457,25 @@ function TermuxApiStatus() {
 }
 
 // "Funcionar com a tela apagada": the MyBots service that wakes and restarts the supervisor, and what Android/HyperOS may still block.
+// The home-screen widget: placed or not, and a button that asks Android to add it.
+function WidgetRow() {
+  const [status, setStatus] = useState(null); const [note, setNote] = useState('');
+  const load = () => widgetStatus().then(setStatus).catch(() => {});
+  useEffect(() => { load(); const sub = AppState.addEventListener('change', state => state === 'active' && load()); return () => sub.remove(); }, []);
+  const add = async () => {
+    setNote('');
+    try { if (!(await requestWidget())) setNote('Este launcher não deixa o app adicionar. Toque e segure na tela inicial → Widgets → MyBots.'); else setTimeout(load, 4000); }
+    catch (error) { setNote(nativeMessage(error)); }
+  };
+  return <View style={[styles.modeOption, styles.rowOption]}>
+    <View style={styles.rowIcon}><Icon name="bots" size={19} color={C.mint} /></View>
+    <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Widget na tela inicial</Text>
+      <Text style={styles.optionDetail}>{status?.placed ? `${status.placed > 1 ? status.placed + ' widgets' : 'Um widget'} na tela inicial, com seus bots ao vivo.` : 'Seus bots animados na tela inicial: quem trabalha, quem espera você e o próximo prazo.'}</Text>
+      {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}</View>
+    {status?.canPin !== false ? <Pressable accessibilityRole="button" onPress={add} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{status?.placed ? 'Outro' : 'Adicionar'}</Text></Pressable> : null}
+  </View>;
+}
+
 function ScreenOff({ heartbeat, nextRoutineAt }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -477,6 +519,50 @@ function ScreenOff({ heartbeat, nextRoutineAt }) {
 }
 
 // Open items by deadline: late, today, this week, later and without a deadline (the phone's local time).
+// Tokens per bot and the plan's limits, as the IA reported them.
+const tokensLabel = value => value >= 1e6 ? `${(value / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi` : value >= 1000 ? `${(value / 1000).toLocaleString('pt-BR', { maximumFractionDigits: value >= 1e5 ? 0 : 1 })} mil` : String(value);
+const PLAN_NAMES = { codex: 'ChatGPT', claude: 'Claude' };
+const WINDOW_NAMES = { five_hour: 'Últimas 5 horas', week: 'Semana' };
+function resetLabel(iso) {
+  if (!iso) return '';
+  const at = new Date(iso); const soon = at - Date.now() < 86400000;
+  return `renova ${soon ? 'às ' + at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}`;
+}
+function UsagePanel({ usage, bots }) {
+  const limits = Object.entries(usage?.limits || {});
+  const rows = Object.entries(usage?.bots || {}).map(([id, value]) => ({ bot: bots.find(item => item.id === id), ...value })).filter(row => row.bot && row.week.turns)
+    .sort((a, b) => (b.week.input + b.week.output) - (a.week.input + a.week.output));
+  const days = usage?.days || []; const peak = Math.max(1, ...days.map(day => day.input + day.output));
+  const total = rows.reduce((sum, row) => sum + row.week.input + row.week.output, 0);
+  if (!limits.length && !rows.length) return <View style={styles.modeOption}><Text style={styles.optionLabel}>Uso</Text><Text style={styles.optionDetail}>Depois das primeiras respostas aparecem aqui os tokens de cada bot e quanto do limite da sua assinatura já foi usado.</Text></View>;
+  return <>
+    {limits.map(([provider, item]) => <View key={provider} style={styles.modeOption}>
+      <Text style={styles.optionLabel}>{PLAN_NAMES[provider]}{item.plan ? ` ${item.plan[0].toUpperCase()}${item.plan.slice(1)}` : ''} · limite da assinatura</Text>
+      {item.windows.map(window => { const tone = window.used >= 90 ? C.red : window.used >= 70 ? C.amber : C.mint; return <View key={window.key} style={styles.limitRow}>
+        <View style={styles.limitHead}><Text style={styles.limitName}>{WINDOW_NAMES[window.key] || window.key}</Text><Text style={[styles.limitValue, { color: tone }]}>{window.used}% usado</Text></View>
+        <View style={styles.updateBar}><View style={[styles.updateFill, { width: `${Math.max(2, window.used)}%`, backgroundColor: tone }]} /></View>
+        <Text style={styles.limitMeta}>{resetLabel(window.resetsAt)}</Text>
+      </View>; })}
+      <Text style={styles.limitMeta}>Atualizado {new Date(item.checkedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · vale para tudo que usa esta conta, não só o MyBots.</Text>
+    </View>)}
+    {rows.length ? <View style={styles.modeOption}>
+      <View style={styles.limitHead}><Text style={styles.optionLabel}>Tokens nos últimos 7 dias</Text><Text style={styles.limitValue}>{tokensLabel(total)}</Text></View>
+      <View style={styles.usageChart}>{days.map(day => { const value = day.input + day.output; return <View key={day.date} style={styles.usageDay}>
+        <View style={styles.usageTrack}><View style={[styles.usageColumn, { height: `${Math.max(value ? 4 : 0, value / peak * 100)}%` }]} /></View>
+        <Text style={styles.usageDayText}>{new Date(day.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase()}</Text>
+      </View>; })}</View>
+      {rows.map(row => { const value = row.week.input + row.week.output; return <View key={row.bot.id} style={styles.usageBot}>
+        <Avatar bot={row.bot} size={34} tile={false} animated={false} />
+        <View style={{ flex: 1 }}>
+          <View style={styles.limitHead}><Text style={styles.limitName} numberOfLines={1}>{row.bot.name}</Text><Text style={styles.limitValue}>{tokensLabel(value)}</Text></View>
+          <View style={styles.usageShare}><View style={[styles.usageShareFill, { width: `${Math.max(2, value / Math.max(1, total) * 100)}%`, backgroundColor: HUE_OF(row.bot) }]} /></View>
+          <Text style={styles.limitMeta}>{row.week.turns} {row.week.turns > 1 ? 'respostas' : 'resposta'} · {tokensLabel(row.week.input)} lidos ({Math.round(row.week.cached / Math.max(1, row.week.input) * 100)}% em cache) · {tokensLabel(row.week.output)} escritos · hoje {tokensLabel(row.today.input + row.today.output)}</Text>
+        </View>
+      </View>; })}
+    </View> : null}
+  </>;
+}
+
 function ItemsByDeadline({ items, bots, onComplete }) {
   if (!items.length) return null;
   const pad = value => String(value).padStart(2, '0');
@@ -784,6 +870,9 @@ function AppMain() {
   // Shared from another app: waiting for the person to pick a bot (share), then handed to that chat (incoming).
   const [share, setShare] = useState(null);
   const [incoming, setIncoming] = useState(null);
+  // In-app update: the latest release found, the download/install step, and when it was last checked.
+  const [update, setUpdate] = useState(null);
+  const updateChecked = useRef(0);
   const staged = useRef(new Set());
   const supervisor = useRef(null);
   const phoneMode = useRef(mode); phoneMode.current = mode;
@@ -1123,7 +1212,7 @@ function AppMain() {
   // Tapping a bot notification opens that bot's conversation, whether MyBots was closed or in the background.
   useEffect(() => {
     if (!termuxAvailable) return undefined;
-    const open = id => { if (id) { setSelected(id); setProfileId(null); setDraft(''); } };
+    const open = id => { if (id) { setSelected(id); setProfileId(null); setCreateVisible(false); setMaintenanceVisible(false); setActivityVisible(false); setFileSheet(null); setDraft(''); } };
     const check = () => { Promise.resolve(takeLaunchBot()).then(open).catch(() => {}); };
     check();
     const subscription = onOpenBot(event => open(event?.botId));
@@ -1138,6 +1227,34 @@ function AppMain() {
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') check(); });
     return () => { subscription.remove(); foreground.remove(); };
   }, []);
+  const checkUpdate = useCallback(async function checkUpdate(manual = false) {
+    if (!termuxAvailable) return;
+    if (!manual && Date.now() - updateChecked.current < 6 * 3600000) return;
+    updateChecked.current = Date.now();
+    if (manual) setUpdate(old => ({ ...old, checking: true, error: '' }));
+    try { const info = await updateCheck(); setUpdate(old => ({ ...old, info, checking: false, error: '', dismissed: manual ? false : old?.dismissed })); }
+    catch (error) {
+      setUpdate(old => ({ ...old, checking: false, error: manual ? nativeMessage(error) : '' }));
+      // The network may not be up yet when the app opens: try again in a minute.
+      if (!manual) { updateChecked.current = 0; setTimeout(() => checkUpdate(), 60000); }
+    }
+  }, []);
+  useEffect(() => {
+    if (!termuxAvailable) return undefined;
+    checkUpdate();
+    const subscription = onUpdate(step => setUpdate(old => ({ ...old, step })));
+    const foreground = AppState.addEventListener('change', state => { if (state === 'active') { checkUpdate(); resumeUpdate.current?.(); } });
+    return () => { subscription.remove(); foreground.remove(); };
+  }, [checkUpdate]);
+  // Back from "Instalar apps desconhecidos": the update continues by itself.
+  const resumeUpdate = useRef(null);
+  resumeUpdate.current = () => { if (update?.step?.state === 'permission') updateCanInstall().then(allowed => allowed && installUpdate()).catch(() => {}); };
+  const installUpdate = async () => {
+    const info = update?.info; if (!info?.apkUrl) return;
+    setUpdate(old => ({ ...old, step: { state: 'downloading', percent: 0 } }));
+    try { const result = await updateInstall(info.apkUrl, info.shaUrl); if (result === 'permission') setUpdate(old => ({ ...old, step: { state: 'permission' } })); }
+    catch (error) { setUpdate(old => ({ ...old, step: { state: 'error', message: nativeMessage(error) } })); }
+  };
   const pickShare = target => {
     setIncoming({ ...share, botId: target.id }); setShare(null);
     setSelected(target.id); setProfileId(null); setCreateVisible(false);
@@ -1164,7 +1281,8 @@ function AppMain() {
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} />
           : <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)} />}
+            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
+            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))} />}
     {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []}
       memories={(data.memories || []).filter(item => item.botId === profileId)} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
@@ -1182,6 +1300,7 @@ function AppMain() {
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
           {mode === 'phone' ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
           <Text style={styles.sheetSection}>CELULAR</Text>
+          {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} />
           <Text style={styles.sheetSection}>CONTAS E APPS</Text>
           <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
@@ -1193,7 +1312,15 @@ function AppMain() {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();
             setMaintenanceText(method === 'app.remove' ? 'App desconectado; os bots perderam o acesso a ele.' : result?.status === 'connected' ? `${result.name}: ${result.tools.length} ferramentas disponíveis. Libere no perfil de cada bot.` : result?.message || 'Pronto.');
           })} />
- <Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
+          {termuxAvailable ? <><Text style={styles.sheetSection}>ATUALIZAÇÕES</Text>
+            {update?.info?.available ? <UpdateCard compact update={update} onInstall={installUpdate} />
+              : <View style={[styles.modeOption, styles.rowOption]}>
+                <View style={styles.rowIcon}><Icon name="check" size={19} color={C.mint} /></View>
+                <View style={{ flex: 1 }}><Text style={styles.optionLabel}>MyBots {update?.info?.currentName || ''}</Text>
+                  <Text style={[styles.optionDetail, update?.error && { color: C.amber }]}>{update?.checking ? 'Procurando…' : update?.error || (update?.info ? 'Você está na versão mais nova.' : 'O app procura versões novas sozinho ao abrir.')}</Text></View>
+                <Pressable accessibilityRole="button" disabled={update?.checking} onPress={() => checkUpdate(true)} style={styles.stopButton}><Icon name="refresh" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Procurar</Text></Pressable>
+              </View>}</> : null}
+          <Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
           <View style={styles.modeOption}><Text selectable style={styles.optionDetail}>{maintenanceText}</Text></View>
           <PrimaryButton icon="download" tone="ghost" title="Salvar backup agora" disabled={maintenanceBusy} onPress={() => maintenance(async () => {
             const backup = await saveBackup(); setMaintenanceText(`Backup salvo em ${backup.path}`);
@@ -1217,6 +1344,7 @@ function AppMain() {
         <View style={styles.sheetHandle} />
         <SheetHeader title="Atividade" subtitle={`${data?.supervisorConnected ? 'Supervisor conectado' : 'Supervisor desconectado'} · último sinal ${data?.heartbeat ? new Date(data.heartbeat).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'não confirmado'}`} onClose={() => setActivityVisible(false)} />
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
+          {mode === 'phone' ? <><Text style={styles.sheetSection}>USO</Text><UsagePanel usage={data?.usage} bots={data?.bots || []} /></> : null}
           {mode === 'phone' ? <Text style={styles.sheetSection}>FUNCIONAMENTO</Text> : null}
           {mode === 'phone' ? <View style={styles.modeOption}>
             <Text style={styles.optionLabel}>Interrupções · {(data?.interruptions || []).length ? `${data.interruptions.filter(item => Date.now() - Date.parse(item.created_at) < 7 * 86400000).length} nos últimos 7 dias` : 'nenhuma registrada'}</Text>
@@ -1392,6 +1520,28 @@ const styles = StyleSheet.create({
   fileTray: { flexGrow: 0, marginBottom: 8 },
   fileChip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.surface2, borderRadius: 16, paddingLeft: 6, paddingRight: 11, paddingVertical: 6, maxWidth: 250, borderWidth: 1, borderColor: C.line2 },
   fileChipText: { color: C.text2, fontFamily: F.s, fontSize: 12, flexShrink: 1 },
+  updateCard: { backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.mint + '45', padding: 14, marginBottom: 12 },
+  updateHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  updateIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.mint + '1F', alignItems: 'center', justifyContent: 'center' },
+  updateNotesToggle: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, alignSelf: 'flex-start' },
+  updateNotesLink: { color: C.mint, fontFamily: F.s, fontSize: 13 },
+  updateNotes: { marginTop: 8, padding: 12, borderRadius: 14, backgroundColor: C.bg2, borderWidth: 1, borderColor: C.line },
+  updateBar: { height: 6, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 12, marginBottom: 2 },
+  limitRow: { marginTop: 10 },
+  limitHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
+  limitName: { color: C.text2, fontFamily: F.s, fontSize: 13, flexShrink: 1 },
+  limitValue: { color: C.text, fontFamily: F.b, fontSize: 13 },
+  limitMeta: { color: C.faint, fontFamily: F.m, fontSize: 11.5, lineHeight: 16, marginTop: 4 },
+  usageChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: 92, marginTop: 12, marginBottom: 6 },
+  usageDay: { flex: 1, alignItems: 'center', gap: 5, height: '100%' },
+  usageTrack: { flex: 1, width: '100%', justifyContent: 'flex-end', borderRadius: 7, backgroundColor: C.bg2 },
+  usageColumn: { width: '100%', borderRadius: 7, backgroundColor: C.mint },
+  usageDayText: { color: C.faint, fontFamily: F.s, fontSize: 10.5 },
+  usageBot: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 14 },
+  usageShare: { height: 5, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 6 },
+  usageShareFill: { height: 5, borderRadius: 3 },
+  updateNotesText: { color: C.text2, fontFamily: F.m, fontSize: 13, lineHeight: 19 },
+  updateFill: { height: 6, borderRadius: 3, backgroundColor: C.mint },
   sharePreview: { backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 12, gap: 8, marginBottom: 10 },
   sharePreviewText: { color: C.text2, fontFamily: F.m, fontSize: 13, lineHeight: 19 },
   shareFiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

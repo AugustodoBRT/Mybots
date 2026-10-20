@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The 4×2 (and larger) widget: header, the most recent bots and the next deadline. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/mybots_widget_root"
+  android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/mybots_widget_bg"
+  android:orientation="vertical" android:padding="12dp">
+  <LinearLayout android:id="@+id/mybots_widget_header" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="4dp" android:paddingEnd="2dp">
+    <ImageView android:id="@+id/mybots_widget_logo" android:layout_width="22dp" android:layout_height="22dp" android:importantForAccessibility="no" />
+    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp"
+      android:text="mybots" android:textColor="#F3F5F9" android:textSize="15sp" android:fontFamily="sans-serif-medium" android:textStyle="bold" />
+    <TextView android:id="@+id/mybots_widget_badge" android:layout_width="wrap_content" android:layout_height="wrap_content"
+      android:background="@drawable/mybots_widget_pill" android:paddingStart="9dp" android:paddingEnd="9dp" android:paddingTop="3dp" android:paddingBottom="3dp"
+      android:textColor="#7EE2B8" android:textSize="11.5sp" android:fontFamily="sans-serif-medium" android:visibility="gone" />
+  </LinearLayout>
+  <LinearLayout android:id="@+id/mybots_widget_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" />
+  <TextView android:id="@+id/mybots_widget_empty" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+    android:gravity="center" android:text="Abra o MyBots para conectar seus bots." android:textColor="#8B94A6" android:textSize="13sp" android:visibility="gone" />
+  <TextView android:id="@+id/mybots_widget_footer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+    android:drawablePadding="6dp" android:ellipsize="end" android:maxLines="1" android:paddingStart="4dp" android:textColor="#FFB38A" android:textSize="12sp" android:visibility="gone" />
+</LinearLayout>

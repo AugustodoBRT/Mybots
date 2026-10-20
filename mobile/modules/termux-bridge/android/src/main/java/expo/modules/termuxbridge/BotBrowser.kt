@@ -220,6 +220,14 @@ internal object BotBrowser {
         if (args.optBoolean("submit")) waitLoaded(botId, 15_000)
         page(context, botId)
       }
+      "upload" -> {
+        val name = args.getString("name").replace(Regex("[/\\\\\u0000]"), "_").take(120)
+        val data = args.getString("data")
+        if (data.length > 14_500_000) throw IllegalArgumentException("Envie arquivos de até 10 MB.")
+        val input = JSONObject().put("id", id).put("name", name).put("mime", args.optString("mime")).put("data", data)
+        js(context, botId, "($UPLOAD_JS)($input)", 30_000)
+        page(context, botId).put("attached", name)
+      }
       "wait" -> {
         val until = System.currentTimeMillis() + args.optInt("timeoutSeconds", 10).coerceIn(1, 30) * 1000L
         val check = "($WAIT_JS)(${JSONObject.quote(args.optString("text"))}, ${JSONObject.quote(args.optString("selector"))})"
@@ -320,7 +328,7 @@ internal object BotBrowser {
       override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { tab.loading = true; emit(tab) }
       override fun onPageFinished(view: WebView, url: String?) { tab.loading = false; flushCookies(botId); emit(tab) }
     }
-    // No downloads, uploads, camera, microphone or location: none of it is needed to read and fill pages.
+    // Downloads go to the bot's files; uploads only through browser_upload (approved file, no picker); no camera, microphone or location.
     web.setDownloadListener { url, userAgent, disposition, mime, _ -> DeviceFiles.download(context.applicationContext, tab, url, userAgent, disposition, mime) }
     web.webChromeClient = object : WebChromeClient() {
       override fun onProgressChanged(view: WebView, newProgress: Int) { tab.progress = newProgress }
@@ -382,6 +390,7 @@ internal object BotBrowser {
       const kindOf = el => {
         const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
         if (tag === 'input' && type === 'password') return 'password';
+        if (tag === 'input' && type === 'file') return 'file';
         if ((tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form)) return 'submit';
         if (tag === 'a') return 'link';
         if (tag === 'select') return 'select';
@@ -399,13 +408,15 @@ internal object BotBrowser {
       const elements = [];
       for (const el of document.querySelectorAll('a[href],button,input,select,textarea,[role=button],[role=link],[role=checkbox],[role=tab],[onclick],[contenteditable=true],summary')) {
         if (elements.length >= 200) break;
-        if (el.disabled || (el.getAttribute('type') || '').toLowerCase() === 'hidden' || !visible(el)) continue;
+        const fileInput = el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'file';
+        if (el.disabled || (el.getAttribute('type') || '').toLowerCase() === 'hidden' || (!visible(el) && !fileInput)) continue;
         if (!el.dataset.mybotsId) el.dataset.mybotsId = String(window.__mybotsNext++);
         const kind = kindOf(el);
         const item = { id: Number(el.dataset.mybotsId), kind, label: labelOf(el) };
         if (kind === 'link') item.href = String(el.href).slice(0, 300);
         if (kind === 'field') item.value = String(el.isContentEditable ? el.innerText : el.value || '').slice(0, 200);
         if (kind === 'check') item.checked = el.checked;
+        if (kind === 'file') { item.accept = String(el.accept || '').slice(0, 120); item.multiple = el.multiple; item.files = [...(el.files || [])].map(f => f.name).slice(0, 5); if (!item.label) item.label = clean(el.closest('label, td, div') && el.closest('label, td, div').innerText) || 'Arquivo'; }
         if (kind === 'select') { item.value = el.selectedOptions[0] ? clean(el.selectedOptions[0].text) : ''; item.options = [...el.options].slice(0, 30).map(o => clean(o.text)); }
         elements.push(item);
       }
@@ -419,8 +430,9 @@ internal object BotBrowser {
   private val INSPECT_JS = """
     (id) => { $FIND
       const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
-      const kind = tag === 'input' && type === 'password' ? 'password' : (tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form) ? 'submit' : tag === 'a' ? 'link' : 'other';
-      const label = String((tag === 'input' ? el.value || el.placeholder : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const kind = tag === 'input' && type === 'password' ? 'password' : tag === 'input' && type === 'file' ? 'file' : (tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form) ? 'submit' : tag === 'a' ? 'link' : 'other';
+      const near = kind === 'file' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || (el.closest('label, td, div, fieldset') || {}).innerText || el.name) : '';
+      const label = String(near || (tag === 'input' ? el.value || el.placeholder : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
       return JSON.stringify({ kind, label, url: location.href }); }
   """.trimIndent()
 
@@ -428,6 +440,17 @@ internal object BotBrowser {
     (id) => { $FIND
       el.scrollIntoView({ block: 'center' }); if (el.tagName === 'A') el.removeAttribute('target'); el.click();
       return JSON.stringify({ ok: true }); }
+  """.trimIndent()
+
+  // Puts the bot's file in a file field, as if the person had picked it (no system file picker, no other files reachable).
+  private val UPLOAD_JS = """
+    ({ id, name, mime, data }) => { $FIND
+      if (el.tagName !== 'INPUT' || (el.getAttribute('type') || '').toLowerCase() !== 'file') return JSON.stringify({ error: 'Este elemento não é um campo de arquivo.' });
+      const raw = atob(data); const bytes = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const transfer = new DataTransfer(); transfer.items.add(new File([bytes], name, { type: mime || 'application/octet-stream', lastModified: Date.now() }));
+      el.files = transfer.files;
+      el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+      return JSON.stringify({ ok: true, files: [...el.files].map(f => f.name) }); }
   """.trimIndent()
 
   private val TYPE_JS = """

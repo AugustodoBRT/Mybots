@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A bot in the widget: animated face, name and its latest message or what it is doing. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/mybots_widget_bot"
+  android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp"
+  android:background="@drawable/mybots_widget_row" android:gravity="center_vertical" android:orientation="horizontal"
+  android:paddingStart="6dp" android:paddingEnd="12dp">
+  <ViewFlipper android:id="@+id/mybots_widget_face" android:layout_width="46dp" android:layout_height="46dp"
+    android:autoStart="true" android:flipInterval="140" />
+  <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:orientation="vertical">
+    <TextView android:id="@+id/mybots_widget_name" android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:ellipsize="end" android:maxLines="1" android:textColor="#F3F5F9" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textStyle="bold" />
+    <TextView android:id="@+id/mybots_widget_preview" android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:ellipsize="end" android:maxLines="1" android:textColor="#8B94A6" android:textSize="12.5sp" />
+  </LinearLayout>
+</LinearLayout>

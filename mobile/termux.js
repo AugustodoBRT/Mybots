@@ -22,6 +22,13 @@ export const onOpenBot = listener => native.addListener('onOpenBot', listener);
 // "Compartilhar → MyBots": what another app shared, and the bots offered as Direct Share targets.
 export const takeShare = () => native?.takeShare();
 export const onShare = listener => native.addListener('onShare', listener);
+// Updates from GitHub Releases (same signing certificate only).
+export const updateCheck = () => native.updateCheck();
+export const updateInstall = (apkUrl, shaUrl) => native.updateInstall(apkUrl, shaUrl);
+export const updateCanInstall = () => native.updateCanInstall();
+export const onUpdate = listener => native.addListener('onUpdate', listener);
+export const widgetStatus = () => native.widgetStatus();
+export const requestWidget = () => native.requestWidget();
 export const publishShareTargets = bots => native?.publishShareTargets(bots);
 export const showBotNotification = item => native.showBotNotification(item);
 export const botNotificationStatus = () => native.botNotificationStatus();

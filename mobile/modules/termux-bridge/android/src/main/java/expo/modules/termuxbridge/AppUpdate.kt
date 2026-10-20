@@ -22,7 +22,7 @@ import java.security.MessageDigest
  * certificate as the installed app, so a swapped file can never replace it. Android still asks the person to confirm.
  */
 internal object AppUpdate {
-  const val REPOSITORY = "AugustodoBRT/mybots-releases"
+  const val REPOSITORY = "AugustodoBRT/Mybots"
   private const val LATEST = "https://api.github.com/repos/$REPOSITORY/releases/latest"
   const val ACTION_STATUS = "expo.modules.termuxbridge.UPDATE_STATUS"
   private val APK = Regex("^mybots-v(\\d+)\\.apk$")
@@ -118,7 +118,18 @@ internal object AppUpdate {
     if (mine.isEmpty() || mine != theirs) { file.delete(); throw SecurityException("A versão baixada foi assinada por outra pessoa. Nada foi instalado.") }
   }
 
+  /** After Android replaces the app it does not reopen it: a notice says the update worked and opens the new version. */
+  fun finished(context: Context) {
+    val prefs = context.getSharedPreferences("mybots_update", Context.MODE_PRIVATE)
+    if (prefs.getString("installing", null) == null) return
+    prefs.edit().remove("installing").apply()
+    val name = installed(context).versionName ?: ""
+    BotNotifier.show(context, JSONObject().put("id", "mybots-update").put("tag", "mybots-update")
+      .put("title", "MyBots atualizado").put("text", "A versão $name está instalada. Toque para abrir."))
+  }
+
   private fun install(context: Context, file: File) {
+    context.getSharedPreferences("mybots_update", Context.MODE_PRIVATE).edit().putString("installing", file.name).apply()
     val installer = context.packageManager.packageInstaller
     val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
       setAppPackageName(context.packageName); setSize(file.length())

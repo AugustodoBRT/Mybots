@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -59,8 +59,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
     const publicTasks = () => db.tasks().slice(0, 200).map(({ payload, worker_pid, worker_start, ...task }) => task);
+    // Home-screen widget pollers: woken on any change, they answer only when the widget's summary changed.
+    const widgetPollers = new Set();
     const broadcast = (event, data = {}) => {
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.bufferedAmount < 2_000_000) socket.send(JSON.stringify({ event, data }));
+      for (const poller of widgetPollers) poller();
     };
     const vault = new Vault(directory);
     const bundle = bundleOption || new ConnectorBundle(directory);
@@ -153,6 +156,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         if (codexStatus.loggedIn) {
           try { catalog.push(...(await codex.models()).map(item => ({ ...item, provider: 'codex' }))); modelsError = ''; }
           catch (error) { modelsError = error.message; }
+          refreshLimits();
         }
         // Claude stays listed even when missing or logged out, so the app can show why it cannot answer yet.
         if (claude) catalog.push(...await claude.models());
@@ -161,7 +165,29 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       })().finally(() => { checking = null; broadcast('connection.changed'); });
       return checking;
     };
-    const state = () => ({ ...db.snapshot(), bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
+    // The ChatGPT plan's usage windows: read with the catalog and after each Codex reply, at most once a minute.
+    let limitsAt = 0;
+    const refreshLimits = () => {
+      if (!codex.limits || Date.now() - limitsAt < 60000) return;
+      limitsAt = Date.now();
+      codex.limits().then(limits => { db.setLimits('codex', limits); broadcast('connection.changed'); }).catch(() => {});
+    };
+    const widgetSummary = () => {
+      const active = db.tasks().filter(task => ['queued', 'running', 'waiting_approval'].includes(task.state));
+      const pending = db.all("SELECT body FROM approvals WHERE state='pending'").map(row => JSON.parse(row.body).botId);
+      const plain = text => String(text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*`#>_]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+      const bots = db.bots().filter(bot => !bot.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(bot => {
+        const latest = bot.messages.at(-1);
+        const state = pending.includes(bot.id) ? 'waiting' : active.some(task => task.bot_id === bot.id) ? 'working' : 'idle';
+        return { id: bot.id, name: bot.name, color: bot.color || 'green', avatar: bot.avatar || '', state,
+          preview: state === 'waiting' ? 'Esperando sua decisão' : state === 'working' ? 'Trabalhando…' : latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle || ''}` : plain(latest?.text) || 'Pronto para começar' };
+      });
+      const open = db.all("SELECT * FROM pending_items WHERE state='open'").map(row => items.row(row)).filter(item => !db.bot(item.botId)?.deletedAt);
+      const next = open.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
+      const body = { bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
+      return { version: createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16), ...body };
+    };
+    const state = () => ({ ...db.snapshot(), usage: db.usage(), bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
       connection: summary(), connections, models, modelsError, defaultSelection: models.length ? selectionFor(models) : null,
       grants: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.grants(bot.id)])),
@@ -286,7 +312,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         default: throw new Error('Operação não permitida.');
       }
     };
-    queue.on('changed', change => { broadcast(change?.event || 'task.progress', change || {}); broadcast('activity.new'); });
+    queue.on('changed', change => {
+      broadcast(change?.event || 'task.progress', change || {}); broadcast('activity.new');
+      if (change?.event === 'task.done' && (db.bot(db.task(change.taskId)?.bot_id)?.provider || 'codex') === 'codex' && connections.codex?.loggedIn) refreshLimits();
+    });
     let api;
     server = createServer(async (request, response) => {
       if (request.url === '/mcp') { await handleMcp(request, response, tools); return; }
@@ -369,6 +398,21 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         } catch (error) { fail(400, error.message === 'size' ? 'Arquivo grande demais.' : error.message || 'Arquivo inválido.'); }
         return;
       }
+      // The home-screen widget: who is working or waiting, the latest messages and the next deadline. Long-polls
+      // with the version it shows (?v=), so a bot that starts working shows up right away.
+      if (request.method === 'GET' && request.url.startsWith('/device/widget')) {
+        const known = new URL(request.url, 'http://local').searchParams.get('v') || '';
+        const answer = summary => { if (!response.writableEnded) response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(summary)); };
+        const first = widgetSummary();
+        if (first.version !== known) { answer(first); return; }
+        let timer;
+        const poller = closing => { if (closing === true) { finish(); answer(first); return; } clearTimeout(pending); pending = setTimeout(() => { const next = widgetSummary(); if (next.version !== known) { finish(); answer(next); } }, 300); };
+        let pending;
+        const finish = () => { clearTimeout(timer); clearTimeout(pending); widgetPollers.delete(poller); };
+        timer = setTimeout(() => { finish(); answer(widgetSummary()); }, 25000);
+        widgetPollers.add(poller); request.on('close', finish);
+        return;
+      }
       if (request.method === 'POST' && request.url === '/device/wake') {
         try {
           let raw = ''; for await (const chunk of request) { raw += chunk; if (raw.length > 4000) throw new Error('size'); }
@@ -432,6 +476,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       for (const ws of sockets.clients) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
+      for (const poller of [...widgetPollers]) poller(true);
       await queue.close();
       const closing = new Promise(resolveClose => server.close(resolveClose));
       server.closeAllConnections?.();

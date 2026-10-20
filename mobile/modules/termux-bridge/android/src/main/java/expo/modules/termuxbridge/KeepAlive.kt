@@ -253,6 +253,7 @@ class KeepAliveService : Service() {
     if (!promote() || !KeepAlive.enabled(this)) { stopSelf(); return START_NOT_STICKY }
     BotNotifier.start(applicationContext)
     BotBrowser.start(applicationContext)
+    WidgetSync.start(applicationContext)
     MyBotsNotificationListener.rebind(applicationContext)
     check(intent?.getStringExtra("reason") ?: "periodic")
     return START_STICKY
@@ -322,6 +323,7 @@ class KeepAliveReceiver : BroadcastReceiver() {
       else -> return
     }
     val app = context.applicationContext
+    if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) AppUpdate.finished(app)
     if (!KeepAlive.enabled(app) || !KeepAlive.paired(app)) return
     KeepAlive.wakeBriefly(app, 60_000)
     if (KeepAlive.start(app, reason)) return

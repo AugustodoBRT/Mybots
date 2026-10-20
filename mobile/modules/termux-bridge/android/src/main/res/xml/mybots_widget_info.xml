@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget: 4×2 by default, resizable down to 2×2 (one big bot) and up. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="250dp" android:minHeight="110dp" android:minResizeWidth="110dp" android:minResizeHeight="110dp"
+  android:targetCellWidth="4" android:targetCellHeight="2" android:maxResizeWidth="600dp" android:maxResizeHeight="400dp"
+  android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" android:updatePeriodMillis="0"
+  android:initialLayout="@layout/mybots_widget" android:previewImage="@drawable/mybots_widget_preview"
+  android:description="@string/mybots_widget_description" />

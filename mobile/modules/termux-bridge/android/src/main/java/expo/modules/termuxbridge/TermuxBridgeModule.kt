@@ -59,11 +59,11 @@ internal fun startTermux(context: Context, intent: Intent) {
 class TermuxBridgeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("TermuxBridge")
-    Events("onSpeech", "onOpenBot", "onShare")
+    Events("onSpeech", "onOpenBot", "onShare", "onUpdate")
 
     // Tapping a bot notification opens MyBots on that bot; the app may be closed (launch intent) or running (new intent).
     OnActivityEntersForeground {
-      appContext.reactContext?.let { BotNotifier.start(it.applicationContext); BotBrowser.start(it.applicationContext) }
+      appContext.reactContext?.let { BotNotifier.start(it.applicationContext); BotBrowser.start(it.applicationContext); WidgetSync.start(it.applicationContext) }
       appContext.currentActivity?.intent?.let { intent ->
         intent.getStringExtra("mybotsBotId")?.takeIf { it.isNotEmpty() }?.let { launchBot = it; intent.removeExtra("mybotsBotId") }
         receiveShare(intent)
@@ -77,6 +77,40 @@ class TermuxBridgeModule : Module() {
     AsyncFunction("takeShare") {
       appContext.currentActivity?.intent?.let { receiveShare(it) }
       if (sharing) null else ShareIntake.take()
+    }
+    // Updates from the project's GitHub Releases: check, then download, verify and hand to Android's installer.
+    OnCreate { AppUpdate.listener = { event -> sendEvent("onUpdate", event) } }
+    AsyncFunction("updateCheck") { promise: Promise ->
+      val context = appContext.reactContext ?: return@AsyncFunction promise.reject("NOT_READY", "O MyBots não está pronto.", null)
+      Thread {
+        try { promise.resolve(AppUpdate.check(context.applicationContext) + mapOf("canInstall" to AppUpdate.canInstall(context.applicationContext))) }
+        catch (error: Exception) { promise.reject("UPDATE", if (error is java.io.IOException) "Sem conexão com o GitHub agora. Tente de novo mais tarde." else error.message ?: "Não consegui procurar atualizações.", error) }
+      }.start()
+    }
+    AsyncFunction("updateCanInstall") { appContext.reactContext?.let { AppUpdate.canInstall(it.applicationContext) } ?: false }
+    AsyncFunction("updateInstall") { apkUrl: String, shaUrl: String, promise: Promise ->
+      val context = appContext.reactContext ?: return@AsyncFunction promise.reject("NOT_READY", "O MyBots não está pronto.", null)
+      val app = context.applicationContext
+      if (!AppUpdate.canInstall(app)) { AppUpdate.openInstallPermission(app); return@AsyncFunction promise.resolve("permission") }
+      Thread {
+        try { promise.resolve(AppUpdate.download(app, apkUrl, shaUrl)) }
+        catch (error: Exception) {
+          val message = if (error is java.io.IOException) "A conexão caiu durante o download. Tente de novo." else error.message ?: "Não consegui atualizar."
+          AppUpdate.listener?.invoke(mapOf("state" to "error", "message" to message)); promise.reject("UPDATE", message, error)
+        }
+      }.start()
+    }
+    // The home-screen widget: how many are placed, and Android's "add to home screen" request.
+    AsyncFunction("widgetStatus") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      val manager = android.appwidget.AppWidgetManager.getInstance(context)
+      mapOf("placed" to WidgetSync.ids(context).size, "canPin" to (Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported))
+    }
+    AsyncFunction("requestWidget") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      val manager = android.appwidget.AppWidgetManager.getInstance(context)
+      Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported &&
+        manager.requestPinAppWidget(ComponentName(context, MyBotsWidget::class.java), null, null)
     }
     AsyncFunction("publishShareTargets") { bots: List<Map<String, Any?>> ->
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")

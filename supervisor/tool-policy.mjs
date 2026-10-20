@@ -27,9 +27,9 @@ export const TOOL_DEFINITIONS = [
   { name: 'routine.create', label: 'Criar rotinas', description: 'Propõe uma rotina por horário ou por notificação. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
-  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio. Senhas só você digita, pelo botão Assumir.', readOnly: true }
+  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
-export const BROWSER_TOOLS = ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const BROWSER_TOOLS = ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
 export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : tool;
 export const AVATARS = ['orbit', 'pixel', 'cat', 'spark'];
@@ -48,7 +48,7 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
-    'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'] }[tool];
+    'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
     // Models often send "" for a filter they do not want; for optional fields that means no filter.
@@ -109,6 +109,10 @@ export function toolArguments(tool, args) {
     if (args.submit !== undefined && typeof args.submit !== 'boolean') throw new Error('Use submit true ou false.');
     if (typeof args.text !== 'string' || args.text.length > 2000 || /\u0000/.test(args.text)) throw new Error('Texto até 2.000 caracteres.');
     return { id: integer('id', 1, 100000), text: args.text, submit: args.submit === true };
+  }
+  if (tool === 'browser.upload') {
+    if (typeof args.file !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.file)) throw new Error('Em file, informe o id de um arquivo deste bot (veja em files_list).');
+    return { id: integer('id', 1, 100000), file: args.file.toLowerCase() };
   }
   if (tool === 'browser.wait') return { text: text('text', 200, true), selector: text('selector', 200, true), timeoutSeconds: integer('timeoutSeconds', 1, 30, 10) };
   if (tool === 'browser.ask_user') return { reason: text('reason', 300) };

@@ -11,6 +11,7 @@ import { Tools, notifyUser } from './tools.mjs';
 import { processIdentity } from './process.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
+import { PROMPT_VERSION } from '../mobile/local.js';
 import { selectionFor, PROVIDER_NAMES } from '../lib/models.mjs';
 import { handleMcp } from './mcp/http.mjs';
 import { Vault } from './vault.mjs';
@@ -48,6 +49,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     db = new Database(directory);
     if (importFile && !db.get("SELECT value FROM metadata WHERE key='legacy_imported'")) db.importLegacy(JSON.parse(readFileSync(importFile, 'utf8')));
     let tools;
+    // When the base instructions every bot gets change (PROMPT_VERSION), open conversations start a new IA session once:
+    // a resumed session keeps the old instructions. The history goes with the next turn, as for any new session.
+    if (db.get("SELECT value FROM metadata WHERE key='prompt.version'")?.value !== String(PROMPT_VERSION)) db.transaction(() => {
+      db.run('DELETE FROM codex_sessions');
+      db.run("INSERT INTO metadata VALUES('prompt.version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(PROMPT_VERSION));
+    });
     queue = new Queue(db, execute);
     queue.recover();
     const instanceId = randomUUID();

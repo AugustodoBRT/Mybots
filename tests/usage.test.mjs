@@ -163,3 +163,23 @@ test('account apps: new bots load none, older bots keep Gmail and Calendar, and 
   assert.equal(seen.connectors, false);
   await assert.rejects(app.rpc('bot.apps', { botId: bot.id, apps: 'Gmail' }), /inválida/);
 });
+
+test('new base instructions (PROMPT_VERSION) start new IA sessions once, keeping the history', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-prompt-'));
+  const session = randomUUID();
+  let app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection, codexSessionId: session }) });
+  const bot = await app.rpc('bot.create', { name: 'Vagas', ...selection });
+  const { taskId } = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
+  await until(() => app.db.task(taskId).state === 'done');
+  assert.equal(app.db.bot(bot.id).codexSessionId, session);
+  // A supervisor from before this version: no prompt.version yet.
+  app.db.run("DELETE FROM metadata WHERE key='prompt.version'");
+  await app.close();
+  app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  assert.equal(app.db.bot(bot.id).codexSessionId, undefined); assert.equal(app.db.bot(bot.id).messages.length, 2);
+  // Same version on the next start: sessions are kept.
+  app.db.session(bot.id, session); await app.close();
+  app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });
+  assert.equal(app.db.bot(bot.id).codexSessionId, session);
+});

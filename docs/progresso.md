@@ -470,3 +470,12 @@ Pedido: guardar senhas no app para o bot entrar nos sites (SIGAA) sem a pessoa d
 - **Ajustes → Senhas**: lista, adicionar (site, usuário, senha, quais bots) e apagar.
 
 109 testes (novo: login sem senha no comando, aprovação no Médio com "Sempre permitir", site sem login salvo). No emulador (Codex real): login em the-internet.herokuapp.com pelo Assumir → cartão "Salvar a senha" → Para Navegador; logout; "entre com a senha salva" → cartão de primeiro uso → "You logged into a secure area!"; a senha não aparece no histórico; em practicetestautomation.com o app recusou preencher. APK `dist/apk/mybots-v33.apk`, versionCode 33, 0.16.0, ARM64, certificado `fac61745…033b9c`, SHA-256 `39a7345ac0c99005c7f65f3f3a30811a8c5c565353bc77a04c41696bc6c9b8ef`. Release v33.
+
+## 20/10/2026 — v34 (0.16.1): o bot age em nome da pessoa (formulários e testes de perfil)
+
+Relato: o bot de candidaturas (GPT-6-Luna, Alto) recusou marcar o teste de perfil Sólides (autoavaliação e "o que os outros acham de você") mesmo com a pessoa pedindo várias vezes.
+
+- Instruções base: o bot trabalha para a pessoa e age em nome dela; quando ela pede para preencher algo por ela (formulário, cadastro, candidatura, questionário, teste de perfil, autoavaliação), preenche seguindo a orientação dela e o que sabe dela; sem orientação, pergunta uma vez e guarda na memória; não inventa fatos verificáveis (formação, experiência, documentos, notas). As instruções do perfil passam a valer como "função e personalidade" escritas pela pessoa (antes: só "jeito de conversar"). Também nas orientações de cada turno (Codex `developer_instructions`, Claude `--append-system-prompt`).
+- `PROMPT_VERSION` (mobile/local.js): quando muda, o supervisor recomeça as sessões da IA uma vez (sessão retomada guardava as instruções antigas e continuava recusando); o histórico recente vai junto como em qualquer sessão nova.
+
+Emulador (gpt-6-luna, Alto): antes "NÃO, não marcaria por você"; depois 3 de 3 bots novos aceitaram e foram abrir o navegador; num bot com sessão antiga e a recusa no histórico, depois do recomeço da sessão: "SIM — marcaria as qualidades positivas nas duas partes, seguindo sua orientação". 110 testes. APK `dist/apk/mybots-v34.apk`, versionCode 34, 0.16.1, ARM64, certificado `fac61745…033b9c`, SHA-256 `9684fea2394c5723bf5d8f37f4eaa444819c0c755298a4b2d37d3c692469c620`. Release v34.

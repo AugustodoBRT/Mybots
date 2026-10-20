@@ -127,3 +127,36 @@ test('a Claude reply records the exact model the alias resolved to, and the pick
   const opus = (await app.rpc('state.get')).models.find(item => item.provider === 'claude');
   assert.equal(opus.displayName, 'Claude Opus 5.5'); assert.equal(opus.modelId, 'claude-opus-5-5'); assert.equal(opus.model, 'opus');
 });
+
+test('account apps: new bots load none, older bots keep Gmail and Calendar, and the other connectors are blocked for Claude', async t => {
+  const { claudeArguments } = (await import('../lib/claude-runner.cjs')).default;
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-apps-'));
+  let seen;
+  const claude = { status: async () => ({ available: true, loggedIn: true, message: 'Conectado' }), models: async () => [{ provider: 'claude', model: 'test', displayName: 'Claude', isDefault: false, efforts: ['low'], defaultEffort: 'low' }], connectors: async () => [] };
+  const app = await createSupervisor({ directory, port: 0, codex, claude, execute: async (bot, prompt, options) => { seen = options.tools; return { text: 'ok', ...selection, accountServers: ['Gmail', 'Google Calendar', 'Miro', 'Google Drive'] }; } });
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await app.rpc('bot.create', { name: 'Novo', access: 'ask', ...selection });
+  assert.deepEqual(app.state().accountApps[bot.id], []);
+  // A bot from before the choice (no saved list) keeps the apps MyBots relies on.
+  app.db.run("DELETE FROM grants WHERE tool='account.apps'");
+  assert.deepEqual(app.tools.accountApps(bot.id), ['Gmail', 'Google Calendar']);
+  app.db.run("UPDATE bots SET body=json_set(body,'$.provider','claude') WHERE id=?", bot.id);
+  const { taskId } = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
+  await until(() => app.db.task(taskId).state === 'done');
+  assert.equal(seen.connectors, true); assert.deepEqual(seen.connectorDeny, []);
+  // The reply taught the supervisor the account's connectors: the next run blocks all but the picked ones.
+  assert.deepEqual(app.state().accountServers, ['Gmail', 'Google Calendar', 'Miro', 'Google Drive']);
+  assert.deepEqual((await app.rpc('bot.apps', { botId: bot.id, apps: ['Gmail'] })).apps, ['Gmail']);
+  const second = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
+  await until(() => app.db.task(second.taskId).state === 'done');
+  assert.deepEqual(seen.connectorDeny, ['Google Calendar', 'Miro', 'Google Drive']);
+  const args = claudeArguments({ model: 'sonnet' }, randomUUID(), { ...seen, endpoint: 'http://127.0.0.1:1', token: 't' });
+  const deny = args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--disallowedTools') + 4);
+  assert.deepEqual(deny, ['mcp__claude_ai_Google_Calendar', 'mcp__claude_ai_Miro', 'mcp__claude_ai_Google_Drive']);
+  // No apps picked: the connectors are not loaded at all.
+  await app.rpc('bot.apps', { botId: bot.id, apps: [] });
+  const third = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
+  await until(() => app.db.task(third.taskId).state === 'done');
+  assert.equal(seen.connectors, false);
+  await assert.rejects(app.rpc('bot.apps', { botId: bot.id, apps: 'Gmail' }), /inválida/);
+});

@@ -88,6 +88,25 @@ export class Tools {
     const saved = this.db.get('SELECT body FROM grants WHERE bot_id=? AND tool=?', botId, tool)?.body;
     return saved === undefined ? Boolean(TOOL_DEFINITIONS.find(item => item.name === tool)?.defaultAllowed) : saved === 'true';
   }
+  /**
+   * Which account apps (claude.ai connectors) a bot loads. Each one adds its tool definitions to every step, so new
+   * bots start with none; bots from before the choice keep Gmail and Google Calendar, the ones MyBots relies on.
+   */
+  accountApps(botId) {
+    const saved = this.saved(botId, 'account.apps');
+    if (saved === undefined) return ['Gmail', 'Google Calendar'];
+    try { const list = JSON.parse(saved); return Array.isArray(list) ? list : []; } catch { return []; }
+  }
+  setAccountApps(botId, apps) {
+    this.db.requireBot(botId);
+    if (!Array.isArray(apps) || apps.length > 30 || apps.some(name => typeof name !== 'string' || !name.trim() || name.length > 60)) throw new Error('Lista de apps inválida.');
+    const list = [...new Set(apps.map(name => name.trim()))];
+    const changed = JSON.stringify(this.accountApps(botId)) !== JSON.stringify(list);
+    this.db.run('INSERT INTO grants(id,bot_id,tool,body) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body', botId + ':account.apps', botId, 'account.apps', JSON.stringify(list));
+    // A new session, so the bot does not remember tools it no longer has.
+    if (changed) { this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', botId); this.db.record('grant_changed', `Apps da conta: ${list.length ? list.join(', ') : 'nenhum'}.`, botId); this.changed('activity.new'); }
+    return list;
+  }
   grants(botId) { this.db.requireBot(botId); return this.definitions().filter(tool => !tool.internal).map(tool => ({ ...tool, allowed: this.allowed(botId, tool.name), state: this.policy(botId, tool.name) })); }
   grant(botId, tool, allowed) {
     this.db.requireBot(botId);

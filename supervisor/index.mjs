@@ -187,7 +187,17 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const body = { bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
       return { version: createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16), ...body };
     };
-    const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(), bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
+    // The account's connector names, learned from `claude mcp list` and from each Claude reply, kept across restarts.
+    const knownServers = () => JSON.parse(db.get("SELECT value FROM metadata WHERE key='claude.servers'")?.value || 'null');
+    const rememberServers = names => { if (Array.isArray(names) && names.length) db.run("INSERT INTO metadata VALUES('claude.servers',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify([...new Set(names)].slice(0, 60))); };
+    queue.accountServers = async () => {
+      const known = knownServers(); if (known) return known;
+      try { const list = await claude?.connectors?.(); if (list) { rememberServers(list.map(item => item.name)); return knownServers() || []; } } catch {}
+      return [];
+    };
+    queue.rememberServers = rememberServers;
+    const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
+      accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
       connection: summary(), connections, models: models.map(item => {
         // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
@@ -210,7 +220,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'state.get': await refresh(); return state();
         case 'connection.refresh': await refresh(true); return state();
         case 'bots.list': return state().bots;
-        case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(models, params)); broadcast('activity.new'); return bot; }
+        case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(models, params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
+        case 'bot.apps': return { apps: tools.setAccountApps(params.botId, params.apps) };
         case 'bot.update': { const bot = db.requireBot(params.botId); await refresh(); const updated = db.configure(bot.id, selectionFor(models, { ...bot, ...params }), params); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };
@@ -251,6 +262,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             let claudeList = null, claudeError = '';
             if (claude && connections.claude?.loggedIn) { try { claudeList = await claude.connectors?.() || null; } catch (error) { claudeError = error.message; } }
             accountConnectors = { at: Date.now(), claude: claudeList, claudeError, codex: Boolean(connections.codex?.loggedIn) };
+            if (claudeList) rememberServers(claudeList.map(item => item.name));
           }
           return accountConnectors;
         }

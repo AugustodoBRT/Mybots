@@ -1328,6 +1328,8 @@ function AppMain() {
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []}
       memories={(data.memories || []).filter(item => item.botId === profileId)} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
+      accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
+      onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
       onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await loadSupervisorState(); }}

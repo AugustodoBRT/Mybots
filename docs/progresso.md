@@ -443,3 +443,15 @@ APK `dist/apk/mybots-v29.apk`, versionCode 29, 0.15.0, ARM64, 30.070.270 bytes, 
 107 testes. No emulador: saudação com o nome, campo nos Ajustes, painel de Uso com o novo texto. APK `dist/apk/mybots-v30.apk`, versionCode 30, 0.15.1, ARM64, certificado `fac61745…033b9c`, SHA-256 `70bd3ead8034df7a6b1c5674674c3d2dec917c039d9731f4cd98145c3f5897bc`. Publicado como Release v30: primeira versão entregue pela atualização dentro do app.
 
 **Ideias registradas a pedido do usuário (economia de tokens):** mandar a cada bot só as ferramentas que ele pode usar; "nova conversa com resumo" quando o histórico ficar grande.
+
+## 20/10/2026 — v31 (0.15.2): apps da conta por bot (um "oi" de 112 mil para 11,5 mil tokens)
+
+Relato: um "oi" num bot com Claude Sonnet subiu o uso de 240 mil para 362 mil tokens.
+
+- **Causa** (medida no PC, supervisor real + Sonnet): com "Apps da sua conta" permitido, o Claude Code carrega todos os conectores do claude.ai da conta (Gmail, Agenda, Drive, Docs, Sheets, Slides, Miro, Indeed, WordPress…: 128 ferramentas) em cada passo. Como conectam de forma assíncrona, o primeiro turno às vezes vem sem eles (11 mil) e o seguinte com eles (112 mil). `ENABLE_TOOL_SEARCH` não adia esses conectores.
+- **Correção**: cada bot escolhe quais apps da conta carrega (perfil → Acesso → "Apps da sua conta do Claude"); os outros entram em `--disallowedTools` (`mcp__claude_ai_<Nome>`), o que também tira as definições do contexto. Bots novos começam sem apps; bots antigos ficam com Gmail e Google Calendar. Sem nenhum app marcado, os conectores nem carregam (`--strict-mcp-config`). Os nomes dos conectores vêm do `claude mcp list` e do `init` de cada resposta (`metadata claude.servers`). Trocar a lista inicia uma sessão nova. O backup aceita a lista (`grants account.apps`).
+- **Medido por "oi" (Sonnet)**: antes 112 mil; sem apps 11,5 mil; só Gmail 38,7 mil (o Gmail sozinho custa ~27 mil por passo).
+
+108 testes. No emulador (bot trocado para Claude no banco só para ver a tela, depois revertido): lista com Gmail e Google Calendar ligados no bot antigo, desligar o Calendar salvou só Gmail. APK `dist/apk/mybots-v31.apk`, versionCode 31, 0.15.2, ARM64, certificado `fac61745…033b9c`, SHA-256 `ede1ab7c38d35d100078bcabeadaa719b31d359b8ef08670c266e6e31a27c589`. Release v31.
+
+**Próxima economia possível:** os ~11 mil tokens de base são as instruções e as ~31 ferramentas do MyBots; mandar só as permitidas a cada bot e "nova conversa com resumo" para históricos longos.

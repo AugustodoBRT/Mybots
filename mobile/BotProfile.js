@@ -13,7 +13,7 @@ export const ACCESS = [
 ];
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, accountApps = [], accountServers = [], onApps, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', ...defaultSelection };
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null);
   useEffect(() => {
@@ -71,6 +71,16 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
           {ACCESS.map(([key, title, detail]) => radio(bot?.access === key, title, detail, () => act(() => onAccess(key)), { warn: key === 'full', disabled: saving || active }))}
           {!bot?.access ? <Text style={s.hint}>Este bot usa a configuração personalizada antiga (os interruptores abaixo). Escolha um nível para simplificar.</Text> : null}
           {active ? <Text style={s.hint}>Aguarde a resposta terminar para mudar o nível.</Text> : null}
+          {phone && bot?.provider === 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
+            <Text style={s.label}>APPS DA SUA CONTA DO CLAUDE</Text>
+            <View style={s.group}>
+              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Marque só o que {bot.name} usa. Cada app carrega todas as ferramentas dele em cada passo da resposta (de 5 a 20 mil tokens cada); os desmarcados ficam fora.</Text>
+              {[...new Set([...accountServers, ...accountApps])].map((name, index, list) => <View key={name} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={s.permissionCopy}><Text style={s.itemTitle}>{name}</Text></View>
+                {toggle(accountApps.includes(name), on => act(() => onApps(on ? [...accountApps, name] : accountApps.filter(item => item !== name))), name)}
+              </View>)}
+              {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
+            </View></> : null}
           <Pressable accessibilityRole="button" onPress={() => setFine(value => !value)} style={s.disclosure}><Text style={s.link}>Ajustes finos</Text><Icon name={fine || !bot?.access ? 'back' : 'down'} size={15} color={C.mint} /></Pressable>
           {(fine || !bot?.access) && <View style={s.group}><Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Cada interruptor vale por cima do nível. Desligar uma ferramenta também cancela a aprovação que estiver aberta.</Text>
             {grants.map((grant, index) => <View key={grant.name} style={[s.permission, index === grants.length - 1 && { borderBottomWidth: 0 }]}><View style={s.permissionCopy}><Text style={s.itemTitle}>{grant.label}</Text><Text style={s.hint}>{grant.description}</Text>{bot?.access ? <Text style={[s.stateTag, grant.state === 'allow' ? s.stateAllow : grant.state === 'ask' ? s.stateAsk : s.stateDeny]}>{STATE[grant.state]}</Text> : null}</View>

@@ -181,7 +181,9 @@ export class Database {
         if (!row || !ids.has(row.bot_id) || typeof row.id !== 'string' || seen.has(row.id) || typeof row.body !== 'string') throw new Error('Item de ferramenta inválido no backup.');
         seen.add(row.id);
         if (key === 'grants') {
-          if (!(TOOL_DEFINITIONS.some(tool => tool.name === row.tool) || /^(mcp:[0-9a-f]{8}|account\.connectors|browser)(\/write)?$/.test(row.tool)) || row.id !== row.bot_id + ':' + row.tool || !['true','false'].includes(row.body)) throw new Error('Permissão inválida no backup.');
+          // account.apps keeps the list of account apps the bot loads; every other grant is true or false.
+          const apps = row.tool === 'account.apps' && (() => { try { const list = JSON.parse(row.body); return Array.isArray(list) && list.length <= 30 && list.every(name => typeof name === 'string' && name.length <= 60); } catch { return false; } })();
+          if (!(apps || ((TOOL_DEFINITIONS.some(tool => tool.name === row.tool) || /^(mcp:[0-9a-f]{8}|account\.connectors|browser)(\/write)?$/.test(row.tool)) && ['true','false'].includes(row.body))) || row.id !== row.bot_id + ':' + row.tool) throw new Error('Permissão inválida no backup.');
         } else {
           // Items also keep their dedupe key and when their deadline notice went out.
           const { key: itemKey, remindedAt, ...args } = JSON.parse(row.body);

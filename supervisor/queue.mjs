@@ -34,15 +34,19 @@ export class Queue extends EventEmitter {
     current.done = (async () => {
       try {
         const bot = this.db.requireBot(task.bot_id);
+        // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
+        const picked = this.tools ? this.tools.accountApps(bot.id) : [];
+        const connectors = Boolean(this.tools) && this.tools.policy(bot.id, 'account.connectors') !== 'deny' && picked.length > 0;
+        const connectorDeny = connectors && bot.provider === 'claude' ? (await this.accountServers?.() || []).filter(name => !picked.includes(name)) : [];
         const reply = await this.execute(bot, promptFor(bot, task.message_id, { tools: Boolean(this.tools) }), {
           signal: controller.signal,
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors: this.tools.policy(bot.id, 'account.connectors') !== 'deny', connectorWrites: bot.access === 'full' } : undefined,
+          tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full' } : undefined,
           onSession: async id => { this.db.session(bot.id, id); },
           onProcess: pid => { this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
         });
         if (controller.signal.aborted) this.db.finish(task.id, controller.signal.reason === 'shutdown' ? 'failed' : 'cancelled', null, controller.signal.reason === 'shutdown' ? 'Supervisor reiniciado durante a resposta. O histórico foi preservado.' : 'Pedido cancelado.');
-        else this.db.finish(task.id, 'done', { ...reply, attachments: this.tools?.takeOutgoing(task.id) || [] });
+        else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.db.finish(task.id, 'done', { ...reply, attachments: this.tools?.takeOutgoing(task.id) || [] }); }
       } catch (error) {
         if (error.codexSessionId) this.db.session(task.bot_id, error.codexSessionId);
         const detail = controller.signal.aborted ? (controller.signal.reason === 'shutdown' ? 'Supervisor reiniciado durante a resposta. O histórico foi preservado.' : 'Pedido cancelado.') : error.output ? friendlyError(error.output) : error.message;

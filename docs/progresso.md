@@ -455,3 +455,7 @@ Relato: um "oi" num bot com Claude Sonnet subiu o uso de 240 mil para 362 mil to
 108 testes. No emulador (bot trocado para Claude no banco só para ver a tela, depois revertido): lista com Gmail e Google Calendar ligados no bot antigo, desligar o Calendar salvou só Gmail. APK `dist/apk/mybots-v31.apk`, versionCode 31, 0.15.2, ARM64, certificado `fac61745…033b9c`, SHA-256 `ede1ab7c38d35d100078bcabeadaa719b31d359b8ef08670c266e6e31a27c589`. Release v31.
 
 **Próxima economia possível:** os ~11 mil tokens de base são as instruções e as ~31 ferramentas do MyBots; mandar só as permitidas a cada bot e "nova conversa com resumo" para históricos longos.
+
+## 20/10/2026 — v32 (0.15.3): versão do Claude já no seletor
+
+Relato: o seletor ainda mostrava "Claude Sonnet" (a versão só aparecia depois de uma resposta na v30+). O catálogo embutido agora traz o `modelId` que cada apelido resolve hoje (opus → claude-opus-5-5, sonnet → claude-sonnet-5-5, haiku → claude-haiku-5-5, fable → claude-fable-5-1, conferido no Claude Code); a primeira resposta num modelo mais novo substitui. O seletor mostra "Claude Sonnet 5.5" com "claude-sonnet-5-5 · sempre a versão mais nova". 108 testes; catálogo conferido no emulador. APK `dist/apk/mybots-v32.apk`, versionCode 32, 0.15.3, ARM64, certificado `fac61745…033b9c`, SHA-256 `9fda794b2a3068a2d96cd1ab67496d539cc981f8fb8aab8d34b67fa8d31307d0`. Release v32.

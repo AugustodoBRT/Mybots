@@ -120,6 +120,9 @@ test('a Claude reply records the exact model the alias resolved to, and the pick
   const app = await createSupervisor({ directory, port: 0, codex, claude, execute: async bot => ({ text: 'ok', model: bot.model, reasoningEffort: bot.reasoningEffort, modelId: 'claude-opus-5-5' }) });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   assert.equal((await app.rpc('state.get')).models.find(item => item.provider === 'claude').displayName, 'Claude Opus');
+  // The built-in catalog already names the current version before any reply.
+  const { CLAUDE_MODELS } = (await import('../lib/claude-runner.cjs')).default;
+  assert.deepEqual(CLAUDE_MODELS.map(item => item.modelId), ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']);
   const bot = await app.rpc('bot.create', { name: 'Opus', provider: 'claude', model: 'opus', reasoningEffort: 'medium' });
   const { taskId } = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
   await until(() => app.db.task(taskId).state === 'done');

@@ -201,7 +201,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
       connection: summary(), connections, models: models.map(item => {
         // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
-        const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value : null; const version = Claude.version(resolved);
+        const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
         return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
       }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
       grants: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.grants(bot.id)])),

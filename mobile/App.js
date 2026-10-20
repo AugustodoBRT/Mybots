@@ -190,7 +190,7 @@ function ModelSettings({ models, selection, disabled, onChange, connections }) {
   const providers = [...new Set(models.map(providerOf))];
   const provider = providerOf(model || selection);
   const available = models.filter(item => providerOf(item) === provider);
-  const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.model }));
+  const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
   const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : 'Codex no Termux') }));
   const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next); };
   const effortOptions = model ? (model.efforts.length

@@ -29,6 +29,13 @@ export const updateCanInstall = () => native.updateCanInstall();
 export const onUpdate = listener => native.addListener('onUpdate', listener);
 export const widgetStatus = () => native.widgetStatus();
 export const requestWidget = () => native.requestWidget();
+// Saved site logins: kept in the app (Keystore); the bots' browser fills them, the model never sees them.
+export const passwordsList = () => native.passwordsList();
+export const passwordSave = (site, username, password, bots) => native.passwordSave(site, username, password, bots);
+export const passwordDelete = id => native.passwordDelete(id);
+export const passwordOffer = () => native.passwordOffer();
+export const passwordOfferAnswer = scope => native.passwordOfferAnswer(scope);
+export const onPasswordOffer = listener => native.addListener('onPasswordOffer', listener);
 export const publishShareTargets = bots => native?.publishShareTargets(bots);
 export const showBotNotification = item => native.showBotNotification(item);
 export const botNotificationStatus = () => native.botNotificationStatus();

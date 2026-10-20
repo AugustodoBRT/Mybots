@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { C, F, Icon } from './theme';
-import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, updateCheck, updateInstall, updateCanInstall, onUpdate, widgetStatus, requestWidget, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
+import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, updateCheck, updateInstall, updateCanInstall, onUpdate, widgetStatus, requestWidget, passwordsList, passwordSave, passwordDelete, passwordOffer, passwordOfferAnswer, onPasswordOffer, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
 import { createId, emptyLocalStore, mergeBotLists, validateBackup } from './local';
 
 import { createTermuxBackup } from './backup';
@@ -457,6 +457,62 @@ function TermuxApiStatus() {
 }
 
 // "Funcionar com a tela apagada": the MyBots service that wakes and restarts the supervisor, and what Android/HyperOS may still block.
+// Saved site logins (Ajustes → Senhas): the bots' browser fills them on that site only; nobody sees them again.
+function PasswordsPanel({ bots }) {
+  const [list, setList] = useState([]); const [form, setForm] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  const load = () => passwordsList().then(setList).catch(error => setNote(nativeMessage(error)));
+  useEffect(() => { load(); }, []);
+  const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
+  const save = async () => {
+    setBusy(true); setNote('');
+    try { await passwordSave(form.site, form.username || '', form.password || '', form.bots?.length ? form.bots : null); setForm(null); setNote('Senha salva. Os bots escolhidos já podem entrar nesse site.'); await load(); }
+    catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); }
+  };
+  const remove = item => Alert.alert(`Apagar a senha de ${item.host}?`, 'Os bots deixam de entrar sozinhos nesse site.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Apagar', style: 'destructive', onPress: () => passwordDelete(item.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
+  const names = ids => ids ? ids.map(id => bots.find(bot => bot.id === id)?.name).filter(Boolean).join(', ') || 'bot apagado' : 'todos os bots';
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>Senhas de sites</Text>
+    <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste celular e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
+    {list.map(item => <View key={item.id} style={styles.passwordRow}>
+      <View style={styles.rowIcon}><Icon name="key" size={17} color={C.mint} /></View>
+      <View style={{ flex: 1 }}><Text style={styles.limitName} numberOfLines={1}>{item.host}</Text><Text style={styles.limitMeta} numberOfLines={1}>{item.username || 'sem usuário'} · {names(item.bots)}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Apagar a senha de ${item.host}`} hitSlop={10} onPress={() => remove(item)}><Icon name="trash" size={17} color={C.faint} /></Pressable>
+    </View>)}
+    {form ? <View style={{ marginTop: 6 }}>
+      <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />
+      <TextInput style={styles.formInput} placeholder="Usuário (CPF, matrícula ou e-mail)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} value={form.username || ''} onChangeText={value => field('username', value)} />
+      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} />
+      <Text style={[styles.limitMeta, { marginTop: 10 }]}>Quais bots podem usar</Text>
+      <View style={styles.shareFiles}>
+        {[{ id: null, name: 'Todos' }, ...bots].map(bot => { const all = !form.bots?.length; const on = bot.id ? form.bots?.includes(bot.id) : all; return <Pressable key={bot.id || 'all'} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
+          onPress={() => field('bots', bot.id ? (on ? form.bots.filter(id => id !== bot.id) : [...(form.bots || []), bot.id]) : [])} style={[styles.botChoice, on && styles.botChoiceOn]}><Text style={[styles.botChoiceText, on && { color: C.mint }]}>{bot.name}</Text></Pressable>; })}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+        <Pressable accessibilityRole="button" onPress={() => setForm(null)} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Cancelar</Text></Pressable>
+        <PrimaryButton compact icon="check" title={busy ? 'Salvando…' : 'Salvar senha'} disabled={busy || !form.site || !form.password} onPress={save} style={{ flex: 1.4 }} />
+      </View>
+    </View> : <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={[styles.stopButton, { alignSelf: 'flex-start', marginTop: 10 }]}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Adicionar senha</Text></Pressable>}
+    {note ? <Text style={[styles.optionDetail, /salva/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
+  </View>;
+}
+
+// After the person logs in through "Assumir": offer to keep that login so the bot can enter by itself next time.
+function PasswordOfferCard({ offer, bot, onAnswer }) {
+  const [busy, setBusy] = useState(false);
+  const answer = async scope => { setBusy(true); try { await onAnswer(scope); } finally { setBusy(false); } };
+  return <View style={[styles.updateCard, { marginTop: 4 }]}>
+    <View style={styles.updateHead}><View style={styles.updateIcon}><Icon name="key" size={18} color={C.mint} /></View>
+      <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Salvar a senha de {offer.host}?</Text>
+        <Text style={styles.optionDetail}>{offer.username ? `Usuário ${offer.username}. ` : ''}Assim {bot.name} entra sozinho da próxima vez. A IA nunca vê a senha.</Text></View></View>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={() => answer('dismiss')} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Agora não</Text></Pressable>
+      <PrimaryButton compact icon="check" title={`Para ${bot.name}`} disabled={busy} onPress={() => answer('bot')} style={{ flex: 1.3 }} />
+    </View>
+    <Pressable accessibilityRole="button" disabled={busy} onPress={() => answer('all')} style={styles.alwaysButton}><Text style={[styles.alwaysText, { color: C.mint }]}>Salvar para todos os bots</Text></Pressable>
+  </View>;
+}
+
 // The home-screen widget: placed or not, and a button that asks Android to add it.
 function WidgetRow() {
   const [status, setStatus] = useState(null); const [note, setNote] = useState('');
@@ -749,7 +805,7 @@ function ShareSheet({ share, bots, phone, onPick, onClose }) {
   </Modal>;
 }
 
-function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, onFile, fileBusy, incoming, onIncoming }) {
+function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer }) {
   const scroll = useRef(null);
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -834,6 +890,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
       </View>}
       {bot.messages.map(message => <Message key={message.id} message={message} bot={bot} models={data.models || []} busy={busy} onRetry={onRetry} onFile={mode === 'phone' ? onFile : () => {}} fileBusy={fileBusy} />)}
+      {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {phone && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {working && <View style={styles.thinking}><Avatar bot={bot} size={34} state={waiting ? 'waiting' : 'working'} tile={false} />
@@ -913,6 +970,14 @@ function AppMain() {
   const [incoming, setIncoming] = useState(null);
   // In-app update: the latest release found, the download/install step, and when it was last checked.
   const [update, setUpdate] = useState(null);
+  // A login the person typed in a bot's browser, waiting for "Salvar?" (the app keeps the password; this holds site and user).
+  const [passwordAsk, setPasswordAsk] = useState(null);
+  useEffect(() => {
+    if (!termuxAvailable) return undefined;
+    Promise.resolve(passwordOffer()).then(offer => offer && setPasswordAsk(offer)).catch(() => {});
+    const subscription = onPasswordOffer(setPasswordAsk);
+    return () => subscription.remove();
+  }, []);
   const updateChecked = useRef(0);
   const staged = useRef(new Set());
   const supervisor = useRef(null);
@@ -1320,6 +1385,7 @@ function AppMain() {
       : bot ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={() => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
+          passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} />
           : <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
@@ -1347,6 +1413,7 @@ function AppMain() {
           <Text style={styles.sheetSection}>CELULAR</Text>
           {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} />
+          {termuxAvailable ? <><Text style={styles.sheetSection}>SENHAS</Text><PasswordsPanel bots={data?.bots || []} /></> : null}
           <Text style={styles.sheetSection}>CONTAS E APPS</Text>
           <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();
@@ -1574,6 +1641,10 @@ const styles = StyleSheet.create({
   updateNotes: { marginTop: 8, padding: 12, borderRadius: 14, backgroundColor: C.bg2, borderWidth: 1, borderColor: C.line },
   updateBar: { height: 6, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 12, marginBottom: 2 },
   limitRow: { marginTop: 10 },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  botChoice: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2 },
+  botChoiceOn: { borderColor: C.mint + '80', backgroundColor: C.mint + '14' },
+  botChoiceText: { color: C.text2, fontFamily: F.s, fontSize: 12.5 },
   limitHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
   limitName: { color: C.text2, fontFamily: F.s, fontSize: 13, flexShrink: 1 },
   limitValue: { color: C.text, fontFamily: F.b, fontSize: 13 },

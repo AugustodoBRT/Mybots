@@ -69,6 +69,9 @@ internal object BotBrowser {
     // A file the page handed over (a download link): stored with the supervisor as this bot's file.
     @Volatile var downloading = false
     @Volatile var download: JSONObject? = null
+    // While the person has taken over: their login is offered for saving (PasswordVault), through a private prompt.
+    @Volatile var capture = false
+    val nonce: String = java.util.UUID.randomUUID().toString()
     var used = System.currentTimeMillis()
     val listeners = mutableSetOf<(Map<String, Any>) -> Unit>()
   }
@@ -228,6 +231,26 @@ internal object BotBrowser {
         js(context, botId, "($UPLOAD_JS)($input)", 30_000)
         page(context, botId).put("attached", name)
       }
+      // A saved login (PasswordVault): the app fills and sends it itself; the password never leaves the app.
+      "login" -> {
+        val before = DeviceFiles.downloadSerial()
+        val value = AtomicReference<String?>(); val done = CountDownLatch(1)
+        onMain {
+          val tab = tab(context, botId); tab.failure = null
+          val saved = PasswordVault.forPage(context, botId, tab.web.url)
+            ?: throw IllegalStateException("Não há senha salva para este site e este bot. Peça para a pessoa salvar em Ajustes → Senhas (ou entrar uma vez pelo Assumir) ou use browser_ask_user.")
+          val input = JSONObject().put("u", saved.optString("username")).put("p", saved.optString("password"))
+          tab.web.evaluateJavascript("($LOGIN_JS)($input)") { value.set(it); done.countDown() }
+        }
+        if (!done.await(10_000, TimeUnit.MILLISECONDS)) throw IllegalStateException("A página não respondeu.")
+        val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null } ?: throw IllegalStateException("A página ainda não carregou. Use browser_wait.")
+        val json = JSONObject(text)
+        if (json.has("error")) throw IllegalStateException(json.getString("error"))
+        waitLoaded(botId, 15_000)
+        awaitDownload(botId, before)
+        failed(botId)
+        page(context, botId).put("filled", true).put("username", json.optBoolean("user")).put("sent", json.optBoolean("sent"))
+      }
       "wait" -> {
         val until = System.currentTimeMillis() + args.optInt("timeoutSeconds", 10).coerceIn(1, 30) * 1000L
         val check = "($WAIT_JS)(${JSONObject.quote(args.optString("text"))}, ${JSONObject.quote(args.optString("selector"))})"
@@ -326,7 +349,7 @@ internal object BotBrowser {
         Thread { val trusted = IncompleteChain.trusted(leaf, host); main.post { if (trusted) handler.proceed() else refuse() } }.start()
       }
       override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { tab.loading = true; emit(tab) }
-      override fun onPageFinished(view: WebView, url: String?) { tab.loading = false; flushCookies(botId); emit(tab) }
+      override fun onPageFinished(view: WebView, url: String?) { tab.loading = false; flushCookies(botId); emit(tab); if (tab.capture) view.evaluateJavascript(captureScript(tab), null) }
     }
     // Downloads go to the bot's files; uploads only through browser_upload (approved file, no picker); no camera, microphone or location.
     web.setDownloadListener { url, userAgent, disposition, mime, _ -> DeviceFiles.download(context.applicationContext, tab, url, userAgent, disposition, mime) }
@@ -335,7 +358,14 @@ internal object BotBrowser {
       override fun onReceivedTitle(view: WebView, title: String?) { emit(tab) }
       override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean { tab.dialog = "Aviso da página: ${message.orEmpty().take(300)}"; result.confirm(); return true }
       override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult): Boolean { tab.dialog = "A página pediu confirmação e o MyBots respondeu Cancelar: ${message.orEmpty().take(300)}"; result.cancel(); return true }
-      override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean { result.cancel(); return true }
+      override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
+        val prefix = "mybots-login:${tab.nonce}:"
+        if (tab.capture && message?.startsWith(prefix) == true) try {
+          val login = JSONObject(message.removePrefix(prefix))
+          PasswordVault.offered(botId, view.url, login.optString("u"), login.optString("p"))
+        } catch (_: Exception) {}
+        result.cancel(); return true
+      }
       override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
       override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback) { callback.invoke(origin, false, false) }
     }
@@ -370,6 +400,14 @@ internal object BotBrowser {
       layoutDetached(context, tab.web)
     }
   }
+
+  /** "Assumir" on/off: while the person drives, a login they send is offered for saving. */
+  fun setCapture(botId: String, on: Boolean) {
+    val tab = tabs[botId] ?: return
+    tab.capture = on
+    if (on) tab.web.evaluateJavascript(captureScript(tab), null)
+  }
+  private fun captureScript(tab: Tab) = "($CAPTURE_JS)(${JSONObject.quote("mybots-login:${tab.nonce}:")})"
 
   fun action(context: Context, botId: String, action: String): Boolean {
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")
@@ -453,6 +491,41 @@ internal object BotBrowser {
       return JSON.stringify({ ok: true, files: [...el.files].map(f => f.name) }); }
   """.trimIndent()
 
+  // Fills the saved login into the visible password field and the user field before it, then sends the form.
+  private val LOGIN_JS = """
+    ({ u, p }) => {
+      const visible = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+      const pw = [...document.querySelectorAll('input[type=password]')].find(visible);
+      if (!pw) return JSON.stringify({ error: 'Não achei o campo de senha nesta página. Abra a página de login (browser_read) e tente de novo.' });
+      const scope = pw.form || document;
+      const texts = [...scope.querySelectorAll('input')].filter(el => visible(el) && ['text', 'email', 'tel', 'number', ''].includes((el.getAttribute('type') || '').toLowerCase()));
+      const user = texts.filter(el => el.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING).pop() || texts[0];
+      const set = (el, v) => { el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+      if (u && user) set(user, u);
+      set(pw, p);
+      const button = pw.form && [...pw.form.querySelectorAll('button, input[type=submit], input[type=image]')].find(el => visible(el) && (el.tagName !== 'BUTTON' || el.type === 'submit'));
+      let sent = false;
+      if (button) { button.click(); sent = true; }
+      else if (pw.form) { if (pw.form.requestSubmit) pw.form.requestSubmit(); else pw.form.submit(); sent = true; }
+      else for (const t of ['keydown', 'keypress', 'keyup']) pw.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      return JSON.stringify({ ok: true, user: Boolean(u && user), sent }); }
+  """.trimIndent()
+
+  // While the person has taken over: when they send a form with a password, hand it to the app (only the app knows the prefix).
+  private val CAPTURE_JS = """
+    (prefix) => { if (window.__mybotsCapture === prefix) return; window.__mybotsCapture = prefix;
+      const send = form => {
+        const scope = form || document; const pw = scope.querySelector('input[type=password]');
+        if (!pw || !pw.value) return;
+        const texts = [...scope.querySelectorAll('input')].filter(el => ['text', 'email', 'tel', 'number', ''].includes((el.getAttribute('type') || '').toLowerCase()));
+        const user = texts.filter(el => el.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+        try { prompt(prefix + JSON.stringify({ u: user ? user.value : '', p: pw.value })); } catch (e) {}
+      };
+      document.addEventListener('submit', e => send(e.target), true);
+      document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button, input[type=submit], input[type=image], a'); const pw = document.querySelector('input[type=password]'); if (b && pw && pw.value) send(b.form || pw.form); }, true);
+      document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.type === 'password') send(e.target.form); }, true); }
+  """.trimIndent()
+
   private val TYPE_JS = """
     ({ id, text, submit }) => { $FIND
       const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
@@ -489,17 +562,18 @@ class BotBrowserView(context: Context, appContext: AppContext) : ExpoView(contex
   private val onPage by EventDispatcher()
   private var bot: String? = null
   var interactive = false
+    set(value) { field = value; bot?.let { BotBrowser.setCapture(it, value) } }
   private val listener: (Map<String, Any>) -> Unit = { onPage(it) }
 
   fun show(botId: String?) {
     if (botId == bot) return
-    bot?.let { BotBrowser.detach(context, it, this, listener) }
+    bot?.let { BotBrowser.setCapture(it, false); BotBrowser.detach(context, it, this, listener) }
     bot = botId?.takeIf { it.isNotEmpty() }
-    if (isAttachedToWindow) bot?.let { BotBrowser.attach(context, it, this, listener) }
+    if (isAttachedToWindow) bot?.let { BotBrowser.attach(context, it, this, listener); BotBrowser.setCapture(it, interactive) }
   }
 
   override fun onAttachedToWindow() { super.onAttachedToWindow(); bot?.let { BotBrowser.attach(context, it, this, listener) } }
-  override fun onDetachedFromWindow() { bot?.let { BotBrowser.detach(context, it, this, listener) }; super.onDetachedFromWindow() }
+  override fun onDetachedFromWindow() { bot?.let { BotBrowser.setCapture(it, false); BotBrowser.detach(context, it, this, listener) }; super.onDetachedFromWindow() }
   override fun onInterceptTouchEvent(event: MotionEvent) = !interactive || super.onInterceptTouchEvent(event)
   @SuppressLint("ClickableViewAccessibility")
   override fun onTouchEvent(event: MotionEvent) = !interactive || super.onTouchEvent(event)

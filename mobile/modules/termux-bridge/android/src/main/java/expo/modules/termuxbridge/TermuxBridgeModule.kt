@@ -59,7 +59,7 @@ internal fun startTermux(context: Context, intent: Intent) {
 class TermuxBridgeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("TermuxBridge")
-    Events("onSpeech", "onOpenBot", "onShare", "onUpdate")
+    Events("onSpeech", "onOpenBot", "onShare", "onUpdate", "onPasswordOffer")
 
     // Tapping a bot notification opens MyBots on that bot; the app may be closed (launch intent) or running (new intent).
     OnActivityEntersForeground {
@@ -79,7 +79,7 @@ class TermuxBridgeModule : Module() {
       if (sharing) null else ShareIntake.take()
     }
     // Updates from the project's GitHub Releases: check, then download, verify and hand to Android's installer.
-    OnCreate { AppUpdate.listener = { event -> sendEvent("onUpdate", event) } }
+    OnCreate { AppUpdate.listener = { event -> sendEvent("onUpdate", event) }; PasswordVault.offerListener = { event -> sendEvent("onPasswordOffer", event) } }
     AsyncFunction("updateCheck") { promise: Promise ->
       val context = appContext.reactContext ?: return@AsyncFunction promise.reject("NOT_READY", "O MyBots não está pronto.", null)
       Thread {
@@ -111,6 +111,16 @@ class TermuxBridgeModule : Module() {
       val manager = android.appwidget.AppWidgetManager.getInstance(context)
       Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported &&
         manager.requestPinAppWidget(ComponentName(context, MyBotsWidget::class.java), null, null)
+    }
+    // Saved site logins (Ajustes → Senhas). The list never includes the passwords.
+    AsyncFunction("passwordsList") { PasswordVault.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
+    AsyncFunction("passwordSave") { site: String, username: String, password: String, bots: List<String>? ->
+      PasswordVault.save(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), site, username, password, bots)
+    }
+    AsyncFunction("passwordDelete") { id: String -> PasswordVault.delete(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id) }
+    AsyncFunction("passwordOffer") { PasswordVault.pendingOffer() }
+    AsyncFunction("passwordOfferAnswer") { scope: String ->
+      PasswordVault.takeOffer(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), scope)
     }
     AsyncFunction("publishShareTargets") { bots: List<Map<String, Any?>> ->
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")

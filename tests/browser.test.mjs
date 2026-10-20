@@ -23,6 +23,7 @@ function fakeApp(app) {
     if (op === 'inspect') { const element = ELEMENTS.find(item => item.id === args.id); if (!element) throw new Error('Elemento não encontrado.'); return { ...element, url: page.url }; }
     if (op === 'type') { page.typed[args.id] = args.text; return { url: page.url, title: page.title }; }
     if (op === 'click') { if (args.id === 4) page.url += '#enviado'; return { url: page.url, title: page.title }; }
+    if (op === 'login') { if (!/sigaa/.test(page.url)) throw new Error('Não há senha salva para este site e este bot.'); page.url += '#entrou'; return { url: page.url, title: page.title, filled: true, sent: true }; }
     if (op === 'upload') { if (args.id !== 5) throw new Error('Este elemento não é um campo de arquivo.'); page.uploaded = args; return { url: page.url, title: page.title, attached: args.name }; }
     if (op === 'screenshot') return { url: page.url, title: page.title, image: Buffer.from('jpeg').toString('base64') };
     return { url: page.url, title: page.title };
@@ -138,6 +139,24 @@ test('handing a file to a site always asks, even with "Acesso total", and only t
   const other = await f.app.rpc('bot.create', { name: 'Outro', access: 'full', ...selection });
   const foreign = f.app.tools.attachments.store(other.id, { name: 'segredo.txt', mime: 'text/plain', bytes: Buffer.from('x') });
   await assert.rejects(run.call('browser_upload', { id: 5, file: foreign.id }), /não encontrado/);
+});
+
+test('a saved login is used by the app, never sent to the model; on "Médio" the first use asks', async t => {
+  const f = await setup(t, 'ask'); const run = f.open();
+  const opening = run.call('browser_open', { url: 'https://sigaa.exemplo.br/login' }); await f.approve(true); await opening;
+  const login = run.call('browser_login');
+  await until(() => f.app.state().approvals.length === 1);
+  const card = f.app.state().approvals[0];
+  assert.equal(card.title, 'Entrar com uma senha salva'); assert.match(card.summary, /sigaa\.exemplo\.br/); assert.match(card.summary, /não vê a senha/); assert.equal(card.canAlways, true);
+  await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true, always: true });
+  const result = await login;
+  assert.equal(result.filled, true); assert.match(result.next, /browser_read/);
+  // The command carries no password: the app looks it up itself.
+  assert.deepEqual(f.phone.seen.find(item => item.op === 'login').args, {});
+  // "Sempre permitir": the next login goes without a card; a site without a saved login says so.
+  await run.call('browser_login'); assert.equal(f.app.state().approvals.length, 0);
+  await run.call('browser_open', { url: 'https://outro.exemplo.br/' });
+  await assert.rejects(run.call('browser_login'), /Não há senha salva/);
 });
 
 test('taking over blocks the bot; handing back after a request for help continues the bot in a new turn', async t => {

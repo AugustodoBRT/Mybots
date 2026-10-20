@@ -459,3 +459,14 @@ Relato: um "oi" num bot com Claude Sonnet subiu o uso de 240 mil para 362 mil to
 ## 20/10/2026 — v32 (0.15.3): versão do Claude já no seletor
 
 Relato: o seletor ainda mostrava "Claude Sonnet" (a versão só aparecia depois de uma resposta na v30+). O catálogo embutido agora traz o `modelId` que cada apelido resolve hoje (opus → claude-opus-5-5, sonnet → claude-sonnet-5-5, haiku → claude-haiku-5-5, fable → claude-fable-5-1, conferido no Claude Code); a primeira resposta num modelo mais novo substitui. O seletor mostra "Claude Sonnet 5.5" com "claude-sonnet-5-5 · sempre a versão mais nova". 108 testes; catálogo conferido no emulador. APK `dist/apk/mybots-v32.apk`, versionCode 32, 0.15.3, ARM64, certificado `fac61745…033b9c`, SHA-256 `9fda794b2a3068a2d96cd1ab67496d539cc981f8fb8aab8d34b67fa8d31307d0`. Release v32.
+
+## 20/10/2026 — v33 (0.16.0): senhas salvas para o bot entrar sozinho
+
+Pedido: guardar senhas no app para o bot entrar nos sites (SIGAA) sem a pessoa digitar toda vez.
+
+- **Cofre no app** (`PasswordVault.kt`): EncryptedSharedPreferences com chave do Android Keystore (`mybots_passwords`, fora do backup do Android). Supervisor e modelo **nunca** recebem a senha; a lista mostra site, usuário e bots, nunca a senha.
+- **`browser_login`**: o bot chama sem argumentos; o app procura um login salvo para o site aberto (mesmo host ou subdomínio, só https) e para aquele bot, preenche usuário e senha na página e envia. Em outro site responde "Não há senha salva para este site e este bot". No nível Médio, o primeiro uso pede aprovação ("Entrar com uma senha salva", com "Sempre permitir"); no Total vai direto. Cada uso fica na Atividade.
+- **Salvar pelo Assumir**: enquanto a pessoa usa o navegador do bot, um envio de formulário com senha é passado ao app por um `prompt` com prefixo aleatório da aba (só o app conhece); a conversa mostra "Salvar a senha de {site}?" com "Para {bot}", "Salvar para todos os bots" ou "Agora não".
+- **Ajustes → Senhas**: lista, adicionar (site, usuário, senha, quais bots) e apagar.
+
+109 testes (novo: login sem senha no comando, aprovação no Médio com "Sempre permitir", site sem login salvo). No emulador (Codex real): login em the-internet.herokuapp.com pelo Assumir → cartão "Salvar a senha" → Para Navegador; logout; "entre com a senha salva" → cartão de primeiro uso → "You logged into a secure area!"; a senha não aparece no histórico; em practicetestautomation.com o app recusou preencher. APK `dist/apk/mybots-v33.apk`, versionCode 33, 0.16.0, ARM64, certificado `fac61745…033b9c`, SHA-256 `39a7345ac0c99005c7f65f3f3a30811a8c5c565353bc77a04c41696bc6c9b8ef`. Release v33.

@@ -125,7 +125,7 @@ test('HTTP MCP endpoint is bound to one run, one session and the same grants and
   assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, { session })).status, 202);
   assert.equal((await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).status, 400);
   assert.ok((await (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { session: randomUUID() })).json()).error);
-  assert.equal((await (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { session })).json()).result.tools.length, 31);
+  assert.equal((await (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { session })).json()).result.tools.length, 32);
   const denied = await (await post({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'memory_read', arguments: {} } }, { session })).json();
   assert.equal(denied.result.isError, true); assert.match(denied.result.content[0].text, /negada/);
   const pending = post({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'task_create_item', arguments: { title: 'Estudar' } } }, { session });

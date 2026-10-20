@@ -76,3 +76,13 @@ Aprovação = SHA-256 de bot + tarefa + ferramenta + argumentos normalizados; va
 - Conteúdo lido de arquivos volta marcado como dado externo. Leitores de Office têm limites de partes e tamanho descompactado (contra "zip bomb").
 - PDF é gerado de HTML numa WebView sem rede e sem JavaScript.
 - Para abrir ou compartilhar, o app copia o arquivo para uma pasta de cache exposta só pelo `FileProvider` (`cache/shared`), com permissão de leitura temporária para o app escolhido; o Termux nunca é usado para abrir.
+
+
+## Senhas salvas (v33)
+
+- Ficam só no app MyBots, criptografadas com a chave do Android Keystore (`mybots_passwords`), excluídas do backup do Android e de transferência entre aparelhos.
+- Nunca vão ao supervisor, ao Termux, ao modelo ou ao histórico: `browser_login` não leva argumentos; o app preenche a página e devolve só "preenchido".
+- Presas ao site: só preenchem em https no mesmo host (ou subdomínio) em que foram salvas, e só para os bots escolhidos. Página falsa ou outro domínio recebe "não há senha salva".
+- Não há como ver a senha depois de salva (só apagar e salvar de novo).
+- No nível Médio, o primeiro uso pede aprovação; cada uso fica na Atividade.
+- Ao salvar pelo Assumir, a página entrega o login ao app por um `prompt` com prefixo aleatório da aba; a própria página (que já recebe a senha ao fazer login) é a única outra parte que a vê.

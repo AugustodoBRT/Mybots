@@ -98,3 +98,32 @@ test('the widget summary long-polls: it answers at once with a new version and a
   await until(async () => (await get()).bots[0].state === 'idle');
   assert.equal((await get()).bots[0].preview, 'Pronto feito.');
 });
+
+test('the person\'s name for the greeting is saved, cleaned and can be cleared; "Consultar agora" reads the limits', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-person-'));
+  const app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  assert.deepEqual((await app.rpc('state.get')).person, { name: '' });
+  assert.deepEqual(await app.rpc('person.update', { name: '  Augusto   Silva ' }), { name: 'Augusto Silva' });
+  assert.equal((await app.rpc('state.get')).person.name, 'Augusto Silva');
+  await assert.rejects(app.rpc('person.update', { name: 'x'.repeat(41) }), /40 letras/);
+  assert.deepEqual(await app.rpc('person.update', { name: '' }), { name: '' });
+  await app.rpc('state.get');
+  assert.equal((await app.rpc('limits.refresh', { provider: 'codex' })).codex.plan, 'plus');
+  await assert.rejects(app.rpc('limits.refresh', { provider: 'claude' }), /não está conectado/);
+  await assert.rejects(app.rpc('limits.refresh', { provider: 'gemini' }), /inválida/);
+});
+
+test('a Claude reply records the exact model the alias resolved to, and the picker shows its version', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-model-'));
+  const claude = { status: async () => ({ available: true, loggedIn: true, message: 'Conectado' }), models: async () => [{ provider: 'claude', model: 'opus', displayName: 'Claude Opus', isDefault: false, efforts: ['low', 'medium'], defaultEffort: 'medium' }] };
+  const app = await createSupervisor({ directory, port: 0, codex, claude, execute: async bot => ({ text: 'ok', model: bot.model, reasoningEffort: bot.reasoningEffort, modelId: 'claude-opus-5-5' }) });
+  t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
+  assert.equal((await app.rpc('state.get')).models.find(item => item.provider === 'claude').displayName, 'Claude Opus');
+  const bot = await app.rpc('bot.create', { name: 'Opus', provider: 'claude', model: 'opus', reasoningEffort: 'medium' });
+  const { taskId } = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
+  await until(() => app.db.task(taskId).state === 'done');
+  assert.equal(app.db.bot(bot.id).messages.at(-1).modelId, 'claude-opus-5-5');
+  const opus = (await app.rpc('state.get')).models.find(item => item.provider === 'claude');
+  assert.equal(opus.displayName, 'Claude Opus 5.5'); assert.equal(opus.modelId, 'claude-opus-5-5'); assert.equal(opus.model, 'opus');
+});

@@ -432,3 +432,14 @@ Pedido do usuário, nesta ordem e com um APK só no fim: (1) compartilhar com o 
 APK `dist/apk/mybots-v29.apk`, versionCode 29, 0.15.0, ARM64, 30.070.270 bytes, certificado `fac61745…033b9c` (igual à v28), SHA-256 `87058e5d24e921ce7dd1875a4f813d29cd1e89c8390bf5c593863fa01b25b0b7`. Também publicado como Release v29 no GitHub.
 
 **Primeira instalação da v29 pelo link/QR** (a v28 não tem o atualizador); da v29 em diante o app se atualiza sozinho. **Não testado no POCO:** Direct Share no HyperOS, widget no launcher do HyperOS (limite de quadros: se o launcher recusar, o widget cai para 6 quadros e depois para um rosto parado), upload real no SIGAA, limites do Claude dentro do proot.
+
+## 20/10/2026 — v30 (0.15.1): nome na saudação, limite do Claude e versão exata do modelo
+
+- **Seu nome** (Ajustes → Você): a tela inicial diz "Bom dia, {nome}." (boa tarde a partir das 12h, boa noite a partir das 18h). Guardado no supervisor (`metadata person.name`).
+- **Limite do Claude**: o Claude Code só informa as janelas junto de uma resposta. Em Atividade → Uso aparece o cartão do Claude com **Consultar agora**, que faz uma resposta mínima do Haiku (`limits.refresh`); o Codex também ganhou o botão. Os limites continuam sendo atualizados a cada resposta.
+- **Versão exata do Claude**: o evento `init` do Claude Code traz o modelo resolvido pelo apelido (`opus` → `claude-opus-5-5`). Cada resposta grava `modelId` e mostra "Claude Opus 5.5"; o seletor de modelo mostra a versão confirmada pela última resposta. Conferido no PC: opus → claude-opus-5-5, sonnet → claude-sonnet-5-5, haiku → claude-haiku-5-5, fable → claude-fable-5-1.
+- **Uso**: "lidos" virou "processados", com a explicação de que cada passo de uma resposta relê a conversa e as ferramentas (a parte em cache pesa bem menos). Conferido no PC que o `result.usage` do Claude soma todas as chamadas de uma resposta (não é cumulativo da sessão, diferente do Codex).
+
+107 testes. No emulador: saudação com o nome, campo nos Ajustes, painel de Uso com o novo texto. APK `dist/apk/mybots-v30.apk`, versionCode 30, 0.15.1, ARM64, certificado `fac61745…033b9c`, SHA-256 `70bd3ead8034df7a6b1c5674674c3d2dec917c039d9731f4cd98145c3f5897bc`. Publicado como Release v30: primeira versão entregue pela atualização dentro do app.
+
+**Ideias registradas a pedido do usuário (economia de tokens):** mandar a cada bot só as ferramentas que ele pode usar; "nova conversa com resumo" quando o histórico ficar grande.

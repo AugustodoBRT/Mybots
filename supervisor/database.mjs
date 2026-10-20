@@ -95,6 +95,15 @@ export class Database {
     if (!known) return reply.usage.resumed ? null : usage;
     return tokens({ input: usage.input - last.input, cached: Math.max(0, usage.cached - last.cached), output: usage.output - last.output });
   }
+  /** How the person wants to be called (home-screen greeting). */
+  person() { return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '' }; }
+  setPerson({ name } = {}) {
+    if (typeof name !== 'string' || name.length > 40 || /[\u0000-\u001f]/.test(name)) throw new Error('Use um nome de até 40 letras.');
+    const clean = name.trim().replace(/\s+/g, ' ');
+    if (clean) this.run("INSERT INTO metadata VALUES('person.name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", clean);
+    else this.run("DELETE FROM metadata WHERE key='person.name'");
+    return this.person();
+  }
   /** The plan's usage windows (5 hours, week) as the IA last reported them. */
   setLimits(provider, limits) {
     const windows = Array.isArray(limits?.windows) ? limits.windows.filter(item => Number.isFinite(item?.used)).slice(0, 4).map(item => ({ key: String(item.key).slice(0, 20), used: Math.max(0, Math.min(100, Math.round(item.used))), resetsAt: Number.isFinite(item.resetsAt) ? new Date(item.resetsAt).toISOString() : null })) : [];
@@ -306,10 +315,12 @@ export class Database {
         status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
       const files = reply?.attachments?.length ? { attachments: reply.attachments } : {};
       const usage = state === 'done' ? this.turnTokens(bot.id, reply) : null;
-      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
+      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
       else if (files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
       if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
       if (reply?.limits && ['codex', 'claude'].includes(bot.provider || 'codex')) this.setLimits(bot.provider || 'codex', reply.limits);
+      // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".
+      if (state === 'done' && bot.provider === 'claude' && typeof reply.modelId === 'string' && /^[a-z]{1,20}$/.test(reply.model || '')) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'claude.model.' + reply.model, reply.modelId.slice(0, 80));
       this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
       this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);
       this.event(id, state);

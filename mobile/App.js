@@ -319,7 +319,7 @@ function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnecti
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={38} />
       </View>
     </View>
-    <Text style={styles.greeting}>{greeting()}.</Text>
+    <Text style={styles.greeting} numberOfLines={2}>{greeting()}{data?.person?.name ? `, ${data.person.name}` : ''}.</Text>
     <Text style={styles.tagline}>{bots.length ? `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}${working ? ` · ${working} trabalhando agora` : ''}` : 'Seu pequeno time pessoal começa aqui.'}</Text>
     {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
     {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
@@ -374,7 +374,7 @@ function Message({ message, bot, models, onRetry, busy, onFile, fileBusy }) {
     </Pressable>
     {message.status === 'error' && <Text style={styles.messageErrorText}>{message.error || 'A rotina não foi concluída.'}</Text>}
   </View>;
-  const model = message.model ? `${findModel(models, message)?.displayName || message.model}${message.reasoningEffort ? ` · ${EFFORT_NAMES[message.reasoningEffort] || message.reasoningEffort}` : ''}` : '';
+  const model = message.model ? `${claudeName(message.modelId) || findModel(models, message)?.displayName || message.model}${message.reasoningEffort ? ` · ${EFFORT_NAMES[message.reasoningEffort] || message.reasoningEffort}` : ''}` : '';
   const error = message.status === 'error' && <View style={styles.messageError}>
     <Icon name="alert" size={16} color={C.red} /><Text style={styles.messageErrorText}>{message.error || 'A resposta não foi concluída.'}</Text>
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRetry(message.text)} style={styles.retryButton}><Icon name="refresh" size={14} color={C.text} /><Text style={styles.retryText}>Tentar de novo</Text></Pressable>
@@ -476,6 +476,24 @@ function WidgetRow() {
   </View>;
 }
 
+// The name the home screen greets ("Bom dia, Augusto."); saved in the supervisor when the field loses focus.
+function PersonName({ name, onSave }) {
+  const [value, setValue] = useState(name || ''); const [state, setState] = useState('');
+  useEffect(() => { setValue(name || ''); }, [name]);
+  const save = async () => {
+    if (value.trim() === (name || '')) return;
+    setState('saving');
+    try { await onSave(value); setState('saved'); setTimeout(() => setState(''), 2000); } catch (error) { setState(nativeMessage(error)); }
+  };
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>Seu nome</Text>
+    <Text style={styles.optionDetail}>Aparece na saudação da tela inicial, que muda com o horário: bom dia, boa tarde e boa noite.</Text>
+    <TextInput accessibilityLabel="Seu nome" style={styles.formInput} placeholder="Como quer ser chamado?" placeholderTextColor="#6F7787" maxLength={40}
+      autoCapitalize="words" autoCorrect={false} returnKeyType="done" value={value} onChangeText={setValue} onBlur={save} onSubmitEditing={save} selectionColor={C.mint} />
+    {state ? <Text style={[styles.optionDetail, state.length > 6 && state !== 'saving' && { color: C.amber }]}>{state === 'saving' ? 'Salvando…' : state === 'saved' ? 'Salvo.' : state}</Text> : null}
+  </View>;
+}
+
 function ScreenOff({ heartbeat, nextRoutineAt }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -519,6 +537,11 @@ function ScreenOff({ heartbeat, nextRoutineAt }) {
 }
 
 // Open items by deadline: late, today, this week, later and without a deadline (the phone's local time).
+// The exact Claude model a reply used: "claude-opus-5-5" → "Claude Opus 5.5".
+function claudeName(id) {
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(id || '');
+  return match ? `Claude ${match[1][0].toUpperCase()}${match[1].slice(1)} ${match[2]}${match[3] ? '.' + match[3] : ''}` : null;
+}
 // Tokens per bot and the plan's limits, as the IA reported them.
 const tokensLabel = value => value >= 1e6 ? `${(value / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi` : value >= 1000 ? `${(value / 1000).toLocaleString('pt-BR', { maximumFractionDigits: value >= 1e5 ? 0 : 1 })} mil` : String(value);
 const PLAN_NAMES = { codex: 'ChatGPT', claude: 'Claude' };
@@ -528,14 +551,29 @@ function resetLabel(iso) {
   const at = new Date(iso); const soon = at - Date.now() < 86400000;
   return `renova ${soon ? 'às ' + at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}`;
 }
-function UsagePanel({ usage, bots }) {
+function UsagePanel({ usage, bots, connections, onRefresh }) {
+  const [busy, setBusy] = useState(null); const [note, setNote] = useState({});
+  const refresh = async provider => {
+    setBusy(provider); setNote(old => ({ ...old, [provider]: '' }));
+    try { await onRefresh(provider); } catch (error) { setNote(old => ({ ...old, [provider]: nativeMessage(error) })); } finally { setBusy(null); }
+  };
+  // A connected IA without windows yet (Claude only reports them with a reply) gets a card that explains it.
+  const missing = ['codex', 'claude'].filter(provider => connections?.[provider]?.loggedIn && !usage?.limits?.[provider]);
   const limits = Object.entries(usage?.limits || {});
   const rows = Object.entries(usage?.bots || {}).map(([id, value]) => ({ bot: bots.find(item => item.id === id), ...value })).filter(row => row.bot && row.week.turns)
     .sort((a, b) => (b.week.input + b.week.output) - (a.week.input + a.week.output));
   const days = usage?.days || []; const peak = Math.max(1, ...days.map(day => day.input + day.output));
   const total = rows.reduce((sum, row) => sum + row.week.input + row.week.output, 0);
-  if (!limits.length && !rows.length) return <View style={styles.modeOption}><Text style={styles.optionLabel}>Uso</Text><Text style={styles.optionDetail}>Depois das primeiras respostas aparecem aqui os tokens de cada bot e quanto do limite da sua assinatura já foi usado.</Text></View>;
+  const refreshButton = provider => <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => refresh(provider)} style={styles.stopButton}>
+    {busy === provider ? <ActivityIndicator size="small" color={C.mint} /> : <Icon name="refresh" size={13} color={C.mint} />}<Text style={[styles.stopText, { color: C.mint }]}>{busy === provider ? 'Consultando' : 'Consultar agora'}</Text></Pressable>;
   return <>
+    {!limits.length && !rows.length && !missing.length ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Uso</Text><Text style={styles.optionDetail}>Depois das primeiras respostas aparecem aqui os tokens de cada bot e quanto do limite da sua assinatura já foi usado.</Text></View> : null}
+    {missing.map(provider => <View key={provider} style={styles.modeOption}>
+      <Text style={styles.optionLabel}>{PLAN_NAMES[provider]} · limite da assinatura</Text>
+      <Text style={styles.optionDetail}>{provider === 'claude' ? 'O Claude só informa o limite junto de uma resposta. Aparece aqui depois que um bot com Claude responder, ou consulte agora com uma resposta curtinha do Haiku.' : 'Ainda não consultado.'}</Text>
+      {note[provider] ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note[provider]}</Text> : null}
+      <View style={{ alignItems: 'flex-start', marginTop: 10 }}>{refreshButton(provider)}</View>
+    </View>)}
     {limits.map(([provider, item]) => <View key={provider} style={styles.modeOption}>
       <Text style={styles.optionLabel}>{PLAN_NAMES[provider]}{item.plan ? ` ${item.plan[0].toUpperCase()}${item.plan.slice(1)}` : ''} · limite da assinatura</Text>
       {item.windows.map(window => { const tone = window.used >= 90 ? C.red : window.used >= 70 ? C.amber : C.mint; return <View key={window.key} style={styles.limitRow}>
@@ -544,9 +582,12 @@ function UsagePanel({ usage, bots }) {
         <Text style={styles.limitMeta}>{resetLabel(window.resetsAt)}</Text>
       </View>; })}
       <Text style={styles.limitMeta}>Atualizado {new Date(item.checkedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · vale para tudo que usa esta conta, não só o MyBots.</Text>
+      {note[provider] ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note[provider]}</Text> : null}
+      {connections?.[provider]?.loggedIn ? <View style={{ alignItems: 'flex-start', marginTop: 10 }}>{refreshButton(provider)}</View> : null}
     </View>)}
     {rows.length ? <View style={styles.modeOption}>
       <View style={styles.limitHead}><Text style={styles.optionLabel}>Tokens nos últimos 7 dias</Text><Text style={styles.limitValue}>{tokensLabel(total)}</Text></View>
+      <Text style={styles.limitMeta}>Só os bots do MyBots. A cada passo de uma resposta (cada ferramenta usada) a IA relê a conversa e as ferramentas; a parte em cache custa bem menos do limite.</Text>
       <View style={styles.usageChart}>{days.map(day => { const value = day.input + day.output; return <View key={day.date} style={styles.usageDay}>
         <View style={styles.usageTrack}><View style={[styles.usageColumn, { height: `${Math.max(value ? 4 : 0, value / peak * 100)}%` }]} /></View>
         <Text style={styles.usageDayText}>{new Date(day.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase()}</Text>
@@ -556,7 +597,7 @@ function UsagePanel({ usage, bots }) {
         <View style={{ flex: 1 }}>
           <View style={styles.limitHead}><Text style={styles.limitName} numberOfLines={1}>{row.bot.name}</Text><Text style={styles.limitValue}>{tokensLabel(value)}</Text></View>
           <View style={styles.usageShare}><View style={[styles.usageShareFill, { width: `${Math.max(2, value / Math.max(1, total) * 100)}%`, backgroundColor: HUE_OF(row.bot) }]} /></View>
-          <Text style={styles.limitMeta}>{row.week.turns} {row.week.turns > 1 ? 'respostas' : 'resposta'} · {tokensLabel(row.week.input)} lidos ({Math.round(row.week.cached / Math.max(1, row.week.input) * 100)}% em cache) · {tokensLabel(row.week.output)} escritos · hoje {tokensLabel(row.today.input + row.today.output)}</Text>
+          <Text style={styles.limitMeta}>{row.week.turns} {row.week.turns > 1 ? 'respostas' : 'resposta'} · {tokensLabel(row.week.input)} processados ({Math.round(row.week.cached / Math.max(1, row.week.input) * 100)}% em cache) · {tokensLabel(row.week.output)} escritos · hoje {tokensLabel(row.today.input + row.today.output)}</Text>
         </View>
       </View>; })}
     </View> : null}
@@ -1298,6 +1339,8 @@ function AppMain() {
         <View style={styles.sheetHandle} />
         <SheetHeader title="Ajustes" subtitle="Como o MyBots funciona neste celular." onClose={() => setMaintenanceVisible(false)} />
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
+          {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
+            <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
           {mode === 'phone' ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
           <Text style={styles.sheetSection}>CELULAR</Text>
           {termuxAvailable ? <WidgetRow /> : null}
@@ -1344,7 +1387,8 @@ function AppMain() {
         <View style={styles.sheetHandle} />
         <SheetHeader title="Atividade" subtitle={`${data?.supervisorConnected ? 'Supervisor conectado' : 'Supervisor desconectado'} · último sinal ${data?.heartbeat ? new Date(data.heartbeat).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'não confirmado'}`} onClose={() => setActivityVisible(false)} />
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
-          {mode === 'phone' ? <><Text style={styles.sheetSection}>USO</Text><UsagePanel usage={data?.usage} bots={data?.bots || []} /></> : null}
+          {mode === 'phone' ? <><Text style={styles.sheetSection}>USO</Text><UsagePanel usage={data?.usage} bots={data?.bots || []} connections={data?.connections}
+            onRefresh={async provider => { await supervisor.current.call('limits.refresh', { provider }); await loadSupervisorState(); }} /></> : null}
           {mode === 'phone' ? <Text style={styles.sheetSection}>FUNCIONAMENTO</Text> : null}
           {mode === 'phone' ? <View style={styles.modeOption}>
             <Text style={styles.optionLabel}>Interrupções · {(data?.interruptions || []).length ? `${data.interruptions.filter(item => Date.now() - Date.parse(item.created_at) < 7 * 86400000).length} nos últimos 7 dias` : 'nenhuma registrada'}</Text>

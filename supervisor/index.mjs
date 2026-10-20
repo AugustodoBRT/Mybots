@@ -187,9 +187,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const body = { bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
       return { version: createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16), ...body };
     };
-    const state = () => ({ ...db.snapshot(), usage: db.usage(), bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
+    const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(), bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
-      connection: summary(), connections, models, modelsError, defaultSelection: models.length ? selectionFor(models) : null,
+      connection: summary(), connections, models: models.map(item => {
+        // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
+        const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value : null; const version = Claude.version(resolved);
+        return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
+      }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
       grants: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.grants(bot.id)])),
       botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), apps: apps.status(), routines: routines.all().filter(item => !db.bot(item.botId)?.deletedAt), timeZone: routines.timeZone(),
       memories: db.all('SELECT * FROM memory').map(row => ({ id: row.id, botId: row.bot_id, ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(row => !db.bot(row.botId)?.deletedAt),
@@ -232,6 +236,15 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'activity.list': return state().activity;
         case 'grants.set': return tools.grant(params.botId, params.tool, params.allowed);
         case 'approval.respond': return tools.respond(params.approvalId, params.approved, params.actionHash, params.always ?? false);
+        // "Consultar agora" in Atividade → Uso: Codex reads its windows directly; Claude needs one tiny reply.
+        case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
+        case 'limits.refresh': {
+          if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');
+          const source = params.provider === 'codex' ? codex : claude;
+          if (!source?.limits || !connections[params.provider]?.loggedIn) throw new Error(`O ${params.provider === 'codex' ? 'Codex' : 'Claude'} não está conectado neste celular.`);
+          db.setLimits(params.provider, await source.limits()); broadcast('connection.changed');
+          return db.limits();
+        }
         case 'account.connectors': {
           // `claude mcp list` checks each server's health, so it is slow: cache it unless asked to refresh.
           if (params.refresh || !accountConnectors || Date.now() - accountConnectors.at > 300000) {

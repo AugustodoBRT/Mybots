@@ -307,7 +307,7 @@ function UpdateCard({ update, onInstall, onDismiss, compact = false }) {
   </View>;
 }
 
-function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss }) {
+function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = data?.active?.length || 0;
@@ -327,6 +327,12 @@ function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnecti
     {update?.info?.available && !update.dismissed ? <UpdateCard update={update} onInstall={onUpdate} onDismiss={onUpdateDismiss} /> : null}
     {bots.length ? <TodayStrip data={data} onActivity={mode === 'phone' ? onActivity : onConnection} /> : null}
     {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+    {mode === 'phone' && (data?.rooms?.length || bots.length >= 2) ? <>
+      <View style={styles.listHeading}><Text style={styles.sectionTitle}>Salas</Text>
+        <Pressable accessibilityRole="button" disabled={bots.length < 2} onPress={onNewRoom} style={({ pressed }) => [styles.newBotButton, pressed && styles.pressed]}><Icon name="plus" size={16} color={C.mint} stroke={2.2} /><Text style={styles.newBotText}>Nova sala</Text></Pressable></View>
+      {(data?.rooms || []).length ? data.rooms.map(room => <RoomCard key={room.id} room={room} bots={data.bots || []} onPress={() => onRoom(room.id)} />)
+        : <Text style={styles.roomHint}>Junte vários bots numa conversa: eles respondem um de cada vez e podem se chamar com @.</Text>}
+    </> : null}
     {bots.length ? <View style={styles.listHeading}><Text style={styles.sectionTitle}>Seus bots</Text>
       <Pressable accessibilityRole="button" disabled={!data?.models?.length} onPress={onCreate} style={({ pressed }) => [styles.newBotButton, pressed && styles.pressed]}><Icon name="plus" size={16} color={C.mint} stroke={2.2} /><Text style={styles.newBotText}>Novo</Text></Pressable></View> : null}
     {bots.length ? bots.map(bot => <BotCard key={bot.id} bot={bot} busy={data.active?.includes(bot.id)} waiting={data.approvals?.some(item => item.botId === bot.id)}
@@ -929,6 +935,111 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   </KeyboardAvoidingView>;
 }
 
+// Rooms: the person and several bots in one conversation. Without @ every bot answers in turn; with @ only the named ones.
+function RoomFaces({ bots, size = 40 }) {
+  const shown = bots.slice(0, 3);
+  return <View style={{ width: size + (shown.length - 1) * size * 0.42, height: size }}>
+    {shown.map((bot, index) => <View key={bot.id} style={{ position: 'absolute', left: index * size * 0.42, top: 0, zIndex: 10 - index, borderRadius: size * 0.3, borderWidth: 2, borderColor: C.bg }}>
+      <Avatar bot={bot} size={size - 4} animated={false} /></View>)}
+  </View>;
+}
+
+function RoomCard({ room, bots, onPress }) {
+  const members = room.botIds.map(id => bots.find(bot => bot.id === id)).filter(Boolean);
+  const latest = room.messages.at(-1);
+  const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
+  const working = room.active?.length ? members.filter(bot => room.active.includes(bot.id)).map(bot => bot.name) : [];
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Abrir a sala ${room.name}`} onPress={onPress} style={({ pressed }) => [styles.botCard, pressed && styles.pressed]}>
+    <RoomFaces bots={members} size={44} />
+    <View style={styles.botCardCopy}>
+      <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{room.name}</Text><Text style={styles.botTime}>{members.length} bots</Text></View>
+      {working.length ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: C.mint }]} numberOfLines={1}>{working.join(', ')} {working.length > 1 ? 'respondendo' : 'respondendo'}</Text><Dots /></View>
+        : <Text style={styles.botPreview} numberOfLines={1}>{latest ? `${who || 'Bot'}: ${plain(latest.text) || (latest.status === 'error' ? 'não conseguiu responder' : '')}` : members.map(bot => bot.name).join(', ')}</Text>}
+    </View>
+  </Pressable>;
+}
+
+function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(''); const [picked, setPicked] = useState([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => { if (visible) { setName(room?.name || ''); setPicked(room?.botIds || []); setError(''); } }, [visible, room?.id]);
+  const save = async () => { setBusy(true); setError(''); try { await onSave({ name, botIds: picked }); } catch (e) { setError(nativeMessage(e)); } finally { setBusy(false); } };
+  return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+    <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
+      <View style={styles.sheetHandle} />
+      <SheetHeader title={room ? 'Editar sala' : 'Nova sala'} subtitle="Uma conversa com vários bots. Sem @, todos respondem; com @Nome, só quem você chamar." onClose={onClose} />
+      <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }} keyboardShouldPersistTaps="handled">
+        <Text style={styles.sheetSection}>NOME</Text>
+        <TextInput accessibilityLabel="Nome da sala" style={styles.formInput} placeholder="Ex.: Faculdade e estágio" placeholderTextColor="#6F7787" maxLength={40} value={name} onChangeText={setName} selectionColor={C.mint} />
+        <Text style={styles.sheetSection}>BOTS DA SALA · {picked.length}</Text>
+        {bots.map(bot => { const on = picked.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setPicked(old => on ? old.filter(id => id !== bot.id) : [...old, bot.id])}
+          style={({ pressed }) => [styles.modeOption, styles.rowOption, on && styles.optionChosen, pressed && styles.pressed]}>
+          <Avatar bot={bot} size={40} animated={false} />
+          <View style={{ flex: 1 }}><Text style={[styles.optionLabel, on && styles.optionLabelChosen]} numberOfLines={1}>{bot.name}</Text><Text style={styles.optionDetail} numberOfLines={1}>{plain(bot.instructions || '') || 'Sem descrição'}</Text></View>
+          {on ? <Icon name="check" size={18} color={C.mint} stroke={2.4} /> : null}
+        </Pressable>; })}
+        <Text style={styles.optionDetail}>Cada bot responde com as próprias permissões e não vê a memória nem as conversas privadas dos outros. Bots podem chamar uns aos outros com @, até 3 rodadas por mensagem sua.</Text>
+        {error ? <Text style={[styles.optionDetail, { color: C.red }]}>{error}</Text> : null}
+        <PrimaryButton icon="check" title={busy ? 'Salvando…' : room ? 'Salvar sala' : 'Criar sala'} disabled={busy || !name.trim() || picked.length < 2} onPress={save} style={{ marginTop: 16 }} />
+        {room ? <Pressable accessibilityRole="button" onPress={onDelete} style={styles.closeSheet}><Icon name="trash" size={16} color={C.red} /><Text style={[styles.closeSheetText, { color: C.red }]}>Apagar sala</Text></Pressable> : null}
+      </ScrollView>
+    </View></View>
+  </Modal>;
+}
+
+function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy }) {
+  const scroll = useRef(null); const input = useRef(null);
+  const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState('');
+  const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
+  const byId = Object.fromEntries(members.map(bot => [bot.id, bot]));
+  const working = members.filter(bot => room.active?.includes(bot.id));
+  const approvals = (data.approvals || []).filter(item => room.activeTasks?.includes(item.taskId));
+  const named = members.filter(bot => new RegExp(`@${bot.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu').test(draft));
+  const send = async text => {
+    if (!text.trim() || sending) return; setSending(true); setError('');
+    try { await onSend(text); setDraft(''); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
+  };
+  const mention = bot => { setDraft(old => (old.trim() ? old.replace(/\s*$/, ' ') : '') + `@${bot.name} `); input.current?.focus(); };
+  const retry = message => { const asked = room.messages.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); };
+  return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={styles.chatHeader}>
+      <IconButton icon="back" label="Voltar" onPress={onBack} size={40} />
+      <RoomFaces bots={members} size={40} />
+      <View style={styles.chatTitleCopy}>
+        <Text style={styles.chatTitle} numberOfLines={1}>{room.name}</Text>
+        {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.mint }]} numberOfLines={1}>{working.map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
+          : <Text style={styles.chatSubtitle} numberOfLines={1}>{members.map(bot => bot.name).join(', ')}</Text>}
+      </View>
+      <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
+    </View>
+    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
+      {!room.messages.length ? <View style={styles.chatEmpty}><RoomFaces bots={members} size={72} />
+        <Text style={styles.chatEmptyTitle}>{room.name}</Text>
+        <Text style={styles.chatEmptyText}>Escreva para todos ou chame alguém com @. Os bots também podem se chamar entre si.</Text></View> : null}
+      {room.messages.map(message => message.role === 'user' || byId[message.botId]
+        ? <Message key={message.id} message={message} bot={byId[message.botId] || members[0]} models={data.models || []} busy={sending} onRetry={() => retry(message)} onFile={onFile} fileBusy={fileBusy} />
+        : <Text key={message.id} style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>)}
+      {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+      {working.map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : 'working'} tile={false} />
+        <View style={styles.thinkingCard}><View style={styles.botWorking}><Text style={styles.thinkingText}>{bot.name} {data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.state === 'queued' ? 'na fila' : 'pensando'}</Text><Dots color={HUE_OF(bot)} /></View>
+          <Pressable accessibilityRole="button" onPress={() => onCancel(bot.id)} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable></View>
+      </View>)}
+    </ScrollView>
+    <View style={styles.composerArea}>
+      {error ? <Text style={styles.composerError}>{error}</Text> : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mentionBar} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
+        {members.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Chamar ${bot.name}`} onPress={() => mention(bot)} style={({ pressed }) => [styles.mentionChip, named.includes(bot) && styles.mentionChipOn, pressed && styles.pressed]}>
+          <Avatar bot={bot} size={22} animated={false} tile={false} /><Text style={[styles.mentionText, named.includes(bot) && { color: C.mint }]}>@{bot.name}</Text></Pressable>)}
+      </ScrollView>
+      <View style={styles.composer}>
+        <TextInput ref={input} accessibilityLabel="Mensagem para a sala" value={draft} onChangeText={setDraft} editable={!sending} multiline maxLength={8000} textAlignVertical="center" style={[styles.messageInput, { paddingLeft: 14 }]} selectionColor={C.mint}
+          placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} placeholderTextColor={C.faint} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Enviar para a sala" disabled={!draft.trim() || sending} onPress={() => send(draft)} style={({ pressed }) => [styles.sendButton, (!draft.trim() || sending) && styles.sendDisabled, pressed && styles.pressed]}>
+          <Icon name="send" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
+      </View>
+    </View>
+  </KeyboardAvoidingView>;
+}
+
 
 // The app waits for its typeface before the first frame, so text never jumps from the system font.
 export default function App() {
@@ -943,6 +1054,9 @@ function AppMain() {
   const [mode, setMode] = useState('computer');
   const [localCache, setLocalCache] = useState(emptyLocalStore());
   const [selected, setSelected] = useState(null);
+  // The open room, and the create/edit sheet (null closed, {} new, {room} editing).
+  const [roomId, setRoomId] = useState(null);
+  const [roomSheet, setRoomSheet] = useState(null);
   const [draft, setDraft] = useState('');
   const [loadError, setLoadError] = useState('');
   const [termuxLog, setTermuxLog] = useState(null);
@@ -987,12 +1101,13 @@ function AppMain() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (roomId) { setRoomId(null); return true; }
       if (!selected) return false;
       setSelected(null); setDraft('');
       return true;
     });
     return () => subscription.remove();
-  }, [selected]);
+  }, [selected, roomId]);
 
   const runPhoneCommand = useCallback(async (operation, payload = {}) => {
     const startedAt = new Date().toISOString();
@@ -1315,10 +1430,18 @@ function AppMain() {
   };
   const openLogs = termuxLog ? () => { setLogsCopied(false); setLogsVisible(true); } : null;
   const bot = data?.bots.find(item => item.id === selected);
+  const room = data?.rooms?.find(item => item.id === roomId);
+  const roomSave = async payload => {
+    if (roomSheet?.room) await supervisor.current.call('room.update', { roomId: roomSheet.room.id, ...payload });
+    else { const created = await supervisor.current.call('room.create', payload); setRoomId(created.id); setSelected(null); }
+    await loadSupervisorState(); setRoomSheet(null);
+  };
+  const roomDelete = target => Alert.alert(`Apagar a sala ${target.name}?`, 'A conversa da sala some. Os bots e as conversas privadas deles continuam.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Apagar sala', style: 'destructive', onPress: async () => { try { await supervisor.current.call('room.delete', { roomId: target.id }); setRoomSheet(null); setRoomId(null); await loadSupervisorState(); } catch (error) { setLoadError(nativeMessage(error)); } } }]);
   // Tapping a bot notification opens that bot's conversation, whether MyBots was closed or in the background.
   useEffect(() => {
     if (!termuxAvailable) return undefined;
-    const open = id => { if (id) { setSelected(id); setProfileId(null); setCreateVisible(false); setMaintenanceVisible(false); setActivityVisible(false); setFileSheet(null); setDraft(''); } };
+    const open = id => { if (id) { setSelected(id); setRoomId(null); setProfileId(null); setCreateVisible(false); setMaintenanceVisible(false); setActivityVisible(false); setFileSheet(null); setDraft(''); } };
     const check = () => { Promise.resolve(takeLaunchBot()).then(open).catch(() => {}); };
     check();
     const subscription = onOpenBot(event => open(event?.botId));
@@ -1363,7 +1486,7 @@ function AppMain() {
   };
   const pickShare = target => {
     setIncoming({ ...share, botId: target.id }); setShare(null);
-    setSelected(target.id); setProfileId(null); setCreateVisible(false);
+    setSelected(target.id); setRoomId(null); setProfileId(null); setCreateVisible(false);
     const text = shareText(share);
     setDraft(old => selected === target.id && old.trim() ? `${old.trim()}\n${text}`.trim() : text);
   };
@@ -1382,6 +1505,9 @@ function AppMain() {
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} /><Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable></View>
+      : room ? <RoomScreen room={room} data={data} onBack={() => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+          onSend={async text => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); }}
+          onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} />
       : bot ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={() => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
@@ -1389,7 +1515,9 @@ function AppMain() {
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} />
           : <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
-            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))} />}
+            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
+            onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
+    {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
     {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []}
       memories={(data.memories || []).filter(item => item.botId === profileId)} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
@@ -1641,6 +1769,12 @@ const styles = StyleSheet.create({
   updateNotes: { marginTop: 8, padding: 12, borderRadius: 14, backgroundColor: C.bg2, borderWidth: 1, borderColor: C.line },
   updateBar: { height: 6, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 12, marginBottom: 2 },
   limitRow: { marginTop: 10 },
+  roomHint: { color: C.muted, fontFamily: F.m, fontSize: 13, lineHeight: 19, marginBottom: 6 },
+  roomGone: { color: C.faint, fontFamily: F.m, fontSize: 12, textAlign: 'center', marginVertical: 6 },
+  mentionBar: { flexGrow: 0, marginBottom: 8 },
+  mentionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4, paddingRight: 11, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2 },
+  mentionChipOn: { borderColor: C.mint + '80', backgroundColor: C.mint + '14' },
+  mentionText: { color: C.text2, fontFamily: F.s, fontSize: 12.5 },
   passwordRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   botChoice: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2 },
   botChoiceOn: { borderColor: C.mint + '80', backgroundColor: C.mint + '14' },

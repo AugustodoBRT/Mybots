@@ -33,22 +33,26 @@ export class Queue extends EventEmitter {
     this.emit('changed', { event: 'task.progress', taskId: task.id });
     current.done = (async () => {
       try {
-        const bot = this.db.requireBot(task.bot_id);
+        // A room turn: the bot answers in the room with its own permissions, in the IA session it keeps for that room.
+        const turn = this.db.roomTurn(task.id);
+        const owner = this.db.requireBot(task.bot_id);
+        const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;
         // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
         const picked = this.tools ? this.tools.accountApps(bot.id) : [];
         const connectors = Boolean(this.tools) && this.tools.policy(bot.id, 'account.connectors') !== 'deny' && picked.length > 0;
         const connectorDeny = connectors && bot.provider === 'claude' ? (await this.accountServers?.() || []).filter(name => !picked.includes(name)) : [];
-        const reply = await this.execute(bot, promptFor(bot, task.message_id, { tools: Boolean(this.tools) }), {
+        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId) }) : promptFor(bot, task.message_id, { tools: Boolean(this.tools) });
+        const reply = await this.execute(bot, prompt, {
           signal: controller.signal,
           workspace: capability?.workspace,
           tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full' } : undefined,
-          onSession: async id => { this.db.session(bot.id, id); },
+          onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
           onProcess: pid => { this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
         });
         if (controller.signal.aborted) this.db.finish(task.id, controller.signal.reason === 'shutdown' ? 'failed' : 'cancelled', null, controller.signal.reason === 'shutdown' ? 'Supervisor reiniciado durante a resposta. O histórico foi preservado.' : 'Pedido cancelado.');
         else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.db.finish(task.id, 'done', { ...reply, attachments: this.tools?.takeOutgoing(task.id) || [] }); }
       } catch (error) {
-        if (error.codexSessionId) this.db.session(task.bot_id, error.codexSessionId);
+        if (error.codexSessionId) { const turn = this.db.roomTurn(task.id); if (turn) this.db.setRoomSession(turn.room_id, task.bot_id, error.codexSessionId); else this.db.session(task.bot_id, error.codexSessionId); }
         const detail = controller.signal.aborted ? (controller.signal.reason === 'shutdown' ? 'Supervisor reiniciado durante a resposta. O histórico foi preservado.' : 'Pedido cancelado.') : error.output ? friendlyError(error.output) : error.message;
         // Files already sent stay in the conversation even when the turn fails afterwards.
         this.db.finish(task.id, controller.signal.aborted && controller.signal.reason !== 'shutdown' ? 'cancelled' : 'failed', { attachments: this.tools?.takeOutgoing(task.id) || [] }, detail);

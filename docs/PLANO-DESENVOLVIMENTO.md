@@ -82,7 +82,7 @@ Logo, ícone do app (todas as densidades + ícone adaptativo + ícone de notific
 
 Compartilhar com o bot (Direct Share), atualização dentro do app pelas Releases do GitHub, `browser_upload` (entregar arquivos em sites, sempre com aprovação), uso por bot com tokens e limites da assinatura, widget com rostos animados. Detalhes em `docs/progresso.md` (v29). Ideias que ficaram para depois: responder pela notificação e botão "Concluir" no aviso de prazo; prazos no Google Agenda.
 
-**Próxima etapa: G (salas com vários bots)**, que o usuário prefere fazer antes da F.
+**Etapa G concluída na v35 (sem coordenador, a pedido do usuário).** Próximas possíveis: bot coordenador (só se o usuário criar um), economia de tokens (ferramentas só permitidas por bot; resumo de conversas longas), responder pela notificação, prazos no Google Agenda, etapa F (vozes).
 
 ### Etapa F: vozes por bot e "ligação"
 

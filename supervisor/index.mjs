@@ -12,6 +12,7 @@ import { processIdentity } from './process.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { PROMPT_VERSION } from '../mobile/local.js';
+import { Rooms } from './rooms.mjs';
 import { selectionFor, PROVIDER_NAMES } from '../lib/models.mjs';
 import { handleMcp } from './mcp/http.mjs';
 import { Vault } from './vault.mjs';
@@ -39,7 +40,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer;
+  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -56,6 +57,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       db.run("INSERT INTO metadata VALUES('prompt.version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(PROMPT_VERSION));
     });
     queue = new Queue(db, execute);
+    const roomSelection = bot => ({ ...(bot.provider ? { provider: bot.provider } : {}), model: bot.model, reasoningEffort: bot.reasoningEffort });
     queue.recover();
     const instanceId = randomUUID();
     let models = [], modelsError = '', checking, lastCheck = 0, closed = false, accountConnectors = null;
@@ -105,6 +107,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       return fallback(args, options);
     };
     tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device }); queue.tools = tools;
+    rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
     // A routine runs only when its bot's IA is connected; otherwise it is skipped with the reason.
     const ready = bot => {
       // Before the first IA check, wait instead of skipping a routine that is due at startup.
@@ -204,6 +207,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     queue.rememberServers = rememberServers;
     const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
+      rooms: rooms.list().map(room => ({ ...room, active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
       accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
       connection: summary(), connections, models: models.map(item => {
@@ -255,6 +259,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'grants.set': return tools.grant(params.botId, params.tool, params.allowed);
         case 'approval.respond': return tools.respond(params.approvalId, params.approved, params.actionHash, params.always ?? false);
         // "Consultar agora" in Atividade → Uso: Codex reads its windows directly; Claude needs one tiny reply.
+        case 'room.create': return rooms.create(params);
+        case 'room.update': return rooms.update(params.roomId, params);
+        case 'room.delete': rooms.remove(params.roomId); return { deleted: true };
+        case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection); }
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
           if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');
@@ -346,6 +354,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     queue.on('changed', change => {
       broadcast(change?.event || 'task.progress', change || {}); broadcast('activity.new');
+      // A bot that named another member (@) in a room hands it the next turn.
+      if (change?.event === 'task.done') rooms.answered(change.taskId, roomSelection);
       if (change?.event === 'task.done' && (db.bot(db.task(change.taskId)?.bot_id)?.provider || 'codex') === 'codex' && connections.codex?.loggedIn) refreshLimits();
     });
     let api;

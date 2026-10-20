@@ -27,7 +27,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 5) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 6) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -82,18 +82,49 @@ export class Database {
         CREATE INDEX usage_bot ON usage(bot_id, created_at);
         PRAGMA user_version=5;`);
     });
+    // Rooms: several bots and the person in one conversation. A room turn is a normal task of the bot that answers,
+    // linked to the room message it answers; each bot keeps one IA session per room, apart from its private chat.
+    if (version < 6) this.transaction(() => {
+      this.db.exec(`CREATE TABLE rooms (id TEXT PRIMARY KEY, body TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE room_turns (task_id TEXT PRIMARY KEY REFERENCES tasks(id), room_id TEXT NOT NULL REFERENCES rooms(id), message_id TEXT NOT NULL, round INTEGER NOT NULL, origin_id TEXT NOT NULL);
+        CREATE INDEX room_turns_room ON room_turns(room_id);
+        CREATE TABLE room_sessions (room_id TEXT NOT NULL REFERENCES rooms(id), bot_id TEXT NOT NULL REFERENCES bots(id), session_id TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (room_id, bot_id));
+        PRAGMA user_version=6;`);
+    });
   }
   /** One reply's tokens. Codex reports the session's running totals: the reply is the difference from the last one. */
   turnTokens(botId, reply) {
     const usage = tokens(reply?.usage);
     if (!usage || !reply.usage.session) return usage;
-    const key = 'usage.session.' + botId;
+    // Per bot and session: a bot alternates between its private chat and its rooms, each with its own totals.
+    const key = 'usage.session.' + botId + ':' + (reply.codexSessionId || '');
     const last = JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', key)?.value || 'null');
     this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify({ session: reply.codexSessionId || null, ...usage }));
     const known = last && last.session === (reply.codexSessionId || null) && last.input <= usage.input && last.output <= usage.output;
     // A conversation resumed without a known total (the first reply after updating MyBots) only sets the starting point.
     if (!known) return reply.usage.resumed ? null : usage;
     return tokens({ input: usage.input - last.input, cached: Math.max(0, usage.cached - last.cached), output: usage.output - last.output });
+  }
+  // Rooms (the bots' group conversations): stored like bots, one JSON body with the members and the messages.
+  room(id) { const row = uuid(id) ? this.get('SELECT body FROM rooms WHERE id=?', id) : null; return row ? JSON.parse(row.body) : null; }
+  rooms() { return this.all('SELECT body FROM rooms ORDER BY updated_at DESC').map(row => JSON.parse(row.body)); }
+  requireRoom(id) { const room = this.room(id); if (!room || room.deletedAt) throw new Error('Sala não encontrada.'); return room; }
+  putRoom(room) { this.run('INSERT INTO rooms(id,body,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at', room.id, JSON.stringify(room), room.updatedAt); }
+  roomTurn(taskId) { return this.get('SELECT * FROM room_turns WHERE task_id=?', taskId); }
+  roomSession(roomId, botId) { return this.get('SELECT session_id FROM room_sessions WHERE room_id=? AND bot_id=?', roomId, botId)?.session_id; }
+  setRoomSession(roomId, botId, id) {
+    if (!uuid(id)) throw new Error('Sessão inválida.');
+    this.run('INSERT INTO room_sessions VALUES(?,?,?,?) ON CONFLICT(room_id, bot_id) DO UPDATE SET session_id=excluded.session_id, updated_at=excluded.updated_at', roomId, botId, id, now());
+  }
+  /** A bot's answer in a room becomes a message of the room (or an error line), never of its private chat. */
+  roomReply(turn, bot, state, reply, error, files, usage) {
+    const room = this.room(turn.room_id); if (!room) return;
+    const stamp = now();
+    const message = state === 'done'
+      ? { id: randomUUID(), role: 'assistant', botId: bot.id, text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), replyTo: turn.message_id, createdAt: stamp }
+      : { id: randomUUID(), role: 'assistant', botId: bot.id, text: files.attachments ? 'Estes arquivos ficaram prontos antes da interrupção.' : '', status: 'error', error: error || 'A resposta não foi concluída.', ...files, replyTo: turn.message_id, createdAt: stamp };
+    if (state === 'done' && reply?.codexSessionId) this.setRoomSession(room.id, bot.id, reply.codexSessionId);
+    this.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
   }
   /** How the person wants to be called (home-screen greeting). */
   person() { return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '' }; }
@@ -168,7 +199,7 @@ export class Database {
   record(kind, detail, botId = null, taskId = null) {
     this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
   }
-  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), toolsState: {
+  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), roomsState: { schema: 1, rooms: this.rooms() }, toolsState: {
     schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
   } }; }
   validateTools(snapshot) {
@@ -228,6 +259,12 @@ export class Database {
       for (const bot of snapshot.bots) this.putBot({ ...bot, ...(!bot.deletedAt ? { restoredAt: stamp } : {}),
         messages: bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? { ...message, status: 'error', awaitingResponse: false, error: 'Pedido interrompido no backup.' } : message) });
       this.run('DELETE FROM memory'); this.run('DELETE FROM pending_items'); this.run('DELETE FROM grants');
+      // Rooms came with backups from v35 on; older backups leave the current rooms as they are.
+      if (snapshot.roomsState?.schema === 1 && Array.isArray(snapshot.roomsState.rooms)) {
+        this.run('DELETE FROM room_sessions');
+        for (const room of snapshot.roomsState.rooms.slice(0, 200)) if (uuid(room?.id) && typeof room.name === 'string' && Array.isArray(room.botIds) && Array.isArray(room.messages))
+          this.putRoom({ ...room, messages: room.messages.slice(-1000), updatedAt: typeof room.updatedAt === 'string' ? room.updatedAt : stamp });
+      }
       for (const row of snapshot.toolsState?.memory || []) this.run('INSERT INTO memory VALUES(?,?,?,?)', row.id, row.bot_id, row.body, row.updated_at);
       for (const row of snapshot.toolsState?.pendingItems || []) this.run('INSERT INTO pending_items VALUES(?,?,?,?,?)', row.id, row.bot_id, row.body, row.state, row.created_at);
       for (const row of snapshot.toolsState?.grants || []) this.run('INSERT INTO grants VALUES(?,?,?,?)', row.id, row.bot_id, row.tool, row.body);
@@ -313,17 +350,19 @@ export class Database {
       const task = this.task(id);
       if (!task || !ACTIVE.includes(task.state)) return;
       const bot = this.bot(task.bot_id);
-      const messages = bot.messages.map(message => message.id === task.message_id ? { ...message,
-        status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
       const files = reply?.attachments?.length ? { attachments: reply.attachments } : {};
       const usage = state === 'done' ? this.turnTokens(bot.id, reply) : null;
-      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
-      else if (files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
+      const turn = this.roomTurn(id);
+      if (turn) this.roomReply(turn, bot, state, reply, error, files, usage);
+      const messages = turn ? null : bot.messages.map(message => message.id === task.message_id ? { ...message,
+        status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
+      if (!turn && state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
+      else if (!turn && files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
+      if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
       if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
       if (reply?.limits && ['codex', 'claude'].includes(bot.provider || 'codex')) this.setLimits(bot.provider || 'codex', reply.limits);
       // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".
       if (state === 'done' && bot.provider === 'claude' && typeof reply.modelId === 'string' && /^[a-z]{1,20}$/.test(reply.model || '')) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'claude.model.' + reply.model, reply.modelId.slice(0, 80));
-      this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
       this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);
       this.event(id, state);
     });

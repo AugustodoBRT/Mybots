@@ -1,0 +1,13 @@
+{
+  "name": "mybots",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Seus bots pessoais, começando por uma conversa.",
+  "scripts": {
+    "start": "node server.mjs",
+    "mobile": "node scripts/mobile.mjs",
+    "test": "node scripts/package-connectors.mjs && node scripts/package-supervisor.mjs && node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=22.13" }
+}

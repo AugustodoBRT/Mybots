@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#285747">
+  <title>MyBots · seu espaço para conversar</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar" aria-label="Seus bots">
+    <a href="/" class="brand" aria-label="MyBots, início"><img src="/icon.svg" alt="" width="36" height="36"><span>mybots<span class="brand-dot">.</span></span></a>
+    <p class="sidebar-caption">Um espaço para suas ideias.</p>
+    <button class="new-bot" data-create><span aria-hidden="true">+</span> Criar um bot</button>
+    <div class="list-heading"><span>SEUS BOTS</span><span id="bot-count">0</span></div>
+    <nav id="bot-list" aria-label="Escolher bot"></nav>
+    <p class="list-empty" id="list-empty">Seu próximo companheiro<br>de conversa começa aqui.</p>
+    <div class="sidebar-bottom">
+      <div class="local-status"><span class="status-dot"></span><span id="device">Neste aparelho</span></div>
+      <button class="connection" id="connection" title="Verificar conexão com o Codex"><span id="connection-dot" class="status-dot muted"></span><span id="connection-label">Verificando Codex…</span><span class="refresh" aria-hidden="true">↻</span></button>
+      <p>Conversas salvas neste aparelho.</p>
+    </div>
+  </aside>
+  <button id="backdrop" class="backdrop" aria-label="Fechar menu" hidden></button>
+  <main>
+    <header class="topbar">
+      <button id="menu-button" class="icon-button mobile-only" aria-label="Abrir menu" aria-expanded="false">☰</button>
+      <div id="breadcrumb">Seu espaço <span>/</span> <strong>Início</strong></div>
+      <span class="version-tag">PRIMEIROS PASSOS <span>✦</span></span>
+    </header>
+    <section id="welcome" class="welcome">
+      <div class="eyebrow"><span class="tiny-star">✦</span> SEU PRÓXIMO PAPO COMEÇA AQUI</div>
+      <div class="mascot-scene" aria-hidden="true"><span class="spark spark-one">✳</span><span class="spark spark-two">✦</span><div class="mascot"><span class="eye left"></span><span class="eye right"></span><span class="smile"></span></div><div class="mascot-shadow"></div></div>
+      <h1>Uma boa conversa.<br><span>Do seu jeito.</span></h1>
+      <p class="welcome-description">Crie um bot com a sua cara. Dê um nome, escolha<br class="desktop-break"> um jeito de conversar e deixe as ideias acontecerem.</p>
+      <button class="primary welcome-button" data-create>Criar meu primeiro bot <span aria-hidden="true">↗</span></button>
+      <p class="welcome-note">Só você, suas ideias e um bot para acompanhar.</p>
+      <div class="ideas"><span>PODE SER UM BOT PARA…</span><div class="idea-buttons"><button data-idea="ideas"><span aria-hidden="true">✧</span> Explorar ideias</button><button data-idea="study"><span aria-hidden="true">▤</span> Estudar junto</button><button data-idea="chat"><span aria-hidden="true">☏</span> Jogar conversa fora</button></div></div>
+      <div class="welcome-footer"><span class="status-dot"></span> Seu espaço pessoal, uma conversa de cada vez.</div>
+    </section>
+    <section id="chat" class="chat" hidden>
+      <header class="chat-header"><div id="chat-avatar" class="avatar green"></div><div><h1 id="chat-name"></h1><p>Seu bot de conversa</p></div><span class="chat-pill">SÓ CONVERSA</span></header>
+      <div id="messages" class="messages" role="log" aria-label="Conversa" aria-live="polite" aria-relevant="additions"></div>
+      <div class="composer-area">
+        <div id="chat-alert" class="chat-alert" role="status" hidden></div>
+        <div class="model-controls"><label for="chat-model">Modelo<select id="chat-model" aria-label="Modelo do bot"></select></label><label for="chat-effort">Raciocínio<select id="chat-effort" aria-label="Nível de raciocínio"></select></label><span id="model-status" class="model-status" role="status"></span></div>
+        <form id="message-form" class="composer"><label class="sr-only" for="message-input">Sua mensagem</label><textarea id="message-input" rows="1" maxlength="8000" placeholder="O que está passando pela sua cabeça?"></textarea><button id="send-button" class="send-button" type="submit" aria-label="Enviar mensagem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 7-7 7 7M12 5v14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
+        <p class="composer-note">Enter envia · Shift + Enter pula linha <span>Respostas com IA podem conter erros.</span></p>
+      </div>
+    </section>
+    <div id="toast" role="alert" hidden></div>
+  </main>
+  <dialog id="create-dialog" aria-labelledby="dialog-title">
+    <form id="create-form">
+      <div class="dialog-heading"><span class="dialog-symbol" aria-hidden="true">✦</span><button type="button" class="icon-button" id="close-dialog" aria-label="Fechar">✕</button></div>
+      <p class="eyebrow">UM NOVO COMEÇO</p><h2 id="dialog-title">Conheça seu novo bot.</h2><p class="dialog-description">Um nome e um jeito de ser. O resto vem na conversa.</p>
+      <label for="bot-name">Como ele vai se chamar?</label><input id="bot-name" name="name" maxlength="40" placeholder="Ex.: Nico, Lua, meu parceiro de ideias…" required autocomplete="off">
+      <label for="bot-instructions">Como você quer que ele converse? <span>opcional</span></label><textarea id="bot-instructions" name="instructions" maxlength="2000" rows="3" placeholder="Ex.: Seja descontraído, faça perguntas e me ajude a organizar minhas ideias."></textarea>
+      <div class="dialog-models"><div><label for="bot-model">Modelo</label><select id="bot-model" name="model"></select></div><div><label for="bot-effort">Raciocínio</label><select id="bot-effort" name="reasoningEffort"></select></div></div>
+      <p id="catalog-note" class="catalog-note">As opções são informadas pelo Codex conectado. O acesso depende da sua conta.</p>
+      <fieldset><legend>Escolha uma cor</legend><div class="colors"><label class="color-option green"><input type="radio" name="color" value="green" checked><span>Verde</span></label><label class="color-option blue"><input type="radio" name="color" value="blue"><span>Azul</span></label><label class="color-option purple"><input type="radio" name="color" value="purple"><span>Lilás</span></label><label class="color-option orange"><input type="radio" name="color" value="orange"><span>Laranja</span></label></div></fieldset>
+      <p id="create-error" class="form-error" role="alert" hidden></p>
+      <button class="primary create-submit" id="create-submit" type="submit">Criar e começar a conversar <span aria-hidden="true">↗</span></button>
+    </form>
+  </dialog>
+</body>
+</html>

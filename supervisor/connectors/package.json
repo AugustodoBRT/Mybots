@@ -1,0 +1,8 @@
+{
+  "name": "mybots-connectors",
+  "private": true,
+  "type": "module",
+  "description": "Third-party libraries for connectors, bundled into one file and delivered to the supervisor over the authenticated WebSocket.",
+  "dependencies": { "imapflow": "2.5.7" },
+  "devDependencies": { "esbuild": "0.25.10" }
+}

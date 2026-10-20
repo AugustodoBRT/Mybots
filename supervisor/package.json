@@ -1,0 +1,1 @@
+{"name":"mybots-supervisor","private":true,"type":"module","version":"0.1.0","engines":{"node":">=22.13"},"dependencies":{"ws":"^8"}}

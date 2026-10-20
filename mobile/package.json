@@ -1,0 +1,21 @@
+{
+  "name": "mybots-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start --lan"
+  },
+  "dependencies": {
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "expo": "~57.0.0",
+    "expo-font": "~57.0.4",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-svg": "15.15.4"
+  },
+  "devDependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

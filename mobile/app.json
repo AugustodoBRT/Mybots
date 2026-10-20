@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "MyBots",
+    "slug": "mybots",
+    "scheme": "mybots",
+    "version": "0.14.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "./plugins/withTermuxBridge.cjs",
+      "expo-font"
+    ],
+    "android": {
+      "package": "com.mybots.app",
+      "versionCode": 28
+    },
+    "icon": "./assets/brand/icon.png",
+    "splash": {
+      "image": "./assets/brand/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#090B10"
+    }
+  }
+}

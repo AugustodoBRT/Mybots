@@ -1,0 +1,266 @@
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync, chmodSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { validateProfile, TOOL_DEFINITIONS, toolArguments } from './tool-policy.mjs';
+import { validateBackup, mergeBotLists, deleteLocalBot } from '../mobile/local.js';
+
+export const now = () => new Date().toISOString();
+export const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const ACTIVE = ['queued', 'running', 'waiting_approval'];
+
+export class Database {
+  constructor(directory) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    chmodSync(directory, 0o700);
+    this.directory = directory;
+    this.db = new DatabaseSync(join(directory, 'mybots.db'));
+    chmodSync(join(directory, 'mybots.db'), 0o600);
+    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
+    const version = this.get('PRAGMA user_version').user_version;
+    if (version > 4) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version === 0) this.transaction(() => {
+      this.db.exec(`
+        CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE bots (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+        CREATE TABLE messages (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), body TEXT NOT NULL);
+        CREATE INDEX messages_bot ON messages(bot_id);
+        CREATE TABLE codex_sessions (bot_id TEXT PRIMARY KEY REFERENCES bots(id), session_id TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), message_id TEXT NOT NULL,
+          state TEXT NOT NULL CHECK(state IN ('queued','running','waiting_approval','done','failed','cancelled')),
+          payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 1,
+          worker_pid INTEGER, worker_start TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0,
+          error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX tasks_queue ON tasks(state, created_at);
+        CREATE TABLE task_events (id INTEGER PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), state TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE memory (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), body TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE grants (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), tool TEXT NOT NULL, body TEXT NOT NULL);
+        CREATE TABLE approvals (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), action_hash TEXT NOT NULL, state TEXT NOT NULL, body TEXT NOT NULL);
+        CREATE TABLE activity (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, bot_id TEXT, task_id TEXT, detail TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE connector_state (id TEXT PRIMARY KEY, body TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE heartbeats (id INTEGER PRIMARY KEY, instance_id TEXT NOT NULL, created_at TEXT NOT NULL);
+        PRAGMA user_version=1;
+      `);
+    });
+    if (version < 2) this.transaction(() => {
+      this.db.exec(`CREATE TABLE pending_items (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), body TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('open','done')), created_at TEXT NOT NULL);
+        CREATE UNIQUE INDEX grants_bot_tool ON grants(bot_id,tool);
+        PRAGMA user_version=2;`);
+      // Existing conversations were created with a chat-only instruction; rebuild their context once.
+      this.run('DELETE FROM codex_sessions');
+    });
+    // Connector events (e-mail received, later timers): the input of routines. The id deduplicates.
+    if (version < 3) this.transaction(() => {
+      this.db.exec(`CREATE TABLE events (id TEXT PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL, consumed_at TEXT);
+        CREATE INDEX events_kind ON events(kind, created_at);
+        PRAGMA user_version=3;`);
+    });
+    // Routines: a schedule or notification filter that queues tasks for one bot. routine_runs links each task to its routine.
+    if (version < 4) this.transaction(() => {
+      this.db.exec(`CREATE TABLE routines (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), body TEXT NOT NULL, enabled INTEGER NOT NULL,
+          next_run_at TEXT, last_run_at TEXT, last_event_at TEXT, pending INTEGER NOT NULL DEFAULT 0, last_result TEXT, skipped_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX routines_bot ON routines(bot_id);
+        CREATE TABLE routine_runs (id TEXT PRIMARY KEY, routine_id TEXT NOT NULL, task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id), created_at TEXT NOT NULL);
+        CREATE INDEX routine_runs_routine ON routine_runs(routine_id, created_at);
+        CREATE TABLE attachments (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX attachments_bot ON attachments(bot_id);
+        PRAGMA user_version=4;`);
+    });
+  }
+  get(sql, ...args) { return this.db.prepare(sql).get(...args); }
+  all(sql, ...args) { return this.db.prepare(sql).all(...args); }
+  run(sql, ...args) { return this.db.prepare(sql).run(...args); }
+  transaction(work) {
+    // Nested calls join the outer transaction, so composed writes (a routine run and its task) commit together.
+    if (this.depth) return work();
+    this.db.exec('BEGIN IMMEDIATE'); this.depth = 1;
+    try { const result = work(); this.db.exec('COMMIT'); return result; }
+    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    finally { this.depth = 0; }
+  }
+  close() { this.db.close(); }
+  bot(id) {
+    const row = this.get('SELECT body FROM bots WHERE id=?', id);
+    if (!row) return null;
+    const bot = JSON.parse(row.body);
+    bot.messages = this.all('SELECT body FROM messages WHERE bot_id=? ORDER BY rowid', id).map(item => JSON.parse(item.body));
+    const session = this.get('SELECT session_id FROM codex_sessions WHERE bot_id=?', id);
+    if (session) bot.codexSessionId = session.session_id;
+    return bot;
+  }
+  bots() { return this.all('SELECT id FROM bots').map(row => this.bot(row.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
+  requireBot(id) {
+    if (!uuid(id)) throw new Error('Bot inválido.');
+    const bot = this.bot(id);
+    if (!bot || bot.deletedAt) throw new Error('Bot não encontrado.');
+    return bot;
+  }
+  putBot(bot) {
+    const { messages, codexSessionId, ...body } = bot;
+    this.run('INSERT INTO bots(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body', bot.id, JSON.stringify(body));
+    this.run('DELETE FROM messages WHERE bot_id=?', bot.id);
+    for (const message of messages) this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, bot.id, JSON.stringify(message));
+    if (codexSessionId) this.session(bot.id, codexSessionId);
+    else this.run('DELETE FROM codex_sessions WHERE bot_id=?', bot.id);
+  }
+  session(botId, id) {
+    if (!uuid(id)) throw new Error('Sessão inválida.');
+    this.run('INSERT INTO codex_sessions VALUES(?,?,?) ON CONFLICT(bot_id) DO UPDATE SET session_id=excluded.session_id, updated_at=excluded.updated_at', botId, id, now());
+  }
+  record(kind, detail, botId = null, taskId = null) {
+    this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
+  }
+  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), toolsState: {
+    schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
+  } }; }
+  validateTools(snapshot) {
+    if (snapshot.toolsState === undefined) return;
+    const state = snapshot.toolsState; const ids = new Set(snapshot.bots.map(bot => bot.id));
+    if (state?.schema !== 1 || !['memory','pendingItems','grants'].every(key => Array.isArray(state[key]) && state[key].length <= 20000)) throw new Error('Backup de ferramentas inválido.');
+    for (const key of ['memory','pendingItems','grants']) {
+      const seen = new Set();
+      for (const row of state[key]) {
+        if (!row || !ids.has(row.bot_id) || typeof row.id !== 'string' || seen.has(row.id) || typeof row.body !== 'string') throw new Error('Item de ferramenta inválido no backup.');
+        seen.add(row.id);
+        if (key === 'grants') {
+          if (!(TOOL_DEFINITIONS.some(tool => tool.name === row.tool) || /^(mcp:[0-9a-f]{8}|account\.connectors|browser)(\/write)?$/.test(row.tool)) || row.id !== row.bot_id + ':' + row.tool || !['true','false'].includes(row.body)) throw new Error('Permissão inválida no backup.');
+        } else {
+          // Items also keep their dedupe key and when their deadline notice went out.
+          const { key: itemKey, remindedAt, ...args } = JSON.parse(row.body);
+          toolArguments(key === 'memory' ? 'memory.write' : 'task.create_item', key === 'memory' ? { ...args, ...(itemKey !== undefined ? { key: itemKey } : {}) } : args);
+          if (key === 'memory') args.key = itemKey;
+          if (!Number.isFinite(Date.parse(key === 'memory' ? row.updated_at : row.created_at)) || (key === 'memory' ? row.id !== row.bot_id + ':' + args.key : !uuid(row.id) || !['open','done'].includes(row.state))) throw new Error('Item de ferramenta inválido no backup.');
+        }
+      }
+    }
+  }
+  backup() {
+    const directory = join(this.directory, 'backup'); mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const name = `mybots-${now().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}-${randomUUID()}.json`;
+    const file = join(directory, name);
+    writeFileSync(file + '.tmp', JSON.stringify(this.snapshot()), { mode: 0o600 }); renameSync(file + '.tmp', file);
+    return { name, path: file };
+  }
+  importLegacy(snapshot) {
+    if (this.get("SELECT value FROM metadata WHERE key='legacy_imported'")) return false;
+    validateBackup(snapshot);
+    return this.transaction(() => {
+      for (const bot of snapshot.bots) {
+        if (this.bot(bot.id)) throw new Error('A migração encontrou um identificador já existente. Dados preservados.');
+        const messages = bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? {
+          ...message, status: 'error', awaitingResponse: false, error: 'Pedido anterior à migração interrompido. Envie novamente se necessário.'
+        } : message);
+        this.putBot({ ...bot, messages });
+      }
+      this.run("INSERT INTO metadata VALUES('legacy_imported',?)", now());
+      this.record('migration', `${snapshot.bots.length} bots migrados com seus identificadores.`);
+      return true;
+    });
+  }
+  restore(snapshot) {
+    validateBackup(snapshot); this.validateTools(snapshot);
+    if (this.tasks().some(task => ACTIVE.includes(task.state))) throw new Error('Aguarde ou cancele as tarefas antes de restaurar.');
+    this.backup();
+    this.transaction(() => {
+      const stamp = now();
+      const restored = new Set(snapshot.bots.map(bot => bot.id));
+      for (const bot of this.bots()) if (!restored.has(bot.id)) this.putBot({ ...bot, deletedAt: stamp, updatedAt: stamp, messages: [], codexSessionId: undefined });
+      for (const bot of snapshot.bots) this.putBot({ ...bot, ...(!bot.deletedAt ? { restoredAt: stamp } : {}),
+        messages: bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? { ...message, status: 'error', awaitingResponse: false, error: 'Pedido interrompido no backup.' } : message) });
+      this.run('DELETE FROM memory'); this.run('DELETE FROM pending_items'); this.run('DELETE FROM grants');
+      for (const row of snapshot.toolsState?.memory || []) this.run('INSERT INTO memory VALUES(?,?,?,?)', row.id, row.bot_id, row.body, row.updated_at);
+      for (const row of snapshot.toolsState?.pendingItems || []) this.run('INSERT INTO pending_items VALUES(?,?,?,?,?)', row.id, row.bot_id, row.body, row.state, row.created_at);
+      for (const row of snapshot.toolsState?.grants || []) this.run('INSERT INTO grants VALUES(?,?,?,?)', row.id, row.bot_id, row.tool, row.body);
+      this.record('restore', 'Backup restaurado.');
+    });
+  }
+  merge(incoming) {
+    validateBackup({ schema: 1, bots: incoming });
+    if (this.tasks().some(task => ACTIVE.includes(task.state))) throw new Error('Aguarde as tarefas antes de sincronizar.');
+    const existing = new Map(this.bots().map(bot => [bot.id, bot]));
+    const merged = mergeBotLists([...existing.values()], incoming.map(({ codexSessionId, ...bot }) => ({ ...bot,
+      ...(existing.get(bot.id)?.codexSessionId ? { codexSessionId: existing.get(bot.id).codexSessionId } : {}) })));
+    this.transaction(() => { for (const bot of merged) this.putBot(bot); });
+  }
+  create(data, selection) {
+    validateProfile(data);
+    if (typeof data.name !== 'string' || !data.name.trim() || data.name.trim().length > 40 ||
+      (data.instructions !== undefined && (typeof data.instructions !== 'string' || data.instructions.length > 2000)) ||
+      !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
+    const stamp = now();
+    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
+    this.transaction(() => { this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
+    return bot;
+  }
+  configure(id, selection, changes = {}) {
+    validateProfile(changes);
+    const bot = this.requireBot(id);
+    if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a resposta antes de alterar o bot.');
+    const updated = { ...bot, ...selection, updatedAt: now() };
+    for (const field of ['name','instructions','color','avatar','autonomy','access']) if (changes[field] !== undefined) updated[field] = changes[field];
+    if (typeof updated.name !== 'string' || !updated.name.trim() || updated.name.trim().length > 40 || typeof updated.instructions !== 'string' || updated.instructions.length > 2000 || !['green','blue','purple','orange'].includes(updated.color)) throw new Error('Informe nome, personalidade e cor válidos.');
+    updated.name = updated.name.trim(); updated.instructions = updated.instructions.trim();
+    // codexSessionId holds the session of the bot's current provider; another CLI cannot resume it.
+    const switched = (updated.provider || 'codex') !== (bot.provider || 'codex');
+    // A new access level, like a new grant, needs a fresh session so the bot stops repeating "I have no access".
+    if (switched || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
+    const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total' }[updated.access];
+    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${updated.provider === 'claude' ? 'Claude' : 'Codex'}; a conversa continua com o histórico salvo.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
+    return updated;
+  }
+  delete(id) {
+    this.requireBot(id);
+    if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a tarefa antes de apagar o bot.');
+    this.backup();
+    const next = deleteLocalBot(this.snapshot(), id).bots.find(bot => bot.id === id);
+    this.transaction(() => { this.putBot(next); this.record('bot_deleted', 'Bot apagado.', id); });
+  }
+  task(id) { return this.get('SELECT * FROM tasks WHERE id=?', id); }
+  tasks() { return this.all('SELECT * FROM tasks ORDER BY created_at DESC, rowid DESC'); }
+  enqueue(botId, requestId, text, selection, origin = {}) {
+    this.requireBot(botId);
+    if (!uuid(requestId) || typeof text !== 'string' || !text.trim() || text.trim().length > 8000) throw new Error('Escreva uma mensagem de até 8.000 caracteres.');
+    const payload = JSON.stringify({ text: text.trim(), ...selection });
+    const existing = this.task(requestId);
+    if (existing) {
+      if (existing.bot_id !== botId || existing.payload !== payload) throw new Error('Este pedido já foi usado para outra mensagem.');
+      return existing;
+    }
+    // Messages sent while the bot works wait in line and become its next turns, in order.
+    if (this.tasks().filter(task => task.bot_id === botId && ACTIVE.includes(task.state)).length >= 10) throw new Error('Este bot já tem 10 mensagens esperando. Aguarde ele responder algumas.');
+    return this.transaction(() => {
+      const bot = this.requireBot(botId); const stamp = now(); const messageId = randomUUID();
+      this.putBot({ ...bot, ...selection, updatedAt: stamp, messages: [...bot.messages,
+        { id: messageId, requestId, role: 'user', text: text.trim(), status: 'pending', ...selection, ...origin, createdAt: stamp }] });
+      this.run("INSERT INTO tasks(id,bot_id,message_id,state,payload,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?)", requestId, botId, messageId, payload, stamp, stamp);
+      this.event(requestId, 'queued');
+      return this.task(requestId);
+    });
+  }
+  event(id, state) {
+    const task = this.task(id);
+    this.run('INSERT INTO task_events(task_id,state,created_at) VALUES(?,?,?)', id, state, now());
+    this.record('task_' + state, { queued: 'Mensagem na fila.', running: 'Gerando resposta.', done: 'Resposta concluída.', failed: 'Resposta interrompida ou falhou.', cancelled: 'Pedido cancelado.', waiting_approval: 'Aguardando sua aprovação.' }[state] || state, task.bot_id, id);
+  }
+  start(id) {
+    return this.transaction(() => {
+      this.run("UPDATE tasks SET state='running', attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'", now(), id);
+      this.event(id, 'running'); return this.task(id);
+    });
+  }
+  finish(id, state, reply = null, error = null) {
+    return this.transaction(() => {
+      const task = this.task(id);
+      if (!task || !ACTIVE.includes(task.state)) return;
+      const bot = this.bot(task.bot_id);
+      const messages = bot.messages.map(message => message.id === task.message_id ? { ...message,
+        status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
+      const files = reply?.attachments?.length ? { attachments: reply.attachments } : {};
+      if (state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, reasoningEffort: reply.reasoningEffort, ...files, createdAt: now() });
+      else if (files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
+      this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
+      this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);
+      this.event(id, state);
+    });
+  }
+}

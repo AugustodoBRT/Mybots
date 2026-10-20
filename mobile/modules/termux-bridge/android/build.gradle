@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.termuxbridge'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.termuxbridge'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  implementation 'androidx.security:security-crypto:1.1.0'
+  // Multi-profile WebView: each bot's browser keeps its own cookies and logins.
+  implementation 'androidx.webkit:webkit:1.17.1'
+  // FileProvider: opening and sharing the files bots send.
+  implementation 'androidx.core:core:1.17.0'
+}

@@ -348,7 +348,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             await refresh();
             const selection = selectionFor(catalog(), bot);
             if (statusFor(bot)?.loggedIn) {
-              const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com browser_read.`, selection);
+              const reader = bot.provider === 'claude' && browser.pages.get(bot.id)?.engine === 'claude-chrome' ? 'as ferramentas oficiais Claude in Chrome' : 'browser_read';
+              const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com ${reader}.`, selection);
               broadcast('task.progress', { taskId: task.id }); queue.schedule();
             }
           }
@@ -414,7 +415,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     let api;
     server = createServer(async (request, response) => {
       if (request.url === '/mcp') { await handleMcp(request, response, tools); return; }
-      if (request.method === 'POST' && ['/tools/claim','/tools/call','/tools/list'].includes(request.url)) {
+      if (request.method === 'POST' && ['/tools/claim','/tools/call','/tools/list','/tools/chrome'].includes(request.url)) {
         response.setHeader('Content-Type', 'application/json'); response.setHeader('Cache-Control', 'no-store');
         if (request.headers.origin || !request.headers.authorization?.startsWith('Bearer ')) { response.writeHead(403).end(JSON.stringify({ error: 'Conexão não autorizada.' })); return; }
         const runToken = request.headers.authorization.slice(7);
@@ -423,7 +424,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           let size = 0; const chunks = [];
           for await (const chunk of request) { size += chunk.length; if (size > 16000) throw new Error('Pedido grande demais.'); chunks.push(chunk); }
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          const result = request.url === '/tools/claim' ? (tools.context(runToken, body.bridgeId, true), { connected: true })
+          const result = request.url === '/tools/chrome' ? await tools.chromeHook(runToken, body)
+            : request.url === '/tools/claim' ? (tools.context(runToken, body.bridgeId, true), { connected: true })
             : request.url === '/tools/list' ? { tools: tools.toolList(runToken, body.bridgeId) }
             : body.name !== undefined ? await tools.callMcp(runToken, body) : await tools.call(runToken, body);
           response.end(JSON.stringify(result));

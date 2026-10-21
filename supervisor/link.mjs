@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
-export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list'];
+export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome'];
 export const MAX_FRAME = 32 * 1024 * 1024;
 const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];

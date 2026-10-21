@@ -67,9 +67,10 @@ export class Queue extends EventEmitter {
         const turn = this.db.roomTurn(task.id);
         // An IA session lives on the machine that made it: a bot that changed device starts a new one, with the history.
         const marker = 'session.lane.' + (turn ? turn.room_id + '.' : '') + task.bot_id;
-        if ((this.db.get('SELECT value FROM metadata WHERE key=?', marker)?.value || 'phone') !== next.lane) {
+        const sessionLane = next.lane === 'pc' && this.db.requireBot(task.bot_id).provider === 'claude' ? 'pc:claude-chrome' : next.lane;
+        if ((this.db.get('SELECT value FROM metadata WHERE key=?', marker)?.value || 'phone') !== sessionLane) {
           if (turn) this.db.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', turn.room_id, task.bot_id); else this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', task.bot_id);
-          this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', marker, next.lane);
+          this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', marker, sessionLane);
         }
         const owner = this.db.requireBot(task.bot_id);
         const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;

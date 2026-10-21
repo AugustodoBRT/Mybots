@@ -95,7 +95,7 @@ export function computerFor(allowed, workspace, home = homedir()) {
 
 // Folders with keys, passwords and the other IA's login. Every IA turn here runs in a bubblewrap view of the disk where
 // they are empty, so no command or file read can reach them, whatever the IA decides.
-const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone'];
+const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone', '.config/google-chrome'];
 export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc')) {
   if (!bwrap) return null;
   const hidden = [...new Set([...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
@@ -209,13 +209,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         try {
           if (!run || run.controller.signal.aborted) throw new Error('A resposta no computador já foi interrompida.');
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)) throw new Error('Ferramenta não permitida nesta resposta.');
+          const chrome = run.bot.provider === 'claude' && message.op === 'chrome.begin';
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (run.bot.provider === 'claude' || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.');
           owner = run;
           run.indicator ||= desktop.indicate(run.bot);
           const dismiss = await run.indicator;
           if (run.controller.signal.aborted) { await dismiss(); throw new Error('Controle interrompido.'); }
-          const result = isDesktop ? await desktop.command(message.op, message.args, run.controller.signal) : await browser.command(run.bot.id, message.op.slice(8), message.args, run.controller.signal);
+          const result = chrome ? { ready: true } : isDesktop ? await desktop.command(message.op, message.args, run.controller.signal) : await browser.command(run.bot.id, message.op.slice(8), message.args, run.controller.signal);
           if (run.controller.signal.aborted) throw new Error('Controle interrompido.');
           send({ type: 'pc_result', rid: message.rid, result });
         } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
@@ -235,7 +236,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, chrome: bot.provider === 'claude' && Boolean(message.tools.browser), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });

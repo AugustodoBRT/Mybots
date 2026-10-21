@@ -66,9 +66,9 @@ bind = SUPER SHIFT, Escape, exec, /usr/bin/node /home/augusto/vscodeProjects/myb
 
 Em outro computador, ajuste o caminho e peça confirmação antes de editar o `hyprland.conf`.
 
-## Chrome de cada bot (v44)
+## Navegador no PC (v44/v45)
 
-As mesmas ferramentas `browser_open/read/click/type/upload/login/wait/screenshot/ask_user` usam **Playwright com `/usr/bin/google-chrome-stable`** quando a resposta roda no PC. Não baixa outro Chromium. Rode `npm ci --prefix pc` ao atualizar as dependências. Cada bot tem seu perfil em `~/.mybots-pc/browsers/<id>/`, com cookies próprios e persistentes; nunca usa o perfil pessoal do Chrome. O navegador segue a permissão **Navegador**, independentemente da permissão do desktop.
+Para modelos **Codex**, as mesmas ferramentas `browser_open/read/click/type/upload/login/wait/screenshot/ask_user` usam **Playwright com `/usr/bin/google-chrome-stable`** quando a resposta roda no PC. Não baixa outro Chromium. Rode `npm ci --prefix pc` ao atualizar as dependências. Cada bot tem seu perfil em `~/.mybots-pc/browsers/<id>/`, com cookies próprios e persistentes; O Codex nunca usa o perfil pessoal do Chrome. O navegador segue a permissão **Navegador**, independentemente da permissão do desktop.
 
 - O celular continua aprovando envios de formulário no Médio (Sempre permitir por `browser/write`), uploads sempre e primeiro login no Médio (`browser/login`). Arquivos para upload são os anexos daquele bot no celular, nunca um caminho livre do disco do PC.
 - `browser_login` não recebe senha como argumento. O processo do navegador cria uma chave RSA temporária; o cofre do Android confere https, site e bots autorizados e devolve só uma senha cifrada com AES-GCM/RSA-OAEP, válida para aquele pedido e página. O supervisor e o nó repassam a cifra; só o processo do navegador decifra, preenche e envia. Chave de uso único, até 60 s, descartada se a página mudar, cancelar ou terminar o turno. O gerenciador de senhas do Chrome fica desligado.
@@ -96,3 +96,15 @@ O bot do computador escreve um módulo JavaScript (`export async function run(in
 - **Sessões de IA** pertencem à máquina: quando um bot "Onde estiver" muda de aparelho, começa uma sessão nova com o histórico recente.
 - **Janela**: o nó serve a interface em `127.0.0.1:3232` (confere `Host` e `Origin`, contra páginas de outros sites e DNS rebinding), com um token novo a cada início que só vai na própria página. Cada pedido da janela vai ao celular pelo link, que responde só uma lista fechada de métodos (`DESKTOP_METHODS` em `supervisor/link.mjs`); os eventos do supervisor voltam para atualizar a janela ao vivo.
 - **Contas**: o computador informa quais IAs estão logadas nele (a cada 5 minutos). Um bot do computador só precisa do login lá; modelos de uma IA que só existe no computador entram no seletor.
+
+### Claude in Chrome oficial (v45)
+
+Bots **Claude que respondem no computador** usam a integração oficial do Claude Code (`--chrome`), com as ferramentas `mcp__claude-in-chrome__*`: leitura da página, busca de elementos, screenshots, navegação, cliques, preenchimento e JavaScript. No celular continuam usando o navegador do app; o Codex no PC continua com Playwright.
+
+Por escolha do usuário, o Claude usa o **Chrome principal**, com os logins desse perfil compartilhados entre os bots Claude e a pessoa. Instale a [extensão oficial](https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn) nesse perfil e entre na mesma conta paga do Claude Code (login direto Anthropic; chave de API não habilita a integração). Mantenha o Chrome aberto. Se houver mais de um navegador conectado, selecione o perfil desejado na integração. Requer Claude Code **2.1.295 ou superior**; `claude update` atualiza o CLI. [Documentação oficial](https://code.claude.com/docs/en/chrome).
+
+A permissão é **Navegador**, independente de “Mexer no computador”, “Controlar a tela” e apps da conta. Pouco acesso bloqueia. No Médio, leituras passam quando Navegador está liberado; ações pedem aprovação com “Sempre permitir”. No Total, ações individuais rodam direto. **Uploads e lotes (`browser_batch`) sempre pedem aprovação**, porque um lote pode conter um envio de arquivo. A extensão pode pedir autorizações próprias de sites/conexão; elas continuam sendo decididas pela pessoa no Chrome.
+
+Toda chamada passa por um hook oficial antes de executar, pelo túnel até o celular. Se o supervisor recusar, desconectar ou o hook falhar/expirar, a ação é bloqueada. O PC mostra o mesmo aviso de controle e usa a mesma tecla de pânico; interromper o bot preserva o Chrome principal aberto. Uma ação já enviada à extensão pode terminar antes de o cancelamento chegar.
+
+O painel informa “Chrome principal · Claude”. **Assumir** bloqueia novas chamadas de todos os bots Claude a esse Chrome até devolver. Login, senha, CAPTCHA e códigos são preenchidos manualmente nesse Chrome; `browser_ask_user` pede ajuda. O cofre do celular e `browser_login` cifrado continuam disponíveis para Codex/Playwright, não são usados pela extensão oficial. Não há troca silenciosa para Playwright se a extensão estiver desconectada.

@@ -33,6 +33,7 @@ const BROWSER_LABELS = { 'browser.open': 'Navegador: abrir site', 'browser.read'
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 function approvalText(tool, args, app) {
+  if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
   if (tool.startsWith('desktop/')) return { title: 'Controlar a tela do computador', summary: args.summary };
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
   if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}\n${args.instructions}` };
@@ -173,8 +174,9 @@ export class Tools {
   toolList(token, bridgeId) {
     const run = this.context(token, bridgeId);
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
-    const basic = this.db.requireBot(run.botId).access === 'basic';
-    return [...MCP_TOOLS.filter(tool => (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!basic || this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny')), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
+    const bot = this.db.requireBot(run.botId); const basic = bot.access === 'basic';
+    const chrome = run.lane === 'pc' && bot.provider === 'claude';
+    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!basic || this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny')), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
   async callMcp(token, { bridgeId, callId, name, args }) {
@@ -293,6 +295,7 @@ export class Tools {
    */
   async connectorPermission(run, { tool_name: name, input }) {
     const deny = message => ({ behavior: 'deny', message });
+    if (name.startsWith('mcp__claude-in-chrome__')) return this.chromePermission(run, name, input);
     if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
     const bot = this.db.requireBot(run.botId);
     if (this.policy(run.botId, 'account.connectors') === 'deny') return deny('Este bot não tem permissão para usar os apps da conta. A pessoa pode liberar em Permissões, no perfil dele.');
@@ -305,6 +308,50 @@ export class Tools {
     const approved = await this.ask(run, 'account.connectors/' + name, input, hash, { server: { name: server.replace(/^claude_ai_/, '').replace(/_/g, ' ') }, tool: { name: action } }, bot.access === 'ask' ? 'account.connectors/write' : null);
     this.db.record(approved ? 'tool_done' : 'tool_denied', `${label}: ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
     return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
+  }
+  /** The official extension executes on the PC; every native call is gated on the phone, including reads. */
+  async chromeHook(token, body) {
+    const run = this.runs.get(token);
+    if (!run || !this.runsHas(run) || body?.hook_event_name !== 'PreToolUse' || !/^mcp__claude-in-chrome__[a-z_]+$/.test(body.tool_name || '') || !/^[\w-]{1,200}$/.test(body.tool_use_id || '') || !body.tool_input || typeof body.tool_input !== 'object' || Array.isArray(body.tool_input) || JSON.stringify(body.tool_input).length > 12000) throw new Error('Pedido do Chrome inválido ou encerrado.');
+    const hash = createHash('sha256').update(JSON.stringify({ name: body.tool_name, input: body.tool_input })).digest('hex');
+    const id = 'chrome:' + body.tool_use_id; const previous = run.calls.get(id);
+    if (previous) throw new Error('Esta chamada do Chrome já foi decidida. Inicie uma nova chamada.');
+    if (run.calls.size >= 100 || run.busy) throw new Error('Aguarde a ferramenta atual ou inicie outra mensagem.');
+    run.busy = true;
+    const promise = this.chromePermission(run, body.tool_name, body.tool_input).then(result => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: result.behavior, permissionDecisionReason: result.message || 'Autorizado pelo MyBots no celular.' } })).finally(() => { run.busy = false; });
+    run.calls.set(id, { hash, promise }); return promise;
+  }
+  async chromePermission(run, name, input) {
+    try {
+      const bot = this.db.requireBot(run.botId);
+      if (run.lane !== 'pc' || bot.provider !== 'claude') throw new Error('O Chrome oficial só existe para Claude respondendo pelo computador.');
+      const action = name.slice('mcp__claude-in-chrome__'.length);
+      const hash = createHash('sha256').update(JSON.stringify({ botId: bot.id, taskId: run.taskId, name, input })).digest('hex');
+      const shown = { summary: `Chrome principal (logins compartilhados) · ${action}\n${JSON.stringify(input, null, 1).slice(0, 1500)}` };
+      const gate = this.gate(bot, 'browser', { readOnly: true });
+      if (gate.ask && !await this.ask(run, 'browser/chrome', shown, hash, null, gate.always)) throw new Error('A pessoa não autorizou o Chrome.');
+      // Unknown tools, JavaScript and batches can change sites: they never inherit a read-only classification.
+      const read = ['tabs_context_mcp', 'list_connected_browsers', 'read_page', 'get_page_text', 'find', 'read_console_messages', 'read_network_requests', 'shortcuts_list'].includes(action) || action === 'computer' && ['screenshot', 'zoom'].includes(input.action);
+      const upload = ['file_upload', 'upload_image'].includes(action);
+      const batch = action === 'browser_batch';
+      if (upload && SENSITIVE.test(JSON.stringify(input))) throw new Error('Arquivos de senhas e chaves não podem ser enviados.');
+      const key = 'browser/chrome/write';
+      // A native batch may contain an upload; approving it as a whole must not bypass the upload decision.
+      if (upload || batch || !read && bot.access !== 'full' && this.saved(bot.id, key) !== 'true') {
+        if (!await this.ask(run, key, shown, hash, null, upload || batch ? null : key)) throw new Error('A pessoa recusou ou não respondeu. Nada foi executado; não tente contornar.');
+      }
+      this.requireGrant(run, 'browser');
+      if ([...this.browser.control].some(([id, who]) => who === 'person' && this.browser.pages.get(id)?.engine === 'claude-chrome')) throw new Error('A pessoa assumiu o Chrome principal. Espere ela devolver.');
+      if (this.browser.control.get(bot.id) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
+      await this.pcCommand(run, 'chrome.begin', {});
+      this.requireGrant(run, 'browser');
+      this.browser.pages.set(bot.id, { where: 'pc', engine: 'claude-chrome', title: 'Chrome principal · Claude', url: '' });
+      this.db.record('tool_done', `Chrome principal: ${action} autorizado.`, bot.id, run.taskId); this.changed('activity.new');
+      return { behavior: 'allow', updatedInput: input };
+    } catch (error) {
+      this.db.record('tool_denied', `Chrome principal: ${error.message}`.slice(0, 300), run.botId, run.taskId); this.changed('activity.new');
+      return { behavior: 'deny', message: error.message };
+    }
   }
   /**
    * An approved skill: installed for the bot that proposed it or a new phone bot, with its daily routine, then run
@@ -377,6 +424,10 @@ export class Tools {
       this.requireGrant(run, 'browser');
       const bot = this.db.requireBot(run.botId);
       if (!this.browser) throw new Error('O navegador não está disponível neste supervisor.');
+      if (run.lane === 'pc' && bot.provider === 'claude') {
+        if (tool !== 'browser.ask_user') throw new Error('Use as ferramentas oficiais mcp__claude-in-chrome__ no Chrome principal. Login e CAPTCHA são feitos pela pessoa nesse Chrome.');
+        this.browser.pages.set(bot.id, { where: 'pc', engine: 'claude-chrome', title: 'Chrome principal · Claude', url: '' });
+      }
       const refused = 'Ação recusada, expirada ou cancelada. Nada foi executado.';
       const gate = this.gate(bot, 'browser', { readOnly: true });
       if (gate.ask && !(await this.ask(run, tool, args, hash, null, gate.always))) throw new Error(refused);

@@ -620,3 +620,21 @@ Relato: o Maniaco (Claude Haiku, celular) baixou do SIGAA as tarefas de Estabili
 **Limites conferidos**: só havia um monitor fisicamente ativo neste teste; coordenadas de segundo monitor têm teste automatizado. Downloads automáticos do Chrome ainda ficam bloqueados (upload de anexo aprovado funciona). Acesso ao mesmo usuário Linux e outros serviços locais não equivale a isolamento de uma conta separada.
 
 APK `dist/apk/mybots-v44.apk`, versionCode 44, 0.24.0, ARM64, build offline, certificado `fac61745…033b9c`, SHA-256 `0b7ef844ef18be84c4ebc3daec84e86389f4e510f1aa9b97e49090f3baebc8e8`. Release v44 com APK e .sha256 para atualização pelo app.
+
+
+## 21/10/2026 — v45 (0.25.0): Claude in Chrome oficial
+
+Pedido da pessoa: integrar o navegador oficial do Claude, mantendo Playwright para modelos Codex. A pessoa escolheu usar o Chrome principal e instalou/conectou a extensão oficial.
+
+- **Claude no PC**: `--chrome`, ferramentas oficiais `mcp__claude-in-chrome__*`, Chrome principal e logins compartilhados entre os bots Claude. No celular, navegador do app; Codex no PC mantém Playwright, perfis por bot e login cifrado do cofre Android. Não há fallback silencioso para Playwright no Claude.
+- **Decisão no celular**: hook oficial `PreToolUse` autenticado pelo token da resposta e encaminhado pelo túnel, inclusive para leituras e ferramentas já autorizadas no CLI. Confere execução ativa, aparelho, provedor, permissão Navegador e argumentos; IDs não são reutilizados. Médio pede aprovação lembrável para ações; Total permite ações individuais; uploads e lotes sempre pedem aprovação. Pouco acesso bloqueia. Apps da conta não concedem acesso ao Chrome.
+- **Falhas e controle**: `onFailure: "block"` impede execução em recusa, desconexão ou falha do hook; exige Claude Code 2.1.295+. Mesmo aviso visível, dono único de controle e pânico local; o Chrome principal permanece aberto ao interromper. Assumir bloqueia novas chamadas ao Chrome compartilhado até devolver. Ações já enviadas à extensão não são desfeitas.
+- **Interface e orientação**: painel “Chrome principal · Claude”, login manual nesse Chrome e `browser_ask_user` para ajuda; as ferramentas browser_* do Playwright ficam ocultas/bloqueadas para Claude no PC. Sessões antigas do Claude no PC são renovadas uma vez, preservando histórico, inclusive em salas. O perfil pessoal do Chrome fica vazio no bubblewrap, impedindo leitura direta dos arquivos de cookies/senhas pelo modelo.
+
+**145 testes passando** (5 novos): políticas, cartões/Sempre permitir, recusa/revogação, Assumir, uploads, capacidade encerrada, indicador/pânico, renovação de sessão e CLI Claude real com API/MCP simulados. Este último confirma que uma ferramenta pré-autorizada não executa quando o celular recusa ou o hook fica inacessível.
+
+**Teste real no PC, nó isolado** (`MYBOTS_PC_HOME=/tmp/mybots-v45-node`, portas 3231/3233, página fictícia local em 3235, sem usar o serviço mybots-pc): Claude Haiku criou aba própria, leu a página, preencheu “Olá, Chrome oficial v45!”, enviou o formulário e conferiu o resultado, capturou screenshot oficial e fechou só a aba de teste. Chamadas oficiais autorizadas pelo supervisor e aviso do desktop ativos. Interface pc/ui regenerada.
+
+**Emulador**: validação final do APK/painel e regressão real Codex nesta versão ficaram pendentes; a pessoa pediu publicação imediata porque sairia e o PC ficaria sem internet. O emulador foi iniciado, mas a instalação/teste não foi concluída. Regressão automatizada do Codex/Playwright passou na suíte completa.
+
+APK `dist/apk/mybots-v45.apk`, versionCode 45, 0.25.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `6b92e8235c42d8a660ab83a498829f0b118e8b5a3a25033f154faac4d9be05c8`. Release v45 com APK e .sha256 para atualização pelo app.

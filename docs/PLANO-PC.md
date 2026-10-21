@@ -47,7 +47,7 @@ Campo do bot **"Onde ele vive"** (`bot.home`):
 
 - **Programação**: área própria por bot (`~/MyBots/<bot>/`, com git). Claude Code com ferramentas nativas (Bash, Edit, Read); aprovações pelo `--permission-prompt-tool` que já existe. Dentro da área, o nível Total libera; fora dela, `sudo`, `rm -rf`, push etc. viram **cartão de aprovação no celular e no PC**.
 - **Controlar o PC** (Wayland + Hyprland, então `xdotool` não serve): `grim` (tela), `hyprctl` (janelas, foco, abrir apps), `ydotool` + `ydotoold` (clique e teclado). Indicador visível na tela e **tecla de pânico** no Hyprland. Nível de acesso próprio, nunca herdado.
-- **Navegador de verdade**: Playwright com o Chrome do sistema, perfil por bot. Senhas continuam no celular: no login, só aquela senha vai cifrada ao processo do navegador; nunca ao modelo.
+- **Navegador de verdade**: Codex usa Playwright com o Chrome do sistema e perfil por bot, login cifrado do celular. Desde a v45, Claude usa a integração oficial Claude in Chrome no perfil principal (escolha da pessoa), com logins compartilhados e login manual no PC; permissões continuam no celular.
 - **Tudo do celular**: o MCP do PC expõe a união das ferramentas; as do celular (SMS, notificações, localização, pendências, rotinas) são repassadas ao supervisor do celular pelo link. Política e aprovações seguem decididas no celular.
 
 ## 6. Habilidades: bots criados com ajuda do PC
@@ -94,7 +94,8 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 | **v42** ✅ | Habilidades: `skill_propose` (sempre com aprovação), bot novo no celular, rotina diária sem IA, `skill_run`, execução isolada no Node do Termux; internet nos comandos do Codex no PC | Codex real escreveu `buscar_vagas` (Gupy), testou no PC, o emulador instalou e rodou: 19 vagas na conversa e na planilha |
 | **v43** ✅ | Correção: PDFs com figuras, diagramas e fórmulas — o bot vê as páginas como imagem (`as_image`) | Bot do celular resolveu um diagrama de blocos só desenhado |
 | **v44** ✅ | Controle do desktop (grim/hyprctl/ydotool), permissão própria, indicador e pânico local + Playwright/Chrome com perfil por bot e login cifrado do celular | Codex real no emulador abre app, foca com o ponteiro, clica, digita e vê screenshot; pânico interrompe em 395 ms; login fictício no Chrome com a senha salva no Android |
-| **v45** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
+| **v45** ✅ | Claude in Chrome oficial no Chrome principal, hook de autorização no celular, aviso/pânico e Assumir; Codex mantém Playwright | Claude real lê, preenche, clica e captura screenshot; 145 testes passam; validação final no emulador pendente |
+| **v46** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
 
 ## 10. Riscos
 

@@ -22,7 +22,8 @@ import { Device, ingestNotifications, notificationStats } from './device.mjs';
 import { Routines } from './routines.mjs';
 import { Attachments } from './attachments.mjs';
 import { Apps } from './apps.mjs';
-import { Browser } from './browser.mjs';
+import { Browser, personInput } from './browser.mjs';
+import { mainChrome } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
 import { Link } from './link.mjs';
@@ -119,6 +120,16 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const catalog = () => [...models, ...(nodes.computer()?.models || []).filter(item => !models.some(own => (own.provider || 'codex') === (item?.provider || 'codex')))];
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
+    // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
+    const watchBrowsers = () => {
+      const wanted = new Set([...(sockets?.clients || [])].flatMap(socket => [...(socket.views || [])]));
+      for (const botId of wanted) if (!link.watching.has(botId)) link.view(botId, true);
+      for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
+    };
+    link.onFrame = frame => {
+      const text = JSON.stringify({ event: 'browser.frame', data: frame });
+      for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && socket.bufferedAmount < 1_500_000) socket.send(text);
+    };
     // Whether a bot's IA is logged in where its next turn runs: the computer reports its own; while it is off,
     // a turn of a computer bot just waits (and is checked by the computer when it runs there).
     const statusFor = bot => {
@@ -269,7 +280,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
       computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' });
     link.rpc = (method, params) => rpc(method, params);
-    const rpc = async (method, params = {}) => {
+    const rpc = async (method, params = {}, socket = null) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
       switch (method) {
         case 'state.get': await refresh(); return state();
@@ -339,16 +350,31 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'app.refresh': return apps.refresh(params.id);
         case 'app.configure': return apps.configure(params.id, params);
         case 'app.remove': { const result = apps.remove(params.id); broadcast('activity.new'); return result; }
+        // The live view of a bot's Chrome on the computer, sent only to the app connections watching it.
+        case 'browser.view': {
+          const bot = db.requireBot(params.botId);
+          if (!socket) throw new Error('Abra o navegador do bot no app.');
+          socket.views ||= new Set();
+          if (params.on) socket.views.add(bot.id); else socket.views.delete(bot.id);
+          watchBrowsers();
+          return { watching: Boolean(params.on), online: link.status().state === 'online' };
+        }
+        case 'browser.input': {
+          const bot = db.requireBot(params.botId);
+          if (browser.control.get(bot.id) !== 'person') throw new Error('Toque em Assumir antes de usar a página.');
+          link.input(bot.id, personInput(params.input)); return { sent: true };
+        }
         case 'browser.control': {
           const bot = db.requireBot(params.botId);
           const help = browser.setControl(bot.id, params.who);
+          link.control(browser.status().control);
           db.record('browser_control', params.who === 'person' ? 'Você assumiu o navegador do bot.' : 'Navegador devolvido ao bot.', bot.id);
           // Handing back after the bot asked for help continues its work as a new turn.
           if (help) {
             await refresh();
             const selection = selectionFor(catalog(), bot);
             if (statusFor(bot)?.loggedIn) {
-              const reader = bot.provider === 'claude' && browser.pages.get(bot.id)?.engine === 'claude-chrome' ? 'as ferramentas oficiais Claude in Chrome' : 'browser_read';
+              const reader = mainChrome(bot) && browser.pages.get(bot.id)?.engine === 'claude-chrome' ? 'as ferramentas oficiais Claude in Chrome' : 'browser_read';
               const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com ${reader}.`, selection);
               broadcast('task.progress', { taskId: task.id }); queue.schedule();
             }
@@ -539,7 +565,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     sockets.on('connection', socket => {
       const timeout = setTimeout(() => socket.close(1008), 5000); socket.alive = true;
       socket.on('error', () => {}); socket.on('pong', () => { socket.alive = true; });
-      socket.on('close', () => clearTimeout(timeout));
+      socket.on('close', () => { clearTimeout(timeout); if (socket.views?.size) { socket.views.clear(); watchBrowsers(); } });
       let processing = false;
       socket.on('message', async (raw, binary) => {
         if (binary || processing) { socket.close(1008); return; }
@@ -553,7 +579,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             socket.authenticated = true; clearTimeout(timeout);
             socket.send(JSON.stringify({ id: request.id, result: { authenticated: true } }));
           } else {
-            const result = await rpc(request.method, request.params);
+            const result = await rpc(request.method, request.params, socket);
             if (socket.readyState === 1) socket.send(JSON.stringify({ id: request.id, result }));
           }
         } catch (error) {

@@ -52,7 +52,10 @@ export function validFolders(list) {
   if (!Array.isArray(list) || list.length > 10) return false;
   return list.every(path => typeof path === 'string' && /^(~|\/)[^\u0000-\u001f]{0,300}$/.test(path) && !/(^|\/)\.\.(\/|$)/.test(path) && !SENSITIVE.test(path) && !['/', '~', '~/'].includes(path.trim()));
 }
+/** A Claude bot that chose the person's main Chrome (Claude in Chrome) instead of its own Chrome on the computer. */
+export const mainChrome = bot => bot?.provider === 'claude' && bot.mainChrome === true;
 export function validateProfile(data) {
+  if (data.mainChrome !== undefined && typeof data.mainChrome !== 'boolean') throw new Error('Escolha se o bot usa o seu Chrome principal.');
   if (data.avatar !== undefined && !AVATARS.includes(data.avatar)) throw new Error('Escolha uma aparência válida.');
   if (data.autonomy !== undefined && !['ask', 'local'].includes(data.autonomy)) throw new Error('Escolha uma autonomia válida.');
   if (data.access !== undefined && !ACCESS_LEVELS.includes(data.access)) throw new Error('Escolha um nível de acesso válido.');

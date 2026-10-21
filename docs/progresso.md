@@ -638,3 +638,19 @@ Pedido da pessoa: integrar o navegador oficial do Claude, mantendo Playwright pa
 **Emulador**: validação final do APK/painel e regressão real Codex nesta versão ficaram pendentes; a pessoa pediu publicação imediata porque sairia e o PC ficaria sem internet. O emulador foi iniciado, mas a instalação/teste não foi concluída. Regressão automatizada do Codex/Playwright passou na suíte completa.
 
 APK `dist/apk/mybots-v45.apk`, versionCode 45, 0.25.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `6b92e8235c42d8a660ab83a498829f0b118e8b5a3a25033f154faac4d9be05c8`. Release v45 com APK e .sha256 para atualização pelo app.
+
+
+## 21/10/2026 — v46 (0.26.0): Chrome de cada bot dentro do MyBots, senhas por CSV e novo campo de mensagem
+
+Pedido da pessoa: o navegador real do PC dentro do app, como nos outros apps de bots (OpenBot, OpenMausBot), um Chrome por bot; tentar a conta Google em cada Chrome; importar o CSV de senhas; e corrigir o campo de mensagem (layout como o do Claude, ditado que não para na pausa, ditado nas salas e no PC).
+
+- **Google por bot (testado, não funciona)**: com Chrome 155, Playwright, Chrome comum aberto pelo MyBots e conectado depois por depuração remota, e sem janela: todos recusados pelo Google (“This browser or app may not be secure”, `navigator.webdriver` verdadeiro). O OpenMausBot só passa usando o Chrome da pessoa iniciado por ela. Sem disfarce de automação.
+- **Chrome do bot dentro do app**: o Chrome de cada bot no PC roda sem janela; screencast JPEG (~8 qps, só quando muda) vai pelo nó → link → supervisor só para as conexões que olham aquele bot; a janela do PC recebe direto do nó. Assumir permite toque (clique), arrastar (rolar), texto (com modo escondido para senhas/códigos), teclas, voltar, recarregar e endereço. O nó recusa entradas sem Assumir pelo estado de controle que o celular envia.
+- **Claude no PC**: usa o Chrome próprio do bot por padrão; Claude in Chrome (Chrome principal) virou opção por bot em Acesso → Navegador no computador.
+- **Senhas por CSV**: Ajustes → Senhas → Importar CSV (Chrome, Firefox, Bitwarden, 1Password); lido e gravado no código nativo, sem passar pelo JavaScript/supervisor/IA; oferece apagar o arquivo exportado.
+- **Campo de mensagem**: caixa no formato do Claude (texto em cima; +, microfone e enviar embaixo) na conversa e nas salas. Ditado do Android continua ouvindo nas pausas até tocar em ✓ (reinicia o reconhecedor a cada frase e junta o texto). No PC, ditado gravado e transcrito localmente com o faster-whisper que já estava no computador (venv do projeto de entrevista, modelo medium em CPU int8; a GPU não carrega por faltar libcublas 12), ou whisper.cpp.
+
+**151 testes passando** (7 novos): repasse da tela ao vivo e recusa sem Assumir (app e janela do PC), Chrome real sem janela (quadros, rolagem, teclas, texto, bloqueio de endereço local), IPC do processo do Chrome, opção do Chrome principal, ditado no PC com gravador e whisper simulados (whisper.cpp e faster-whisper). Caminho real com faster-whisper conferido: modelo carregado durante a gravação, transcrição em ~0,1 s depois de parar (áudio de teste sem fala; não havia sintetizador de voz para um teste falado).
+
+**Emulador (APK x86_64 v46, nó de teste isolado nas portas 3231/3233)**: bot Codex no PC abriu a Wikipédia pelo Chrome sem janela; a página apareceu ao vivo no app; Assumir, toque em link, arrastar para rolar e endereço digitado funcionaram; devolvido ao bot. CSV com vírgula/aspas e nota em várias linhas: 2 importadas, 2 ignoradas (app Android, sem senha), arquivo apagado. Composer novo na conversa e na sala; ditado seguiu ouvindo após 26 s de silêncio. Janela do PC (interface web nova servida pelo nó de teste) mostrou o painel do Chrome e o composer; ditado avisa que falta o whisper.cpp. O serviço `mybots-pc` real não foi reiniciado (o celular ainda está na v45).
+

@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 
-/** The browser's process owns its profile and ephemeral login key. The node only relays encrypted logins. */
+/**
+ * The browser's process owns its profile and ephemeral login key. The node only relays encrypted logins, and the
+ * frames of the live view to `onFrame` (a closed browser sends `{ closed: true }`).
+ */
 export class PcBrowser {
-  constructor(directory) { this.directory = directory; this.workers = new Map(); }
+  constructor(directory, { onFrame = () => {} } = {}) { this.directory = directory; this.workers = new Map(); this.onFrame = onFrame; }
   worker(botId) {
     if (!/^[0-9a-f-]{36}$/i.test(botId)) throw new Error('Bot inválido.');
     if (this.workers.has(botId)) return this.workers.get(botId);
@@ -19,9 +22,10 @@ export class PcBrowser {
       if (this.workers.get(botId) === worker) this.workers.delete(botId);
       for (const done of worker.pending.values()) done({ error: 'O navegador do computador foi interrompido.' });
       try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+      this.onFrame(botId, { closed: true });
     };
     child.on('error', end); child.on('exit', end);
-    child.on('message', message => worker.pending.get(message.id)?.(message));
+    child.on('message', message => message.frame ? this.onFrame(botId, message.frame) : worker.pending.get(message.id)?.(message));
     return worker;
   }
   command(botId, op, args, signal) {

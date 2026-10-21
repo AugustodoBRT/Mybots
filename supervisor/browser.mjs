@@ -20,6 +20,14 @@ export function safeUrl(value) {
   return url.href;
 }
 
+/** A tap, scroll, key, text or address the person sends to a bot's Chrome on the computer, cleaned field by field. */
+export function personInput(input) {
+  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  const number = value => Number.isFinite(value) ? value : 0;
+  const text = (value, size) => typeof value === 'string' && value.length <= size ? value : '';
+  return { type: input.type, x: number(input.x), y: number(input.y), dx: number(input.dx), dy: number(input.dy), text: text(input.text, 2000), key: text(input.key, 20), url: text(input.url, 2000) };
+}
+
 /**
  * Each bot's browser lives in the MyBots app (a WebView with its own profile). The app long-polls
  * /device/browser for commands and posts the results back; the supervisor only queues and waits.

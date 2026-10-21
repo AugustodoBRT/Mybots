@@ -15,10 +15,14 @@ export async function allowedUrl(value) {
   return url.href;
 }
 
+// Keys the person may press on the page from the MyBots app.
+const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Shift+Tab'];
+
 export class BrowserSession {
-  constructor(profile, { headless = false } = {}) { this.profile = profile; this.headless = headless; this.login = null; this.secrets = new Set(); }
-  async start() {
-    if (this.context) return;
+  // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
+  constructor(profile, { headless = true } = {}) { this.profile = profile; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; }
+  start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
+  async launch() {
     const path = join(this.profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
     let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
     prefs.credentials_enable_service = false;
@@ -27,7 +31,7 @@ export class BrowserSession {
     this.context = await chromium.launchPersistentContext(this.profile, {
       executablePath: '/usr/bin/google-chrome-stable', headless: this.headless, viewport: { width: 1280, height: 800 },
       acceptDownloads: false, serviceWorkers: 'block', permissions: [],
-      args: ['--ozone-platform=wayland', '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+      args: [...(this.headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
     });
     await this.context.clearPermissions();
     await this.context.route('**/*', async route => {
@@ -39,7 +43,47 @@ export class BrowserSession {
     this.page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
     this.page.setDefaultTimeout(10000);
     this.page.setDefaultNavigationTimeout(30000);
-    this.context.on('close', () => { this.context = null; this.page = null; this.login = null; });
+    this.context.on('close', () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.frame?.({ closed: true }); });
+  }
+  /**
+   * The live view: Chrome's screencast, about 8 frames a second at most and only when the page changes. Each frame
+   * goes to `this.frame` (the node relays it to MyBots); acknowledging late is what paces Chrome.
+   */
+  async view(on) {
+    await this.start();
+    if (on && !this.cdp) {
+      const cdp = this.cdp = await this.context.newCDPSession(this.page);
+      cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+        setTimeout(() => cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {}), 120);
+        if (this.cdp === cdp) this.frame?.({ image: data, width: Math.round(metadata.deviceWidth), height: Math.round(metadata.deviceHeight), url: this.page?.url() || '' });
+      });
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
+    } else if (on) {
+      // Another viewer joined: the screencast only sends changes, so it gets the current page as one frame.
+      const { width, height } = this.page.viewportSize();
+      const { data } = await this.cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
+      this.frame?.({ image: data, width, height, url: this.page.url() });
+    } else if (!on && this.cdp) {
+      const cdp = this.cdp; this.cdp = null;
+      await cdp.send('Page.stopScreencast').catch(() => {}); await cdp.detach().catch(() => {});
+    }
+    return { watching: Boolean(this.cdp), ...await this.info() };
+  }
+  /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
+  async input(args = {}) {
+    await this.start();
+    const { width, height } = this.page.viewportSize();
+    const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
+    const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
+    if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));
+    else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
+    else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) await (args.text.length <= 200 ? this.page.keyboard.type(args.text) : this.page.keyboard.insertText(args.text));
+    else if (args.type === 'key' && KEYS.includes(args.key)) await this.page.keyboard.press(args.key);
+    else if (args.type === 'open' && typeof args.url === 'string' && args.url.length <= 2000) await this.page.goto(await allowedUrl(/^[a-z]+:\/\//i.test(args.url.trim()) ? args.url.trim() : 'https://' + args.url.trim()), { waitUntil: 'commit' });
+    else if (args.type === 'back') await this.page.goBack({ waitUntil: 'commit' }).catch(() => {});
+    else if (args.type === 'reload') await this.page.reload({ waitUntil: 'commit' }).catch(() => {});
+    else throw new Error('Ação inválida.');
+    return this.info();
   }
   async info() { return { url: this.page.url(), title: (await this.page.title()).slice(0, 200), where: 'pc' }; }
   target(id) { return this.page.locator(`[data-mybots-id="${id}"]`); }
@@ -146,12 +190,19 @@ export class BrowserSession {
 
 if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const session = new BrowserSession(process.argv[2]);
-  let busy = false;
+  session.frame = frame => process.send?.({ frame });
+  let busy = false, person = Promise.resolve();
   process.on('message', async ({ id, op, args }) => {
+    // The live view and the person's own input run beside the bot's commands, one after another.
+    if (op === 'view' || op === 'input') {
+      person = person.then(() => op === 'view' ? session.view(Boolean(args?.on)) : session.input(args)).then(result => process.send?.({ id, result }),
+        error => process.send?.({ id, error: /Endereço|navegador do bot|link/.test(error.message) ? error.message : 'O Chrome do bot não conseguiu fazer isso agora.' }));
+      return;
+    }
     if (busy) { process.send?.({ id, error: 'Aguarde a ação atual do navegador.' }); return; }
     busy = true;
     try { process.send?.({ id, result: await session.command(op, args) }); }
-    catch { process.send?.({ id, error: 'O navegador não conseguiu executar a ação. Confira a página no Chrome e tente ler de novo; senhas só por browser_login.' }); }
+    catch { process.send?.({ id, error: 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' }); }
     finally { busy = false; }
   });
   process.on('disconnect', () => session.close().finally(() => process.exit()));

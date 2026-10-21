@@ -117,6 +117,22 @@ class TermuxBridgeModule : Module() {
     AsyncFunction("passwordSave") { site: String, username: String, password: String, bots: List<String>? ->
       PasswordVault.save(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), site, username, password, bots)
     }
+    // A password export file (CSV): read and parsed here, so the passwords never pass through the app's JavaScript.
+    AsyncFunction("passwordImport") { bots: List<String>?, promise: Promise ->
+      val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para escolher o arquivo.", null)
+      if (passwordPicker.getAndSet(promise) != null) return@AsyncFunction promise.reject("BUSY", "Já estou escolhendo um arquivo.", null)
+      importBots = bots
+      val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+        .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "application/octet-stream"))
+      try { activity.startActivityForResult(intent, PICK_PASSWORDS) } catch (error: Exception) { passwordPicker.set(null); promise.reject("PICKER", "Não encontrei um seletor de arquivos neste celular.", error) }
+    }
+    // The export holds every password in plain text: after importing, the person can delete it right here.
+    AsyncFunction("passwordImportDelete") {
+      val uri = importedFile ?: return@AsyncFunction false
+      importedFile = null
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      try { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) } catch (_: Exception) { false }
+    }
     AsyncFunction("passwordDelete") { id: String -> PasswordVault.delete(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id) }
     AsyncFunction("passwordOffer") { PasswordVault.pendingOffer() }
     AsyncFunction("passwordOfferAnswer") { scope: String ->
@@ -263,6 +279,8 @@ class TermuxBridgeModule : Module() {
 
     // Inline dictation: the system recognizer streams partial text and the voice level to the composer,
     // without opening Google's full-screen dialog. Audio stays with the recognizer; MyBots receives text only.
+    // Dictation keeps listening through pauses: Android's recognizer ends each phrase on silence, so the session
+    // starts it again and joins the phrases, until the person taps to stop (or cancels).
     AsyncFunction("startListening") { promise: Promise ->
       val context = appContext.reactContext ?: return@AsyncFunction promise.reject("NOT_READY", "O MyBots não está pronto.", null)
       Handler(Looper.getMainLooper()).post {
@@ -273,8 +291,23 @@ class TermuxBridgeModule : Module() {
             Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context) -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
             else -> null
           } ?: return@post promise.reject("SPEECH", "Este celular não tem reconhecimento de voz. Instale ou ative o app Google.", null)
-          speech = recognizer
+          speech = recognizer; dictating = true; spoken.setLength(0)
           val emit = { type: String, extra: Map<String, Any?> -> sendEvent("onSpeech", mapOf("type" to type) + extra) }
+          val joined = { more: String -> listOf(spoken.toString(), more.trim()).filter { it.isNotBlank() }.joinToString(" ") }
+          val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
+            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
+          val finish = {
+            if (speech === recognizer) {
+              dictating = false; speech = null
+              emit("final", mapOf("text" to spoken.toString()))
+              recognizer.destroy()
+            }
+          }
+          val again = { if (speech === recognizer && dictating) try { recognizer.startListening(intent) } catch (_: Exception) { finish() } else finish() }
           recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { emit("ready", emptyMap()) }
             override fun onBeginningOfSpeech() {}
@@ -282,33 +315,46 @@ class TermuxBridgeModule : Module() {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
             override fun onError(error: Int) {
+              if (speech !== recognizer) return
+              // Silence or a phrase that was not understood: keep listening while the person has not stopped.
+              if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error == SpeechRecognizer.ERROR_CLIENT) {
+                if (dictating) Handler(Looper.getMainLooper()).postDelayed({ again() }, 150) else finish()
+                return
+              }
               val message = when (error) {
-                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não ouvi nada. Toque no microfone e fale de novo."
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permita o microfone para o MyBots."
                 SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "O reconhecimento de voz precisa de internet agora."
                 else -> "O reconhecimento de voz parou. Tente de novo."
               }
+              if (spoken.isNotBlank()) finish() else { dictating = false; speech = null; recognizer.destroy() }
               emit("error", mapOf("message" to message, "code" to error))
             }
-            override fun onResults(results: Bundle?) { emit("final", mapOf("text" to results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty())) }
-            override fun onPartialResults(partial: Bundle?) { emit("partial", mapOf("text" to partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty())) }
+            override fun onResults(results: Bundle?) {
+              if (speech !== recognizer) return
+              val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+              val all = joined(text); spoken.setLength(0); spoken.append(all)
+              if (dictating) { emit("partial", mapOf("text" to all)); again() } else finish()
+            }
+            override fun onPartialResults(partial: Bundle?) { emit("partial", mapOf("text" to joined(partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()))) }
             override fun onEvent(eventType: Int, params: Bundle?) {}
           })
-          recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-            .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L))
+          recognizer.startListening(intent)
           promise.resolve(true)
         } catch (error: Exception) { promise.reject("SPEECH", "Não consegui ligar o microfone.", error) }
       }
     }
 
+    // Stop: the last phrase is recognized and everything said goes to the message; cancel discards it.
     AsyncFunction("stopListening") { cancel: Boolean ->
       Handler(Looper.getMainLooper()).post {
         val recognizer = speech ?: return@post
-        if (cancel) { recognizer.cancel(); recognizer.destroy(); speech = null } else recognizer.stopListening()
+        dictating = false
+        if (cancel) { speech = null; recognizer.cancel(); recognizer.destroy(); spoken.setLength(0); return@post }
+        recognizer.stopListening()
+        // Some recognizers send nothing after a stop in silence: deliver what was said anyway.
+        Handler(Looper.getMainLooper()).postDelayed({
+          if (speech === recognizer) { speech = null; sendEvent("onSpeech", mapOf("type" to "final", "text" to spoken.toString())); recognizer.destroy() }
+        }, 3000)
       }
       true
     }
@@ -346,6 +392,26 @@ class TermuxBridgeModule : Module() {
               if (bytes.size > MAX_ATTACHMENT) { promise.reject("TOO_LARGE", "Escolha um arquivo de até 10 MB.", null); return@Thread }
               promise.resolve(mapOf("name" to name.take(120), "mime" to (resolver.getType(uri) ?: "application/octet-stream"), "size" to bytes.size, "data" to Base64.encodeToString(bytes, Base64.NO_WRAP)))
             } catch (error: Exception) { promise.reject("READ", "Não consegui ler o arquivo escolhido.", error) }
+          }.start()
+        }
+        PICK_PASSWORDS -> {
+          val promise = passwordPicker.getAndSet(null) ?: return@OnActivityResult
+          val uri = payload.data?.data
+          if (payload.resultCode != Activity.RESULT_OK || uri == null) { promise.resolve(null); return@OnActivityResult }
+          Thread {
+            try {
+              val bytes = activity.contentResolver.openInputStream(uri)?.use { input ->
+                val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(65536)
+                while (out.size() <= MAX_PASSWORD_FILE) { val read = input.read(buffer); if (read < 0) break; out.write(buffer, 0, read) }
+                out.toByteArray()
+              } ?: throw IllegalStateException()
+              if (bytes.size > MAX_PASSWORD_FILE) { promise.reject("TOO_LARGE", "O arquivo de senhas pode ter até 5 MB.", null); return@Thread }
+              val result = PasswordVault.importCsv(activity.applicationContext, String(bytes, Charsets.UTF_8), importBots)
+              java.util.Arrays.fill(bytes, 0)
+              importedFile = uri
+              promise.resolve(result + mapOf("name" to (activity.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "arquivo")))
+            } catch (error: IllegalArgumentException) { promise.reject("CSV", error.message, error) }
+            catch (error: Exception) { promise.reject("READ", "Não consegui ler o arquivo de senhas.", error) }
           }.start()
         }
         DICTATE -> {
@@ -589,12 +655,19 @@ class TermuxBridgeModule : Module() {
     private const val REQUEST_ID = "mybots.requestId"
     private const val PAIR_PART = 60_000
     private var speech: SpeechRecognizer? = null
+    @Volatile private var dictating = false
+    private val spoken = StringBuilder()
     @Volatile private var launchBot: String? = null
     @Volatile private var sharing = false
     private const val PICK_FILE = 41_017
     private const val DICTATE = 41_018
     private const val MAX_ATTACHMENT = 10 * 1024 * 1024
     private val picker = java.util.concurrent.atomic.AtomicReference<Promise?>(null)
+    private const val PICK_PASSWORDS = 41_019
+    private const val MAX_PASSWORD_FILE = 5 * 1024 * 1024
+    private val passwordPicker = java.util.concurrent.atomic.AtomicReference<Promise?>(null)
+    @Volatile private var importBots: List<String>? = null
+    @Volatile private var importedFile: Uri? = null
     private val dictation = java.util.concurrent.atomic.AtomicReference<Promise?>(null)
     private val PAIR_PART_SCRIPT = """
       set -eu; umask 077

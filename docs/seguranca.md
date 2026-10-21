@@ -108,6 +108,17 @@ Aprovação = SHA-256 de bot + tarefa + ferramenta + argumentos normalizados; va
 - Com Codex/Playwright, Chrome usa processo e perfil por bot, separados do modelo e escondidos dele. O cofre do Android cifra só o login autorizado para https/site/bot com uma chave pública temporária do processo do navegador (RSA-OAEP SHA-256 + AES-256-GCM; desafio autenticado); supervisor/nó nunca recebem a senha em claro. Chave privada não sai do processo do navegador, vale até 60 s, é consumida uma vez e confere a URL exata antes de preencher. Senhas não são gravadas pelo gerenciador do Chrome; cookies de sessão persistem no perfil do bot. Quem tem acesso à conta Linux do PC continua tendo acesso aos cookies e ao processo do navegador.
 - `browser_type` recusa password também no executor; leituras omitem valores, capturas cobrem campos, e senhas usadas são filtradas de textos/capturas do navegador. A captura do desktop abrange a tela da pessoa e pode mostrar dados privados. Nunca use `desktop_type` para senhas. Texto com símbolos/acentos usa clipboard temporário, restaurado se a pessoa não tiver copiado outro conteúdo; formatos ricos que não consegue preservar são recusados.
 
+## Chrome do bot dentro do MyBots (v46)
+
+- O Chrome de cada bot no PC roda sem janela; a imagem ao vivo vai só para as conexões autenticadas do app (supervisor no celular) e da janela local do PC (token local) que pediram aquele bot. Quadros nunca entram nos eventos gerais, no widget nem nos registros, e não são vistos pela IA.
+- Toques, teclas, texto e endereços da pessoa só são aceitos com o navegador **assumido**. O supervisor confere e limpa cada campo; o nó do PC confere de novo pelo estado de controle que o celular envia, e o recusa se o celular desconectar. Endereços passam pela mesma conferência de loopback/link-local e protocolos. O texto digitado com a chave ligada vai direto para a página.
+- A IA não recebe a tela ao vivo: ela só vê o que pede pelas ferramentas `browser_*`, com as mesmas permissões de antes. Claude no PC usa esse Chrome isolado por padrão; o Chrome principal compartilhado (Claude in Chrome) passou a ser uma opção explícita por bot.
+
+## Importar senhas por CSV (v46)
+
+- Ajustes → Senhas → **Importar CSV** abre o seletor do Android; o arquivo é lido e interpretado no código nativo do app (Kotlin) e vai direto para o cofre cifrado (Android Keystore). As senhas não passam pelo JavaScript do app, pelo supervisor nem pela IA. Só entram linhas com endereço http/https e senha; o resto é contado e ignorado. Mesmo site e usuário substituem a senha antiga.
+- Depois de importar, o app oferece apagar o arquivo exportado (que tem todas as senhas sem proteção) pelo próprio provedor de documentos do Android.
+
 ## Claude in Chrome oficial (v45)
 
 - No PC, Claude com Navegador liberado usa a extensão oficial no **perfil principal**, por escolha explícita da pessoa. Os bots Claude compartilham os logins desse perfil e podem acessar o conteúdo dos sites autenticados. Isso substitui o isolamento por bot da v44 somente para Claude no PC. Codex mantém o perfil isolado e o login cifrado; no celular não muda.

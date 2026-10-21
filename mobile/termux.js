@@ -33,6 +33,8 @@ export const requestWidget = () => native.requestWidget();
 export const passwordsList = () => native.passwordsList();
 export const passwordSave = (site, username, password, bots) => native.passwordSave(site, username, password, bots);
 export const passwordDelete = id => native.passwordDelete(id);
+export const passwordImport = bots => native.passwordImport(bots);
+export const passwordImportDelete = () => native.passwordImportDelete();
 export const passwordOffer = () => native.passwordOffer();
 export const passwordOfferAnswer = scope => native.passwordOfferAnswer(scope);
 export const onPasswordOffer = listener => native.addListener('onPasswordOffer', listener);

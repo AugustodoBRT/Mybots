@@ -53,6 +53,7 @@ test('real Claude CLI: native Chrome hook allows, denies and fails closed before
   t.after(async () => { await app.close(); for (const server of [native, api, gate]) { server.closeAllConnections(); await new Promise(r => server.close(r)); }; await rm(directory, { recursive: true, force: true }); });
   app.tools.pcCommand = async () => ({ ready: true });
   const bot = app.db.create({ name: 'Chrome', home: 'pc', access: 'ask' }, { provider: 'claude', model: 'haiku', reasoningEffort: 'low' });
+  app.db.putBot({ ...app.db.requireBot(bot.id), mainChrome: true });
   app.tools.grant(bot.id, 'browser', true);
   const config = join(directory, 'config'); await mkdir(config);
   const extra = JSON.stringify({ mcpServers: { 'chrome-test': { type: 'http', url: `http://127.0.0.1:${native.address().port}/mcp` } } });

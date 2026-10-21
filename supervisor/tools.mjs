@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
-import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, grantOf, toolArguments, SENSITIVE } from './tool-policy.mjs';
+import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, grantOf, toolArguments, SENSITIVE, mainChrome } from './tool-policy.mjs';
 import { BROWSER_NOTICE } from './browser.mjs';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
@@ -175,7 +175,7 @@ export class Tools {
     const run = this.context(token, bridgeId);
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
     const bot = this.db.requireBot(run.botId); const basic = bot.access === 'basic';
-    const chrome = run.lane === 'pc' && bot.provider === 'claude';
+    const chrome = run.lane === 'pc' && mainChrome(bot);
     return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!basic || this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny')), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
@@ -324,7 +324,7 @@ export class Tools {
   async chromePermission(run, name, input) {
     try {
       const bot = this.db.requireBot(run.botId);
-      if (run.lane !== 'pc' || bot.provider !== 'claude') throw new Error('O Chrome oficial só existe para Claude respondendo pelo computador.');
+      if (run.lane !== 'pc' || !mainChrome(bot)) throw new Error('O Chrome principal só é usado por bots Claude que escolheram “Usar meu Chrome principal”, respondendo pelo computador.');
       const action = name.slice('mcp__claude-in-chrome__'.length);
       const hash = createHash('sha256').update(JSON.stringify({ botId: bot.id, taskId: run.taskId, name, input })).digest('hex');
       const shown = { summary: `Chrome principal (logins compartilhados) · ${action}\n${JSON.stringify(input, null, 1).slice(0, 1500)}` };
@@ -424,7 +424,7 @@ export class Tools {
       this.requireGrant(run, 'browser');
       const bot = this.db.requireBot(run.botId);
       if (!this.browser) throw new Error('O navegador não está disponível neste supervisor.');
-      if (run.lane === 'pc' && bot.provider === 'claude') {
+      if (run.lane === 'pc' && mainChrome(bot)) {
         if (tool !== 'browser.ask_user') throw new Error('Use as ferramentas oficiais mcp__claude-in-chrome__ no Chrome principal. Login e CAPTCHA são feitos pela pessoa nesse Chrome.');
         this.browser.pages.set(bot.id, { where: 'pc', engine: 'claude-chrome', title: 'Chrome principal · Claude', url: '' });
       }

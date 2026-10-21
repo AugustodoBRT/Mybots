@@ -37,6 +37,7 @@ async function setup(t) {
   t.after(async () => { await app.close(); await node.close(); await rm(directory, { recursive: true, force: true }); });
   await app.rpc('computer.pair', { link: node.pairing().link }); await until(() => app.state().computer.state === 'online');
   const bot = await app.rpc('bot.create', { name: 'Chrome', home: 'pc', access: 'ask', ...selection });
+  app.db.putBot({ ...app.db.requireBot(bot.id), mainChrome: true });
   app.tools.grant(bot.id, 'browser', true);
   const start = async (steps, text = 'executar') => { script = steps; return (await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text })).taskId; };
   const finish = async id => { await until(() => ['done', 'failed', 'cancelled'].includes(app.db.task(id).state)); return results.map(r => r.hookSpecificOutput?.permissionDecision); };

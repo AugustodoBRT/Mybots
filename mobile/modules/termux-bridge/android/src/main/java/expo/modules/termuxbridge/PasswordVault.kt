@@ -71,6 +71,56 @@ internal object PasswordVault {
     return mapOf("id" to entry.getString("id"), "host" to host, "username" to username)
   }
 
+  /**
+   * A password export (Chrome, Google, Firefox, Bitwarden, 1Password: CSV with url, username and password columns),
+   * read here and kept like the logins saved by hand. Lines without a web address or password are skipped.
+   */
+  fun importCsv(context: Context, text: String, bots: List<String>?): Map<String, Any?> {
+    if (bots != null && bots.any { !it.matches(Regex("[0-9a-fA-F-]{36}")) }) throw IllegalArgumentException("Bot inválido.")
+    val rows = csvRows(text.removePrefix("\uFEFF"))
+    if (rows.isEmpty()) throw IllegalArgumentException("O arquivo está vazio.")
+    val header = rows[0].map { it.trim().lowercase() }
+    fun column(vararg names: String) = names.map { header.indexOf(it) }.firstOrNull { it >= 0 } ?: -1
+    val url = column("url", "login_uri", "website", "login url", "site"); val user = column("username", "login_username", "login", "user", "email")
+    val pass = column("password", "login_password")
+    if (url < 0 || pass < 0) throw IllegalArgumentException("Este CSV não parece uma exportação de senhas: faltam as colunas de site e senha.")
+    val list = entries(context); var imported = 0; var skipped = 0
+    for (row in rows.drop(1)) {
+      val password = row.getOrNull(pass) ?: ""; val username = row.getOrNull(user)?.trim() ?: ""
+      val host = try { val site = row.getOrNull(url)?.trim() ?: ""; if (!site.startsWith("http://") && !site.startsWith("https://")) null else hostOf(site) } catch (_: Exception) { null }
+      if (host == null || password.isEmpty() || password.length > 500 || username.length > 200) { if (row.any { it.isNotBlank() }) skipped++; continue }
+      // One login per site and user, as when saving by hand: importing again replaces the password.
+      for (i in list.length() - 1 downTo 0) list.getJSONObject(i).let { if (it.optString("host") == host && it.optString("username") == username) list.remove(i) }
+      list.put(JSONObject().put("id", UUID.randomUUID().toString()).put("host", host).put("username", username).put("password", password)
+        .put("bots", bots?.let { JSONArray(it) } ?: JSONObject.NULL).put("createdAt", System.currentTimeMillis().toDouble()))
+      imported++
+    }
+    if (imported > 0) write(context, list)
+    return mapOf("imported" to imported, "skipped" to skipped)
+  }
+
+  /** RFC 4180: commas, quotes doubled inside quoted fields, and line breaks inside them (notes). */
+  internal fun csvRows(text: String): List<List<String>> {
+    val rows = mutableListOf<List<String>>(); var row = mutableListOf<String>(); val field = StringBuilder(); var quoted = false; var i = 0
+    while (i < text.length) {
+      val c = text[i]
+      if (quoted) {
+        if (c == '"' && i + 1 < text.length && text[i + 1] == '"') { field.append('"'); i++ }
+        else if (c == '"') quoted = false
+        else field.append(c)
+      } else when (c) {
+        '"' -> quoted = true
+        ',' -> { row.add(field.toString()); field.setLength(0) }
+        '\r' -> {}
+        '\n' -> { row.add(field.toString()); field.setLength(0); rows.add(row); row = mutableListOf() }
+        else -> field.append(c)
+      }
+      i++
+    }
+    if (field.isNotEmpty() || row.isNotEmpty()) { row.add(field.toString()); rows.add(row) }
+    return rows.filter { it.size > 1 || it.firstOrNull()?.isNotEmpty() == true }
+  }
+
   fun delete(context: Context, id: String): Boolean {
     val list = entries(context); val kept = JSONArray(); var removed = false
     for (i in 0 until list.length()) list.getJSONObject(i).let { if (it.optString("id") == id) removed = true else kept.put(it) }

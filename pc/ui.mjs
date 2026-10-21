@@ -17,7 +17,7 @@ const OFFLINE = 'O celular está fora de alcance. Confira se ele está ligado e 
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -56,6 +56,29 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       if (typeof method !== 'string') return;
       try {
         if (method === 'desktop.file') reply(id, { result: await saveFile(params || {}) });
+        // The bots' Chrome runs here: the window watches it and, after "Assumir" on the phone's side, uses it directly.
+        else if (method === 'browser.view') {
+          if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
+          ws.views ||= new Map();
+          const on = Boolean(params.on);
+          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame } })), () => ws.bufferedAmount > 1_000_000));
+          const sink = ws.views.get(params.botId);
+          if (!on) ws.views.delete(params.botId);
+          if (sink) await browser.watch(params.botId, sink, on);
+          reply(id, { result: { watching: on, online: true } });
+        }
+        // Dictation in this window: recorded and transcribed on this computer (see dictation.mjs).
+        else if (method === 'desktop.dictate') {
+          if (!dictation) throw new Error('O ditado não está disponível neste computador.');
+          ws.dictation ||= randomUUID();
+          const action = params?.action;
+          if (!['start', 'stop', 'cancel'].includes(action)) throw new Error('Ditado inválido.');
+          reply(id, { result: await dictation[action](ws.dictation) });
+        }
+        else if (method === 'browser.input') {
+          if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
+          reply(id, { result: await browser.input(params.botId, params.input) });
+        }
         else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
         // The pairing QR, drawn here so the window shows it (one use, 10 minutes, like `node pc/node.mjs pair`).
         else if (method === 'desktop.pair') {
@@ -70,7 +93,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
         }
       } catch (error) { reply(id, { error: error.message }); }
     });
-    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); });
+    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
   });
   /** A bot's file, saved in ~/Downloads (and opened with the desktop's default app when asked). */
   async function saveFile({ id, name, action }) {
@@ -92,6 +115,13 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
     broadcast(event, data = {}) { for (const ws of clients) if (ws.readyState === 1) ws.send(JSON.stringify({ event, data })); },
     close: () => { for (const ws of clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); }
   };
+}
+
+/** Sends the newest frame when the connection has room; frames in between are skipped, never queued. */
+export function paced(send, busy) {
+  let latest = null, timer = null;
+  const flush = () => { timer = null; if (!latest) return; if (busy()) { timer = setTimeout(flush, 150); return; } const frame = latest; latest = null; send(frame); };
+  return frame => { latest = frame; if (!timer) flush(); };
 }
 
 /** Requests to the phone over the link, matched by id. */

@@ -13,9 +13,10 @@ import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { SENSITIVE } from '../supervisor/tool-policy.mjs';
-import { createUi, phoneBridge, DEFAULT_UI_PORT } from './ui.mjs';
+import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
+import { createDictation } from './dictation.mjs';
 
 export const DEFAULT_PORT = 3230;
 const PAIRING_MS = 10 * 60000;
@@ -126,6 +127,23 @@ async function localStatus() {
 export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, desktop = new Desktop(), browser = new PcBrowser(directory), log = () => {} } = {}) {
   const me = identity(directory);
   const controls = new Set(); let owner = null;
+  const dictation = createDictation(directory);
+  // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
+  // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
+  const views = new Map(); let assumed = new Set();
+  browser.onFrame = (botId, frame) => { for (const sink of views.get(botId) || []) sink(frame); };
+  const watch = async (botId, sink, on) => {
+    const sinks = views.get(botId) || new Set(); const before = sinks.size;
+    if (on) sinks.add(sink); else sinks.delete(sink);
+    if (sinks.size) views.set(botId, sinks); else views.delete(botId);
+    if (Boolean(before) === Boolean(sinks.size) && !on) return;
+    try { await browser.command(botId, 'view', { on: sinks.size > 0 }); }
+    catch (error) { if (on) sink({ error: error.message }); }
+  };
+  const personInput = async (botId, input) => {
+    if (!assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
+    return browser.command(botId, 'input', input);
+  };
   const panic = () => { for (const run of controls) run.controller.abort('panic'); browser.close(); };
   const panicPath = join(directory, 'panic.sock');
   // Refuse a second node using this directory. A stale socket can be removed after an unclean shutdown.
@@ -146,7 +164,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -202,6 +220,19 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       }
       if (message.type === 'rpc_reply') { bridge.answer(message); return; }
       if (message.type === 'event') { ui.broadcast(message.event, message.data); return; }
+      if (message.type === 'browser_view' && typeof message.botId === 'string') {
+        ws.views ||= new Map();
+        if (message.on && !ws.views.has(message.botId)) ws.views.set(message.botId, paced(frame => send({ type: 'browser_frame', botId: message.botId, ...frame }), () => ws.bufferedAmount > 1_000_000));
+        const sink = ws.views.get(message.botId);
+        if (!message.on) ws.views.delete(message.botId);
+        if (sink) watch(message.botId, sink, Boolean(message.on)).catch(() => {});
+        return;
+      }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); return; }
+      if (message.type === 'browser_input' && typeof message.botId === 'string') {
+        personInput(message.botId, message.input).catch(error => send({ type: 'browser_frame', botId: message.botId, error: error.message }));
+        return;
+      }
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
       if (message.type === 'pc_command') {
@@ -209,8 +240,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         try {
           if (!run || run.controller.signal.aborted) throw new Error('A resposta no computador já foi interrompida.');
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
-          const chrome = run.bot.provider === 'claude' && message.op === 'chrome.begin';
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (run.bot.provider === 'claude' || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          const mainChrome = run.bot.provider === 'claude' && Boolean(run.bot.mainChrome);
+          const chrome = mainChrome && message.op === 'chrome.begin';
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.');
           owner = run;
           run.indicator ||= desktop.indicate(run.bot);
@@ -236,7 +268,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, chrome: bot.provider === 'claude' && Boolean(message.tools.browser), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, chrome: bot.provider === 'claude' && Boolean(bot.mainChrome) && Boolean(message.tools.browser), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });
@@ -255,6 +287,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       // The phone went away: its turns end there (it marks them interrupted) and must not keep running here.
       for (const run of runs.values()) run.controller.abort('phone_lost');
       for (const done of waiting.values()) done({ status: 502, headers: {}, body: '' });
+      for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
+      assumed = new Set();
       proxy?.then(http => http.close(), () => {});
       if (ws.phone) { log(`${ws.phone.name} desconectado.`); bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); }
     });
@@ -265,5 +299,5 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
     phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
-    async close() { panic(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
+    async close() { panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
 }

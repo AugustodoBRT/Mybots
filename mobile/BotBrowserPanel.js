@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Dimensions, Image, PanResponder, TextInput } from 'react-native';
 import { BotBrowserView, browserAction, browserInfo } from './termux';
 import { C, F, Icon } from './theme';
 
@@ -9,8 +9,95 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
     <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="hand" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>NAVEGADOR DO BOT</Text></View>
     <Text style={styles.helpTitle}>{bot.name} precisa de você</Text>
     <Text style={styles.helpBody}>{help.reason}</Text>
-    <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, use o Chrome no computador e depois toque em “Devolver ao bot”.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
+    <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, faça isso na página ao vivo do Chrome do bot e depois toque em “Devolver ao bot”. Senhas e códigos digitados aqui não vão para a IA.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.helpButton}><Icon name="globe" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>Abrir navegador e assumir</Text></Pressable>
+  </View>;
+}
+
+// Frames of the bots' Chrome on the computer, from the supervisor's 'browser.frame' events (see App.js).
+export const browserFrames = new Set();
+
+/**
+ * The bot's own Chrome on the computer, live inside MyBots: frames come from the computer; after "Assumir" a tap
+ * clicks there, a drag scrolls, and the text box types into the page. Points go as fractions of the frame.
+ */
+function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
+  const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
+  const [text, setText] = useState(''); const [secret, setSecret] = useState(false); const [address, setAddress] = useState(null);
+  const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
+  live.current = { assumed, frame };
+  const send = input => call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message));
+  useEffect(() => {
+    const listener = data => {
+      if (data?.botId !== bot.id) return;
+      if (data.closed) setState('closed');
+      else if (data.error) setProblem(data.error);
+      else if (data.image) { setFrame(data); setState('live'); setProblem(''); }
+    };
+    browserFrames.add(listener);
+    const watch = () => call('browser.view', { botId: bot.id, on: true }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });
+    watch();
+    return () => { browserFrames.delete(listener); call('browser.view', { botId: bot.id, on: false }).catch(() => {}); };
+  }, [bot.id]);
+  const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true })).catch(e => setProblem(e.message)); };
+  // A short touch is a click; a drag scrolls the page under the finger (sent while dragging, a few times a second).
+  const touch = useRef(null);
+  const responder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
+    onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
+    onPanResponderGrant: event => { const { locationX, locationY } = event.nativeEvent; touch.current = { x: locationX / size.current.width, y: locationY / size.current.height, sentY: 0, sentX: 0, at: 0 }; },
+    onPanResponderMove: (event, gesture) => {
+      const start = touch.current; if (!start || Date.now() - start.at < 120 || Math.abs(gesture.dy) + Math.abs(gesture.dx) < 10) return;
+      const scale = (live.current.frame?.height || 800) / size.current.height;
+      const dy = -(gesture.dy - start.sentY) * scale, dx = -(gesture.dx - start.sentX) * scale;
+      start.sentY = gesture.dy; start.sentX = gesture.dx; start.at = Date.now(); start.moved = true;
+      send({ type: 'scroll', x: start.x, y: start.y, dx, dy });
+    },
+    onPanResponderRelease: (event, gesture) => {
+      const start = touch.current; touch.current = null; if (!start) return;
+      if (!start.moved && Math.abs(gesture.dx) + Math.abs(gesture.dy) < 10) send({ type: 'tap', x: Math.max(0, Math.min(1, start.x)), y: Math.max(0, Math.min(1, start.y)) });
+      else if (start.moved) { const scale = (live.current.frame?.height || 800) / size.current.height; send({ type: 'scroll', x: start.x, y: start.y, dx: -(gesture.dx - start.sentX) * scale, dy: -(gesture.dy - start.sentY) * scale }); }
+    }
+  })).current;
+  const typeText = () => { if (!text) return; send({ type: 'text', text }); setText(''); };
+  const go = () => { if (address?.trim()) send({ type: 'open', url: address.trim() }); setAddress(null); };
+  const shown = frame?.url && frame.url !== 'about:blank' ? frame.url.replace(/^https?:\/\//, '') : '';
+  return <View style={styles.panel}>
+    <View style={styles.bar}>
+      <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.mint : C.muted} /></View>
+      {assumed && address !== null ? <TextInput autoFocus style={[styles.address, { flex: 1 }]} value={address} onChangeText={setAddress} onSubmitEditing={go} onBlur={() => setAddress(null)} selectTextOnFocus placeholder="Endereço do site" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" />
+        : <Pressable style={{ flex: 1 }} disabled={!assumed} onPress={() => setAddress(frame?.url && frame.url !== 'about:blank' ? frame.url : '')} accessibilityRole={assumed ? 'button' : undefined} accessibilityLabel={assumed ? 'Digitar endereço' : undefined}>
+          <Text style={styles.title} numberOfLines={1}>Chrome de {bot.name} · computador</Text>
+          <Text style={styles.url} numberOfLines={1}>{shown || (state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Toque aqui para digitar um endereço.' : 'Ainda não abriu nenhuma página.')}</Text>
+        </Pressable>}
+      {assumed ? <>
+        <Pressable accessibilityRole="button" accessibilityLabel="Voltar página" hitSlop={6} onPress={() => send({ type: 'back' })} style={styles.tool}><Icon name="back" size={18} color={C.text2} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Recarregar página" hitSlop={6} onPress={() => send({ type: 'reload' })} style={styles.tool}><Icon name="refresh" size={17} color={C.text2} /></Pressable>
+      </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
+    </View>
+    <View style={[styles.live, { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
+      onLayout={event => { size.current = event.nativeEvent.layout; }} {...responder.panHandlers}>
+      {frame ? <Image source={{ uri: 'data:image/jpeg;base64,' + frame.image }} style={StyleSheet.absoluteFill} resizeMode="stretch" fadeDuration={0} />
+        : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
+      {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
+      {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
+    </View>
+    {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
+    {assumed ? <>
+      <View style={styles.typeRow}>
+        <TextInput style={[styles.address, { flex: 1 }]} value={text} onChangeText={setText} onSubmitEditing={typeText} secureTextEntry={secret} blurOnSubmit={false}
+          placeholder={secret ? 'Senha ou código (não vai para a IA)' : 'Digitar no campo tocado'} placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} returnKeyType="send" />
+        <Pressable accessibilityRole="switch" accessibilityState={{ checked: secret }} accessibilityLabel="Esconder o que digito" onPress={() => setSecret(value => !value)} style={[styles.tool, secret && styles.toolOn]}><Icon name="key" size={16} color={secret ? C.mint : C.text2} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Digitar na página" disabled={!text} onPress={typeText} style={styles.tool}><Icon name="send" size={16} color={text ? C.mint : C.faint} /></Pressable>
+      </View>
+      <View style={styles.keys}>{[['Enter', 'Enter'], ['Tab', 'Tab'], ['⌫', 'Backspace'], ['Esc', 'Escape'], ['↑', 'ArrowUp'], ['↓', 'ArrowDown']].map(([label, key]) =>
+        <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Tecla ${key}`} onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}</View>
+      <Text style={styles.hint}>Toque na página para clicar e arraste para rolar. O bot espera até você devolver. O Google não aceita login neste Chrome; para Gmail, Agenda e Drive use os apps da conta.</Text>
+    </> : null}
+    {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
+    <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
+      <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
+    </Pressable>
   </View>;
 }
 
@@ -18,24 +105,25 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
  * "Navegador do bot": the bot's own WebView, live. Watching only until the person taps "Assumir"; then the
  * bot's browser commands are refused until "Devolver ao bot".
  */
-export default function BotBrowserPanel({ bot, browser, onControl, onClose }) {
+export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc }) {
   const [page, setPage] = useState(browser?.pages?.[bot.id] || null);
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const assumed = browser?.control?.[bot.id] === 'person';
-  const onPc = browser?.pages?.[bot.id]?.where === 'pc';
-  const chrome = browser?.pages?.[bot.id]?.engine === 'claude-chrome';
-  useEffect(() => { browserInfo().then(setInfo).catch(() => {}); }, []);
+  const chrome = bot.provider === 'claude' && bot.mainChrome === true && (pc || browser?.pages?.[bot.id]?.engine === 'claude-chrome');
+  const onPc = pc || browser?.pages?.[bot.id]?.where === 'pc';
+  useEffect(() => { if (!onPc) browserInfo().then(setInfo).catch(() => {}); }, [onPc]);
   const control = async who => {
     setBusy(true); setError('');
     try { await onControl(who); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const act = action => browserAction(bot.id, action).catch(() => {});
+  if (onPc && !chrome && call) return <PcBrowserLive bot={bot} call={call} assumed={assumed} busy={busy} error={error} control={control} onClose={onClose} />;
   if (onPc) return <View style={styles.panel}>
     <Text style={styles.title}>{chrome ? 'Chrome principal · Claude' : `Chrome de ${bot.name} no computador`}</Text>
     <Text style={styles.url}>{browser.pages[bot.id].url}</Text>
-    <Text style={styles.hint}>{chrome ? 'A integração oficial usa seu Chrome principal. Os bots Claude compartilham os logins desse perfil. Para login, CAPTCHA ou código, toque em Assumir e use o Chrome no PC; depois devolva ao bot.' : 'A página está aberta no PC, no perfil deste bot. Para entrar manualmente, resolver CAPTCHA ou digitar um código, toque em Assumir e use essa janela do Chrome.'}</Text>
+    <Text style={styles.hint}>{chrome ? 'Este bot usa seu Chrome principal (Claude in Chrome), com os seus logins. Essa janela fica no computador: para login, CAPTCHA ou código, toque em Assumir, use o Chrome no PC e depois devolva ao bot.' : 'A página está aberta no PC, no perfil deste bot.'}</Text>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={styles.control}><Text style={styles.controlText}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text></Pressable>
     {!assumed ? <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.hint}>Fechar painel</Text></Pressable> : null}
@@ -74,6 +162,14 @@ const styles = StyleSheet.create({
   tool: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line },
   frame: { height: Math.round(Dimensions.get('window').height * 0.42), borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
   frameAssumed: { borderColor: C.mint },
+  live: { width: '100%', borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: C.surface2 },
+  closed: { position: 'absolute', left: 8, top: 8, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, backgroundColor: '#090B10D9' },
+  reopen: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  address: { minHeight: 40, borderRadius: 12, paddingHorizontal: 12, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, color: C.text, fontFamily: F.m, fontSize: 13.5 },
+  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, toolOn: { borderColor: C.mint },
+  keys: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, key: { minWidth: 44, height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
+  keyText: { color: C.text2, fontFamily: F.b, fontSize: 12.5 },
   watching: { position: 'absolute', right: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, backgroundColor: '#090B10D9' },
   watchingText: { color: C.text2, fontFamily: F.b, fontSize: 10.5 },
   hint: { color: C.muted, fontFamily: F.m, fontSize: 11.5, lineHeight: 17 }, error: { color: C.red, fontFamily: F.m, fontSize: 12 },

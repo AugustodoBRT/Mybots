@@ -42,6 +42,8 @@ export class Link {
     Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass });
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
     this.commands = new Map();
+    // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
+    this.watching = new Set(); this.controls = {}; this.onFrame = () => {};
   }
   saved() { try { return JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='link.computer'")?.value || 'null'); } catch { return null; } }
   save(value) { this.db.run("INSERT INTO metadata VALUES('link.computer',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(value)); }
@@ -141,6 +143,8 @@ export class Link {
         // The computer's addresses change with the network; the ones it reports are tried first next time.
         if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
         this.attempt = 0; this.set('online');
+        for (const botId of this.watching) send({ type: 'browser_view', botId, on: true });
+        send({ type: 'browser_control', control: this.controls });
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
@@ -148,6 +152,7 @@ export class Link {
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
       if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }
+      if (message.type === 'browser_frame' && typeof message.botId === 'string') { const { type, ...frame } = message; this.onFrame(frame); return; }
       const run = this.runs.get(message.id);
       if (!run) return;
       if (message.type === 'session') await run.onSession?.(message.sessionId);
@@ -185,6 +190,18 @@ export class Link {
   }
   /** Supervisor events, for the window on the computer to refresh. */
   event(event, data) { if (DESKTOP_EVENTS.includes(event) && this.socket?.readyState === 1 && this.state === 'online') this.socket.send(JSON.stringify({ type: 'event', event, data })); }
+  /** Starts or stops the live view of a bot's Chrome on the computer. */
+  view(botId, on) {
+    if (on) this.watching.add(botId); else this.watching.delete(botId);
+    this.post({ type: 'browser_view', botId, on: Boolean(on) });
+  }
+  /** Who controls each bot's browser: the computer takes the person's taps only for a browser taken over here. */
+  control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls }); }
+  /** A tap, key or address from the person, already checked against "Assumir" on the phone. */
+  input(botId, input) {
+    if (!this.post({ type: 'browser_input', botId, input })) throw new Error('O computador está desconectado.');
+  }
+  post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }
   /** An action already authorized on the phone, only for its currently running turn on this connection. */
   command(run, op, args) {
     const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId);

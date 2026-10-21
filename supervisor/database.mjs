@@ -315,14 +315,14 @@ export class Database {
     const bot = this.requireBot(id);
     if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','mainChrome']) if (changes[field] !== undefined) updated[field] = changes[field];
     if (typeof updated.name !== 'string' || !updated.name.trim() || updated.name.trim().length > 40 || typeof updated.instructions !== 'string' || updated.instructions.length > 2000 || !['green','blue','purple','orange'].includes(updated.color)) throw new Error('Informe nome, personalidade e cor válidos.');
     updated.name = updated.name.trim(); updated.instructions = updated.instructions.trim();
     // codexSessionId holds the session of the bot's current provider; another CLI cannot resume it.
     const switched = (updated.provider || 'codex') !== (bot.provider || 'codex');
     // A new access level, like a new grant, needs a fresh session so the bot stops repeating "I have no access".
     // Moving to another device also starts a new session there: an IA session lives on the machine that made it.
-    const moved = (updated.home || 'phone') !== (bot.home || 'phone');
+    const moved = (updated.home || 'phone') !== (bot.home || 'phone') || Boolean(updated.mainChrome) !== Boolean(bot.mainChrome);
     if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];

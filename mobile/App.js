@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { C, F, Icon } from './theme';
-import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, updateCheck, updateInstall, updateCanInstall, onUpdate, widgetStatus, requestWidget, passwordsList, passwordSave, passwordDelete, passwordOffer, passwordOfferAnswer, onPasswordOffer, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
+import { termuxAvailable, readLocalStore, writeLocalStore, runTermux, copyTermuxText, readDeviceInfo, readPairing, savePairing, readSecretsKey, readConnectorBundle, notificationAccess, openNotificationAccess, flushNotifications, supervisorParts, pickFile, termuxApiStatus, openAppSettings, microphonePermission, notificationPermission, startListening, stopListening, onSpeech, takeLaunchBot, onOpenBot, takeShare, onShare, publishShareTargets, updateCheck, updateInstall, updateCanInstall, onUpdate, widgetStatus, requestWidget, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, passwordOffer, passwordOfferAnswer, onPasswordOffer, showBotNotification, botNotificationStatus, openNotificationSettings, keepAliveStatus, setKeepAlive, startKeepAlive, openPowerSettings, fileStage, fileAction } from './termux';
 import { createId, emptyLocalStore, mergeBotLists, validateBackup } from './local';
 
 import { createTermuxBackup } from './backup';
@@ -13,7 +13,7 @@ import BotAvatar from './BotAvatar';
 import { SvgXml } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import BotProfile from './BotProfile';
-import BotBrowserPanel, { BrowserHelpCard } from './BotBrowserPanel';
+import BotBrowserPanel, { BrowserHelpCard, browserFrames } from './BotBrowserPanel';
 import { RichText, FileCard, FileChip, FileBadge, fileIcon, formatSize } from './RichMessage';
 import { SupervisorClient } from './supervisor-client';
 import { desktop, column, dialogBackdrop, dialogShape, noHandle } from './desktop';
@@ -695,6 +695,17 @@ function PasswordsPanel({ bots }) {
   const remove = item => Alert.alert(`Apagar a senha de ${item.host}?`, 'Os bots deixam de entrar sozinhos nesse site.', [{ text: 'Cancelar', style: 'cancel' },
     { text: 'Apagar', style: 'destructive', onPress: () => passwordDelete(item.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
   const names = ids => ids ? ids.map(id => bots.find(bot => bot.id === id)?.name).filter(Boolean).join(', ') || 'bot apagado' : 'todos os bots';
+  // A password export (Chrome: chrome://password-manager → Configurações → Exportar senhas). The app reads it natively.
+  const importFile = async () => {
+    setBusy(true); setNote('');
+    try {
+      const result = await passwordImport(form?.bots?.length ? form.bots : null); if (!result) return;
+      await load(); setForm(null);
+      setNote(`${result.imported} ${result.imported === 1 ? 'senha importada' : 'senhas importadas'}${result.skipped ? ` (${result.skipped} sem site ou senha ficaram de fora)` : ''}. Os bots escolhidos já podem entrar nesses sites.`);
+      Alert.alert('Apagar o arquivo exportado?', `${result.name} tem todas as suas senhas sem proteção. Elas já estão guardadas no MyBots.`, [{ text: 'Manter', style: 'cancel' },
+        { text: 'Apagar arquivo', style: 'destructive', onPress: () => passwordImportDelete().then(done => setNote(old => old + (done ? ' Arquivo apagado.' : ' Não consegui apagar o arquivo; apague pelo gerenciador de arquivos.'))).catch(() => {}) }]);
+    } catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); }
+  };
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>Senhas de sites</Text>
     <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste celular e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
@@ -704,9 +715,10 @@ function PasswordsPanel({ bots }) {
       <Pressable accessibilityRole="button" accessibilityLabel={`Apagar a senha de ${item.host}`} hitSlop={10} onPress={() => remove(item)}><Icon name="trash" size={17} color={C.faint} /></Pressable>
     </View>)}
     {form ? <View style={{ marginTop: 6 }}>
+      {form.importing ? <Text style={styles.optionDetail}>No Chrome: Gerenciador de senhas → Configurações → Exportar senhas, e escolha o arquivo aqui. Também aceita CSV do Firefox, Bitwarden e 1Password. Só entram logins de sites (http/https); um site e usuário já salvo fica com a senha nova.</Text> : <>
       <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />
       <TextInput style={styles.formInput} placeholder="Usuário (CPF, matrícula ou e-mail)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} value={form.username || ''} onChangeText={value => field('username', value)} />
-      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} />
+      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} /></>}
       <Text style={[styles.limitMeta, { marginTop: 10 }]}>Quais bots podem usar</Text>
       <View style={styles.shareFiles}>
         {[{ id: null, name: 'Todos' }, ...bots].map(bot => { const all = !form.bots?.length; const on = bot.id ? form.bots?.includes(bot.id) : all; return <Pressable key={bot.id || 'all'} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
@@ -714,10 +726,14 @@ function PasswordsPanel({ bots }) {
       </View>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
         <Pressable accessibilityRole="button" onPress={() => setForm(null)} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Cancelar</Text></Pressable>
-        <PrimaryButton compact icon="check" title={busy ? 'Salvando…' : 'Salvar senha'} disabled={busy || !form.site || !form.password} onPress={save} style={{ flex: 1.4 }} />
+        {form.importing ? <PrimaryButton compact icon="download" title={busy ? 'Importando…' : 'Escolher arquivo'} disabled={busy} onPress={importFile} style={{ flex: 1.4 }} />
+          : <PrimaryButton compact icon="check" title={busy ? 'Salvando…' : 'Salvar senha'} disabled={busy || !form.site || !form.password} onPress={save} style={{ flex: 1.4 }} />}
       </View>
-    </View> : <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={[styles.stopButton, { alignSelf: 'flex-start', marginTop: 10 }]}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Adicionar senha</Text></Pressable>}
-    {note ? <Text style={[styles.optionDetail, /salva/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
+    </View> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Adicionar senha</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({ importing: true }); }} style={styles.stopButton}><Icon name="download" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Importar CSV</Text></Pressable>
+    </View>}
+    {note ? <Text style={[styles.optionDetail, /salva|importada/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 
@@ -1029,7 +1045,75 @@ function ShareSheet({ share, bots, phone, onPick, onClose }) {
   </Modal>;
 }
 
-function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer }) {
+/**
+ * Dictation for the composer. On the phone, Android's recognizer keeps listening through pauses until the person
+ * stops, showing the text as it is recognized. On the computer, the node records the microphone and transcribes
+ * it locally (whisper.cpp) when the person stops. Either way, the text joins the message for review.
+ */
+function useDictation({ phone, call, setValue, onError }) {
+  const [voice, setVoice] = useState(null); const [, tick] = useState(0);
+  const available = phone || Boolean(desktop && call);
+  const add = text => { if (text) setValue(old => old.trim() ? `${old.trim()} ${text}` : text); };
+  useEffect(() => {
+    if (!phone) return undefined;
+    const subscription = onSpeech(event => {
+      if (event.type === 'level') setVoice(old => old && { ...old, level: event.level });
+      else if (event.type === 'partial') setVoice(old => old && { ...old, text: event.text });
+      else if (event.type === 'final') { add(event.text); setVoice(null); }
+      else if (event.type === 'error') { setVoice(null); onError(event.message); }
+    });
+    return () => { subscription.remove(); stopListening(true).catch(() => {}); };
+  }, [phone]);
+  useEffect(() => { if (!voice?.since || voice.busy) return undefined; const timer = setInterval(() => tick(value => value + 1), 1000); return () => clearInterval(timer); }, [voice?.since, voice?.busy]);
+  useEffect(() => () => { if (!phone && desktop && call) call('desktop.dictate', { action: 'cancel' }).catch(() => {}); }, []);
+  const start = async () => {
+    onError('');
+    try {
+      if (phone) {
+        const permission = await microphonePermission();
+        if (permission?.status !== 'granted') throw new Error('Permita o microfone para ditar mensagens.');
+        setVoice({ text: '', level: 0 }); await startListening();
+      } else { setVoice({ text: '', level: 0.4, since: Date.now() }); await call('desktop.dictate', { action: 'start' }); }
+    } catch (e) { setVoice(null); onError(nativeMessage(e)); }
+  };
+  const stop = async () => {
+    if (phone) { stopListening(false).catch(() => {}); return; }
+    setVoice(old => old && { ...old, busy: true });
+    try { add((await call('desktop.dictate', { action: 'stop' }))?.text); } catch (e) { onError(nativeMessage(e)); } finally { setVoice(null); }
+  };
+  const cancel = () => { if (phone) stopListening(true).catch(() => {}); else call('desktop.dictate', { action: 'cancel' }).catch(() => {}); setVoice(null); };
+  const seconds = voice?.since ? Math.floor((Date.now() - voice.since) / 1000) : 0;
+  const label = voice?.busy ? 'Transcrevendo…' : voice?.text || (voice?.since ? `Gravando · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Ouvindo… pode fazer pausas.');
+  return { voice, available, start, stop, cancel, label };
+}
+
+/** The message box: text on top; attach on the left; dictation and send on the right (like Claude's). */
+function Composer({ value, setValue, onSend, canSend, placeholder, editable = true, inputRef, onAttach, attachDisabled, phone, call, onError, accessibilityLabel }) {
+  const dictation = useDictation({ phone, call, setValue, onError });
+  const { voice } = dictation;
+  return <View style={[styles.composerBox, voice && styles.composerListening]}>
+    {voice ? <View style={styles.voiceLive}>
+      <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
+      <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>
+    </View>
+    : <TextInput ref={inputRef} accessibilityLabel={accessibilityLabel} value={value} onChangeText={setValue} editable={editable}
+      placeholder={placeholder} placeholderTextColor={C.faint} multiline maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.mint}
+      // On the computer, Enter sends and Shift+Enter breaks the line.
+      onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />}
+    <View style={styles.composerRow}>
+      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" disabled={voice.busy} onPress={dictation.cancel} style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}><Icon name="close" size={20} color={C.text2} /></Pressable>
+        : onAttach ? <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={attachDisabled} onPress={onAttach} style={({ pressed }) => [styles.composerTool, attachDisabled && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable> : null}
+      <View style={{ flex: 1 }} />
+      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
+        : <>
+          {dictation.available ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={!editable} onPress={dictation.start} style={({ pressed }) => [styles.composerTool, !editable && styles.sendDisabled, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.mintInk : C.muted} stroke={2.6} /></Pressable>
+        </>}
+    </View>
+  </View>;
+}
+
+function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer }) {
   const scroll = useRef(null);
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -1040,6 +1124,9 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   const own = remote ? (presence?.online ? computer?.connections?.[selection?.provider || 'codex'] || { loggedIn: false, message: 'Esta IA não está conectada no computador.' } : null) : data.connections?.[selection?.provider || 'codex'];
   const status = error || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
   const phone = mode === 'phone' && termuxAvailable;
+  // A bot answering from the computer browses in its own Chrome there, shown live here and in the computer's window.
+  const pcBrowser = remote || data.browser?.pages?.[bot.id]?.where === 'pc';
+  const browsing = phone || (desktop && pcBrowser);
   const [files, setFiles] = useState([]); const [composerError, setComposerError] = useState('');
   // The bot's own browser panel; it stays open while the person has taken over.
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -1067,26 +1154,6 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
       setFiles(old => [...old, file]);
     } catch (e) { setComposerError(e.message); }
   };
-  // Inline dictation: partial text shows live in a slim bar; the final text joins the draft for review.
-  const [voice, setVoice] = useState(null);
-  useEffect(() => {
-    if (!phone) return undefined;
-    const subscription = onSpeech(event => {
-      if (event.type === 'level') setVoice(old => old && { ...old, level: event.level });
-      else if (event.type === 'partial') setVoice(old => old && { ...old, text: event.text });
-      else if (event.type === 'final') { if (event.text) setDraft(old => old.trim() ? `${old.trim()} ${event.text}` : event.text); setVoice(null); }
-      else if (event.type === 'error') { setVoice(null); setComposerError(event.message); }
-    });
-    return () => { subscription.remove(); stopListening(true).catch(() => {}); };
-  }, [phone]);
-  const speak = async () => {
-    setComposerError('');
-    try {
-      const permission = await microphonePermission();
-      if (permission?.status !== 'granted') throw new Error('Permita o microfone para ditar mensagens.');
-      setVoice({ text: '', level: 0 }); await startListening();
-    } catch (e) { setVoice(null); setComposerError(e.message); }
-  };
   // The latest tool step of the running task, so the person sees what the bot is doing right now.
   const running = data.tasks?.find(task => task.bot_id === bot.id && ['queued', 'running', 'waiting_approval'].includes(task.state));
   const step = running && data.activity?.find(item => item.task_id === running.id && /^tool_|^approval_/.test(item.kind));
@@ -1105,12 +1172,12 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
             <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
-      {phone ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen} onPress={() => !assumed && setBrowserOpen(value => !value)} size={40} /> : null}
+      {browsing ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen} onPress={() => !assumed && setBrowserOpen(value => !value)} size={40} /> : null}
       <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />
     </View>
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
-    {phone && browserOpen ? <BotBrowserPanel bot={bot} browser={data.browser} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
+    {browsing && browserOpen ? <BotBrowserPanel bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
     <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
       {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
@@ -1119,7 +1186,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
       </View>}
       {bot.messages.map(message => <Message key={message.id} message={message} bot={bot} models={data.models || []} busy={busy} onRetry={onRetry} onFile={mode === 'phone' ? onFile : () => {}} fileBusy={fileBusy} />)}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
-      {phone && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={data.browser?.pages?.[bot.id]?.where === 'pc'} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
+      {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />
         <View style={styles.thinkingCard}>
@@ -1141,27 +1208,10 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
-      {voice ? <View style={[styles.composer, styles.voiceBar]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" hitSlop={8} onPress={() => { stopListening(true).catch(() => {}); setVoice(null); }} style={styles.composerTool}><Icon name="close" size={20} color={C.text2} /></Pressable>
-        <View style={styles.voiceLive}>
-          <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
-          <Text style={styles.voiceText} numberOfLines={2}>{voice.text || 'Ouvindo…'}</Text>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Terminar ditado" onPress={() => stopListening(false).catch(() => {})} style={[styles.sendButton, styles.voiceDone]}><Icon name="check" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
-      </View> : <View style={styles.composer}>
-        {phone && <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={typing || files.length >= 5} onPress={attach} style={({ pressed }) => [styles.composerTool, (typing || files.length >= 5) && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable>}
-        <TextInput accessibilityLabel="Sua mensagem" value={draft} onChangeText={setDraft} editable={!typing}
-          placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`} placeholderTextColor={C.faint}
-          multiline maxLength={8000} textAlignVertical="center" style={styles.messageInput} selectionColor={C.mint}
-          // On the computer, Enter sends and Shift+Enter breaks the line.
-          onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(draft, files).then(sent => sent && setFiles([])); } } : undefined} />
-        {phone && !draft.trim() && !files.length ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={typing} onPress={speak}
-          style={({ pressed }) => [styles.sendButton, styles.micButton, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable>
-        : <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend}
-          onPress={async () => { if (await onSend(draft, files)) setFiles([]); }} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendDisabled, pressed && styles.pressed]}>
-          <Icon name="send" size={20} color={C.mintInk} stroke={2.6} />
-        </Pressable>}
-      </View>}
+      <Composer value={draft} setValue={setDraft} editable={!typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
+        onSend={async () => { if (await onSend(draft, files)) setFiles([]); }} accessibilityLabel="Sua mensagem"
+        placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
+        onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
   </KeyboardAvoidingView>;
 }
@@ -1217,7 +1267,7 @@ function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
   </Modal>;
 }
 
-function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy }) {
+function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call }) {
   const scroll = useRef(null); const input = useRef(null);
   const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState('');
   const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
@@ -1262,13 +1312,9 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
         {members.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Chamar ${bot.name}`} onPress={() => mention(bot)} style={({ pressed }) => [styles.mentionChip, named.includes(bot) && styles.mentionChipOn, pressed && styles.pressed]}>
           <Avatar bot={bot} size={22} animated={false} tile={false} /><Text style={[styles.mentionText, named.includes(bot) && { color: C.mint }]}>@{bot.name}</Text></Pressable>)}
       </ScrollView>
-      <View style={styles.composer}>
-        <TextInput ref={input} accessibilityLabel="Mensagem para a sala" value={draft} onChangeText={setDraft} editable={!sending} multiline maxLength={8000} textAlignVertical="center" style={[styles.messageInput, { paddingLeft: 14 }]} selectionColor={C.mint}
-          placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} placeholderTextColor={C.faint}
-          onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (draft.trim() && !sending) send(draft); } } : undefined} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Enviar para a sala" disabled={!draft.trim() || sending} onPress={() => send(draft)} style={({ pressed }) => [styles.sendButton, (!draft.trim() || sending) && styles.sendDisabled, pressed && styles.pressed]}>
-          <Icon name="send" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
-      </View>
+      <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={Boolean(draft.trim()) && !sending} phone={phone} call={call} onError={setError}
+        onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
+        placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
   </KeyboardAvoidingView>;
 }
@@ -1395,6 +1441,8 @@ function AppMain() {
         showBotNotification(data).then(shown => shown && supervisor.current.call('outbox.ack', { ids: [data.id] })).catch(() => {});
         return;
       }
+      // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
+      if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
       clearTimeout(eventRefresh.current);
       eventRefresh.current = setTimeout(() => { if (phoneMode.current === 'phone') loadSupervisorState().catch(error => setLoadError(error.message)); }, 150);
     },
@@ -1757,14 +1805,14 @@ function AppMain() {
 
   // The computer's wide window shows the list, the open conversation and today side by side.
   const wide = Boolean(desktop) && windowWidth >= 900;
-  const roomView = data && room ? <RoomScreen room={room} data={data} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen room={room} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
           onSend={async text => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
-          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
+          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
   return <View style={[styles.app, desktop && !wide && column]}>
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
@@ -1793,6 +1841,7 @@ function AppMain() {
       accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await loadSupervisorState(); }}
+      onMainChrome={async mainChrome => { await supervisor.current.call('bot.update', { botId: profileId, mainChrome }); await loadSupervisorState(); }}
       skills={(data.skills || []).filter(skill => data.bots.find(item => item.id === profileId)?.skills?.includes(skill.id))}
       onSkill={async (method, id) => {
         if (method === 'skill.remove') await new Promise((resolve, reject) => Alert.alert('Remover a habilidade?', 'O programa e a rotina dele saem deste celular.', [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Remover', style: 'destructive', onPress: resolve }]));
@@ -2113,7 +2162,12 @@ const styles = StyleSheet.create({
   sharePreviewText: { color: C.text2, fontFamily: F.m, fontSize: 13, lineHeight: 19 },
   shareFiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   shareProblem: { color: C.amber, fontFamily: F.m, fontSize: 12, lineHeight: 17 },
-  voiceBar: { alignItems: 'center' }, voiceLive: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  composerBox: { borderRadius: 28, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line2, paddingTop: 6, paddingHorizontal: 8, paddingBottom: 8 },
+  composerListening: { borderColor: C.mint + '88' },
+  composerInput: { minHeight: 46, maxHeight: 160, color: C.text, fontFamily: F.r, fontSize: 16, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 6 },
+  composerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  sendIdle: { backgroundColor: C.elevated },
+  voiceLive: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingTop: 8 },
   voiceLevels: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 24 }, voiceLevel: { width: 4, borderRadius: 2, backgroundColor: C.mint },
   voiceText: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 14 }, voiceDone: {},
   // Model choice

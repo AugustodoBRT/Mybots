@@ -1356,7 +1356,7 @@ function AppMain() {
     // Keeps routines and notices working with the screen off (only if the person did not turn it off).
     startKeepAlive()?.catch(() => {});
   }, []);
-  if (!supervisor.current) supervisor.current = new SupervisorClient({
+  if (!supervisor.current) supervisor.current = Object.assign(new SupervisorClient({
     onEvent: (event, data) => {
       // A bot notice while the app is open: MyBots shows it and confirms, so Termux:API does not repeat it.
       if (event === 'bot.notify' && data?.id && !desktop) {
@@ -1369,8 +1369,11 @@ function AppMain() {
     onConnection: connected => {
       if (phoneMode.current !== 'phone') return;
       if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => loadSupervisorState().catch(error => setLoadError(error.message)));
-      else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: 'Supervisor desconectado. Reconectando ao Termux…' } } : current);
+      else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : 'Supervisor desconectado. Reconectando ao Termux…' } } : current);
     }
+  }), {
+    // The window on the computer: a refused token means the page is older than the node's; a fresh page has the right one.
+    onRefused: error => { if (desktop && /Acesso negado/.test(error?.message || '')) setTimeout(() => globalThis.location?.reload(), 1500); }
   });
 
   const refreshComputer = useCallback(async (token = apiToken, base = apiBase) => {

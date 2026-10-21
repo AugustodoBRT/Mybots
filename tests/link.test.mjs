@@ -203,6 +203,14 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   const sent = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi do computador' });
   await until(() => app.db.task(sent.taskId).state === 'done');
 
+  // A message sent on the phone shows up in the window live (its events come through the link).
+  events.length = 0;
+  const fromPhone = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi do celular' });
+  await until(() => events.includes('task.done') && app.db.task(fromPhone.taskId).state === 'done');
+  assert.ok((await client.call('chat.history', { botId: bot.id })).some(message => message.text === 'Oi do celular'));
+  // The window's token survives a restart of the node, so an open window just reconnects.
+  assert.equal(readFileSync(join(pcDir, 'ui-token'), 'utf8'), desktop.token);
+
   const file = app.tools.attachments.store(bot.id, { name: 'nota.txt', mime: 'text/plain', bytes: Buffer.from('feito no celular') });
   const saved = await client.call('desktop.file', { id: file.id, name: 'nota.txt', action: 'save' });
   assert.equal(saved.path, join(pcDir, 'Downloads', 'nota.txt')); assert.equal(readFileSync(saved.path, 'utf8'), 'feito no celular');
@@ -216,7 +224,7 @@ test('freed folders: ~ paths resolve on the computer; Claude gets --add-dir, Cod
   const { mkdirSync } = await import('node:fs');
   const home = await mkdtemp(join(tmpdir(), 'mybots-home-')); t.after(() => rm(home, { recursive: true, force: true }));
   for (const path of ['vscodeProjects', '.ssh', '.codex', '.claude', 'MyBots/Dev']) mkdirSync(join(home, path), { recursive: true });
-  const computer = computerFor({ folders: ['~/vscodeProjects', '~/nao-existe', '~/.ssh', '~'], full: false }, join(home, 'MyBots/Dev'), home);
+  const computer = computerFor({ folders: ['~/vscodeprojects', '~/nao-existe', '~/.ssh', '~'], full: false }, join(home, 'MyBots/Dev'), home);
   assert.deepEqual(computer.folders, [join(home, 'vscodeProjects')]);
   const tools = { endpoint: 'http://127.0.0.1:1', token: 'x', entry: '/tmp/e.mjs', device: 'pc', computer };
   const claudeArgs = claude.claudeArguments({ model: 'haiku' }, randomUUID(), tools);

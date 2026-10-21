@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join, normalize, extname, parse } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -13,11 +13,14 @@ const OFFLINE = 'O celular está fora de alcance. Confira se ele está ligado e 
 
 /**
  * The MyBots window on the computer: the same interface as the phone (react-native-web, built into pc/ui), served
- * only on 127.0.0.1. The page carries a token made at each start; the WebSocket speaks the supervisor's protocol
+ * only on 127.0.0.1. The page carries a token kept in the node's folder (so an open window reconnects after the node
+ * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), log = () => {} }) {
-  const token = randomBytes(32).toString('hex');
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, log = () => {} }) {
+  let token = null;
+  try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
+  if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
   const clients = new Set();
   const origins = () => [`http://127.0.0.1:${server.address().port}`, `http://localhost:${server.address().port}`];
   // Only this computer's own pages: a site opened in a browser cannot read the page (DNS rebinding) or use the socket.
@@ -33,7 +36,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       response.writeHead(404).end(); return;
     }
     let body = readFileSync(file);
-    // The page gets the window's connection; the token never goes to disk.
+    // The page gets the window's connection; the token stays in the node's private folder.
     if (file.endsWith('index.html')) body = Buffer.from(body.toString('utf8').replace('<head>', `<head><script>window.MYBOTS_DESKTOP=${JSON.stringify({ port: server.address().port, token })}</script>`));
     response.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(body);
   });

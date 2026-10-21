@@ -558,3 +558,13 @@ Relato: o Desenvolvedor (Codex) disse que só acessava a pasta dele e /tmp. No t
 - **Orientação**: diz as pastas livres, o que precisa de aprovação, que ali ele tem terminal e arquivos além do mybots-tools ("vale por cima de somente…") e que deve tentar antes de dizer que não consegue.
 
 126 testes (novos: pastas e isolamento nos argumentos do Claude e do Codex; pastas recusadas no celular). Real no emulador + nó de teste: Codex gpt-6-luna Médio com pasta liberada → `~/.ssh` com 0 arquivos, gravou na liberada, "somente leitura" fora; Claude Sonnet Médio → criou na liberada sem pedir, ler `~/.bashrc` virou cartão "Ler um arquivo fora da pasta do bot" e leu após permitir, e descreveu o acesso certo. Serviço `mybots-pc` reiniciado e `pc/ui` gerado de novo neste PC. APK `dist/apk/mybots-v40.apk`, versionCode 40, 0.21.0, ARM64, certificado `fac61745…033b9c`, SHA-256 `5e0061ecd3841252fe887f27e3c9f76fde2ca123e8122c34227f2f893a6e5f25`. Release v40.
+
+## 21/10/2026 — Correções da janela do PC (sem APK novo)
+
+Relato após a v40: a janela mostrava "Atenção · Acesso negado" e uma mensagem mandada pelo celular só apareceu nela depois de fechar e abrir de novo.
+
+- **Causa**: o token da janela era novo a cada início do nó; ao reiniciar o `mybots-pc` (atualização), a página aberta tentava reconectar com o token antigo, era recusada e ficava sem os eventos. Agora o token fica em `~/.mybots-pc/ui-token` (600) e sobrevive aos reinícios; se mesmo assim for recusado, a página se recarrega sozinha. Texto da desconexão no PC: "O MyBots do computador reiniciou. Reconectando…".
+- **Pastas digitadas com outra caixa** (`~/vscodeprojects` para `~/vscodeProjects`): o nó acha a pasta mesmo assim.
+- Conferido: o Desenvolvedor está em **Acesso total**, por isso disse que lê e salva em toda a pasta pessoal (como combinado); `.aws` e as outras pastas de chaves aparecem vazias para ele pelo bubblewrap.
+
+Teste da janela ampliado (mensagem mandada no celular chega ao vivo; token igual depois de reiniciar). 126 testes. Serviço reiniciado duas vezes neste PC com o mesmo token e o celular reconectando.

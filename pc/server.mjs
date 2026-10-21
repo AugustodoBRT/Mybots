@@ -1,9 +1,9 @@
 import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
 import { randomBytes, randomUUID, X509Certificate, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
@@ -68,11 +68,25 @@ export function workspaceFor(directory, projects, bot) {
   return map[id];
 }
 
+/** A folder typed on the phone (~/vscodeprojects) found on this disk even if the letters' case differs (~/vscodeProjects). */
+function findFolder(path) {
+  if (existsSync(path)) return path;
+  let current = sep;
+  for (const part of path.split(sep).filter(Boolean)) {
+    const exact = join(current, part);
+    if (existsSync(exact)) { current = exact; continue; }
+    let match; try { match = readdirSync(current).find(name => name.toLowerCase() === part.toLowerCase()); } catch { return null; }
+    if (!match) return null;
+    current = join(current, match);
+  }
+  return current;
+}
+
 /** What the bot may edit here: its own folder, the folders the person freed for it, or the whole home on Acesso total. */
 export function computerFor(allowed, workspace, home = homedir()) {
   if (!allowed) return false;
-  const folders = (Array.isArray(allowed.folders) ? allowed.folders : []).map(path => resolve(path.startsWith('~') ? join(home, path.slice(1)) : path))
-    .filter(path => !SENSITIVE.test(path) && path !== home && path !== '/' && existsSync(path) && statSync(path).isDirectory());
+  const folders = (Array.isArray(allowed.folders) ? allowed.folders : []).map(path => findFolder(resolve(path.startsWith('~') ? join(home, path.slice(1)) : path)))
+    .filter(path => path && !SENSITIVE.test(path) && path !== home && path !== '/' && statSync(path).isDirectory());
   return { workspace, folders: [...new Set(folders)], full: Boolean(allowed.full), home };
 }
 
@@ -112,7 +126,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, tokenFile: join(directory, 'ui-token'), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');

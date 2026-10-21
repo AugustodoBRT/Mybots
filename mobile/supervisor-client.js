@@ -17,7 +17,7 @@ export class SupervisorClient {
         this.request('auth', { token: credentials.token }, true).then(() => {
           settled = true; clearTimeout(timeout); this.authenticated = true; this.retries = 0;
           this.onConnection(true); resolve();
-        }).catch(error => { clearTimeout(timeout); reject(error); ws.close(); });
+        }).catch(error => { clearTimeout(timeout); this.onRefused?.(error); reject(error); ws.close(); });
       };
       ws.onmessage = event => {
         if (this.socket !== ws) return;

@@ -93,7 +93,7 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 | **v41** ✅ | Respostas longas: limite por inatividade (10 min sem sinal, até 2 h) e falas durante o trabalho na conversa e nas salas, com o passo atual sob "Pensando" | Codex e Claude reais contaram cada etapa de um script com teste |
 | **v42** ✅ | Habilidades: `skill_propose` (sempre com aprovação), bot novo no celular, rotina diária sem IA, `skill_run`, execução isolada no Node do Termux; internet nos comandos do Codex no PC | Codex real escreveu `buscar_vagas` (Gupy), testou no PC, o emulador instalou e rodou: 19 vagas na conversa e na planilha |
 | **v43** ✅ | Correção: PDFs com figuras, diagramas e fórmulas — o bot vê as páginas como imagem (`as_image`) | Bot do celular resolveu um diagrama de blocos só desenhado |
-| **v44** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
+| **v44** ✅ | Controle do desktop (grim/hyprctl/ydotool), permissão própria, indicador e pânico local + Playwright/Chrome com perfil por bot e login cifrado do celular | Codex real no emulador abre app, foca com o ponteiro, clica, digita e vê screenshot; pânico interrompe em 395 ms; login fictício no Chrome com a senha salva no Android |
 | **v45** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
 
 ## 10. Riscos

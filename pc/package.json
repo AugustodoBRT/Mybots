@@ -3,5 +3,8 @@
   "private": true,
   "type": "module",
   "description": "O MyBots no computador: executa os bots do computador para o celular pareado.",
-  "dependencies": { "qrcode": "1.5.4" }
+  "dependencies": {
+    "playwright-core": "1.64.1",
+    "qrcode": "1.5.4"
+  }
 }

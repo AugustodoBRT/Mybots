@@ -6,7 +6,7 @@ const OPS = ['open', 'read', 'inspect', 'click', 'type', 'upload', 'login', 'wai
 // Phone work that is not a bot's browser: reading and writing PDFs with Android's own tools.
 const DEVICE_OPS = ['pdfRead', 'pdfCreate'];
 // open and click may start a download (up to 90 s on the phone).
-const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000 };
+const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000 };
 
 // Loopback and link-local hosts are never opened: the supervisor and other local services live there.
 export function safeUrl(value) {
@@ -44,11 +44,15 @@ export class Browser {
     if (!this.available()) return Promise.reject(new Error('O navegador do bot fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots (ou ligar “Funcionar com a tela apagada” nos Ajustes).'));
     return this.queue({ botId, op, args });
   }
-  queue({ botId, op, args }) {
+  queue({ botId, op, args, signal }) {
+    if (signal?.aborted) return Promise.reject(new Error('Pedido de navegador interrompido.'));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(botId ? 'O navegador demorou para responder. A página pode estar lenta; tente browser_read.' : 'O celular demorou para processar o arquivo.')); }, TIMEOUTS[op] || 20000);
-      this.pending.set(id, { command: { id, botId, op, args }, sent: false, timer, resolve: value => { clearTimeout(timer); this.pending.delete(id); resolve(value); }, reject: error => { clearTimeout(timer); this.pending.delete(id); reject(error); } });
+      const timer = setTimeout(() => this.pending.get(id)?.reject(new Error(botId ? 'O navegador demorou para responder. A página pode estar lenta; tente browser_read.' : 'O celular demorou para processar o arquivo.')), TIMEOUTS[op] || 20000);
+      const stop = () => this.pending.get(id)?.reject(new Error('Pedido de navegador interrompido.'));
+      const clear = () => { clearTimeout(timer); this.pending.delete(id); signal?.removeEventListener('abort', stop); };
+      this.pending.set(id, { command: { id, botId, op, args }, sent: false, timer, resolve: value => { clear(); resolve(value); }, reject: error => { clear(); reject(error); } });
+      signal?.addEventListener('abort', stop, { once: true });
       this.flush();
     });
   }

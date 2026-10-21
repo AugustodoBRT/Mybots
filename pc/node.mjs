@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createConnection } from 'node:net';
 import { createNode, startPairing, DEFAULT_PORT } from './server.mjs';
 
 const directory = process.env.MYBOTS_PC_HOME || join(homedir(), '.mybots-pc');
@@ -59,6 +60,15 @@ function uninstall() {
 }
 
 const command = process.argv[2] || 'serve';
-const commands = { serve, pair, install, uninstall };
-if (!commands[command]) { console.error(`Comando desconhecido: ${command}. Use pair, install ou uninstall.`); process.exit(1); }
+function panic() {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(join(directory, 'panic.sock'));
+    socket.setTimeout(2000, () => socket.destroy(new Error('O nó não respondeu à tecla de pânico.')));
+    socket.on('connect', () => socket.write('panic'));
+    socket.on('data', () => { socket.end(); resolve(); });
+    socket.on('error', () => reject(new Error('Não encontrei o nó do MyBots para interromper.')));
+  });
+}
+const commands = { serve, pair, install, uninstall, panic };
+if (!commands[command]) { console.error(`Comando desconhecido: ${command}. Use pair, install, uninstall ou panic.`); process.exit(1); }
 Promise.resolve(commands[command]()).catch(error => { console.error(error.message); process.exit(1); });

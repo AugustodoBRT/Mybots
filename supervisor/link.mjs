@@ -10,7 +10,7 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // backups, connectors with passwords, pairing or the phone's own hardware.
 export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'chat.history', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
-  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove'];
+  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
 const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed'];
 
@@ -41,6 +41,7 @@ export class Link {
   constructor(db, nodes, { port, changed = () => {}, rpc = null, WebSocketClass = WebSocket } = {}) {
     Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass });
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
+    this.commands = new Map();
   }
   saved() { try { return JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='link.computer'")?.value || 'null'); } catch { return null; } }
   save(value) { this.db.run("INSERT INTO metadata VALUES('link.computer',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(value)); }
@@ -146,6 +147,7 @@ export class Link {
       if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
+      if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }
       const run = this.runs.get(message.id);
       if (!run) return;
       if (message.type === 'session') await run.onSession?.(message.sessionId);
@@ -155,6 +157,7 @@ export class Link {
     });
     ws.on('close', () => {
       clearInterval(ping);
+      for (const done of this.commands.values()) done({ error: 'O computador desconectou.' });
       if (this.socket === ws) this.socket = null;
       if (this.closed) return;
       // Interrupt first (the queue marks the turn "computer disconnected"), then end the waiting promises.
@@ -182,14 +185,27 @@ export class Link {
   }
   /** Supervisor events, for the window on the computer to refresh. */
   event(event, data) { if (DESKTOP_EVENTS.includes(event) && this.socket?.readyState === 1 && this.state === 'online') this.socket.send(JSON.stringify({ type: 'event', event, data })); }
+  /** An action already authorized on the phone, only for its currently running turn on this connection. */
+  command(run, op, args) {
+    const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId);
+    if (!entry || run.signal?.aborted || this.socket?.readyState !== 1) return Promise.reject(new Error('A resposta no computador já foi interrompida.'));
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const stop = () => done({ error: 'Ação interrompida.' });
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); run.signal?.removeEventListener('abort', stop); error ? reject(new Error(error)) : resolve(result || {}); };
+      const timer = setTimeout(() => done({ error: 'O computador demorou para executar a ferramenta.' }), 135000);
+      this.commands.set(rid, done); run.signal?.addEventListener('abort', stop, { once: true });
+      this.socket.send(JSON.stringify({ type: 'pc_command', rid, id: entry[0], op, args }));
+    });
+  }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */
   run(send, bot, prompt, { signal, tools, onSession, onProgress } = {}) {
     return new Promise((resolve, reject) => {
       const id = randomUUID(); let timer;
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
-      this.runs.set(id, { onSession, onProgress, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
+      this.runs.set(id, { taskId: tools?.taskId, onSession, onProgress, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
-      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
+      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {
         send({ type: 'cancel', id });
         timer = setTimeout(() => this.runs.get(id)?.reject(new Error('Pedido cancelado.')), 8000);
@@ -197,5 +213,5 @@ export class Link {
     });
   }
   /** Shutting down: the turns still waiting on the computer end now (the queue records them as interrupted). */
-  close() { this.closed = true; this.drop(); for (const run of this.runs.values()) run.reject(new Error('Supervisor reiniciado.')); }
+  close() { this.closed = true; this.drop(); for (const done of this.commands.values()) done({ error: 'Supervisor reiniciado.' }); for (const run of this.runs.values()) run.reject(new Error('Supervisor reiniciado.')); }
 }

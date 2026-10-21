@@ -1,5 +1,6 @@
 import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
+import { createServer as createSocket } from 'node:net';
 import { randomBytes, randomUUID, X509Certificate, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -13,6 +14,8 @@ import { Claude } from '../lib/claude.mjs';
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { SENSITIVE } from '../supervisor/tool-policy.mjs';
 import { createUi, phoneBridge, DEFAULT_UI_PORT } from './ui.mjs';
+import { Desktop } from './desktop.mjs';
+import { PcBrowser } from './browser.mjs';
 
 export const DEFAULT_PORT = 3230;
 const PAIRING_MS = 10 * 60000;
@@ -93,10 +96,15 @@ export function computerFor(allowed, workspace, home = homedir()) {
 // Folders with keys, passwords and the other IA's login. Every IA turn here runs in a bubblewrap view of the disk where
 // they are empty, so no command or file read can reach them, whatever the IA decides.
 const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone'];
-export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path))) {
+export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc')) {
   if (!bwrap) return null;
-  const hidden = [...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).filter(path => existsSync(path) && statSync(path).isDirectory());
-  return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', ...hidden.flatMap(path => ['--tmpfs', path])];
+  const hidden = [...new Set([...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
+  // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
+  // prevents reaching the host's sockets and browser profiles through another process's root directory.
+  const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
+  const sockets = ['/tmp/.ydotool_socket', process.env.YDOTOOL_SOCKET, process.env.XAUTHORITY, join(home, '.Xauthority')].filter(path => path?.startsWith('/') && existsSync(path) && !statSync(path).isDirectory());
+  return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', '--unshare-pid', '--proc', '/proc', '--dev', '/dev',
+    ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set(sockets)].flatMap(path => ['--ro-bind', '/dev/null', path])];
 }
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude') };
@@ -115,8 +123,20 @@ async function localStatus() {
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, desktop = new Desktop(), browser = new PcBrowser(directory), log = () => {} } = {}) {
   const me = identity(directory);
+  const controls = new Set(); let owner = null;
+  const panic = () => { for (const run of controls) run.controller.abort('panic'); browser.close(); };
+  const panicPath = join(directory, 'panic.sock');
+  // Refuse a second node using this directory. A stale socket can be removed after an unclean shutdown.
+  if (existsSync(panicPath)) {
+    const { createConnection } = await import('node:net');
+    const live = await new Promise(resolve => { const socket = createConnection(panicPath); socket.on('connect', () => { socket.destroy(); resolve(true); }); socket.on('error', () => resolve(false)); });
+    if (live) throw new Error('Já existe um nó usando esta pasta.');
+    unlinkSync(panicPath);
+  }
+  const panicServer = createSocket(socket => { socket.once('data', data => { if (data.toString() === 'panic') { panic(); socket.end('ok'); } else socket.end(); }); });
+  await new Promise((resolve, reject) => { panicServer.once('error', reject); panicServer.listen(panicPath, resolve); }); chmodSync(panicPath, 0o600);
   const phonesFile = join(directory, 'phones.json');
   const server = createHttps({ key: me.key, cert: me.cert, minVersion: 'TLSv1.3' }, (request, response) => response.writeHead(404).end());
   const sockets = new WebSocketServer({ server, maxPayload: MAX_FRAME });
@@ -183,30 +203,56 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       if (message.type === 'rpc_reply') { bridge.answer(message); return; }
       if (message.type === 'event') { ui.broadcast(message.event, message.data); return; }
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
-      if (message.type === 'cancel') { runs.get(message.id)?.abort('cancelled'); return; }
+      if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
+      if (message.type === 'pc_command') {
+        const run = runs.get(message.id);
+        try {
+          if (!run || run.controller.signal.aborted) throw new Error('A resposta no computador já foi interrompida.');
+          const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.');
+          owner = run;
+          run.indicator ||= desktop.indicate(run.bot);
+          const dismiss = await run.indicator;
+          if (run.controller.signal.aborted) { await dismiss(); throw new Error('Controle interrompido.'); }
+          const result = isDesktop ? await desktop.command(message.op, message.args, run.controller.signal) : await browser.command(run.bot.id, message.op.slice(8), message.args, run.controller.signal);
+          if (run.controller.signal.aborted) throw new Error('Controle interrompido.');
+          send({ type: 'pc_result', rid: message.rid, result });
+        } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type !== 'run' || typeof message.id !== 'string' || runs.has(message.id)) return;
-      const controller = new AbortController(); runs.set(message.id, controller);
+      const controller = new AbortController(); const run = { controller, bot: message.bot || {}, tools: message.tools };
+      runs.set(message.id, run); controls.add(run);
+      controller.signal.addEventListener('abort', () => { if (controller.signal.reason !== 'finished') browser.stop(run.bot.id); run.indicator?.then(dismiss => dismiss(), () => {}); }, { once: true });
       try {
         const bot = message.bot || {};
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
+        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory);
+        if (!wrap) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
         log(`Respondendo como ${bot.name}.`);
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
-          wrap: sandboxFor(bot.provider) || undefined,
+          wrap,
           tools: message.tools ? { ...message.tools, device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });
+        if (controller.signal.aborted) throw new Error(controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : 'Resposta interrompida.');
         send({ type: 'done', id: message.id, reply });
       } catch (error) {
-        send({ type: 'failed', id: message.id, error: error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
-      } finally { runs.delete(message.id); }
+        send({ type: 'failed', id: message.id, error: controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
+      } finally {
+        runs.delete(message.id); controls.delete(run); if (owner === run) owner = null;
+        if (!controller.signal.aborted && browser.workers?.has(run.bot.id)) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
+        controller.abort('finished');
+      }
     });
     ws.on('close', () => {
       clearTimeout(timer);
       // The phone went away: its turns end there (it marks them interrupted) and must not keep running here.
-      for (const controller of runs.values()) controller.abort('phone_lost');
+      for (const run of runs.values()) run.controller.abort('phone_lost');
       for (const done of waiting.values()) done({ status: 502, headers: {}, body: '' });
       proxy?.then(http => http.close(), () => {});
       if (ws.phone) { log(`${ws.phone.name} desconectado.`); bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); }
@@ -217,6 +263,6 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const windowPort = await ui.listen();
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
-    phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone),
-    async close() { clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), ui.close()]); } };
+    phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
+    async close() { panic(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
 }

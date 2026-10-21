@@ -118,6 +118,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // The models to pick from: the phone's, plus those of an IA that is logged in only on the computer.
     const catalog = () => [...models, ...(nodes.computer()?.models || []).filter(item => !models.some(own => (own.provider || 'codex') === (item?.provider || 'codex')))];
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
+    tools.pcCommand = (run, op, args) => link.command(run, op, args);
     // Whether a bot's IA is logged in where its next turn runs: the computer reports its own; while it is off,
     // a turn of a computer bot just waits (and is checked by the computer when it runs there).
     const statusFor = bot => {
@@ -346,7 +347,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (help) {
             await refresh();
             const selection = selectionFor(catalog(), bot);
-            if (connections[selection.provider || 'codex']?.loggedIn) {
+            if (statusFor(bot)?.loggedIn) {
               const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com browser_read.`, selection);
               broadcast('task.progress', { taskId: task.id }); queue.schedule();
             }

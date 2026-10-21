@@ -4,12 +4,12 @@ import { BotBrowserView, browserAction, browserInfo } from './termux';
 import { C, F, Icon } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
-export function BrowserHelpCard({ bot, help, onOpen }) {
+export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
   return <View style={styles.helpCard}>
     <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="hand" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>NAVEGADOR DO BOT</Text></View>
     <Text style={styles.helpTitle}>{bot.name} precisa de você</Text>
     <Text style={styles.helpBody}>{help.reason}</Text>
-    <Text style={styles.helpHint}>Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.</Text>
+    <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, use a janela do Chrome deste bot no computador e depois toque em “Devolver ao bot”.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.helpButton}><Icon name="globe" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>Abrir navegador e assumir</Text></Pressable>
   </View>;
 }
@@ -24,12 +24,21 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const assumed = browser?.control?.[bot.id] === 'person';
+  const onPc = browser?.pages?.[bot.id]?.where === 'pc';
   useEffect(() => { browserInfo().then(setInfo).catch(() => {}); }, []);
   const control = async who => {
     setBusy(true); setError('');
     try { await onControl(who); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const act = action => browserAction(bot.id, action).catch(() => {});
+  if (onPc) return <View style={styles.panel}>
+    <Text style={styles.title}>Chrome de {bot.name} no computador</Text>
+    <Text style={styles.url}>{browser.pages[bot.id].url}</Text>
+    <Text style={styles.hint}>A página está aberta no PC, no perfil deste bot. Para entrar manualmente, resolver CAPTCHA ou digitar um código, toque em Assumir e use essa janela do Chrome.</Text>
+    {error ? <Text style={styles.error}>{error}</Text> : null}
+    <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={styles.control}><Text style={styles.controlText}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text></Pressable>
+    {!assumed ? <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.hint}>Fechar painel</Text></Pressable> : null}
+  </View>;
   if (!BotBrowserView) return null;
   return <View style={styles.panel}>
     <View style={styles.bar}>

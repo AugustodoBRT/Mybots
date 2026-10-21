@@ -81,7 +81,7 @@ export class Queue extends EventEmitter {
         const reply = await execute(bot, prompt, {
           signal: controller.signal,
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full',
+          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(bot.id, 'desktop') === 'allow', browser: this.tools.policy(bot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full',
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
             computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' ? { folders: Array.isArray(bot.folders) ? bot.folders : [], full: bot.access === 'full' } : false } : undefined,
           onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },

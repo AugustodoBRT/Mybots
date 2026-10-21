@@ -196,6 +196,7 @@ internal object BotBrowser {
     val botId = command.getString("botId")
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")
     val args = command.optJSONObject("args") ?: JSONObject()
+    if (command.getString("op") == "pcLogin") return PasswordVault.forComputer(context, botId, args)
     val id = args.optInt("id", 0)
     return when (command.getString("op")) {
       "open" -> {

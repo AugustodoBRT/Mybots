@@ -7,6 +7,16 @@ import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import android.util.Base64
+import java.security.KeyFactory
+import java.security.SecureRandom
+import java.security.spec.X509EncodedKeySpec
+import java.security.spec.MGF1ParameterSpec
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.OAEPParameterSpec
+import javax.crypto.spec.PSource
 
 /**
  * Saved site logins, kept only in the app (Android Keystore). Neither the supervisor nor the model ever receives a
@@ -77,6 +87,28 @@ internal object PasswordVault {
       .filter { matches(it.optString("host"), host) }
       .filter { item -> item.optJSONArray("bots")?.let { bots -> (0 until bots.length()).any { bots.getString(it) == botId } } ?: true }
       .maxByOrNull { it.optString("host").length }
+  }
+
+  /** Only the browser worker can decrypt this one-use login; the supervisor forwards ciphertext. */
+  fun forComputer(context: Context, botId: String, args: JSONObject): JSONObject {
+    val url = args.getString("url")
+    val challenge = args.getString("challenge")
+    if (url.length > 2000 || !challenge.matches(Regex("[A-Za-z0-9_-]{32}")) || args.getString("publicKey").length > 1000) throw IllegalArgumentException("Pedido de login protegido inválido.")
+    val saved = forPage(context, botId, url) ?: throw IllegalStateException("Não há senha salva para este site e este bot. Salve em Ajustes → Senhas ou entre no Chrome do bot.")
+    val bytes = JSONObject().put("url", url).put("challenge", challenge).put("username", saved.optString("username")).put("password", saved.optString("password")).toString().toByteArray(Charsets.UTF_8)
+    val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+    try {
+      val aes = Cipher.getInstance("AES/GCM/NoPadding")
+      aes.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+      aes.updateAAD(challenge.toByteArray(Charsets.UTF_8))
+      val encrypted = aes.doFinal(bytes)
+      val rsa = Cipher.getInstance("RSA/ECB/OAEPPadding")
+      val publicKey = KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(args.getString("publicKey"), Base64.NO_WRAP)))
+      rsa.init(Cipher.ENCRYPT_MODE, publicKey, OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT))
+      fun b64(value: ByteArray) = Base64.encodeToString(value, Base64.NO_WRAP)
+      return JSONObject().put("key", b64(rsa.doFinal(key))).put("iv", b64(iv)).put("data", b64(encrypted.copyOfRange(0, encrypted.size - 16))).put("tag", b64(encrypted.copyOfRange(encrypted.size - 16, encrypted.size)))
+    } finally { bytes.fill(0); key.fill(0) }
   }
 
   // A login typed by the person while they had taken over a bot's browser.

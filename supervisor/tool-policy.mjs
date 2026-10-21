@@ -28,6 +28,7 @@ export const TOOL_DEFINITIONS = [
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
   // Bots answering from the paired computer: files in their own folder there are free; the rest goes by the level.
   { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Fora da pasta e comandos pedem aprovação no Médio; sudo, apagar pastas inteiras e git push sempre pedem.' },
+  { name: 'desktop', label: 'Controlar a tela do computador', description: 'Permissão separada, desligada por padrão, inclusive no Acesso total. Vê a tela e as janelas, abre apps, clica e digita no PC. No Médio, ações pedem aprovação, com Sempre permitir. Pouco acesso nunca pode usar.' },
   // Skills: small programs a bot made, run on the phone without the IA. Installing one always asks the person.
   { name: 'skill.list', label: 'Ver habilidades', description: 'Consulta as habilidades deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'skill.run', label: 'Usar habilidades', description: 'Roda no celular uma habilidade deste bot (um programa que você aprovou) e lê o resultado.', readOnly: true, defaultAllowed: true },
@@ -36,8 +37,9 @@ export const TOOL_DEFINITIONS = [
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
 export const BROWSER_TOOLS = ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
-export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : tool;
+export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : tool;
 export const AVATARS = ['orbit', 'pixel', 'cat', 'spark'];
 // Pouco acesso, médio (pergunta na primeira vez) e acesso total. Bots without a level keep their switches.
 export const ACCESS_LEVELS = ['basic', 'ask', 'full'];
@@ -66,6 +68,7 @@ export function toolArguments(tool, args) {
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
     'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'],
+    'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
@@ -101,6 +104,30 @@ export function toolArguments(tool, args) {
     if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Use ${name} entre ${min} e ${max}.`);
     return value;
   };
+  if (tool === 'desktop.screenshot' || tool === 'desktop.windows') return {};
+  if (tool === 'desktop.focus') {
+    const address = text('address', 30);
+    if (!/^0x[0-9a-f]+$/i.test(address)) throw new Error('Use o endereço de uma janela retornado por desktop_windows.');
+    return { address };
+  }
+  if (tool === 'desktop.launch') {
+    const app = text('app', 80);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(app)) throw new Error('Informe só o nome do executável, sem argumentos nem comandos de shell.');
+    return { app };
+  }
+  if (tool === 'desktop.click') {
+    const button = args.button ?? 'left';
+    if (!['left', 'middle', 'right'].includes(button)) throw new Error('Use button left, middle ou right.');
+    return { x: integer('x', 0, 32767), y: integer('y', 0, 32767), button };
+  }
+  if (tool === 'desktop.type') {
+    if (typeof args.text !== 'string' || !args.text.length || args.text.length > 2000 || /\u0000/.test(args.text)) throw new Error('Texto entre 1 e 2.000 caracteres.');
+    return { text: args.text };
+  }
+  if (tool === 'desktop.key') {
+    if (!Array.isArray(args.keys) || args.keys.length < 1 || args.keys.length > 5 || args.keys.some(key => !['CTRL','ALT','SHIFT','SUPER','ENTER','TAB','ESC','BACKSPACE','DELETE','SPACE','UP','DOWN','LEFT','RIGHT','HOME','END','A','C','V','X','Z','L','F','S'].includes(key))) throw new Error('Use de 1 a 5 teclas da lista de desktop_key.');
+    return { keys: [...new Set(args.keys)] };
+  }
   if (tool === 'notifications.recent') return { app: text('app', 100, true), query: text('query', 200, true), sinceMinutes: integer('sinceMinutes', 1, 10080, 1440), limit: integer('limit', 1, 100, 30) };
   if (tool === 'sms.search') return { query: text('query', 200, true), number: text('number', 30, true), limit: integer('limit', 1, 100, 30) };
   if (tool === 'sms.send') {

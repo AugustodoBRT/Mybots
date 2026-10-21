@@ -1119,7 +1119,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
       </View>}
       {bot.messages.map(message => <Message key={message.id} message={message} bot={bot} models={data.models || []} busy={busy} onRetry={onRetry} onFile={mode === 'phone' ? onFile : () => {}} fileBusy={fileBusy} />)}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
-      {phone && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
+      {phone && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={data.browser?.pages?.[bot.id]?.where === 'pc'} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />
         <View style={styles.thinkingCard}>

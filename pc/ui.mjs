@@ -17,7 +17,7 @@ const OFFLINE = 'O celular está fora de alcance. Confira se ele está ligado e 
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -56,7 +56,14 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       if (typeof method !== 'string') return;
       try {
         if (method === 'desktop.file') reply(id, { result: await saveFile(params || {}) });
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online() } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        // The pairing QR, drawn here so the window shows it (one use, 10 minutes, like `node pc/node.mjs pair`).
+        else if (method === 'desktop.pair') {
+          if (!pairing) throw new Error('O pareamento não está disponível.');
+          const { link, name } = pairing();
+          const { default: QRCode } = await import('qrcode');
+          reply(id, { result: { name, svg: await QRCode.toString(link, { type: 'svg', margin: 2, errorCorrectionLevel: 'L', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000 } });
+        }
         else {
           if (!phone.online()) throw new Error(OFFLINE);
           reply(id, { result: await phone.call(method, params || {}) });

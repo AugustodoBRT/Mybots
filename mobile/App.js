@@ -10,6 +10,7 @@ import { createId, emptyLocalStore, mergeBotLists, validateBackup } from './loca
 
 import { createTermuxBackup } from './backup';
 import BotAvatar from './BotAvatar';
+import { SvgXml } from 'react-native-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import BotProfile from './BotProfile';
 import BotBrowserPanel, { BrowserHelpCard } from './BotBrowserPanel';
@@ -345,7 +346,7 @@ function SideRow({ selected, onPress, label, face, title, time, line, tone, dot,
   </Pressable>;
 }
 
-function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onRespond, approvalBusy, onComplete, onConnection, children }) {
+function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onRespond, approvalBusy, onComplete, onConnection, call, children }) {
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
@@ -393,19 +394,20 @@ function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate,
           <Text style={styles.sideStatusText}>Atividade</Text>{data.approvals?.length ? <View style={styles.navBadge} /> : null}</Pressable>
       </View>
     </View>
-    <View style={styles.deskMain}>{children || <DeskWelcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onConnection={onConnection} />}</View>
+    <View style={styles.deskMain}>{children || <DeskWelcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onConnection={onConnection} call={call} />}</View>
     {width >= 1280 ? <TodayPanel data={data} onOpen={onOpen} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={onActivity} /> : null}
   </View>;
 }
 
 // Nothing open yet: the greeting, what needs the person, and where to start.
-function DeskWelcome({ data, error, onRespond, approvalBusy, onCreate, onConnection }) {
+function DeskWelcome({ data, error, onRespond, approvalBusy, onCreate, onConnection, call }) {
   const bots = data.bots || [];
   const working = (data.active || []).filter(id => !offline(data, id)).length;
   return <ScrollView contentContainerStyle={styles.deskWelcome}>
     <Text style={styles.greeting}>{greeting()}{data.person?.name ? `, ${data.person.name}` : ''}.</Text>
     <Text style={styles.tagline}>{bots.length ? `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}${working ? ` · ${working} trabalhando agora` : ''}` : 'Seu pequeno time pessoal começa aqui.'}</Text>
     {error ? <Notice text={error} onRetry={onConnection} /> : null}
+    {error && !bots.length ? <DesktopPair call={call} /> : null}
     {bots.length ? <TodayStrip data={data} onActivity={() => {}} /> : null}
     {(data.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
     <View style={styles.deskHint}>
@@ -603,6 +605,35 @@ function TermuxApiStatus() {
 }
 
 // "Funcionar com a tela apagada": the MyBots service that wakes and restarts the supervisor, and what Android/HyperOS may still block.
+// On the computer's window: the QR the phone reads to pair (Ajustes → Computador → Conectar computador on the phone).
+// It closes by itself once a phone pairs.
+function DesktopPair({ call, compact = false }) {
+  const [qr, setQr] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!qr) return undefined;
+    const timer = setInterval(async () => {
+      if (Date.now() > qr.expiresAt) { setQr(null); setNote('O QR venceu. Gere outro quando for parear.'); return; }
+      try { const status = await call('desktop.status'); if (status.lastPaired && status.lastPaired > qr.shownAt) { setQr(null); setNote('Celular pareado. Pode fechar esta tela.'); } } catch {}
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [qr]);
+  const show = async () => {
+    setBusy(true); setNote('');
+    try { const result = await call('desktop.pair'); setQr({ ...result, shownAt: new Date(Date.now() - 1000).toISOString() }); }
+    catch (error) { setNote(error.message); } finally { setBusy(false); }
+  };
+  return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
+    <Text style={styles.optionLabel}>Parear um celular</Text>
+    <Text style={styles.optionDetail}>No celular, abra o MyBots → Ajustes → Computador → Conectar computador e aponte a câmera para o QR. Ele vale por 10 minutos e uma vez só.</Text>
+    {qr ? <View style={styles.pairQr}><View accessibilityLabel="QR para parear o celular"><SvgXml xml={qr.svg} width={260} height={260} /></View>
+      <Text style={styles.limitMeta}>Esperando o celular ler…</Text></View> : null}
+    <View style={{ flexDirection: 'row', gap: 14, marginTop: 10 }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : show} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR'}</Text></Pressable>
+    </View>
+    {note ? <Text style={[styles.optionDetail, /pareado/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
+  </View>;
+}
+
 // The computer paired with this phone (Ajustes → Computador): its bots are online while it is on. The phone dials
 // the computer; pairing reads the QR that `node pc/node.mjs pair` shows on it.
 function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry }) {
@@ -1733,10 +1764,10 @@ function AppMain() {
   return <View style={[styles.app, desktop && !wide && column]}>
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
-      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} /><Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable></View>
+      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : wide ? <DesktopShell data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
-          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem}>
+          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView}</DesktopShell>
       : roomView || chatView || <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
@@ -1759,7 +1790,7 @@ function AppMain() {
     <Modal transparent visible={maintenanceVisible} animationType="slide" onRequestClose={() => setMaintenanceVisible(false)}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
         <View style={styles.sheetHandle} />
-        <SheetHeader title="Ajustes" subtitle="Como o MyBots funciona neste celular." onClose={() => setMaintenanceVisible(false)} />
+        <SheetHeader title="Ajustes" subtitle={desktop ? 'Como o MyBots funciona neste computador.' : 'Como o MyBots funciona neste celular.'} onClose={() => setMaintenanceVisible(false)} />
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
           {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
             <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
@@ -1768,7 +1799,8 @@ function AppMain() {
             onPair={async link => { const result = await supervisor.current.call('computer.pair', { link }); await loadSupervisorState(); return result; }}
             onForget={async () => { await supervisor.current.call('computer.forget', {}); await loadSupervisorState(); }}
             onRetry={async () => { await supervisor.current.call('computer.retry', {}); await loadSupervisorState(); }} /></> : null}
-          {desktop ? <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup, e-mail por senha de app, senhas de sites e o pareamento ficam nos Ajustes do app do celular.</Text></View> : <>
+          {desktop ? <><Text style={styles.sheetSection}>CELULAR</Text><DesktopPair call={(method, params) => supervisor.current.call(method, params)} />
+            <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup, e-mail por senha de app e senhas de sites ficam nos Ajustes do app do celular.</Text></View></> : <>
           <Text style={styles.sheetSection}>CELULAR</Text>
           {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
@@ -1919,6 +1951,7 @@ const styles = StyleSheet.create({
   todayRowTitle: { color: C.text, fontFamily: F.s, fontSize: 13.5, lineHeight: 18 }, todayRowMeta: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 2 },
   todayEmpty: { color: C.muted, fontFamily: F.m, fontSize: 12.5, paddingVertical: 4 }, todayMore: { color: C.mint, fontFamily: F.b, fontSize: 12 },
   todayActivity: { paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: C.line }, todayActivityText: { color: C.text2, fontFamily: F.m, fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  pairQr: { alignSelf: 'center', alignItems: 'center', gap: 8, marginTop: 12, padding: 14, borderRadius: 18, backgroundColor: '#FFFFFF' },
   presenceDot: { position: 'absolute', right: -2, bottom: -2, width: 15, height: 15, borderRadius: 8, borderWidth: 3, borderColor: C.surface, backgroundColor: C.faint },
   presenceOn: { backgroundColor: C.mint },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint }, statusGood: { backgroundColor: C.mint, shadowColor: C.mint, shadowOpacity: 1, shadowRadius: 6 },

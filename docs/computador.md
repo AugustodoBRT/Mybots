@@ -12,7 +12,7 @@ node pc/node.mjs install     # sobe sozinho com a sessão (systemd do usuário)
 node pc/node.mjs pair        # mostra o QR (vale 10 minutos, uma vez)
 ```
 
-No celular: **Ajustes → Computador → Conectar computador** e leia o QR.
+No celular: **Ajustes → Computador → Conectar computador** e leia o QR. Com a janela instalada, o QR também aparece nela: **Ajustes → Celular → Mostrar QR** (e na tela inicial enquanto nenhum celular estiver conectado); ele some sozinho quando o celular pareia.
 
 **Janela do MyBots no computador** (Node, `cargo`, `webkit2gtk-4.1` e `libayatana-appindicator`):
 

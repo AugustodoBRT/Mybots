@@ -193,8 +193,13 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   client = new SupervisorClient({ WebSocketClass: Origin, onEvent: event => events.push(event) });
   await client.connect({ port: node.uiPort, token: desktop.token });
   await assert.rejects(client.call('bots.list'), /fora de alcance/);
+  // The window draws the pairing QR itself; the code it carries is the one-use code the phone trades.
+  const qr = await client.call('desktop.pair');
+  assert.match(qr.svg, /^<svg/); assert.ok(readFileSync(join(pcDir, 'pairing.json'), 'utf8').includes('"code"'));
+  assert.equal((await client.call('desktop.status')).lastPaired, null);
   await app.rpc('computer.pair', { link: node.pairing().link });
   await until(async () => (await client.call('desktop.status')).phone);
+  assert.ok((await client.call('desktop.status')).lastPaired);
   const bot = await client.call('bot.create', { name: 'Pelo PC', ...selection });
   assert.ok((await client.call('bots.list')).some(item => item.id === bot.id));
   await until(() => events.includes('activity.new'));

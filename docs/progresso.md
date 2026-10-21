@@ -568,3 +568,7 @@ Relato após a v40: a janela mostrava "Atenção · Acesso negado" e uma mensage
 - Conferido: o Desenvolvedor está em **Acesso total**, por isso disse que lê e salva em toda a pasta pessoal (como combinado); `.aws` e as outras pastas de chaves aparecem vazias para ele pelo bubblewrap.
 
 Teste da janela ampliado (mensagem mandada no celular chega ao vivo; token igual depois de reiniciar). 126 testes. Serviço reiniciado duas vezes neste PC com o mesmo token e o celular reconectando.
+
+## 21/10/2026 — QR de pareamento na janela do PC (sem APK novo)
+
+Pedido: gerar o QR pela janela do MyBots no PC, em vez do terminal. `desktop.pair` (método local da janela, em `pc/ui.mjs`) cria o código de uso único e devolve o QR em SVG (biblioteca `qrcode` do nó); `desktop.status` diz quando foi o último pareamento. Na janela: **Ajustes → Celular → Mostrar QR**, e na tela inicial enquanto o celular estiver fora de alcance sem dados; o QR some quando o celular pareia (e a janela carrega os bots sozinha). Subtítulo dos Ajustes: "neste computador". Conferido: QR do print da janela decodificado (jsQR) é o link certo, e o emulador pareou com esse link; teste da janela ampliado. 126 testes. Aplicado neste PC (`pc/ui` e `mybots-pc` reiniciado; o celular reconectou com o mesmo token).

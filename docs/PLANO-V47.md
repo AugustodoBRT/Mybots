@@ -29,7 +29,7 @@ As regras gerais continuam as de [PLANO-DESENVOLVIMENTO.md](PLANO-DESENVOLVIMENT
 4. **Emulador antes de entregar** (`scripts/emulator/README.md`): `start.sh` → `install.sh` (APK x86_64) → `wait-supervisor.sh` → `node rpc.mjs ...`, `ask.sh`/`ask-approve.sh`, `screen.sh`. Com o Codex real use o modelo **gpt-6-luna**.
    - **Nó do PC de teste isolado**, nunca o serviço real: um script com `createNode({ directory: '<tmp>/node', port: 3231, uiPort: 3233, projects: '<tmp>/projects', uiRoot: '<tmp>/ui' })` (interface gerada com `cd mobile && npx expo export --platform web --output-dir <tmp>/ui`). Pareie o emulador com `startPairing('<tmp>/node', 3231, () => ['10.0.2.2']).link` e `node rpc.mjs computer.pair '{"link":"..."}'`.
    - Bug conhecido (será corrigido na v50): depois de `computer.forget` + `computer.pair` com uma conexão antiga ainda tentando, o estado pode ficar "Outro aparelho respondeu…" embora conectado. Reiniciar o nó de teste resolve.
-5. **Nunca reinicie o serviço real `mybots-pc`** nem rode `scripts/build-desktop.sh` enquanto o celular não estiver na mesma versão: versões misturadas quebram o navegador dos bots. Faça isso só no fim da entrega, depois da Release, e avise a pessoa.
+5. **Atualize sempre o PC na mesma entrega de cada versão**, depois da Release: rode `scripts/build-desktop.sh`, que regenera a interface, instala a janela e reinicia o serviço real `mybots-pc`; confira o serviço e avise a pessoa. Instrução explícita da pessoa em 21/10/2026: ela sempre atualizará o celular; não aguarde outra confirmação nem deixe o PC para depois. Durante testes e antes da Release, use um nó isolado.
 6. **Supervisor**: o WebSocket do app processa **um pedido por vez por conexão** e **fecha a conexão** se chegar outro durante o processamento (o cliente serializa com `call`). Nada de pedidos paralelos no mesmo socket.
 7. **Módulo novo do supervisor** → adicionar em `scripts/package-supervisor.mjs`. **Tabela nova** → nova migração em `supervisor/database.mjs` (hoje `user_version=7`; a próxima é 8). Nunca altere migração entregue.
 8. **Instruções-base dos bots mudaram** (textos em `lib/codex-runner.cjs`/`lib/claude-runner.cjs` que todo bot recebe) → suba `PROMPT_VERSION` em `mobile/local.js` para renovar as sessões uma vez.
@@ -213,4 +213,4 @@ A pessoa liga a depuração. Bot Codex em "Meu Chrome": "Abra https://myaccount.
 - Não dar à IA ferramenta de JavaScript livre na página (`evaluate` arbitrário).
 - Não mandar quadros da tela ao vivo para a IA, para eventos gerais (`broadcast`), widget ou logs.
 - Não ler, fechar ou navegar abas da pessoa no "Meu Chrome".
-- Não reiniciar o `mybots-pc` real nem regerar a janela antes da Release e da atualização do celular.
+- Não reiniciar o `mybots-pc` real nem regerar a janela antes da Release. Depois de publicar, atualizar sempre o PC na mesma entrega, sem aguardar confirmação do celular (instrução da pessoa em 21/10/2026).

@@ -683,8 +683,10 @@ APK `dist/apk/mybots-v47.apk`, versionCode 47, 0.27.0, somente ARM64, build offl
 
 **Emulador x86_64 + nó isolado 3231/3233**, com Chrome separado de teste e Codex real **gpt-6-luna**: Meu Chrome abriu `example.com` (Example Domain), abriu outra aba e o popup da página windows (New Window). Aba pessoal sintética permaneceu em `about:blank`, com o mesmo título/conteúdo e Chrome ativo. Perfil/Acesso e opção Meu Chrome conferidos visualmente. Interface web exportada para pasta temporária; serviço real não reiniciado.
 
-**Aceite da conta Google pessoal pendente**: depende de a pessoa ligar `chrome://inspect/#remote-debugging` e confirmar a conexão. Não foi alegado login Google validado no perfil real. A janela/serviço real do PC só devem ser atualizados depois do celular estar na v48.
+**Aceite da conta Google pessoal pendente**: depende de a pessoa ligar `chrome://inspect/#remote-debugging` e confirmar a conexão. Não foi alegado login Google validado no perfil real. A pessoa confirmou o celular na v48 e determinou que, a partir desta entrega, o PC deve ser atualizado sempre após cada Release, sem aguardar nova confirmação do celular.
 
 Encerramento de popup com requisição propositalmente pendente conferido: fecha pelo alvo de depuração da aba do bot, sem depender do carregamento e sem fechar o Chrome.
 
 APK `dist/apk/mybots-v48.apk`, versionCode 48, 0.28.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `bf3fc8dee565af81885e600889dfe2954e1308e15a62fa7e606732cff70dbab0`. Release v48 com APK e `.sha256` para atualização pelo app.
+
+**Atualização do PC concluída em 21/10/2026 às 13h40 (Brasília)**: após confirmação do celular na v48, `scripts/build-desktop.sh` regenerou a interface e compilou/instalou a janela; binário instalado conferido com o compilado e serviço `mybots-pc` reiniciado como `active/running`. A verificação local retornou `ok: true`, mas ainda sem celular conectado. Regra permanente da pessoa registrada nos dois planos: atualizar sempre o PC após cada Release, sem aguardar nova confirmação do celular.

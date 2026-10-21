@@ -28,7 +28,7 @@ As regras gerais continuam as de [PLANO-DESENVOLVIMENTO.md](PLANO-DESENVOLVIMENT
    - **Nada de esperar tempo real** em testes de horário: encurte horários (mexa em `next_run_at` no banco) em vez de esperar minutos.
 4. **Emulador antes de entregar** (`scripts/emulator/README.md`): `start.sh` → `install.sh` (APK x86_64) → `wait-supervisor.sh` → `node rpc.mjs ...`, `ask.sh`/`ask-approve.sh`, `screen.sh`. Com o Codex real use o modelo **gpt-6-luna**.
    - **Nó do PC de teste isolado**, nunca o serviço real: um script com `createNode({ directory: '<tmp>/node', port: 3231, uiPort: 3233, projects: '<tmp>/projects', uiRoot: '<tmp>/ui' })` (interface gerada com `cd mobile && npx expo export --platform web --output-dir <tmp>/ui`). Pareie o emulador com `startPairing('<tmp>/node', 3231, () => ['10.0.2.2']).link` e `node rpc.mjs computer.pair '{"link":"..."}'`.
-   - Bug conhecido (será corrigido na v50): depois de `computer.forget` + `computer.pair` com uma conexão antiga ainda tentando, o estado pode ficar "Outro aparelho respondeu…" embora conectado. Reiniciar o nó de teste resolve.
+   - Bug conhecido (será corrigido na v51): depois de `computer.forget` + `computer.pair` com uma conexão antiga ainda tentando, o estado pode ficar "Outro aparelho respondeu…" embora conectado. Reiniciar o nó de teste resolve.
 5. **Atualize sempre o PC na mesma entrega de cada versão**, depois da Release: rode `scripts/build-desktop.sh`, que regenera a interface, instala a janela e reinicia o serviço real `mybots-pc`; confira o serviço e avise a pessoa. Instrução explícita da pessoa em 21/10/2026: ela sempre atualizará o celular; não aguarde outra confirmação nem deixe o PC para depois. Durante testes e antes da Release, use um nó isolado.
 6. **Supervisor**: o WebSocket do app processa **um pedido por vez por conexão** e **fecha a conexão** se chegar outro durante o processamento (o cliente serializa com `call`). Nada de pedidos paralelos no mesmo socket.
 7. **Módulo novo do supervisor** → adicionar em `scripts/package-supervisor.mjs`. **Tabela nova** → nova migração em `supervisor/database.mjs` (hoje `user_version=7`; a próxima é 8). Nunca altere migração entregue.
@@ -148,32 +148,69 @@ A pessoa liga a depuração. Bot Codex em "Meu Chrome": "Abra https://myaccount.
 
 ---
 
-## 4. v49 — Mais autonomia no login
+## 4. v49 — O celular acha o computador sozinho — concluída na v49
 
-### 4.1 Códigos de dois fatores (TOTP) no cofre
+**Por quê** (aconteceu em 21/10/2026): o PC reiniciou e entrou em outro Wi-Fi ("WIFI - VITA" → "IBI-SUELY 2.4Ghz", endereço `192.168.1.106`). O celular só conhece os endereços que o PC informou na última conexão (`link.computer.addresses`, atualizados na mensagem `ready`), então nunca mais achou o PC, mesmo com o serviço `mybots-pc` rodando. Hoje a única saída é parear de novo pelo QR. E sem Tailscale não há caminho entre redes diferentes.
+
+### 4.1 Descoberta na rede local (sem dependências novas)
+
+- **PC** (`pc/server.mjs` + módulo novo `pc/discovery.mjs`): socket UDP (`node:dgram`) na porta **3234** (`MYBOTS_PC_DISCOVERY_PORT`), em `0.0.0.0`. Ao receber `{"t":"mybots?","id":"<id do PC>"}` vindo de endereço **privado** (10/8, 172.16/12, 192.168/16, 100.64/10), com o `id` igual ao seu (`identity().id`), responde **por unicast** ao remetente com `{"t":"mybots","id","port","addresses": addresses()}`. Nada de segredo na resposta. Limite: no máximo 1 resposta por remetente a cada 2 s; ignorar pacotes acima de 512 bytes ou JSON inválido. Fechar o socket no `close()` do nó.
+- **Celular** (`supervisor/link.mjs`): quando `reach()` falha em **todos** os endereços salvos, antes de `retry()`, rodar `discover(saved.id)`: socket UDP com `setBroadcast(true)`, enviar a pergunta para `255.255.255.255:3234` e para o broadcast de cada interface IPv4 não interna (`os.networkInterfaces()`, calcular pelo `netmask`), esperar até 2 s, aceitar só respostas com o mesmo `id` e porta válida. Os endereços encontrados vão **para a frente** de `saved.addresses` (sem duplicar, máximo 8) e a conexão é tentada na hora. A **verificação do certificado fixado no pareamento continua obrigatória**: uma resposta falsa só leva a um endereço que será recusado ("Outro aparelho respondeu…"), nunca a uma conexão.
+- Rodar a descoberta também em `kick()` (app voltou ao primeiro plano / rede mudou) quando o estado for `offline`, e no máximo uma vez a cada 15 s durante as novas tentativas automáticas (não a cada tentativa).
+- Android: enviar broadcast pelo Node do Termux funciona sem permissão especial; receber a resposta unicast também. Se em algum aparelho não funcionar, registrar o motivo e seguir para o item 4.3 (o pareamento continua sendo a saída).
+- Deixar os destinos da descoberta configuráveis (`new Link(..., { discoveryTargets })`) para os testes usarem `127.0.0.1`.
+
+### 4.2 Avisos mais claros
+
+- Supervisor: quando a descoberta não achar o PC, o erro do link vira "Não achei o computador neste Wi-Fi. Confira se ele está ligado e na mesma rede, ou use o Tailscale para funcionar de qualquer lugar." (em vez de só "Computador fora de alcance.").
+- Janela do PC: com o celular desconectado há mais de 2 minutos, a tela inicial mostra um aviso com o motivo provável ("O computador mudou de rede? O celular procura sozinho no mesmo Wi-Fi; se não achar, mostre o QR") e o botão **Mostrar QR** (que já existe em Ajustes → Celular).
+- `docs/computador.md`: seção "Quando o celular não acha o computador": mesma rede → acha sozinho (v49); redes diferentes → Tailscale; último recurso → parear de novo.
+
+### 4.3 Tailscale (opcional, guiado)
+
+- Em Ajustes → Computador (celular) e Ajustes → Celular (janela do PC), mostrar se o PC tem endereço Tailscale (o nó já ordena `100.64.0.0/10` por último em `addresses()`; expor `tailscale: true/false` no status `ready`). Sem Tailscale: texto curto explicando para que serve e o link de instalação. **Não instalar nada por conta própria** (precisa de `sudo` e da conta da pessoa); se a pessoa pedir, o comando no Arch é `sudo pacman -S tailscale && sudo systemctl enable --now tailscaled && sudo tailscale up`.
+
+### 4.4 Testes (novos, em `tests/link.test.mjs`)
+
+- Nó na porta aleatória com descoberta em porta aleatória; celular pareado com endereço salvo **errado** (ex.: porta fechada em `127.0.0.2`) e `discoveryTargets: ['127.0.0.1']` → o link fica `online` sozinho e o endereço certo passa a ser o primeiro salvo.
+- Pergunta com `id` diferente → sem resposta. Remetente público (simular chamando o tratador com `address: '8.8.8.8'`) → sem resposta. Pacote grande ou JSON inválido → ignorado e o nó continua de pé.
+- Resposta falsa (um segundo servidor UDP de teste respondendo com o `id` certo e um endereço de outro nó com outro certificado) → recusado pelo certificado, estado com o erro de outro aparelho, e o link continua tentando o certo.
+- Sem resposta → erro novo do 4.2. Nada de esperas reais longas: descoberta com timeout curto nos testes (ex.: 200 ms, parametrizável).
+
+### 4.5 Aceite (com a pessoa, no aparelho real)
+
+**Pendente no aparelho real**: reconexão por descoberta conferida em nós isolados; envio de broadcast e resposta UDP unicast conferidos no Termux do emulador. A troca real de Wi-Fi depende do celular da pessoa e não foi alegada como validada.
+
+O emulador fica atrás de NAT e não recebe broadcast da rede do PC; o aceite é no celular real. Com o celular e o PC no mesmo Wi-Fi e o celular ainda com os endereços antigos (situação de 21/10), abrir o MyBots: em até ~20 s o computador aparece como conectado **sem ler QR**. Depois, trocar o PC de Wi-Fi (ou reiniciar o roteador) e conferir de novo.
+
+---
+
+## 5. v50 — Mais autonomia no login
+
+### 5.1 Códigos de dois fatores (TOTP) no cofre
 
 - `PasswordVault.kt`: entrada ganha `totp` opcional (segredo base32 ou URI `otpauth://`). Formulário de senha com campo "Chave do autenticador (opcional)" e botão para **ler o QR** do site (a câmera já existe no app, `CameraView`). Importação CSV: colunas `totp`, `login_totp` (Bitwarden), `otpauth`.
 - Gerar o código **no Kotlin** (RFC 6238: HMAC-SHA1, 30 s, 6 dígitos; aceitar `digits`/`period`/`algorithm` do `otpauth://`).
 - Nova ferramenta `browser_code` (`browser.code`): preenche o campo de código da página (achar `input[autocomplete=one-time-code]`, `inputmode=numeric` com maxlength 4–8, ou rótulos "código"/"code"/"token"/"verificação"). PC: mesmo envelope cifrado do `browser_login` (o código é decifrado só no worker). Celular: preenchido pela WebView. **A IA nunca recebe o código.** Política igual à de `browser.login` (primeiro uso no Médio pede).
 
-### 4.2 Códigos que chegam por SMS ou e-mail
+### 5.2 Códigos que chegam por SMS ou e-mail
 
 - Permissão nova e separada "Ler códigos de verificação" (desligada por padrão, inclusive no Total; Pouco nunca).
-- `browser_code` com `from: 'message'`: espera até 90 s por uma notificação nova (o leitor de notificações já existe em `supervisor/device.mjs`) que contenha 4–8 dígitos e o nome do site/app ou palavras como "código"/"code"; pega a mais recente dos últimos 2 minutos; preenche como em 4.1. O texto da notificação e o código não vão à IA nem aos registros (registrar só "código preenchido de uma mensagem de X").
+- `browser_code` com `from: 'message'`: espera até 90 s por uma notificação nova (o leitor de notificações já existe em `supervisor/device.mjs`) que contenha 4–8 dígitos e o nome do site/app ou palavras como "código"/"code"; pega a mais recente dos últimos 2 minutos; preenche como em 5.1. O texto da notificação e o código não vão à IA nem aos registros (registrar só "código preenchido de uma mensagem de X").
 - Teste sem tempo real: injetar a notificação com `scripts/emulator/post-notification.mjs` logo após chamar a ferramenta.
 
-### 4.3 Cadastro com senha criada pelo cofre
+### 5.3 Cadastro com senha criada pelo cofre
 
 - Nova ferramenta `browser_new_password` (`browser.new_password`): o cofre gera uma senha forte (20 caracteres, letras, números e símbolos, `SecureRandom`), preenche o campo de senha e o de confirmação da página, e guarda uma **entrada pendente** (site + usuário lido do campo de e-mail/usuário do mesmo formulário). Quando o bot chamar `browser_login`/terminar o turno sem erro e a pessoa confirmar no cartão "Conta criada em X?", a entrada vira definitiva; se a pessoa recusar, é apagada.
 - Aprovação: **sempre** um cartão "Criar conta em <site> com o usuário <usuário>" no Médio (cadastrar aceita termos em nome da pessoa); no Total, "Sempre permitir" por site.
 - Confirmação de e-mail: o bot usa os conectores/apps da conta que já existem. CAPTCHA e SMS com número próprio: `browser_ask_user`.
 
-### 4.4 Sites logados por bot
+### 5.4 Sites logados por bot
 
 - PC: ops `sites` e `signout` no worker: `context.cookies()` agrupado pelo domínio mais largo que o próprio navegador guarda (como o OpenMausBot; sem lista de sufixos públicos), e `signout` apaga os cookies daquele domínio e limpa `localStorage`/`sessionStorage`/IndexedDB das origens dele (`Storage.clearDataForOrigin` via CDP).
 - App: perfil do bot → "Sites logados (computador)" com "Sair" por site e "Sair de todos". No celular a WebView não lista cookies: mostrar só "Limpar navegador deste bot" (apagar o perfil da WebView do bot).
 
-### 4.5 Testes e aceite
+### 5.5 Testes e aceite
 
 - Kotlin TOTP: vetores do RFC 6238 (tempo 59 → `287082` com o segredo de teste do RFC, 8 dígitos `94287082`) num teste de instrumentação ou num utilitário JS espelhado nos testes do Node, além do teste no emulador.
 - Envelope do código no PC: mesmo padrão do teste `saved PC login` de `tests/desktop.test.mjs`.
@@ -182,31 +219,31 @@ A pessoa liga a depuração. Bot Codex em "Meu Chrome": "Abra https://myaccount.
 
 ---
 
-## 5. v50 — Acabamentos
+## 6. v51 — Acabamentos
 
-### 5.1 Ditado do PC independente e na placa de vídeo
+### 6.1 Ditado do PC independente e na placa de vídeo
 
 - Comando `node pc/node.mjs whisper` (pergunta antes, mostra o tamanho do download): cria `~/.mybots-pc/whisper/venv`, `pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12`, baixa o modelo (`large-v3-turbo` com GPU; `medium` sem GPU) uma vez e grava o Python em `~/.mybots-pc/whisper/python`. Hoje aponta para o venv de `~/vscodeProjects/CODEXAssistenteinterview` (CPU, `medium`), que funciona mas é de outro projeto.
 - `pc/dictation.mjs`: ao iniciar o `transcribe.py`, acrescentar ao `LD_LIBRARY_PATH` as pastas `lib` dos pacotes `nvidia/*` do venv (é o que faltava para a GPU: `libcublas.so.12`). Manter o fallback para CPU.
 - Teste: o existente com Python falso + conferir que o `LD_LIBRARY_PATH` inclui as pastas `nvidia/*/lib` quando existem.
 
-### 5.2 Tela ao vivo maior
+### 6.2 Tela ao vivo maior
 
 - Botão "Tela cheia" no `PcBrowserLive`: `Modal` ocupando a tela, imagem girada para paisagem se o celular estiver em retrato (ou com rolagem horizontal), mesmos controles.
 - Zoom com dois dedos (escala + deslocamento) no quadro; o mapeamento de toque para fração da página tem que considerar escala e deslocamento (testar tocar num link pequeno com zoom).
 
-### 5.3 Bug do pareamento
+### 6.3 Bug do pareamento
 
 - `supervisor/link.mjs`: uma tentativa de conexão antiga (`connect()` aguardando `reach`) que termina depois de `forget()`/`pair()` chama `retry()` e marca "offline/Outro aparelho…" por cima da conexão nova. Corrigir com um contador `this.generation` incrementado em `forget`, `pair` e `drop`; `connect()` guarda o valor no início e, ao terminar, ignora o resultado (fecha o socket aberto e não chama `retry`) se mudou.
 - Teste em `tests/link.test.mjs`: primeiro endereço que demora (servidor TCP que aceita e não responde), `forget` + `pair` com outro nó durante a espera; o estado final tem que ser `online` sem erro.
 
-### 5.4 Fontes no Chrome sem janela
+### 6.4 Fontes no Chrome sem janela
 
 - Páginas com chinês/árabe/hebraico apareceram com quadradinhos na tela ao vivo. Conferir se faltam fontes no sistema (`noto-fonts-cjk`, `noto-fonts`) e, se faltarem, **avisar a pessoa** com o comando de instalação (não instalar pacotes do sistema por conta própria).
 
 ---
 
-## 6. O que não fazer
+## 7. O que não fazer
 
 - Não disfarçar automação (`--disable-blink-features=AutomationControlled`, patches tipo rebrowser, user-agent falso), não usar proxies, não resolver CAPTCHA automaticamente.
 - Não copiar o perfil do Chrome da pessoa para os bots (sessões copiadas caem e espalham credenciais).

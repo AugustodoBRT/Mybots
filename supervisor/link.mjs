@@ -1,10 +1,12 @@
 import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { discover } from './discovery.mjs';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
 export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome'];
 export const MAX_FRAME = 32 * 1024 * 1024;
+const NOT_FOUND = 'Não achei o computador neste Wi-Fi. Confira se ele está ligado e na mesma rede, ou use o Tailscale para funcionar de qualquer lugar.';
 const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
@@ -39,8 +41,9 @@ export function parsePairing(text) {
  * the pairing secret, and then lends the computer to the queue as a node (`nodes.connect`) until the link drops.
  */
 export class Link {
-  constructor(db, nodes, { port, changed = () => {}, rpc = null, WebSocketClass = WebSocket } = {}) {
-    Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass });
+  constructor(db, nodes, { port, changed = () => {}, rpc = null, WebSocketClass = WebSocket, discoveryTargets, discoveryPort, discoveryTimeout = 2000 } = {}) {
+    Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass, discoveryTargets, discoveryPort, discoveryTimeout });
+    this.lastDiscovery = -Infinity; this.generation = 0;
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
     this.commands = new Map();
     // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
@@ -55,7 +58,7 @@ export class Link {
   }
   status() {
     const saved = this.saved();
-    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, state: this.state, error: this.error } : { paired: false, state: 'offline' };
+    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, state: this.state, error: this.error } : { paired: false, state: 'offline' };
   }
   set(state, error = '') { if (state === this.state && error === this.error) return; this.state = state; this.error = error; this.changed('connection.changed'); }
   start() { if (this.saved() && !this.socket && !this.timer) this.connect(); }
@@ -109,18 +112,45 @@ export class Link {
     this.set('offline');
     return { forgotten: true };
   }
-  async connect() {
+  async connect(searchFirst = false) {
     this.timer = null;
-    const target = this.saved();
-    if (this.closed || !target || this.socket) return;
+    const target = this.saved(); const generation = this.generation;
+    if (this.closed || !target || this.socket || this.connecting) return;
+    this.connecting = true;
+    const stale = () => this.closed || this.generation !== generation || this.socket;
     this.set('connecting', this.error);
-    let connection;
-    try { connection = await this.reach(target); }
-    catch (error) { return this.retry(/Outro aparelho/.test(error.message) ? error.message : 'Computador fora de alcance.'); }
-    const { ws, hello } = connection;
-    if (this.closed || this.socket || hello.id !== target.id) { ws.terminate(); return this.retry(hello.id !== target.id ? 'Outro computador respondeu no endereço salvo.' : ''); }
-    ws.send(JSON.stringify({ type: 'auth', phoneId: this.phoneId(), proof: proof(target.secret, hello.nonce) }));
-    this.attach(ws);
+    let connection, discoveredTarget, lastError;
+    const search = async () => {
+      if (Date.now() - this.lastDiscovery < 15000) return;
+      this.lastDiscovery = Date.now(); this.discoveryAbort = new AbortController();
+      const candidates = await discover(target.id, { targets: this.discoveryTargets, port: this.discoveryPort, timeout: this.discoveryTimeout, signal: this.discoveryAbort.signal,
+        onError: error => { const reason = error.code || 'erro de rede'; if (!stale() && this.discoveryError !== reason) { this.discoveryError = reason; this.db.record('computer_discovery_error', `Descoberta local indisponível (${reason}). O pareamento por QR continua disponível.`); } } });
+      for (const candidate of candidates) {
+        if (stale()) return;
+        try {
+          connection = await this.reach({ ...target, ...candidate });
+          if (connection.hello.id !== target.id) { connection.ws.terminate(); connection = null; lastError = new Error('Outro aparelho respondeu no lugar do computador pareado.'); continue; }
+          discoveredTarget = candidate; return;
+        } catch (error) { if (/Outro aparelho/.test(error.message)) lastError = error; }
+      }
+    };
+    try {
+      if (searchFirst) await search();
+      if (!connection && !stale()) {
+        try { connection = await this.reach(target); } catch (error) { lastError = error; }
+      }
+      if (!connection && !stale()) await search();
+      if (stale()) { connection?.ws.terminate(); return; }
+      if (!connection) return this.retry(/Outro aparelho/.test(lastError?.message || '') ? lastError.message : NOT_FOUND);
+      const { ws, hello } = connection;
+      if (hello.id !== target.id) { ws.terminate(); return this.retry('Outro computador respondeu no endereço salvo.'); }
+      // Persist discovery hints only after TLS and the computer's identity have been checked.
+      if (discoveredTarget) this.save({ ...target, port: discoveredTarget.port, addresses: [...new Set([...discoveredTarget.addresses, ...target.addresses])].slice(0, 8) });
+      ws.send(JSON.stringify({ type: 'auth', phoneId: this.phoneId(), proof: proof(target.secret, hello.nonce) }));
+      this.attach(ws);
+    } finally {
+      if (this.generation === generation) this.connecting = false;
+    }
   }
   retry(error) {
     this.set('offline', error);
@@ -128,7 +158,7 @@ export class Link {
     this.timer = setTimeout(() => this.connect(), RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)]);
   }
   /** Connects again right away (the app came to the foreground or the network changed). */
-  kick() { if (this.timer && !this.socket) { clearTimeout(this.timer); this.attempt = 0; this.connect(); } }
+  kick() { if (!this.socket && !this.connecting && !this.closed) { clearTimeout(this.timer); this.attempt = 0; this.connect(this.state === 'offline'); } }
   attach(ws, pairing = null) {
     this.socket = ws; let leave = null, refusal = ''; ws.alive = true;
     const send = value => { if (ws.readyState === 1) ws.send(JSON.stringify(value)); };
@@ -142,7 +172,7 @@ export class Link {
       if (message.type === 'ready') {
         const saved = this.saved();
         // The computer's addresses change with the network; the ones it reports are tried first next time.
-        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
+        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
         this.attempt = 0; this.set('online');
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
@@ -163,6 +193,8 @@ export class Link {
     });
     ws.on('close', () => {
       clearInterval(ping);
+      if (this.closed) return;
+      if (this.socket !== ws) { leave?.(); return; }
       for (const done of this.commands.values()) done({ error: 'O computador desconectou.' });
       if (this.socket === ws) this.socket = null;
       if (this.closed) return;
@@ -173,7 +205,7 @@ export class Link {
       this.retry(refusal);
     });
   }
-  drop() { clearTimeout(this.timer); this.timer = null; const ws = this.socket; this.socket = null; ws?.terminate(); }
+  drop() { this.generation++; this.connecting = false; this.lastDiscovery = -Infinity; this.discoveryAbort?.abort(); if (!this.closed) this.set('offline'); clearTimeout(this.timer); this.timer = null; const ws = this.socket; this.socket = null; ws?.terminate(); }
   /** Answers one forwarded tool request with the phone's own supervisor, on loopback. */
   async local({ method, path, headers = {}, body = '' }) {
     if (!TUNNEL_PATHS.includes(path) || !['GET', 'POST', 'DELETE'].includes(method)) return { status: 403, headers: {}, body: '' };

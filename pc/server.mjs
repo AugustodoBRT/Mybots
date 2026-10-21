@@ -17,6 +17,8 @@ import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
+import { createDiscovery } from './discovery.mjs';
+import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
 export const DEFAULT_PORT = 3230;
 const PAIRING_MS = 10 * 60000;
@@ -124,7 +126,7 @@ async function localStatus() {
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, desktop = new Desktop(), browser = new PcBrowser(directory), log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), log = () => {} } = {}) {
   const me = identity(directory);
   const controls = new Set(); let owner = null;
   const dictation = createDictation(directory);
@@ -169,7 +171,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -182,7 +184,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     const ready = phone => {
       clearTimeout(timer); ws.phone = phone; bridge.attach(ws); ui.broadcast('desktop.phone', { online: true });
       log(`${phone.name} conectado (${request.socket.remoteAddress}).`);
-      send({ type: 'ready', id: me.id, name: me.name, addresses: advertise(), port: server.address().port, ...current });
+      send({ type: 'ready', id: me.id, name: me.name, addresses: advertise(), port: server.address().port, tailscale: advertise().some(tailscaleAddress), ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
     const tunnel = () => proxy ||= new Promise((resolve, reject) => {
@@ -302,8 +304,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   const windowPort = await ui.listen();
-  return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, refresh,
+  const discovery = await createDiscovery({ id: me.id, port: server.address().port, addresses: advertise, discoveryPort, allowLoopback: discoveryLoopback, log });
+  return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
     phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

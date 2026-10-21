@@ -9,7 +9,7 @@ import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
 
 export const DEFAULT_UI_PORT = 3232;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp' };
-const OFFLINE = 'O celular está fora de alcance. Confira se ele está ligado e no mesmo Wi-Fi (ou na Tailscale).';
+const OFFLINE = 'O celular está fora de alcance. No mesmo Wi-Fi, ele procura o computador sozinho. Para conectar de outra rede, use o Tailscale.';
 
 /**
  * The MyBots window on the computer: the same interface as the phone (react-native-web, built into pc/ui), served
@@ -17,11 +17,11 @@ const OFFLINE = 'O celular está fora de alcance. Confira se ele está ligado e 
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
-  const clients = new Set();
+  const clients = new Set(); let offlineSince = Date.now();
   const origins = () => [`http://127.0.0.1:${server.address().port}`, `http://localhost:${server.address().port}`];
   // Only this computer's own pages: a site opened in a browser cannot read the page (DNS rebinding) or use the socket.
   const local = request => origins().map(origin => origin.slice(7)).includes(request.headers.host);
@@ -79,7 +79,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
         // The pairing QR, drawn here so the window shows it (one use, 10 minutes, like `node pc/node.mjs pair`).
         else if (method === 'desktop.pair') {
           if (!pairing) throw new Error('O pareamento não está disponível.');
@@ -112,7 +112,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
   return {
     listen: () => new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => resolve(server.address().port)); }),
     /** An event from the phone, or a change of the link itself, for every open window. */
-    broadcast(event, data = {}) { for (const ws of clients) if (ws.readyState === 1) ws.send(JSON.stringify({ event, data })); },
+    broadcast(event, data = {}) { if (event === 'desktop.phone') offlineSince = data.online ? null : Date.now(); for (const ws of clients) if (ws.readyState === 1) ws.send(JSON.stringify({ event, data })); },
     close: () => { for (const ws of clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); }
   };
 }

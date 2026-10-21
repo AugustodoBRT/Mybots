@@ -27,6 +27,16 @@ Os dados do nó ficam em `~/.mybots-pc/` (diretório 700): identidade, certifica
 
 **Fora de casa**: instale a [Tailscale](https://tailscale.com) no computador e no celular, com a mesma conta, e pareie de novo (o QR passa a levar o endereço 100.x da Tailscale). Na mesma rede Wi-Fi não precisa de nada.
 
+## Quando o celular não acha o computador
+
+A partir da v49, depois de parear uma vez, o celular procura o PC automaticamente no mesmo Wi-Fi quando os endereços salvos deixam de funcionar. Abra o MyBots ou toque em **Ajustes → Computador → Tentar agora**. A descoberta procura apenas o computador já pareado e mantém a conferência do certificado; não é necessário ler outro QR quando ela funciona. Redes de convidados, isolamento entre aparelhos ou bloqueio de broadcast podem impedir essa busca.
+
+Em redes diferentes (por exemplo, PC em casa e celular na faculdade), a descoberta local não atravessa a internet. Use o Tailscale nos dois aparelhos, com a mesma conta e ligado; se o endereço dele ainda não estiver salvo no celular, pareie novamente. Em Ajustes → Computador no celular e Ajustes → Celular no PC, o app informa se detectou endereço Tailscale no PC na última conexão (no PC, o estado é consultado localmente) e oferece o link de instalação. O MyBots não instala nem configura o Tailscale sozinho.
+
+Como último recurso, abra **Ajustes → Celular → Mostrar QR** no PC e **Parear de novo** no celular. Depois de dois minutos desconectado, a tela do PC também mostra o aviso de mudança de rede e o botão para gerar o QR.
+
+A descoberta usa UDP 3234 (configurável por `MYBOTS_PC_DISCOVERY_PORT` nos dois lados); a conexão autenticada continua na porta 3230. Não exponha essas portas no roteador para resolver a conexão.
+
 ## O que o bot faz no computador
 
 Com **Mexer no computador** (perfil → Acesso; vale para bots que vivem no computador ou "Onde estiver" com ele ligado):

@@ -7,6 +7,9 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { createSupervisor } from '../supervisor/index.mjs';
 import { createNode } from '../pc/server.mjs';
+import { createSocket } from 'node:dgram';
+import { discover, broadcastTargets, privateAddress, tailscaleAddress } from '../supervisor/discovery.mjs';
+import { discoveryHandler } from '../pc/discovery.mjs';
 import { parsePairing } from '../supervisor/link.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
@@ -31,7 +34,7 @@ async function setup(t) {
   const phoneDir = await mkdtemp(join(tmpdir(), 'mybots-phone-')); const pcDir = await mkdtemp(join(tmpdir(), 'mybots-pc-'));
   const port = await freePort();
   const app = await createSupervisor({ directory: phoneDir, port: 0, codex, execute: async bot => ({ text: `${bot.name} no celular`, ...selection, codexSessionId: randomUUID() }) });
-  const options = { directory: pcDir, port, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], execute: computerIA, status: async () => ({ connections: { codex: { available: true, loggedIn: true }, claude: { loggedIn: false } }, models: [] }) };
+  const options = { directory: pcDir, port, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], discoveryPort: 0, discoveryLoopback: true, execute: computerIA, status: async () => ({ connections: { codex: { available: true, loggedIn: true }, claude: { loggedIn: false } }, models: [] }) };
   let node = await createNode(options);
   t.after(async () => { await app.close(); await node.close(); await rm(phoneDir, { recursive: true, force: true }); await rm(pcDir, { recursive: true, force: true }); });
   return { app, options, get node() { return node; }, async restartNode() { await node.close(); node = await createNode(options); return node; } };
@@ -196,10 +199,12 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   // The window draws the pairing QR itself; the code it carries is the one-use code the phone trades.
   const qr = await client.call('desktop.pair');
   assert.match(qr.svg, /^<svg/); assert.ok(readFileSync(join(pcDir, 'pairing.json'), 'utf8').includes('"code"'));
-  assert.equal((await client.call('desktop.status')).lastPaired, null);
+  const disconnected = await client.call('desktop.status');
+  assert.equal(disconnected.lastPaired, null); assert.equal(disconnected.tailscale, false); assert.ok(disconnected.offlineSince);
   await app.rpc('computer.pair', { link: node.pairing().link });
   await until(async () => (await client.call('desktop.status')).phone);
-  assert.ok((await client.call('desktop.status')).lastPaired);
+  const connected = await client.call('desktop.status');
+  assert.ok(connected.lastPaired); assert.equal(connected.offlineSince, null);
   const bot = await client.call('bot.create', { name: 'Pelo PC', ...selection });
   assert.ok((await client.call('bots.list')).some(item => item.id === bot.id));
   await until(() => events.includes('activity.new'));
@@ -255,4 +260,91 @@ test('a bot\'s freed folders are checked on the phone: never the whole home or a
   const bot = await app.rpc('bot.create', { name: 'Dev', ...selection, home: 'pc' });
   assert.deepEqual((await app.rpc('bot.update', { botId: bot.id, folders: ['~/vscodeProjects'] })).folders, ['~/vscodeProjects']);
   for (const folders of [['~'], ['~/.ssh'], ['/'], ['../x'], ['relativa']]) await assert.rejects(app.rpc('bot.update', { botId: bot.id, folders }), /até 10 pastas/);
+});
+
+
+async function lostAddress(f) {
+  const target = f.app.link.saved();
+  f.app.link.drop();
+  await until(() => f.app.state().nodes.every(node => !node.online));
+  f.app.link.save({ ...target, port: await freePort(), addresses: ['127.0.0.2'] });
+  f.app.link.discoveryTargets = ['127.0.0.1']; f.app.link.discoveryPort = f.node.discoveryPort; f.app.link.discoveryTimeout = 100;
+  f.app.link.set('offline');
+  return target;
+}
+
+test('local discovery restores a paired PC with an obsolete address and preserves the pinned identity', async t => {
+  const f = await setup(t);
+  await f.app.rpc('computer.pair', { link: f.node.pairing().link });
+  await until(() => f.app.state().computer.state === 'online');
+  const target = await lostAddress(f);
+  await f.app.link.connect();
+  await until(() => f.app.state().computer.state === 'online');
+  const saved = f.app.link.saved();
+  assert.equal(saved.addresses[0], '127.0.0.1'); assert.equal(saved.port, f.node.port);
+  assert.equal(saved.secret, target.secret); assert.equal(saved.fingerprint, target.fingerprint);
+  assert.equal(f.app.state().computer.tailscale, false);
+  // Foreground discovery is throttled, and no old socket callback can overwrite the new connection.
+  const last = f.app.link.lastDiscovery; f.app.link.kick(); assert.equal(f.app.link.lastDiscovery, last);
+});
+
+test('discovery only answers private senders for its identity, bounds packets and rate limits responses', async t => {
+  let time = 0; const replies = [];
+  const handler = discoveryHandler({ id: 'pc-test', port: 3230, addresses: () => ['192.168.1.10'], send: (...args) => replies.push(args), now: () => time });
+  const question = Buffer.from(JSON.stringify({ t: 'mybots?', id: 'pc-test' }));
+  for (const [bytes, address] of [[question, '8.8.8.8'], [Buffer.alloc(513), '192.168.1.20'], [Buffer.from('{'), '192.168.1.20'], [Buffer.from('{"t":"mybots?","id":"other"}'), '192.168.1.20']]) handler(bytes, { address, port: 12345 });
+  assert.equal(replies.length, 0);
+  handler(question, { address: '192.168.1.20', port: 12345 }); handler(question, { address: '192.168.1.20', port: 12345 });
+  assert.equal(replies.length, 1); assert.deepEqual(JSON.parse(replies[0][0]), { t: 'mybots', id: 'pc-test', port: 3230, addresses: ['192.168.1.10'] });
+  assert.equal(replies[0][1], 12345); assert.equal(replies[0][2], '192.168.1.20');
+  time = 2000; handler(question, { address: '192.168.1.20', port: 12345 }); assert.equal(replies.length, 2);
+  assert.equal(privateAddress('172.31.1.2'), true); assert.equal(privateAddress('172.32.1.2'), false);
+  assert.equal(tailscaleAddress('100.64.1.2'), true); assert.equal(tailscaleAddress('100.128.1.2'), false);
+  assert.deepEqual(broadcastTargets({ wlan: [{ family: 'IPv4', internal: false, address: '192.168.4.7', netmask: '255.255.255.0' }], lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1', netmask: '255.0.0.0' }] }), ['255.255.255.255', '192.168.4.255']);
+  // The actual UDP socket also ignores an incorrect id.
+  const f = await setup(t);
+  assert.deepEqual(await discover('wrong', { port: f.node.discoveryPort, targets: ['127.0.0.1'], timeout: 80 }), []);
+});
+
+test('forged discovery is refused by TLS and never replaces saved addresses; a later correct reply still connects', async t => {
+  const f = await setup(t); const other = await setup(t);
+  await f.app.rpc('computer.pair', { link: f.node.pairing().link }); await until(() => f.app.state().computer.state === 'online');
+  const target = await lostAddress(f);
+  const socket = createSocket('udp4'); await new Promise(resolve => socket.bind(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => socket.close(resolve)));
+  let forged = true;
+  socket.on('message', (bytes, remote) => {
+    const correct = { t: 'mybots', id: target.id, port: f.node.port, addresses: ['127.0.0.1'] };
+    const bad = { ...correct, port: other.node.port };
+    socket.send(JSON.stringify(forged ? bad : correct), remote.port, remote.address);
+  });
+  f.app.link.discoveryPort = socket.address().port;
+  await f.app.link.connect();
+  assert.equal(f.app.link.state, 'offline'); assert.match(f.app.link.error, /Outro aparelho/);
+  assert.deepEqual(f.app.link.saved().addresses, ['127.0.0.2']);
+  assert.equal(f.app.link.saved().fingerprint, target.fingerprint);
+  // Retry immediately with both a forged and a genuine answer; do not wait 15 seconds.
+  clearTimeout(f.app.link.timer); f.app.link.timer = null; f.app.link.lastDiscovery = -Infinity; forged = false;
+  socket.removeAllListeners('message'); socket.on('message', (bytes, remote) => {
+    for (const port of [other.node.port, f.node.port]) socket.send(JSON.stringify({ t: 'mybots', id: target.id, port, addresses: ['127.0.0.1'] }), remote.port, remote.address);
+  });
+  f.app.link.kick(); await until(() => f.app.link.state === 'online');
+  assert.equal(f.app.link.saved().port, f.node.port);
+});
+
+test('missing discovery explains reachability and foreground retries are throttled without losing pairing', async t => {
+  const f = await setup(t);
+  await f.app.rpc('computer.pair', { link: f.node.pairing().link }); await until(() => f.app.link.state === 'online');
+  await lostAddress(f);
+  f.app.link.discoveryTargets = []; f.app.link.discoveryTimeout = 20;
+  await f.app.link.connect();
+  assert.match(f.app.link.error, /Não achei o computador neste Wi-Fi.*Tailscale/);
+  const last = f.app.link.lastDiscovery;
+  f.app.link.kick(); await until(() => !f.app.link.connecting);
+  assert.equal(f.app.link.lastDiscovery, last); assert.equal(f.app.link.status().paired, true);
+  // Closing interrupts discovery immediately and must not schedule another retry.
+  clearTimeout(f.app.link.timer); f.app.link.timer = null; f.app.link.lastDiscovery = -Infinity;
+  f.app.link.discoveryTimeout = 5000;
+  const pending = f.app.link.connect(true); f.app.link.close(); await pending;
+  assert.equal(f.app.link.timer, null);
 });

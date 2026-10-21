@@ -605,6 +605,31 @@ function TermuxApiStatus() {
 }
 
 // "Funcionar com a tela apagada": the MyBots service that wakes and restarts the supervisor, and what Android/HyperOS may still block.
+function RemoteAccess({ tailscale }) {
+  return <View style={{ marginTop: 10 }}>
+    <Text style={styles.optionDetail}>{tailscale ? 'Tailscale detectado no PC. Para conectar de qualquer lugar, mantenha o Tailscale ligado nos dois aparelhos, na mesma conta.' : 'Sem Tailscale detectado no PC. No mesmo Wi-Fi, o celular procura o computador sozinho. Para usar de qualquer lugar, instale o Tailscale nos dois aparelhos e entre na mesma conta.'}</Text>
+    {!tailscale ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://tailscale.com/download')} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>Instalar Tailscale</Text></Pressable> : null}
+  </View>;
+}
+
+function DesktopNetwork({ call, notice = false }) {
+  const [status, setStatus] = useState(null); const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => { try { const next = await call('desktop.status'); if (mounted) { setStatus(next); setNow(Date.now()); } } catch {} };
+    check(); const timer = setInterval(check, 10000);
+    return () => { mounted = false; clearInterval(timer); };
+  }, []);
+  if (!status) return null;
+  if (!notice) return <RemoteAccess tailscale={status.tailscale} />;
+  if (status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
+  return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
+    <Text style={styles.optionLabel}>O celular não encontrou este computador</Text>
+    <Text style={styles.optionDetail}>O computador mudou de rede? O celular procura sozinho no mesmo Wi-Fi; se não achar, mostre o QR. Em redes diferentes, use o Tailscale.</Text>
+    <DesktopPair call={call} />
+  </View>;
+}
+
 // On the computer's window: the QR the phone reads to pair (Ajustes → Computador → Conectar computador on the phone).
 // It closes by itself once a phone pairs.
 function DesktopPair({ call, compact = false }) {
@@ -624,6 +649,7 @@ function DesktopPair({ call, compact = false }) {
   };
   return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
     <Text style={styles.optionLabel}>Parear um celular</Text>
+    <DesktopNetwork call={call} />
     <Text style={styles.optionDetail}>No celular, abra o MyBots → Ajustes → Computador → Conectar computador e aponte a câmera para o QR. Ele vale por 10 minutos e uma vez só.</Text>
     {qr ? <View style={styles.pairQr}><View accessibilityLabel="QR para parear o celular"><SvgXml xml={qr.svg} width={260} height={260} /></View>
       <Text style={styles.limitMeta}>Esperando o celular ler…</Text></View> : null}
@@ -660,6 +686,7 @@ function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry }) {
     : computer.state === 'connecting' ? 'Procurando o computador…' : `Desligado ou fora de alcance${node?.lastSeen ? ` · ${seenText(node)}` : ''}`;
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>
+    <RemoteAccess tailscale={computer?.tailscale} />
     {computer?.paired ? <View style={styles.passwordRow}>
       <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.mint : C.faint} /></View>
       <View style={{ flex: 1 }}><Text style={styles.limitName}>{state}</Text>{computer.error && computer.state !== 'online' ? <Text style={[styles.limitMeta, { color: C.amber }]}>{computer.error}</Text> : null}</View>
@@ -1815,6 +1842,7 @@ function AppMain() {
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
   return <View style={[styles.app, desktop && !wide && column]}>
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : wide ? <DesktopShell data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}

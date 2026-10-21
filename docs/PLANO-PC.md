@@ -92,8 +92,9 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 | **v40** ✅ | Pastas liberadas por bot (`folders`), Acesso total com a pasta pessoal inteira e bubblewrap escondendo chaves e senhas de toda resposta no computador | Codex e Claude reais: pasta liberada grava, fora dela bloqueia ou pede, `~/.ssh` vazio |
 | **v41** ✅ | Respostas longas: limite por inatividade (10 min sem sinal, até 2 h) e falas durante o trabalho na conversa e nas salas, com o passo atual sob "Pensando" | Codex e Claude reais contaram cada etapa de um script com teste |
 | **v42** ✅ | Habilidades: `skill_propose` (sempre com aprovação), bot novo no celular, rotina diária sem IA, `skill_run`, execução isolada no Node do Termux; internet nos comandos do Codex no PC | Codex real escreveu `buscar_vagas` (Gupy), testou no PC, o emulador instalou e rodou: 19 vagas na conversa e na planilha |
-| **v43** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
-| **v44** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
+| **v43** ✅ | Correção: PDFs com figuras, diagramas e fórmulas — o bot vê as páginas como imagem (`as_image`) | Bot do celular resolveu um diagrama de blocos só desenhado |
+| **v44** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
+| **v45** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
 
 ## 10. Riscos
 

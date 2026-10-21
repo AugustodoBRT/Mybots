@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
 import { officeText } from './documents.mjs';
 
-export const LIMITS = { files: 5, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20 };
+export const LIMITS = { files: 5, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20, pdfImagePages: 4 };
 // Executables never enter a bot's files, whatever the page or the model says.
 const BLOCKED = /\.(apk|apks|xapk|aab|exe|msi|bat|cmd|com|scr|ps1|vbs|sh|jar|dex|so|bin|elf|run)$/i;
 const IMAGES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -53,7 +53,7 @@ export class Attachments {
   }
   bytes(botId, id) { this.meta(botId, id); return readFileSync(this.path(id)); }
   discard(items) { for (const item of items) { rmSync(this.path(item.id), { force: true }); this.db.run('DELETE FROM attachments WHERE id=?', item.id); } }
-  async read(botId, id, { offset = 0, page = 1 } = {}) {
+  async read(botId, id, { offset = 0, page = 1, asImage = false } = {}) {
     const row = this.meta(botId, id);
     const bytes = readFileSync(this.path(id));
     const meta = `${row.name} · ${row.mime} · ${Math.ceil(row.size / 1024)} KB`;
@@ -62,10 +62,12 @@ export class Attachments {
     // PDFs are read on the phone: text from Android 15+, and pictures of pages without text (scans).
     if (row.mime === 'application/pdf' || /\.pdf$/i.test(row.name) || bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
       if (!this.pdf) throw new Error('A leitura de PDF não está disponível.');
-      const result = await this.pdf({ data: bytes.toString('base64'), firstPage: page, maxPages: LIMITS.pdfPages, images: 'auto' });
+      // as_image: the pages as pictures too (figures, diagrams, formulas, fractions the text extraction breaks).
+      const result = await this.pdf({ data: bytes.toString('base64'), firstPage: page, maxPages: asImage ? LIMITS.pdfImagePages : LIMITS.pdfPages, images: asImage ? 'all' : 'auto' });
       const last = page + result.text.length - 1;
       const text = result.text.map(item => `--- Página ${item.page} ---\n${item.text.trim() || (result.images.some(image => image.page === item.page) ? '(página sem texto: veja a imagem)' : '(sem texto)')}`).join('\n\n');
-      const head = `${NOTICE}\n${meta} · ${result.pages} páginas · lidas ${page}–${last}${last < result.pages ? ` (continue com page ${last + 1})` : ''}`;
+      const head = `${NOTICE}\n${meta} · ${result.pages} páginas · lidas ${page}–${last}${last < result.pages ? ` (continue com page ${last + 1})` : ''}` +
+        (asImage ? '' : '\nSe houver figuras, diagramas, gráficos, fórmulas, frações ou texto quebrado, leia de novo com as_image true para ver as páginas como imagem.');
       return { mcpContent: [{ type: 'text', text: `${result.images.length ? IMAGE_HINT + '\n' : ''}${head}\n\n${text.slice(0, LIMITS.text)}` }, ...result.images.map(image => ({ type: 'image', data: image.data, mimeType: 'image/jpeg' }))] };
     }
     try { const office = officeText(bytes, row.mime, row.name); if (office !== null) return long(office, { format: 'markdown' }); }

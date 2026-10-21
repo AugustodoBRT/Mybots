@@ -593,3 +593,12 @@ Relato: na sala "Projeto vagas", o Programador (Codex, só do computador) falhou
 - Na janela do PC, as confirmações (apagar bot/sala, remover habilidade) viram uma janelinha do próprio app (o `Alert` não existe na web).
 
 132 testes (novos em `tests/skills.test.mjs`: validação da proposta; cartão mesmo no Acesso total, bot novo, rotina sem IA, mensagem, planilha, notificação sem nenhuma tarefa de IA, `skill_run` só do dono, backup, remover leva a rotina; isolamento: `/etc/passwd`, `child_process`, `net`, site não declarado, tempo limite, promessa esquecida, gravação em `data/`). Real: Codex gpt-6-luna no PC, com falas ao vivo, descobriu que a API da Gupy pede login, usou a busca pública do portal, testou com node (19 vagas) e propôs; aprovado, o emulador (Node 24, isolamento ativo) criou o bot Vagas, rodou o teste (19 vagas) e a rotina entregou a lista e a planilha. Serviço `mybots-pc` e `pc/ui` atualizados neste PC. APK `dist/apk/mybots-v42.apk`, versionCode 42, 0.23.0, ARM64, certificado `fac61745…033b9c`, SHA-256 `7d36b2cbbbc56ed75f4edd1726dcfa16239873904e9607da9a8b1952337df8c6`. Release v42.
+
+## 21/10/2026 — v43 (0.23.1): o bot vê as páginas de PDF com figuras e fórmulas
+
+Relato: o Maniaco (Claude Haiku, celular) baixou do SIGAA as tarefas de Estabilidade (LCSD T5) e Diagramas de Blocos (CSD T6) e gerou os PDFs com o nome do Augusto, mas deixou as resoluções "parciais": as frações das funções de transferência vieram quebradas no texto e os diagramas eram só figuras.
+
+- **Causa**: a leitura de PDF só mandava as páginas como imagem quando a página não tinha texto nenhum (escaneada); páginas com texto e figuras chegavam só como texto extraído.
+- **Correção**: `attachment_read` ganhou `as_image` (as páginas como imagem, 4 por vez, pelo PdfRenderer do celular, `images: 'all'`). Toda leitura de PDF sem `as_image` agora diz para ler de novo com `as_image true` se houver figuras, diagramas, gráficos, fórmulas, frações ou texto quebrado; a descrição da ferramenta pede o mesmo em vez de dizer que não consegue.
+
+133 testes (novo: PDF com texto traz a dica; `as_image` devolve 4 páginas como imagem a partir da pedida; valor inválido recusado). No emulador: PDF gerado com um diagrama de blocos só desenhado (1/(s+2), 5/s, realimentação 2) → bot do celular (gpt-6-luna) leu o texto, leu de novo como imagem e respondeu T(s) = 5/(s² + 2s + 10), certo. APK `dist/apk/mybots-v43.apk`, versionCode 43, 0.23.1, ARM64, certificado `fac61745…033b9c`, SHA-256 `432b25dffa1e87c0606e010b61f2801420009cfccea6af2412133dce8a66f084`. Release v43.

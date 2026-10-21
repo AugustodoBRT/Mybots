@@ -27,7 +27,7 @@ function fakePhone(app, { scanned = false } = {}) {
             continue;
           }
           const pages = Array.from({ length: 25 }, (_, i) => i + 1).slice(command.args.firstPage - 1, command.args.firstPage - 1 + command.args.maxPages);
-          const value = { pages: 25, text: pages.map(page => ({ page, text: scanned ? '' : `Questão ${page}: calcule a derivada.` })), images: scanned ? pages.slice(0, 6).map(page => ({ page, data: Buffer.from('jpeg' + page).toString('base64') })) : [] };
+          const value = { pages: 25, text: pages.map(page => ({ page, text: scanned ? '' : `Questão ${page}: calcule a derivada.` })), images: scanned || command.args.images === 'all' ? pages.slice(0, 6).map(page => ({ page, data: Buffer.from('jpeg' + page).toString('base64') })) : [] };
           await fetch(`http://127.0.0.1:${app.port}/device/browser/result`, { method: 'POST', headers: { Authorization: 'Bearer ' + app.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: command.id, ok: true, value }) });
         }
       } catch { break; }
@@ -95,6 +95,18 @@ test('a scanned PDF comes back as page pictures the model can look at', async t 
   assert.match(read.mcpContent[0].text, /--- Página 1 ---\n\(página sem texto: veja a imagem\)/);
   assert.equal(read.mcpContent.filter(item => item.type === 'image').length, 6);
   assert.equal(read.mcpContent[1].mimeType, 'image/jpeg');
+});
+
+test('a PDF with text and figures: the bot is told it can look at the pages, and as_image brings them as pictures', async t => {
+  const f = await setup(t); const call = f.open();
+  const pdf = await (await f.upload({ botId: f.bot.id, name: 'CSD_T6.pdf', mime: 'application/pdf', data: (await fixture('atividade.pdf')).toString('base64') })).json();
+  const text = await call('attachment_read', { id: pdf.id });
+  assert.equal(text.mcpContent.filter(item => item.type === 'image').length, 0);
+  assert.match(text.mcpContent[0].text, /diagramas, gráficos, fórmulas, frações.*as_image true/);
+  const seen = await call('attachment_read', { id: pdf.id, page: 2, as_image: true });
+  assert.equal(seen.mcpContent.filter(item => item.type === 'image').length, 4);
+  assert.match(seen.mcpContent[0].text, /lidas 2–5 \(continue com page 6\)/);
+  await assert.rejects(call('attachment_read', { id: pdf.id, as_image: 'sim' }), /as_image true ou false/);
 });
 
 const ANSWER = `# Resolução — Lista 3

@@ -64,7 +64,7 @@ export function toolArguments(tool, args) {
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
-    'attachment.read': ['id','offset','page'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
+    'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
     'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'],
     'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
@@ -152,7 +152,8 @@ export function toolArguments(tool, args) {
   }
   if (tool === 'attachment.read') {
     if (typeof args.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.id)) throw new Error('Informe o id de um arquivo deste bot (veja em files_list).');
-    return { id: args.id, offset: integer('offset', 0, 50_000_000, 0), page: integer('page', 1, 10000, 1) };
+    if (args.as_image !== undefined && typeof args.as_image !== 'boolean') throw new Error('Use as_image true ou false.');
+    return { id: args.id, offset: integer('offset', 0, 50_000_000, 0), page: integer('page', 1, 10000, 1), ...(args.as_image ? { asImage: true } : {}) };
   }
   if (tool === 'file.list') return { limit: integer('limit', 1, 200, 50) };
   if (tool === 'file.create') {

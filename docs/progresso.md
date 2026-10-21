@@ -572,3 +572,14 @@ Teste da janela ampliado (mensagem mandada no celular chega ao vivo; token igual
 ## 21/10/2026 — QR de pareamento na janela do PC (sem APK novo)
 
 Pedido: gerar o QR pela janela do MyBots no PC, em vez do terminal. `desktop.pair` (método local da janela, em `pc/ui.mjs`) cria o código de uso único e devolve o QR em SVG (biblioteca `qrcode` do nó); `desktop.status` diz quando foi o último pareamento. Na janela: **Ajustes → Celular → Mostrar QR**, e na tela inicial enquanto o celular estiver fora de alcance sem dados; o QR some quando o celular pareia (e a janela carrega os bots sozinha). Subtítulo dos Ajustes: "neste computador". Conferido: QR do print da janela decodificado (jsQR) é o link certo, e o emulador pareou com esse link; teste da janela ampliado. 126 testes. Aplicado neste PC (`pc/ui` e `mybots-pc` reiniciado; o celular reconectou com o mesmo token).
+
+## 21/10/2026 — v41 (0.22.0): respostas longas e falas durante o trabalho
+
+Relato: na sala "Projeto vagas", o Programador (Codex, só do computador) falhou com "O Codex demorou mais que o esperado"; e o pedido de que os bots fossem contando o que fazem, como uma conversa, em vez de 20 minutos calados.
+
+- **Causa do erro**: limite fixo de 3 minutos por resposta (10 nos raciocínios máximos), igual no Codex e no Claude, no celular e no computador. Não tinha relação com o celular fora do app nem com o bot ser do computador. Agora o limite é por **inatividade**: a resposta só é interrompida depois de 10 minutos sem nenhum evento da IA, até 2 horas no total; a mensagem diz para pedir para continuar.
+- **Falas durante o trabalho** (`progressTracker` em `lib/codex-runner.cjs`): o que a IA escreve antes de usar uma ferramenta ou de escrever outra coisa vira uma mensagem na hora (`progress: true`, na conversa ou na sala, até 30 por resposta); a última fala é a resposta. Codex: `agent_message`; Claude: blocos de texto do `assistant` antes de `tool_use`. Pelo computador, o nó manda `progress` pelo link.
+- **Passo atual** sob "Pensando" (conversa e sala): "Rodando python3 -m unittest…", "Editando primos.py", "Usando task_list_items" (`task.step`, só em memória).
+- Orientação nova em todos os bots: em tarefas com vários passos, contar em frases curtas o que vai fazer e o que descobriu.
+
+129 testes (novos em `tests/progress.test.mjs`: falas e resposta final; IA muda é interrompida e IA que dá sinal não; falas e passo na conversa e na sala). Real no emulador + nó de teste: Codex gpt-6-luna criou `primos.py` e o teste com 4 falas e o passo mudando ao vivo; Claude Sonnet contou "Etapa 1…", "Etapa 2…" antes do resumo. Serviço `mybots-pc` e `pc/ui` atualizados neste PC. APK `dist/apk/mybots-v41.apk`, versionCode 41, 0.22.0, ARM64, certificado `fac61745…033b9c`, SHA-256 `d9619de18f108d957cda29f2077b308b4d7437694d3b556e2c3736adf69b17dc`. Release v41.

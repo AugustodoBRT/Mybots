@@ -22,7 +22,7 @@ const STOPPED = {
  * on the computer does not hold the phone's bots. A turn whose bot lives on the computer waits while it is off.
  */
 export class Queue extends EventEmitter {
-  constructor(db, execute = runReply, tools) { super(); this.db = db; this.execute = execute; this.tools = tools; this.running = new Map(); this.stopped = false; }
+  constructor(db, execute = runReply, tools) { super(); this.db = db; this.execute = execute; this.tools = tools; this.running = new Map(); this.stopped = false; this.steps = new Map(); }
   recover() {
     for (const task of this.db.tasks().filter(task => ['running','waiting_approval'].includes(task.state))) {
       stopOrphan(task);
@@ -85,6 +85,14 @@ export class Queue extends EventEmitter {
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
             computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' ? { folders: Array.isArray(bot.folders) ? bot.folders : [], full: bot.access === 'full' } : false } : undefined,
           onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
+          // What the bot says along the way becomes a message now; what it is doing shows under "Pensando".
+          onProgress: ({ say, step } = {}) => {
+            if (controller.signal.aborted) return;
+            if (typeof say === 'string' && say.trim()) { this.db.progressMessage(task.id, say); this.steps.delete(task.id); }
+            else if (typeof step === 'string' && step.trim()) this.steps.set(task.id, step.trim().slice(0, 160));
+            else return;
+            this.emit('changed', { event: 'task.progress', taskId: task.id });
+          },
           // Only a local process can be found again (and stopped) after a crash.
           onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
         });
@@ -98,7 +106,7 @@ export class Queue extends EventEmitter {
         this.db.finish(task.id, controller.signal.aborted && !stopped ? 'cancelled' : 'failed', { attachments: this.tools?.takeOutgoing(task.id) || [] }, detail);
       } finally {
         capability?.close();
-        this.running.delete(next.lane);
+        this.running.delete(next.lane); this.steps.delete(task.id);
         this.emit('changed', { event: 'task.done', taskId: task.id });
         this.schedule();
       }

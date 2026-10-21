@@ -126,6 +126,17 @@ export class Database {
     if (state === 'done' && reply?.codexSessionId) this.setRoomSession(room.id, bot.id, reply.codexSessionId);
     this.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
   }
+  /** Something the bot says while it still works: a message in its chat (or room) before the final reply. */
+  progressMessage(taskId, text) {
+    const task = this.task(taskId);
+    if (!task || !ACTIVE.includes(task.state) || typeof text !== 'string' || !text.trim()) return;
+    const stamp = now(); const turn = this.roomTurn(taskId);
+    const message = { id: randomUUID(), role: 'assistant', text: text.trim().slice(0, 4000), status: 'complete', progress: true, createdAt: stamp };
+    this.transaction(() => {
+      if (turn) { const room = this.room(turn.room_id); if (room) this.putRoom({ ...room, messages: [...room.messages, { ...message, botId: task.bot_id, replyTo: turn.message_id }].slice(-1000), updatedAt: stamp }); }
+      else { const bot = this.bot(task.bot_id); this.putBot({ ...bot, updatedAt: stamp, messages: [...bot.messages, message] }); }
+    });
+  }
   /** How the person wants to be called (home-screen greeting). */
   person() { return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '' }; }
   setPerson({ name } = {}) {

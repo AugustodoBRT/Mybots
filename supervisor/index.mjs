@@ -69,7 +69,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const ready = Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
-    const publicTasks = () => db.tasks().slice(0, 200).map(({ payload, worker_pid, worker_start, ...task }) => task);
+    const publicTasks = () => db.tasks().slice(0, 200).map(({ payload, worker_pid, worker_start, ...task }) => queue.steps.has(task.id) ? { ...task, step: queue.steps.get(task.id) } : task);
     // Home-screen widget pollers: woken on any change, they answer only when the widget's summary changed.
     const widgetPollers = new Set();
     const broadcast = (event, data = {}) => {

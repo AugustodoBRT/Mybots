@@ -195,7 +195,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           signal: controller.signal, workspace,
           wrap: sandboxFor(bot.provider) || undefined,
           tools: message.tools ? { ...message.tools, device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
-          onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {}
+          onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
+          onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });
         send({ type: 'done', id: message.id, reply });
       } catch (error) {

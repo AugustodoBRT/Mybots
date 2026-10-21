@@ -149,6 +149,7 @@ export class Link {
       const run = this.runs.get(message.id);
       if (!run) return;
       if (message.type === 'session') await run.onSession?.(message.sessionId);
+      else if (message.type === 'progress') run.onProgress?.({ say: typeof message.say === 'string' ? message.say : undefined, step: typeof message.step === 'string' ? message.step : undefined });
       else if (message.type === 'done') run.resolve(message.reply);
       else if (message.type === 'failed') run.reject(Object.assign(new Error(message.error || 'O computador não concluiu a resposta.'), message.output ? { output: message.output } : {}, message.codexSessionId ? { codexSessionId: message.codexSessionId } : {}));
     });
@@ -182,11 +183,11 @@ export class Link {
   /** Supervisor events, for the window on the computer to refresh. */
   event(event, data) { if (DESKTOP_EVENTS.includes(event) && this.socket?.readyState === 1 && this.state === 'online') this.socket.send(JSON.stringify({ type: 'event', event, data })); }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */
-  run(send, bot, prompt, { signal, tools, onSession } = {}) {
+  run(send, bot, prompt, { signal, tools, onSession, onProgress } = {}) {
     return new Promise((resolve, reject) => {
       const id = randomUUID(); let timer;
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
-      this.runs.set(id, { onSession, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
+      this.runs.set(id, { onSession, onProgress, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
       send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {

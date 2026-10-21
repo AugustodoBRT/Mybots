@@ -3,7 +3,8 @@ import { now } from './database.mjs';
 /**
  * The computer that runs tasks for this supervisor. The phone stays the source of truth; a connected computer
  * only executes the turns of the bots that live there (and of the "any" bots while it is on). Each connection
- * brings an `execute` with the same signature as the local one; v37 adds the network link that provides it.
+ * brings an `execute` with the same signature as the local one (supervisor/link.mjs provides it over the network),
+ * plus which IAs are logged in there.
  * Known computers and when they were last seen are kept in metadata, so "visto por último" survives restarts.
  */
 export class Nodes {
@@ -14,15 +15,21 @@ export class Nodes {
     this.db.run("INSERT INTO metadata VALUES('nodes',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(list));
   }
   /** A computer came online. Returns the function that marks it offline again. */
-  connect({ id, name = 'Computador', execute }) {
+  connect({ id, name = 'Computador', execute, connections = {}, models = [] }) {
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id) || typeof execute !== 'function') throw new Error('Computador inválido.');
-    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now() };
+    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now(), ...this.clean({ connections, models }) };
     this.online.set(id, node); this.save({ id, name: node.name, lastSeen: node.connectedAt });
     const bots = this.db.bots().filter(bot => !bot.deletedAt && bot.home === 'pc').length;
     this.db.record('node_connected', `${node.name} conectado${bots ? `: ${bots} ${bots > 1 ? 'bots ficaram' : 'bot ficou'} online` : ''}.`);
     this.changed('connection.changed');
     return () => this.disconnect(id, node);
   }
+  /** Only what the app shows and the checks need: logged in or not, and the model list. */
+  clean({ connections, models }) {
+    const status = value => ({ available: Boolean(value?.available), loggedIn: Boolean(value?.loggedIn), message: typeof value?.message === 'string' ? value.message.slice(0, 200) : '' });
+    return { connections: Object.fromEntries(['codex', 'claude'].filter(key => connections?.[key]).map(key => [key, status(connections[key])])), models: Array.isArray(models) ? models.slice(0, 80) : [] };
+  }
+  update(id, fields) { const node = this.online.get(id); if (node) Object.assign(node, this.clean({ connections: fields.connections ?? node.connections, models: fields.models ?? node.models })); }
   disconnect(id, node = this.online.get(id)) {
     if (!node || this.online.get(id) !== node) return;
     this.online.delete(id); this.save({ id, name: node.name, lastSeen: now() });
@@ -48,6 +55,6 @@ export class Nodes {
     return { online: false, where: null, lastSeen };
   }
   status() {
-    return this.known().map(item => ({ id: item.id, name: item.name, online: this.online.has(item.id), lastSeen: this.online.has(item.id) ? now() : item.lastSeen }));
+    return this.known().map(item => ({ id: item.id, name: item.name, online: this.online.has(item.id), lastSeen: this.online.has(item.id) ? now() : item.lastSeen, connections: this.online.get(item.id)?.connections || null }));
   }
 }

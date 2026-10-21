@@ -86,7 +86,7 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 | Versão | Entrega | Aceite |
 |---|---|---|
 | **v36** ✅ | `bot.home`, presença e "visto por último", tarefas esperando o computador, registro de nós e fila com uma vez por aparelho | Testes com nó simulado; no emulador, bot do PC aparece offline e a mensagem espera |
-| **v37** | Nó do PC (Node) + pareamento por QR + link seguro (rede local e Tailscale) que entrega o `execute` ao `Nodes.connect`; o PC informa as próprias contas de IA (hoje o celular ainda exige o login dele para mandar mensagem a um bot do PC) | Emulador ↔ nó local: PC liga e a tarefa roda lá; derrubar o nó no meio = interrompida; celular no 4G via Tailscale |
+| **v37** ✅ | Nó do PC (Node) + pareamento por QR + link seguro (rede local e Tailscale) que entrega o `execute` ao `Nodes.connect`; o PC informa as próprias contas de IA (hoje o celular ainda exige o login dele para mandar mensagem a um bot do PC) | Emulador ↔ nó local: PC liga e a tarefa roda lá; derrubar o nó no meio = interrompida; celular no 4G via Tailscale |
 | **v38** | `where` nas ferramentas (só existem ferramentas do PC a partir daqui) + ferramentas de código no PC (área do bot, Claude com ferramentas, aprovações) + repasse das ferramentas do celular | Bot cria projeto, roda testes; comando fora da área pede aprovação no celular |
 | **v39** | `systemd --user` + app Tauri na bandeja + UI via react-native-web + autostart | Reiniciar o PC: app abre sozinho e bots ficam online |
 | **v40** | Habilidades + `bot.propose` + execução isolada no Termux | Bot de vagas criado no PC roda a rotina no celular com o PC desligado |

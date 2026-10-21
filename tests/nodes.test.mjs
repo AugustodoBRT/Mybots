@@ -38,7 +38,7 @@ test('a bot of the computer sleeps while it is off; its message waits and runs t
   assert.deepEqual(f.ran.map(item => item.where), ['phone', 'phone']);
   assert.equal(f.app.db.task(waiting.taskId).state, 'queued');
 
-  const leave = f.app.nodes.connect({ id: 'notebook', name: 'Notebook', execute: f.reply('pc') });
+  const leave = f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, name: 'Notebook', execute: f.reply('pc') });
   await until(() => f.app.db.task(waiting.taskId).state === 'done');
   assert.deepEqual(f.ran.at(-1), { bot: 'Programador', where: 'pc' });
   state = f.app.state();
@@ -58,7 +58,7 @@ test('the computer and the phone answer at the same time, but one bot never answ
   const f = await setup(t);
   const phone = await f.make('Faculdade'); const any = await f.make('Pesquisa', 'any');
   let release; const gate = new Promise(resolve => { release = resolve; });
-  f.app.nodes.connect({ id: 'notebook', execute: async bot => { f.ran.push({ bot: bot.name, where: 'pc' }); await gate; return { text: 'ok', ...selection, codexSessionId: randomUUID() }; } });
+  f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, execute: async bot => { f.ran.push({ bot: bot.name, where: 'pc' }); await gate; return { text: 'ok', ...selection, codexSessionId: randomUUID() }; } });
   const first = await f.send(any, 'Tarefa longa'); const second = await f.send(any, 'Outra');
   await until(() => f.ran.length === 1);
   const quick = await f.send(phone, 'Oi');
@@ -74,7 +74,7 @@ test('if the computer goes away mid-answer the turn is interrupted, not replayed
   const f = await setup(t);
   const pc = await f.make('Programador', 'pc');
   let calls = 0;
-  const leave = f.app.nodes.connect({ id: 'notebook', execute: (bot, prompt, { signal }) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('fechado')))); } });
+  const leave = f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, execute: (bot, prompt, { signal }) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('fechado')))); } });
   const running = await f.send(pc, 'Compila tudo'); const next = await f.send(pc, 'Depois roda os testes');
   await until(() => f.app.db.task(running.taskId).state === 'running');
   leave();
@@ -90,7 +90,7 @@ test('if the computer goes away mid-answer the turn is interrupted, not replayed
 test('"visto por último" survives a restart; a waiting turn does not keep the phone awake; moving a bot starts a new session', async t => {
   const f = await setup(t);
   const pc = await f.make('Programador', 'pc'); const phone = await f.make('Faculdade');
-  f.app.nodes.connect({ id: 'notebook', name: 'Notebook', execute: f.reply('pc') })();
+  f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, name: 'Notebook', execute: f.reply('pc') })();
   await f.send(pc, 'Espera o PC');
   const app = await f.restart();
   const state = app.state();

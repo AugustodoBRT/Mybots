@@ -86,3 +86,12 @@ Aprovação = SHA-256 de bot + tarefa + ferramenta + argumentos normalizados; va
 - Não há como ver a senha depois de salva (só apagar e salvar de novo).
 - No nível Médio, o primeiro uso pede aprovação; cada uso fica na Atividade.
 - Ao salvar pelo Assumir, a página entrega o login ao app por um `prompt` com prefixo aleatório da aba; a própria página (que já recebe a senha ao fazer login) é a única outra parte que a vê.
+
+## Computador pareado (v37)
+
+- O celular nunca escuta na rede: ele conecta ao computador. O computador aceita conexões na porta 3230, mas só executa algo para um celular que provou o segredo do pareamento (HMAC sobre um desafio novo a cada conexão).
+- O certificado TLS do computador é fixado pelo QR; um aparelho que se passe por ele no mesmo endereço é recusado antes de qualquer dado sair do celular.
+- O código do QR vale uma vez e por 10 minutos. Quem fotografar o QR depois disso não consegue parear.
+- O computador só alcança do celular as ferramentas da execução em andamento (`/mcp`, `/tools/*`), com o token daquela execução; nada de banco, senhas, backups ou do WebSocket do app. As permissões e aprovações continuam decididas no celular.
+- Na v37 o Claude e o Codex rodam no computador com as mesmas travas do celular (sem shell nem arquivos do computador). Ferramentas do computador chegam na v38, com aprovação própria.
+- Risco residual: quem tiver acesso à conta do computador lê `~/.mybots-pc/` (segredo do celular e certificado). Esquecer o computador no celular e apagar a pasta revoga o pareamento.

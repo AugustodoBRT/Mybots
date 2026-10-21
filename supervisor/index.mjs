@@ -25,6 +25,7 @@ import { Apps } from './apps.mjs';
 import { Browser } from './browser.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
+import { Link } from './link.mjs';
 
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
@@ -41,7 +42,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes;
+  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -111,13 +112,23 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
     // The computer: turns of its bots wait while it is off and start as soon as it connects.
     nodes = new Nodes(db, { changed: (event, data) => { if (data?.node && !nodes.computer()) queue.lost('pc'); else queue.schedule(); broadcast(event, data); broadcast('activity.new'); } }); queue.nodes = nodes;
+    // The models to pick from: the phone's, plus those of an IA that is logged in only on the computer.
+    const catalog = () => [...models, ...(nodes.computer()?.models || []).filter(item => !models.some(own => (own.provider || 'codex') === (item?.provider || 'codex')))];
+    link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
+    // Whether a bot's IA is logged in where its next turn runs: the computer reports its own; while it is off,
+    // a turn of a computer bot just waits (and is checked by the computer when it runs there).
+    const statusFor = bot => {
+      const provider = bot.provider || 'codex'; const lane = nodes.lane(bot);
+      if (lane === 'pc') return nodes.computer().connections?.[provider] || { loggedIn: false, message: `Entre no ${PROVIDER_NAMES[provider]} no computador para usar este bot lá.` };
+      return lane ? connections[provider] : { loggedIn: true };
+    };
     // A routine runs only when its bot's IA is connected; otherwise it is skipped with the reason.
     const ready = bot => {
       // Before the first IA check, wait instead of skipping a routine that is due at startup.
       if (!lastCheck) { refresh().then(() => routines.tick(), () => {}); return { wait: true }; }
-      const status = connections[bot.provider || 'codex'];
+      const status = statusFor(bot);
       if (!status?.loggedIn) return { error: status?.message || 'a IA deste bot não está conectada.' };
-      try { return { selection: selectionFor(models, bot) }; } catch (error) { return { error: error.message }; }
+      try { return { selection: selectionFor(catalog(), bot) }; } catch (error) { return { error: error.message }; }
     };
     const attachments = new Attachments(db); tools.attachments = attachments;
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
@@ -151,7 +162,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         db.record('supervisor_restarted', `O MyBots reiniciou o supervisor, que não respondia desde ${format(restarted.downSince)}.`);
         broadcast('activity.new');
       }
-      heartbeat(); routines.tick(); items.tick().catch(() => {}); queue.schedule();
+      heartbeat(); routines.tick(); items.tick().catch(() => {}); queue.schedule(); link.kick();
       // A turn waiting for the computer is not work for the phone: it must not hold the phone awake.
       const busy = db.tasks().some(task => task.state === 'running' || (task.state === 'queued' && queue.laneOf(task.bot_id)));
       const next = nextWake();
@@ -217,7 +228,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       presence: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
       accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
-      connection: summary(), connections, models: models.map(item => {
+      connection: summary(), connections, models: catalog().map(item => {
         // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
         const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
         return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
@@ -231,24 +242,24 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
       interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
       email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
-      instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' });
+      computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' });
     const rpc = async (method, params = {}) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
       switch (method) {
         case 'state.get': await refresh(); return state();
         case 'connection.refresh': await refresh(true); return state();
         case 'bots.list': return state().bots;
-        case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(models, params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
+        case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'bot.apps': return { apps: tools.setAccountApps(params.botId, params.apps) };
-        case 'bot.update': { const bot = db.requireBot(params.botId); await refresh(); const updated = db.configure(bot.id, selectionFor(models, { ...bot, ...params }), params); broadcast('activity.new'); return updated; }
+        case 'bot.update': { const bot = db.requireBot(params.botId); await refresh(); const updated = db.configure(bot.id, selectionFor(catalog(), { ...bot, ...params }), params); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };
         case 'chat.history': return db.requireBot(params.botId).messages;
         case 'chat.send': {
           if (!uuid(params.requestId)) throw new Error('Pedido sem identificador válido.');
           const bot = db.requireBot(params.botId); await refresh();
-          const selection = selectionFor(models, bot);
-          const status = connections[selection.provider || 'codex'];
+          const selection = selectionFor(catalog(), bot);
+          const status = statusFor({ ...bot, ...selection });
           if (!status?.loggedIn) throw new Error(status?.message || 'Esta IA não está conectada neste aparelho.');
           // A retried request reuses the files saved the first time instead of storing them again.
           const previous = db.task(params.requestId);
@@ -270,6 +281,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'room.update': return rooms.update(params.roomId, params);
         case 'room.delete': rooms.remove(params.roomId); return { deleted: true };
         case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection); }
+        case 'computer.pair': { if (typeof params.link !== 'string' || params.link.length > 2000) throw new Error('Leia o QR do computador.'); const result = await link.pair(params.link); broadcast('activity.new'); return result; }
+        case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
+        case 'computer.retry': link.kick(); return link.status();
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
           if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');
@@ -300,7 +314,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           // Handing back after the bot asked for help continues its work as a new turn.
           if (help) {
             await refresh();
-            const selection = selectionFor(models, bot);
+            const selection = selectionFor(catalog(), bot);
             if (connections[selection.provider || 'codex']?.loggedIn) {
               const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com browser_read.`, selection);
               broadcast('task.progress', { taskId: task.id }); queue.schedule();
@@ -519,9 +533,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     await new Promise((resolveStart, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveStart); });
     const actualPort = server.address().port; queue.toolEndpoint = `http://127.0.0.1:${actualPort}`;
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
-    api = { db, queue, tools, routines, items, nodes, token, port: actualPort, rpc, state, async close() {
+    api = { db, queue, tools, routines, items, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(itemTimer); email.stop(); routines.stop();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
       for (const ws of sockets.clients) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
@@ -532,11 +546,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       await closing;
       db.close(); unlinkSync(lock);
     } };
-    queue.schedule(); routines.start();
+    queue.schedule(); routines.start(); link.start();
     items.tick().catch(() => {}); itemTimer = setInterval(() => items.tick().catch(() => {}), routineTickMs || 30000);
     return api;
   } catch (error) {
-    clearInterval(timer); clearInterval(pingTimer); email?.stop(); routines?.stop();
+    clearInterval(timer); clearInterval(pingTimer); email?.stop(); routines?.stop(); link?.close();
     for (const socket of sockets?.clients || []) socket.terminate();
     server?.close(); db?.close();
     try { unlinkSync(lock); } catch {}

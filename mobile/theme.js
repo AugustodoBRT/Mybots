@@ -41,6 +41,7 @@ const ICONS = {
   share: [['circle', { cx: 17.5, cy: 5.5, r: 2.5 }], ['circle', { cx: 6.5, cy: 12, r: 2.5 }], ['circle', { cx: 17.5, cy: 18.5, r: 2.5 }], ['path', { d: 'M8.7 10.8l6.6-4M8.7 13.2l6.6 4' }]],
   open: [['path', { d: 'M14 4h6v6M20 4l-9 9M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10' }]],
   phone: [['rect', { x: 6.5, y: 2.5, width: 11, height: 19, rx: 2.8 }], ['path', { d: 'M10.5 18.2h3' }]],
+  laptop: [['rect', { x: 4.5, y: 5, width: 15, height: 10.5, rx: 2 }], ['path', { d: 'M2.5 19h19' }]],
   battery: [['rect', { x: 3, y: 7.5, width: 15.5, height: 9, rx: 2.2 }], ['path', { d: 'M21 11v2M6 10.5v3' }]],
   list: [['path', { d: 'M9.5 6.5H20M9.5 12H20M9.5 17.5H20' }], ['circle', { cx: 5, cy: 6.5, r: 1.2, fill: true }], ['circle', { cx: 5, cy: 12, r: 1.2, fill: true }], ['circle', { cx: 5, cy: 17.5, r: 1.2, fill: true }]],
   trash: [['path', { d: 'M4.5 7h15M10 11v6M14 11v6M6.5 7l.9 12.2a1.8 1.8 0 0 0 1.8 1.8h5.6a1.8 1.8 0 0 0 1.8-1.8L17.5 7M9.5 7V4.5h5V7' }]],

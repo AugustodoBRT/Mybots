@@ -10,6 +10,7 @@ import { createId, emptyLocalStore, mergeBotLists, validateBackup } from './loca
 
 import { createTermuxBackup } from './backup';
 import BotAvatar from './BotAvatar';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import BotProfile from './BotProfile';
 import BotBrowserPanel, { BrowserHelpCard } from './BotBrowserPanel';
 import { RichText, FileCard, FileChip, FileBadge, fileIcon, formatSize } from './RichMessage';
@@ -475,6 +476,53 @@ function TermuxApiStatus() {
 }
 
 // "Funcionar com a tela apagada": the MyBots service that wakes and restarts the supervisor, and what Android/HyperOS may still block.
+// The computer paired with this phone (Ajustes → Computador): its bots are online while it is on. The phone dials
+// the computer; pairing reads the QR that `node pc/node.mjs pair` shows on it.
+function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry }) {
+  const [scanning, setScanning] = useState(false); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions(); const reading = useRef(false);
+  const node = nodes.find(item => item.id === computer?.id);
+  const logged = Object.entries(node?.connections || {}).filter(([, value]) => value.loggedIn).map(([key]) => key === 'claude' ? 'Claude' : 'Codex');
+  const scan = async () => {
+    setNote('');
+    const allowed = permission?.granted || (await requestPermission()).granted;
+    if (!allowed) { setNote('Permita a câmera para ler o QR do computador.'); return; }
+    reading.current = false; setScanning(true);
+  };
+  // The camera reports the same QR many times per second: only the first reading pairs.
+  const read = async ({ data }) => {
+    if (reading.current || !/^mybots:\/\/computador\?/.test(data || '')) return;
+    reading.current = true; setScanning(false); setBusy(true); setNote('Conectando ao computador…');
+    try { const result = await onPair(data); setNote(`${result.name} conectado. Os bots do computador já ficam online.`); }
+    catch (error) { setNote(error.message); } finally { setBusy(false); }
+  };
+  const forget = () => Alert.alert(`Esquecer ${computer.name}?`, 'Os bots do computador ficam offline até você parear de novo.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Esquecer', style: 'destructive', onPress: () => onForget().catch(error => setNote(error.message)) }]);
+  const state = !computer?.paired ? null : computer.state === 'online' ? `Conectado${logged.length ? ` · ${logged.join(' e ')} no computador` : ' · nenhuma IA conectada nele'}`
+    : computer.state === 'connecting' ? 'Procurando o computador…' : `Desligado ou fora de alcance${node?.lastSeen ? ` · ${seenText(node)}` : ''}`;
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>
+    {computer?.paired ? <View style={styles.passwordRow}>
+      <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.mint : C.faint} /></View>
+      <View style={{ flex: 1 }}><Text style={styles.limitName}>{state}</Text>{computer.error && computer.state !== 'online' ? <Text style={[styles.limitMeta, { color: C.amber }]}>{computer.error}</Text> : null}</View>
+    </View> : <Text style={styles.optionDetail}>Com o computador ligado, os bots que vivem nele ficam online e respondem de lá, usando o Claude ou o Codex do computador. No computador, rode node pc/node.mjs pair e leia o QR que aparecer.</Text>}
+    <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={scan} style={styles.stopButton}><Icon name="laptop" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{computer?.paired ? 'Parear de novo' : 'Conectar computador'}</Text></Pressable>
+      {computer?.paired && computer.state !== 'online' ? <Pressable accessibilityRole="button" onPress={() => onRetry().catch(() => {})} style={styles.stopButton}><Icon name="refresh" size={13} color={C.muted} /><Text style={styles.stopText}>Tentar agora</Text></Pressable> : null}
+      {computer?.paired ? <Pressable accessibilityRole="button" onPress={forget} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Esquecer</Text></Pressable> : null}
+    </View>
+    {note ? <Text style={[styles.optionDetail, /conectado/.test(note) ? { color: C.mint } : /Conectando/.test(note) ? null : { color: C.amber }]}>{note}</Text> : null}
+    <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
+      <View style={styles.scanner}>
+        <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanning ? read : undefined} />
+        <View style={styles.scannerFrame} />
+        <Text style={styles.scannerText}>Aponte para o QR do MyBots no computador.</Text>
+        <Pressable accessibilityRole="button" onPress={() => setScanning(false)} style={styles.scannerClose}><Text style={styles.denyText}>Cancelar</Text></Pressable>
+      </View>
+    </Modal>
+  </View>;
+}
+
 // Saved site logins (Ajustes → Senhas): the bots' browser fills them on that site only; nobody sees them again.
 function PasswordsPanel({ bots }) {
   const [list, setList] = useState([]); const [form, setForm] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
@@ -1558,6 +1606,10 @@ function AppMain() {
           {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
             <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
           {mode === 'phone' ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
+          {mode === 'phone' ? <><Text style={styles.sheetSection}>COMPUTADOR</Text><ComputerPanel computer={data?.computer} nodes={data?.nodes}
+            onPair={async link => { const result = await supervisor.current.call('computer.pair', { link }); await loadSupervisorState(); return result; }}
+            onForget={async () => { await supervisor.current.call('computer.forget', {}); await loadSupervisorState(); }}
+            onRetry={async () => { await supervisor.current.call('computer.retry', {}); await loadSupervisorState(); }} /></> : null}
           <Text style={styles.sheetSection}>CELULAR</Text>
           {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} />
@@ -1676,6 +1728,10 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modeButton: { flexDirection: 'row', alignItems: 'center', gap: 7, height: 38, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   modeButtonText: { color: C.text2, fontFamily: F.s, fontSize: 12 },
+  scanner: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  scannerFrame: { width: 250, height: 250, borderRadius: 28, borderWidth: 3, borderColor: C.mint },
+  scannerText: { color: '#fff', fontFamily: F.b, fontSize: 15, marginTop: 24, textAlign: 'center', paddingHorizontal: 30 },
+  scannerClose: { position: 'absolute', bottom: 60, backgroundColor: '#000000AA', paddingHorizontal: 26, paddingVertical: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line2 },
   presenceDot: { position: 'absolute', right: -2, bottom: -2, width: 15, height: 15, borderRadius: 8, borderWidth: 3, borderColor: C.surface, backgroundColor: C.faint },
   presenceOn: { backgroundColor: C.mint },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint }, statusGood: { backgroundColor: C.mint, shadowColor: C.mint, shadowOpacity: 1, shadowRadius: 6 },

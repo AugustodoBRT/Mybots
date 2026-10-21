@@ -4,7 +4,7 @@ import BotAvatar, { BOT_COLORS, BOT_FORMS, BOT_FORM_NAMES, formFor } from './Bot
 import { BOT_TEMPLATES } from './bot-templates';
 import { C, F, Icon } from './theme';
 import { plainText } from './markdown';
-import { column } from './desktop';
+import { column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 const when = value => new Date(value).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 // The three access levels, like Claude Code's permission modes; switches stay under "Ajustes finos".
 export const ACCESS = [
@@ -144,9 +144,9 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
 }
 const box = { backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line };
 const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3' }, keyboard: { height: '92%', ...column },
-  sheet: { flex: 1, backgroundColor: C.bg2, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 20, paddingBottom: 20, borderTopWidth: 1, borderColor: C.line2 },
-  handle: { alignSelf: 'center', width: 42, height: 5, backgroundColor: C.line2, borderRadius: 3, marginTop: 10, marginBottom: 12 },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3', ...dialogBackdrop }, keyboard: { height: '92%', ...column, ...(dialogShape.borderRadius ? { height: '100%', maxHeight: 900 } : {}) },
+  sheet: { flex: 1, backgroundColor: C.bg2, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 20, paddingBottom: 20, borderTopWidth: 1, borderColor: C.line2, ...dialogShape, ...(dialogShape.borderRadius ? { paddingTop: 20 } : {}) },
+  handle: { alignSelf: 'center', width: 42, height: 5, backgroundColor: C.line2, borderRadius: 3, marginTop: 10, marginBottom: 12, ...noHandle },
   heading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   title: { color: C.text, fontFamily: F.x, fontSize: 23, letterSpacing: -0.7 }, subtitle: { color: C.muted, fontFamily: F.m, fontSize: 13, marginTop: 2 },
   close: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },

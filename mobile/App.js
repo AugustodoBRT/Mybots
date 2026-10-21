@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, BackHandler, AppState, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
-  Linking, StatusBar, StyleSheet, Text, TextInput, View
+  Linking, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions
 } from 'react-native';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { C, F, Icon } from './theme';
@@ -15,7 +15,7 @@ import BotProfile from './BotProfile';
 import BotBrowserPanel, { BrowserHelpCard } from './BotBrowserPanel';
 import { RichText, FileCard, FileChip, FileBadge, fileIcon, formatSize } from './RichMessage';
 import { SupervisorClient } from './supervisor-client';
-import { desktop, column } from './desktop';
+import { desktop, column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 import { activePhoneBots, createPhoneClient } from './phone';
 
 const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
@@ -319,6 +319,132 @@ function UpdateCard({ update, onInstall, onDismiss, compact = false }) {
     {step ? <Text style={[styles.optionDetail, step.state === 'error' && { color: C.red }]}>{step.state === 'error' ? step.message : step.state === 'downloading' ? `${UPDATE_STEPS.downloading} · ${step.percent >= 0 ? step.percent + '%' : formatSize(step.done || 0)}` : UPDATE_STEPS[step.state] || ''}</Text> : null}
     <PrimaryButton compact icon={busy ? undefined : 'download'} title={busy ? 'Atualizando…' : step?.state === 'error' ? 'Tentar de novo' : 'Atualizar agora'} disabled={busy} onPress={onInstall} style={{ marginTop: 10 }} />
   </View>;
+}
+
+// ---- The computer's layout: conversations on the left, the open one in the middle, today on the right.
+const shortTime = value => { const date = new Date(value); return Date.now() - date < 86400000 ? date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }); };
+// What a bot's row says under its name, like the phone's card.
+function botLine(bot, data) {
+  const waiting = data.approvals?.some(item => item.botId === bot.id); const asleep = offline(data, bot.id); const busy = data.active?.includes(bot.id);
+  const latest = bot.messages.at(-1);
+  if (waiting) return { text: 'Esperando sua decisão', tone: C.amber, state: 'waiting' };
+  if (asleep) return { text: busy ? 'Esperando o computador' : `Dormindo · ${seenText(data.presence?.[bot.id])}`, tone: C.faint, state: 'sleeping' };
+  if (busy) return { text: 'Trabalhando…', tone: HUE_OF(bot), state: 'working' };
+  return { text: latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle}` : latest?.role === 'user' ? `Você: ${plain(latest.text)}` : plain(latest?.text) || 'Pronto para começar', tone: C.muted, state: 'idle' };
+}
+
+function SideRow({ selected, onPress, label, face, title, time, line, tone, dot, working }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onPress={onPress}
+    style={({ pressed, hovered }) => [styles.sideRow, hovered && styles.sideRowHover, selected && styles.sideRowOn, pressed && styles.pressed]}>
+    <View>{face}{dot ? <View style={[styles.sideDot, { backgroundColor: dot }]} /> : null}</View>
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <View style={styles.botNameRow}><Text style={styles.sideTitle} numberOfLines={1}>{title}</Text>{time ? <Text style={styles.sideTime}>{time}</Text> : null}</View>
+      {working ? <View style={styles.botWorking}><Text style={[styles.sideLine, { color: tone }]} numberOfLines={1}>{line}</Text><Dots color={tone} /></View>
+        : <Text style={[styles.sideLine, tone && { color: tone }]} numberOfLines={1}>{line}</Text>}
+    </View>
+  </Pressable>;
+}
+
+function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onRespond, approvalBusy, onComplete, onConnection, children }) {
+  const { width } = useWindowDimensions();
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const bots = [...(data.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).filter(bot => !needle || bot.name.toLowerCase().includes(needle));
+  const rooms = (data.rooms || []).filter(room => !needle || room.name.toLowerCase().includes(needle));
+  const phoneOnline = !error && data.supervisorConnected !== false;
+  return <View style={styles.desk}>
+    <View style={styles.side}>
+      <View style={styles.sideHead}>
+        <View style={styles.brandRow}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={30} tile={false} /><Text style={[styles.brand, { fontSize: 21 }]}>mybots</Text></View>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <IconButton icon="plus" label="Novo bot" onPress={onCreate} size={34} tint={C.mint} />
+          <IconButton icon="settings" label="Ajustes" onPress={onMaintenance} size={34} />
+        </View>
+      </View>
+      <View style={styles.sideSearch}><Icon name="search" size={15} color={C.faint} />
+        <TextInput value={query} onChangeText={setQuery} placeholder="Buscar bot ou sala" placeholderTextColor={C.faint} style={styles.sideSearchInput} selectionColor={C.mint} /></View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
+        {rooms.length || (data.bots || []).length >= 2 ? <>
+          <View style={styles.sideSection}><Text style={styles.sideSectionText}>SALAS</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Nova sala" disabled={(data.bots || []).length < 2} onPress={onNewRoom} hitSlop={8}><Icon name="plus" size={15} color={C.muted} /></Pressable></View>
+          {rooms.map(room => {
+            const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean); const latest = room.messages.at(-1);
+            const working = members.filter(bot => room.active?.includes(bot.id));
+            const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
+            return <SideRow key={room.id} selected={room.id === roomId} onPress={() => onRoom(room.id)} label={`Abrir a sala ${room.name}`} face={<RoomFaces bots={members} size={36} />}
+              title={room.name} time={latest ? shortTime(latest.createdAt) : ''} working={working.length > 0} tone={working.length ? C.mint : null}
+              line={working.length ? `${working.map(bot => bot.name).join(', ')} respondendo` : latest ? `${who || 'Bot'}: ${plain(latest.text)}` : members.map(bot => bot.name).join(', ')} />;
+          })}
+        </> : null}
+        <View style={styles.sideSection}><Text style={styles.sideSectionText}>BOTS</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Novo bot" onPress={onCreate} hitSlop={8}><Icon name="plus" size={15} color={C.muted} /></Pressable></View>
+        {bots.map(bot => {
+          const line = botLine(bot, data); const presence = data.presence?.[bot.id];
+          return <SideRow key={bot.id} selected={bot.id === selected} onPress={() => onOpen(bot.id)} label={`Conversar com ${bot.name}`}
+            face={<Avatar bot={bot} size={40} state={line.state} animated={line.state !== 'idle'} />} dot={bot.home === 'pc' || bot.home === 'any' ? (presence?.online === false ? C.faint : C.mint) : null}
+            title={bot.name} time={bot.messages.at(-1) ? shortTime(bot.updatedAt) : ''} line={line.text} tone={line.tone} working={line.state === 'working'} />;
+        })}
+        {!bots.length && !needle ? <Text style={styles.sideEmpty}>Nenhum bot ainda. Toque em + para criar o primeiro.</Text> : null}
+      </ScrollView>
+      <View style={styles.sideFoot}>
+        <Pressable accessibilityRole="button" onPress={onConnection} style={styles.sideStatus}><View style={[styles.statusDot, phoneOnline && styles.statusGood]} />
+          <Text style={styles.sideStatusText} numberOfLines={1}>{phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={onActivity} style={styles.sideStatus}><Icon name="activity" size={15} color={C.muted} />
+          <Text style={styles.sideStatusText}>Atividade</Text>{data.approvals?.length ? <View style={styles.navBadge} /> : null}</Pressable>
+      </View>
+    </View>
+    <View style={styles.deskMain}>{children || <DeskWelcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onConnection={onConnection} />}</View>
+    {width >= 1280 ? <TodayPanel data={data} onOpen={onOpen} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={onActivity} /> : null}
+  </View>;
+}
+
+// Nothing open yet: the greeting, what needs the person, and where to start.
+function DeskWelcome({ data, error, onRespond, approvalBusy, onCreate, onConnection }) {
+  const bots = data.bots || [];
+  const working = (data.active || []).filter(id => !offline(data, id)).length;
+  return <ScrollView contentContainerStyle={styles.deskWelcome}>
+    <Text style={styles.greeting}>{greeting()}{data.person?.name ? `, ${data.person.name}` : ''}.</Text>
+    <Text style={styles.tagline}>{bots.length ? `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}${working ? ` · ${working} trabalhando agora` : ''}` : 'Seu pequeno time pessoal começa aqui.'}</Text>
+    {error ? <Notice text={error} onRetry={onConnection} /> : null}
+    {bots.length ? <TodayStrip data={data} onActivity={() => {}} /> : null}
+    {(data.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+    <View style={styles.deskHint}>
+      <View style={styles.emptyCrew}>{(bots.length ? bots.slice(0, 4) : [{ id: 'a', name: 'orbit', avatar: 'orbit', color: 'green' }, { id: 'b', name: 'spark', avatar: 'spark', color: 'purple' }, { id: 'c', name: 'cat', avatar: 'cat', color: 'orange' }]).map((bot, index) => <View key={bot.id} style={{ marginTop: index % 2 ? 16 : 0 }}><Avatar bot={bot} size={index === 0 ? 70 : 58} /></View>)}</View>
+      <Text style={styles.emptyTitle}>{bots.length ? 'Escolha uma conversa à esquerda.' : 'Monte seu time.'}</Text>
+      <Text style={styles.emptyText}>{bots.length ? 'As respostas, aprovações e pendências chegam aqui ao vivo, do celular e do computador.' : 'Cada bot cuida de uma parte da sua vida. Você decide o que cada um pode fazer.'}</Text>
+      {!bots.length ? <PrimaryButton icon="plus" title="Criar meu primeiro bot" onPress={onCreate} disabled={!data.models?.length} style={{ marginTop: 18, alignSelf: 'stretch' }} /> : null}
+    </View>
+  </ScrollView>;
+}
+
+// The right column on a wide screen: decisions, deadlines, routines and what just happened.
+function TodayPanel({ data, onOpen, onRespond, approvalBusy, onComplete, onActivity }) {
+  const name = id => data.bots?.find(bot => bot.id === id)?.name || '';
+  const items = (data.pendingItems || []).filter(item => item.state === 'open').sort((a, b) => (a.due || '9').localeCompare(b.due || '9')).slice(0, 8);
+  const routines = (data.routines || []).filter(item => item.enabled && item.nextRunAt).sort((a, b) => a.nextRunAt.localeCompare(b.nextRunAt)).slice(0, 4);
+  // What a bot did (tools, approvals, routines, files, failures), not every step of each reply.
+  const activity = (data.activity || []).filter(item => name(item.bot_id) && !/^task_(queued|running|done|waiting_approval)$/.test(item.kind)).slice(0, 8);
+  return <ScrollView style={styles.today2} contentContainerStyle={{ padding: 16, paddingBottom: 30, gap: 4 }}>
+    <Text style={styles.todayTitle}>Hoje</Text>
+    {(data.approvals || []).length ? <><Text style={styles.sideSectionText}>ESPERANDO VOCÊ</Text>
+      {data.approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={data.bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}</> : null}
+    <Text style={[styles.sideSectionText, styles.todaySpace]}>PENDÊNCIAS</Text>
+    {items.length ? items.map(item => <View key={item.id} style={styles.todayRow}>
+      <Pressable accessibilityRole="checkbox" accessibilityLabel={`Concluir ${item.title}`} onPress={() => onComplete(item.id)} hitSlop={6} style={styles.todayCheck} />
+      <Pressable style={{ flex: 1 }} onPress={() => onOpen(item.botId)}>
+        <Text style={styles.todayRowTitle} numberOfLines={2}>{item.course ? `${item.course} · ` : ''}{item.title}</Text>
+        <Text style={styles.todayRowMeta} numberOfLines={1}>{[item.dueLabel && `prazo ${item.dueLabel}`, name(item.botId)].filter(Boolean).join(' · ')}</Text></Pressable>
+    </View>) : <Text style={styles.todayEmpty}>Nenhuma pendência aberta.</Text>}
+    <Text style={[styles.sideSectionText, styles.todaySpace]}>PRÓXIMAS ROTINAS</Text>
+    {routines.length ? routines.map(item => <Pressable key={item.id} onPress={() => onOpen(item.botId)} style={styles.todayRow}><Icon name="bolt" size={15} color={C.sky} />
+      <View style={{ flex: 1 }}><Text style={styles.todayRowTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.todayRowMeta} numberOfLines={1}>{new Date(item.nextRunAt).toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} · {name(item.botId)}</Text></View></Pressable>)
+      : <Text style={styles.todayEmpty}>Nenhuma rotina marcada.</Text>}
+    <View style={[styles.sideSection, styles.todaySpace]}><Text style={styles.sideSectionText}>ATIVIDADE</Text><Pressable onPress={onActivity} hitSlop={8}><Text style={styles.todayMore}>Ver tudo</Text></Pressable></View>
+    {activity.map(item => <View key={item.id} style={styles.todayActivity}>
+      <Text style={styles.todayRowMeta}>{shortTime(item.created_at)} · {name(item.bot_id)}</Text>
+      <Text style={styles.todayActivityText} numberOfLines={2}>{item.detail}</Text></View>)}
+  </ScrollView>;
 }
 
 function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
@@ -939,7 +1065,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   const hue = HUE_OF(bot);
   return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={styles.chatHeader}>
-      <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} />
+      {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{bot.name}</Text>
@@ -1076,7 +1202,7 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
   const retry = message => { const asked = room.messages.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); };
   return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={styles.chatHeader}>
-      <IconButton icon="back" label="Voltar" onPress={onBack} size={40} />
+      {onBack ? <IconButton icon="back" label="Voltar" onPress={onBack} size={40} /> : null}
       <RoomFaces bots={members} size={40} />
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{room.name}</Text>
@@ -1518,6 +1644,7 @@ function AppMain() {
     setProfileId(null);
   };
   const openLogs = termuxLog ? () => { setLogsCopied(false); setLogsVisible(true); } : null;
+  const { width: windowWidth } = useWindowDimensions();
   const bot = data?.bots.find(item => item.id === selected);
   const room = data?.rooms?.find(item => item.id === roomId);
   const roomSave = async payload => {
@@ -1590,19 +1717,25 @@ function AppMain() {
   const shareKey = JSON.stringify(shareTargets);
   useEffect(() => { if (termuxAvailable && data?.bots) publishShareTargets(shareTargets)?.catch(() => {}); }, [shareKey]);
 
-  return <View style={styles.app}>
+  // The computer's wide window shows the list, the open conversation and today side by side.
+  const wide = Boolean(desktop) && windowWidth >= 900;
+  const roomView = data && room ? <RoomScreen room={room} data={data} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+          onSend={async text => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); }}
+          onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
+  const chatView = data && bot && !room ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
+          onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
+          onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
+          passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
+          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
+  return <View style={[styles.app, desktop && !wide && column]}>
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} /><Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable></View>
-      : room ? <RoomScreen room={room} data={data} onBack={() => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
-          onSend={async text => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); }}
-          onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} />
-      : bot ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
-          onBack={() => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
-          onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
-          passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
-          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} />
-          : <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+      : wide ? <DesktopShell data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
+          onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
+          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem}>
+          {roomView || chatView}</DesktopShell>
+      : roomView || chatView || <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
@@ -1724,10 +1857,10 @@ function AppMain() {
   </View>;
 }
 
-const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
+const TOP = desktop ? 0 : Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
 const card = { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 22 };
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: C.bg, ...column },
+  app: { flex: 1, backgroundColor: C.bg },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   // Buttons
   primaryButton: { minHeight: 52, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, borderRadius: 18, backgroundColor: C.mint, marginTop: 10 },
@@ -1755,6 +1888,33 @@ const styles = StyleSheet.create({
   scannerFrame: { width: 250, height: 250, borderRadius: 28, borderWidth: 3, borderColor: C.mint },
   scannerText: { color: '#fff', fontFamily: F.b, fontSize: 15, marginTop: 24, textAlign: 'center', paddingHorizontal: 30 },
   scannerClose: { position: 'absolute', bottom: 60, backgroundColor: '#000000AA', paddingHorizontal: 26, paddingVertical: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line2 },
+  desk: { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
+  side: { width: 310, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg2, paddingTop: 14 },
+  sideHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+  sideGreeting: { color: C.text2, fontFamily: F.b, fontSize: 14, paddingHorizontal: 16, marginTop: 12 },
+  sideSearch: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 12, marginBottom: 6, paddingHorizontal: 12, height: 38, borderRadius: 12, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+  sideSearchInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 13.5, outlineStyle: 'none' },
+  sideSection: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginTop: 14, marginBottom: 4 },
+  sideSectionText: { color: C.faint, fontFamily: F.x, fontSize: 10.5, letterSpacing: 1.4 },
+  sideRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginHorizontal: 8, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 14 },
+  sideRowHover: { backgroundColor: C.surface }, sideRowOn: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line2 },
+  sideDot: { position: 'absolute', right: -2, bottom: -2, width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: C.bg2 },
+  sideTitle: { flex: 1, color: C.text, fontFamily: F.b, fontSize: 14 }, sideTime: { color: C.faint, fontFamily: F.m, fontSize: 11 },
+  sideLine: { color: C.muted, fontFamily: F.m, fontSize: 12.5, marginTop: 2, flexShrink: 1 },
+  sideEmpty: { color: C.muted, fontFamily: F.m, fontSize: 13, paddingHorizontal: 16, paddingVertical: 10, lineHeight: 19 },
+  sideFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line },
+  sideStatus: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }, sideStatusText: { color: C.muted, fontFamily: F.s, fontSize: 12.5 },
+  deskMain: { flex: 1, minWidth: 0 },
+  deskWelcome: { width: '100%', maxWidth: 760, marginHorizontal: 'auto', paddingHorizontal: 32, paddingTop: 44, paddingBottom: 40 },
+  deskHint: { alignItems: 'center', marginTop: 40, paddingHorizontal: 20 },
+  today2: { width: 330, flexGrow: 0, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
+  todayTitle: { color: C.text, fontFamily: F.x, fontSize: 20, letterSpacing: -0.4, marginBottom: 10 },
+  todaySpace: { marginTop: 18, marginBottom: 6, paddingHorizontal: 0 },
+  todayRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.line },
+  todayCheck: { width: 18, height: 18, borderRadius: 6, borderWidth: 2, borderColor: C.line2, marginTop: 2 },
+  todayRowTitle: { color: C.text, fontFamily: F.s, fontSize: 13.5, lineHeight: 18 }, todayRowMeta: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 2 },
+  todayEmpty: { color: C.muted, fontFamily: F.m, fontSize: 12.5, paddingVertical: 4 }, todayMore: { color: C.mint, fontFamily: F.b, fontSize: 12 },
+  todayActivity: { paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: C.line }, todayActivityText: { color: C.text2, fontFamily: F.m, fontSize: 12.5, lineHeight: 17, marginTop: 2 },
   presenceDot: { position: 'absolute', right: -2, bottom: -2, width: 15, height: 15, borderRadius: 8, borderWidth: 3, borderColor: C.surface, backgroundColor: C.faint },
   presenceOn: { backgroundColor: C.mint },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint }, statusGood: { backgroundColor: C.mint, shadowColor: C.mint, shadowOpacity: 1, shadowRadius: 6 },
@@ -1909,10 +2069,10 @@ const styles = StyleSheet.create({
   choiceLabel: { color: C.muted, fontFamily: F.s, fontSize: 11 }, choiceValue: { color: C.text, fontFamily: F.b, fontSize: 14, marginTop: 2 },
   choiceChevron: { position: 'absolute', right: 12, top: 17, color: C.muted, fontSize: 16 },
   // Sheets
-  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3' },
-  sheet: { ...column, maxHeight: '88%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: C.bg2, borderTopWidth: 1, borderColor: C.line2 },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3', ...dialogBackdrop },
+  sheet: { ...column, maxHeight: '88%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: C.bg2, borderTopWidth: 1, borderColor: C.line2, ...dialogShape, ...(desktop ? { maxWidth: 720, paddingTop: 18 } : {}) },
   sheetTall: { height: '90%' },
-  sheetHandle: { alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: C.line2, marginBottom: 12 },
+  sheetHandle: { alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: C.line2, marginBottom: 12, ...noHandle },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   sheetIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: C.mint + '17' },
   sheetTitle: { color: C.text, fontFamily: F.x, fontSize: 22, letterSpacing: -0.6 },

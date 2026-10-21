@@ -104,3 +104,13 @@ test('a phone the computer does not know is refused', async t => {
   await until(() => /não está pareado/.test(f.app.state().computer.error || ''), 15000);
   assert.equal(f.app.state().nodes[0].online, false);
 });
+
+test('a turn on the computer tells the IA it runs there and cannot save into its folders yet', async () => {
+  const { default: claude } = await import('../lib/claude-runner.cjs');
+  const { default: codex } = await import('../lib/codex-runner.cjs');
+  const tools = { endpoint: 'http://127.0.0.1:1', token: 'x', entry: '/tmp/entry.mjs', device: 'augusto' };
+  const claudeArgs = claude.claudeArguments({ model: 'haiku' }, randomUUID(), tools);
+  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /computador "augusto".*Nunca diga que salvou algo numa pasta/);
+  assert.match(codex.chatArguments('/tmp/out', { model: 'test' }, tools).join(' '), /computador \\"augusto\\"/);
+  assert.doesNotMatch(claude.claudeArguments({ model: 'haiku' }, randomUUID(), { ...tools, device: undefined }).join(' '), /computador "/);
+});

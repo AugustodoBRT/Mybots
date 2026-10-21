@@ -138,7 +138,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         log(`Respondendo como ${bot.name}.`);
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
-          tools: message.tools ? { ...message.tools, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, device: me.name, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {}
         });
         send({ type: 'done', id: message.id, reply });

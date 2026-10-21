@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, Switch, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, View, Text, TextInput, Pressable, ScrollView, Keyboard, Switch, StyleSheet } from 'react-native';
 import BotAvatar, { BOT_COLORS, BOT_FORMS, BOT_FORM_NAMES, formFor } from './BotAvatar';
 import { BOT_TEMPLATES } from './bot-templates';
 import { C, F, Icon } from './theme';
@@ -17,10 +17,30 @@ export const HOMES = [
   ['pc', 'Computador', 'Online só com o computador ligado. Para programar e mexer no PC. Com ele desligado, suas mensagens esperam.'],
   ['any', 'Onde estiver', 'Sempre online. Quando o computador liga, ele passa a trabalhar lá e ganha os poderes do PC.']
 ];
+/**
+ * Android draws the app edge to edge, so the window does not shrink for the keyboard: the sheet leaves its height
+ * free at the bottom and scrolls the field being typed in into view.
+ */
+function useKeyboardRoom(scroll) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', event => {
+      setHeight(event.endCoordinates.height);
+      setTimeout(() => {
+        const input = TextInput.State.currentlyFocusedInput?.(); const content = scroll.current?.getInnerViewRef?.() || scroll.current?.getInnerViewNode?.();
+        if (input && content) input.measureLayout(content, (x, y) => scroll.current?.scrollTo({ y: Math.max(0, y - 140), animated: true }), () => {});
+      }, 120);
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  return height;
+}
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
 export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], accountApps = [], accountServers = [], onApps, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
+  const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null);
   useEffect(() => {
     if (!visible) return;
@@ -38,7 +58,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
   </Pressable>;
   const toggle = (value, onChange, label) => <Switch accessibilityLabel={label} value={value} disabled={saving} trackColor={{ false: C.line2, true: C.mint + '88' }} thumbColor={value ? C.mint : '#9AA2B1'} onValueChange={onChange} />;
   return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-    <View style={s.backdrop}><KeyboardAvoidingView style={s.keyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View style={s.sheet}>
+    <View style={[s.backdrop, { paddingBottom: keyboard }]}><View style={s.keyboard}><View style={s.sheet}>
       <View style={s.handle} />
       <View style={s.heading}>
         <View style={{ flex: 1 }}><Text style={s.title}>{bot ? bot.name : 'Novo bot'}</Text><Text style={s.subtitle}>{bot ? 'Perfil, rotinas, acesso e memória' : 'Um rosto, um jeito e um trabalho'}</Text></View>
@@ -46,7 +66,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
       </View>
       {bot && phone && <View style={s.tabs}>{tabs.map(([key, label, icon]) => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }} onPress={() => setTab(key)} style={[s.tab, tab === key && s.tabActive]}>
         <Icon name={icon} size={16} color={tab === key ? C.mint : C.muted} /><Text style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text></Pressable>)}</View>}
-      <ScrollView style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+      <ScrollView ref={scroll} style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {tab === 'profile' && <>
           <View style={s.preview}>
             <View style={[s.halo, { backgroundColor: (BOT_COLORS[form.color] || C.mint) + '14' }]}><BotAvatar bot={form} size={118} tile={false} /></View>
@@ -118,7 +138,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
             : <View style={s.emptyBox}><Icon name="list" size={26} color={C.faint} /><Text style={s.empty}>As pendências criadas pelo bot aparecem aqui.</Text></View>}</>}
         {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
       </ScrollView>
-    </View></KeyboardAvoidingView></View>
+    </View></View></View>
   </Modal>;
 }
 const box = { backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line };

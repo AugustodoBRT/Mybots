@@ -87,11 +87,12 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 |---|---|---|
 | **v36** ✅ | `bot.home`, presença e "visto por último", tarefas esperando o computador, registro de nós e fila com uma vez por aparelho | Testes com nó simulado; no emulador, bot do PC aparece offline e a mensagem espera |
 | **v37** ✅ | Nó do PC (Node) + pareamento por QR + link seguro (rede local e Tailscale) que entrega o `execute` ao `Nodes.connect`; o PC informa as próprias contas de IA (hoje o celular ainda exige o login dele para mandar mensagem a um bot do PC) | Emulador ↔ nó local: PC liga e a tarefa roda lá; derrubar o nó no meio = interrompida; celular no 4G via Tailscale |
-| **v38** | `where` nas ferramentas (só existem ferramentas do PC a partir daqui) + ferramentas de código no PC (área do bot, Claude com ferramentas, aprovações) + repasse das ferramentas do celular | Bot cria projeto, roda testes; comando fora da área pede aprovação no celular |
-| **v39** | `systemd --user` + app Tauri na bandeja + UI via react-native-web + autostart | Reiniciar o PC: app abre sozinho e bots ficam online |
-| **v40** | Habilidades + `bot.propose` + execução isolada no Termux | Bot de vagas criado no PC roda a rotina no celular com o PC desligado |
-| **v41** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
-| **v42** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
+| **v38** ✅ | Correções do teste no celular: teclado não esconde mais a folha do bot; o bot sabe que está no computador e não finge salvar em pastas dele | Teste no celular real (pareamento por QR, resposta pelo PC) e no emulador |
+| **v39** | App Tauri na bandeja + UI via react-native-web + autostart (`systemd --user` do nó já existe desde a v37); a janela fala com o celular pelo nó | Reiniciar o PC: app abre sozinho, mostra os bots e conversa |
+| **v40** | `where` nas ferramentas + ferramentas de código no PC (área do bot, Claude com ferramentas, aprovações) | Bot cria projeto e salva arquivos no PC; comando fora da área pede aprovação |
+| **v41** | Habilidades + `bot.propose` + execução isolada no Termux | Bot de vagas criado no PC roda a rotina no celular com o PC desligado |
+| **v42** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
+| **v43** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
 
 ## 10. Riscos
 

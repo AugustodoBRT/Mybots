@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const temporary = mkdtempSync(join(tmpdir(), 'mybots-package-'));
 try {
   for (const folder of ['supervisor', 'lib', 'mobile', 'tests']) mkdirSync(join(temporary, folder), { recursive: true });
-  for (const file of ['index.mjs','database.mjs','queue.mjs','pair.mjs','process.mjs','tools.mjs','tool-policy.mjs','claude-wrapper.sh','vault.mjs','connector-bundle.mjs','email.mjs','device.mjs','routines.mjs','rooms.mjs','attachments.mjs','apps.mjs','browser.mjs','items.mjs','documents.mjs','creator.mjs','connectors.sha256','package.json','package-lock.json']) cpSync(join(root,'supervisor',file), join(temporary,'supervisor',file));
+  for (const file of ['index.mjs','database.mjs','queue.mjs','pair.mjs','process.mjs','tools.mjs','tool-policy.mjs','claude-wrapper.sh','vault.mjs','connector-bundle.mjs','email.mjs','device.mjs','routines.mjs','rooms.mjs','attachments.mjs','apps.mjs','browser.mjs','items.mjs','nodes.mjs','documents.mjs','creator.mjs','connectors.sha256','package.json','package-lock.json']) cpSync(join(root,'supervisor',file), join(temporary,'supervisor',file));
   cpSync(join(root, 'supervisor/mcp'), join(temporary, 'supervisor/mcp'), { recursive: true });
   // ws's README is documentation only; leaving it out keeps the package under the bridge limit.
   cpSync(join(root, 'supervisor/node_modules/ws'), join(temporary, 'supervisor/node_modules/ws'), { recursive: true, filter: source => !source.endsWith('README.md') });

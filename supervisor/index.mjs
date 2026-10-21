@@ -24,6 +24,7 @@ import { Attachments } from './attachments.mjs';
 import { Apps } from './apps.mjs';
 import { Browser } from './browser.mjs';
 import { Items } from './items.mjs';
+import { Nodes } from './nodes.mjs';
 
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
@@ -40,7 +41,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms;
+  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -108,6 +109,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device }); queue.tools = tools;
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
+    // The computer: turns of its bots wait while it is off and start as soon as it connects.
+    nodes = new Nodes(db, { changed: (event, data) => { if (data?.node && !nodes.computer()) queue.lost('pc'); else queue.schedule(); broadcast(event, data); broadcast('activity.new'); } }); queue.nodes = nodes;
     // A routine runs only when its bot's IA is connected; otherwise it is skipped with the reason.
     const ready = bot => {
       // Before the first IA check, wait instead of skipping a routine that is due at startup.
@@ -136,7 +139,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         db.record('heartbeat_late', previous.instance_id === instanceId ? `Supervisor pausado pelo sistema ${span}; retomou sozinho.` : `Supervisor parado ${span}; iniciado de novo.`);
         broadcast('activity.new');
       }
-      db.run('INSERT INTO heartbeats(instance_id,created_at) VALUES(?,?)', instanceId, now());
+      db.run('INSERT INTO heartbeats(instance_id,created_at) VALUES(?,?)', instanceId, now()); nodes.touch();
       if (beats++ % 60 === 0) db.run('DELETE FROM heartbeats WHERE created_at < ?', new Date(Date.now() - 7 * 86400000).toISOString());
     };
     // The app's keep-alive service wakes the supervisor (alarm, screen off) and restarts it when it does not answer.
@@ -149,7 +152,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         broadcast('activity.new');
       }
       heartbeat(); routines.tick(); items.tick().catch(() => {}); queue.schedule();
-      const busy = db.tasks().some(task => ['queued', 'running'].includes(task.state));
+      // A turn waiting for the computer is not work for the phone: it must not hold the phone awake.
+      const busy = db.tasks().some(task => task.state === 'running' || (task.state === 'queued' && queue.laneOf(task.bot_id)));
       const next = nextWake();
       return { release, instanceId, busy, nextRoutineAt: next, nextRoutineMs: next ? Date.parse(next) : null };
     };
@@ -188,9 +192,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const plain = text => String(text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*`#>_]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
       const bots = db.bots().filter(bot => !bot.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(bot => {
         const latest = bot.messages.at(-1);
-        const state = pending.includes(bot.id) ? 'waiting' : active.some(task => task.bot_id === bot.id) ? 'working' : 'idle';
+        const busy = active.some(task => task.bot_id === bot.id);
+        // A bot of the computer sleeps while it is off; a message sent to it waits.
+        const state = pending.includes(bot.id) ? 'waiting' : !nodes.presence(bot).online ? 'sleeping' : busy ? 'working' : 'idle';
         return { id: bot.id, name: bot.name, color: bot.color || 'green', avatar: bot.avatar || '', state,
-          preview: state === 'waiting' ? 'Esperando sua decisão' : state === 'working' ? 'Trabalhando…' : latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle || ''}` : plain(latest?.text) || 'Pronto para começar' };
+          preview: state === 'waiting' ? 'Esperando sua decisão' : state === 'sleeping' ? (busy ? 'Mensagem esperando o computador' : 'Dormindo até o computador ligar') : state === 'working' ? 'Trabalhando…' : latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle || ''}` : plain(latest?.text) || 'Pronto para começar' };
       });
       const open = db.all("SELECT * FROM pending_items WHERE state='open'").map(row => items.row(row)).filter(item => !db.bot(item.botId)?.deletedAt);
       const next = open.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
@@ -208,6 +214,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     queue.rememberServers = rememberServers;
     const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
       rooms: rooms.list().map(room => ({ ...room, active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
+      presence: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
       accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
       connection: summary(), connections, models: models.map(item => {
@@ -512,7 +519,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     await new Promise((resolveStart, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveStart); });
     const actualPort = server.address().port; queue.toolEndpoint = `http://127.0.0.1:${actualPort}`;
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
-    api = { db, queue, tools, routines, items, token, port: actualPort, rpc, state, async close() {
+    api = { db, queue, tools, routines, items, nodes, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
       clearInterval(timer); clearInterval(pingTimer); clearInterval(itemTimer); email.stop(); routines.stop();
       for (const ws of sockets.clients) ws.terminate();

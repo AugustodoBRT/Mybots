@@ -285,7 +285,7 @@ export class Database {
       (data.instructions !== undefined && (typeof data.instructions !== 'string' || data.instructions.length > 2000)) ||
       !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
     const stamp = now();
-    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
+    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
     this.transaction(() => { this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
     return bot;
   }
@@ -294,15 +294,18 @@ export class Database {
     const bot = this.requireBot(id);
     if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','autonomy','access']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','autonomy','access','home']) if (changes[field] !== undefined) updated[field] = changes[field];
     if (typeof updated.name !== 'string' || !updated.name.trim() || updated.name.trim().length > 40 || typeof updated.instructions !== 'string' || updated.instructions.length > 2000 || !['green','blue','purple','orange'].includes(updated.color)) throw new Error('Informe nome, personalidade e cor válidos.');
     updated.name = updated.name.trim(); updated.instructions = updated.instructions.trim();
     // codexSessionId holds the session of the bot's current provider; another CLI cannot resume it.
     const switched = (updated.provider || 'codex') !== (bot.provider || 'codex');
     // A new access level, like a new grant, needs a fresh session so the bot stops repeating "I have no access".
-    if (switched || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
+    // Moving to another device also starts a new session there: an IA session lives on the machine that made it.
+    const moved = (updated.home || 'phone') !== (bot.home || 'phone');
+    if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total' }[updated.access];
-    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${updated.provider === 'claude' ? 'Claude' : 'Codex'}; a conversa continua com o histórico salvo.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
+    const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
+    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${updated.provider === 'claude' ? 'Claude' : 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
     return updated;
   }
   delete(id) {

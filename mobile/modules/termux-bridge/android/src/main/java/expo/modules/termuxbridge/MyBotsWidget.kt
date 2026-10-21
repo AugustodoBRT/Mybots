@@ -92,6 +92,8 @@ internal object WidgetSync {
       val pose = when (state) {
         "working" -> BotFace.Pose(lift = lift, look = sin(2 * PI * t).toFloat(), glow = (0.6 + 0.4 * sin(4 * PI * t)).toFloat())
         "waiting" -> BotFace.Pose(lift = lift * 0.4f, glow = if (i % (count / 2).coerceAtLeast(1) < count / 5 + 1) 1f else 0f)
+        // Its computer is off: eyes closed, a slow shallow breath.
+        "sleeping" -> BotFace.Pose(lift = lift * 0.5f, blink = 0.12f)
         // A blink near the end of each loop.
         else -> BotFace.Pose(lift = lift, blink = if (count > 4 && i == count - 3) 0.12f else if (count > 4 && i == count - 2) 0.55f else 1f)
       }

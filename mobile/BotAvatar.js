@@ -30,8 +30,8 @@ const SHAPES = {
 
 /**
  * A bot's face. Idle: it breathes and blinks now and then. Working: eyes glance side to side and the antenna
- * light pulses. Waiting for you: the antenna light blinks amber. Static when small, in lists of many, or when
- * the phone asks for reduced motion.
+ * light pulses. Waiting for you: the antenna light blinks amber. Sleeping (its computer is off): eyes closed and
+ * dimmed, breathing slowly. Static when small, in lists of many, or when the phone asks for reduced motion.
  */
 export default function BotAvatar({ bot, size = 54, state = 'idle', animated = true, tile = true }) {
   const color = BOT_COLORS[bot.color] || BOT_COLORS.green; const form = formFor(bot); const shape = SHAPES[form];
@@ -43,12 +43,16 @@ export default function BotAvatar({ bot, size = 54, state = 'idle', animated = t
   const glow = useRef(new Animated.Value(0)).current;
   const [, force] = useState(0);
 
+  const sleeping = state === 'sleeping';
   useEffect(() => {
+    blink.setValue(sleeping ? 0.12 : 1);
     if (!live) return undefined;
+    const breath = sleeping ? 3200 : 1700;
     const breathe = Animated.loop(Animated.sequence([
-      Animated.timing(bob, { toValue: 1, duration: 1700, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      Animated.timing(bob, { toValue: 0, duration: 1700, easing: Easing.inOut(Easing.sin), useNativeDriver: true })]));
+      Animated.timing(bob, { toValue: 1, duration: breath, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(bob, { toValue: 0, duration: breath, easing: Easing.inOut(Easing.sin), useNativeDriver: true })]));
     breathe.start();
+    if (sleeping) return () => breathe.stop();
     let timer, stopped = false;
     const blinkOnce = () => {
       if (stopped) return;
@@ -59,7 +63,7 @@ export default function BotAvatar({ bot, size = 54, state = 'idle', animated = t
     };
     timer = setTimeout(blinkOnce, 600 + Math.random() * 3000);
     return () => { stopped = true; clearTimeout(timer); breathe.stop(); };
-  }, [live]);
+  }, [live, sleeping]);
 
   useEffect(() => {
     if (!live) { look.setValue(0); glow.setValue(0); return undefined; }
@@ -87,7 +91,7 @@ export default function BotAvatar({ bot, size = 54, state = 'idle', animated = t
   const eyes = [shape.face.x + shape.face.w * 0.31, shape.face.x + shape.face.w * 0.69];
   const eyeY = shape.face.y + shape.face.h * 0.46;
 
-  return <View accessible accessibilityLabel={`${bot.name || 'Bot'}, aparência ${BOT_FORM_NAMES[form]}`} style={{ width: size, height: size }}>
+  return <View accessible accessibilityLabel={`${bot.name || 'Bot'}, aparência ${BOT_FORM_NAMES[form]}${sleeping ? ', dormindo' : ''}`} style={{ width: size, height: size, opacity: sleeping ? 0.55 : 1 }}>
     {tile ? <Svg width={size} height={size} viewBox="0 0 100 100" style={{ position: 'absolute' }}>
       <Defs>
         <RadialGradient id={id + 't'} cx="50%" cy="38%" r="70%"><Stop offset="0" stopColor={color} stopOpacity="0.26" /><Stop offset="1" stopColor={color} stopOpacity="0.05" /></RadialGradient>

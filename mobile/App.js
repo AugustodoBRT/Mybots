@@ -72,6 +72,15 @@ async function api(path, data, token, apiUrl) {
 }
 
 const Avatar = BotAvatar;
+// A bot of the computer, while it is off: "visto por último hoje às 18:40" (or never, before the first connection).
+const seenText = (presence, short = false) => {
+  if (!presence?.lastSeen) return short ? 'computador desligado' : 'esperando o computador';
+  const seen = new Date(presence.lastSeen); const today = new Date(); const yesterday = new Date(Date.now() - 86400000);
+  const hour = seen.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const day = seen.toDateString() === today.toDateString() ? 'hoje' : seen.toDateString() === yesterday.toDateString() ? 'ontem' : seen.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return `${short ? 'visto' : 'visto por último'} ${day} às ${hour}`;
+};
+const offline = (data, botId) => data?.presence?.[botId]?.online === false;
 const HUE_OF = bot => ({ green: C.mint, blue: C.sky, purple: C.lilac, orange: C.peach })[bot?.color] || C.mint;
 
 function PrimaryButton({ title, onPress, disabled, compact = false, style, icon, tone = 'mint' }) {
@@ -230,18 +239,21 @@ function ApprovalCard({ approval, bot, onRespond, busy }) {
 }
 
 const plain = text => (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*`#>]+/g, '').replace(/\s+/g, ' ').trim();
-function BotCard({ bot, busy, waiting, routines = 0, items = 0, onPress, onProfile }) {
+function BotCard({ bot, busy, waiting, presence, routines = 0, items = 0, onPress, onProfile }) {
+  const asleep = presence?.online === false;
   const latest = bot.messages.at(-1);
   const preview = latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle}` : latest?.attachments?.length && latest.text === 'Veja o anexo.' ? latest.attachments[0].name : plain(latest?.text);
   const updated = new Date(bot.updatedAt);
   const time = Date.now() - updated < 86400000 ? updated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : updated.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const hue = HUE_OF(bot);
   return <Pressable accessibilityRole="button" accessibilityLabel={`Conversar com ${bot.name}`} onPress={onPress}
-    style={({ pressed }) => [styles.botCard, busy && { borderColor: hue + '70', shadowColor: hue, shadowOpacity: 0.5, shadowRadius: 14, elevation: 6 }, waiting && styles.botCardWaiting, pressed && styles.pressed]}>
-    <Avatar bot={bot} size={58} state={waiting ? 'waiting' : busy ? 'working' : 'idle'} />
+    style={({ pressed }) => [styles.botCard, busy && !asleep && { borderColor: hue + '70', shadowColor: hue, shadowOpacity: 0.5, shadowRadius: 14, elevation: 6 }, waiting && styles.botCardWaiting, pressed && styles.pressed]}>
+    <View><Avatar bot={bot} size={58} state={waiting ? 'waiting' : asleep ? 'sleeping' : busy ? 'working' : 'idle'} />
+      {bot.home === 'pc' || bot.home === 'any' ? <View style={[styles.presenceDot, !asleep && styles.presenceOn]} /> : null}</View>
     <View style={styles.botCardCopy}>
       <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{bot.name}</Text><Text style={styles.botTime}>{time}</Text></View>
-      {busy && !waiting ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: hue }]}>Trabalhando</Text><Dots color={hue} /></View>
+      {asleep && !waiting ? <Text style={styles.botPreview} numberOfLines={1}>{busy ? 'Esperando o computador' : `Dormindo · ${seenText(presence)}`}</Text>
+        : busy && !waiting ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: hue }]}>Trabalhando</Text><Dots color={hue} /></View>
         : <Text style={[styles.botPreview, waiting && { color: C.amber }]} numberOfLines={1}>{waiting ? 'Esperando sua decisão' : preview || 'Pronto para começar'}</Text>}
       {routines || items ? <View style={styles.botStatusRow}>
         {routines ? <View style={styles.botChip}><Icon name="bolt" size={12} color={C.muted} /><Text style={styles.botChipText}>{routines} {routines > 1 ? 'rotinas' : 'rotina'}</Text></View> : null}
@@ -257,7 +269,7 @@ function TodayStrip({ data, onActivity }) {
   const items = (data?.pendingItems || []).filter(item => item.state === 'open');
   const nextDue = items.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
   const approvals = data?.approvals?.length || 0;
-  const working = data?.active?.length || 0;
+  const working = (data?.active || []).filter(id => !offline(data, id)).length;
   const tiles = [
     approvals ? { key: 'a', icon: 'hand', tone: C.amber, label: approvals > 1 ? `${approvals} decisões` : '1 decisão', detail: 'esperando você' } : null,
     nextDue ? { key: 'd', icon: 'calendar', tone: C.peach, label: nextDue.title, detail: `prazo ${nextDue.dueLabel || nextDue.due}` } : null,
@@ -310,7 +322,7 @@ function UpdateCard({ update, onInstall, onDismiss, compact = false }) {
 function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
-  const working = data?.active?.length || 0;
+  const working = (data?.active || []).filter(id => !offline(data, id)).length;
   return <View style={{ flex: 1 }}><ScrollView contentContainerStyle={styles.homeContent} keyboardShouldPersistTaps="handled">
     <View style={styles.homeHeader}>
       <View style={styles.brandRow}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={34} tile={false} /><Text style={styles.brand}>mybots</Text></View>
@@ -335,7 +347,7 @@ function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnecti
     </> : null}
     {bots.length ? <View style={styles.listHeading}><Text style={styles.sectionTitle}>Seus bots</Text>
       <Pressable accessibilityRole="button" disabled={!data?.models?.length} onPress={onCreate} style={({ pressed }) => [styles.newBotButton, pressed && styles.pressed]}><Icon name="plus" size={16} color={C.mint} stroke={2.2} /><Text style={styles.newBotText}>Novo</Text></Pressable></View> : null}
-    {bots.length ? bots.map(bot => <BotCard key={bot.id} bot={bot} busy={data.active?.includes(bot.id)} waiting={data.approvals?.some(item => item.botId === bot.id)}
+    {bots.length ? bots.map(bot => <BotCard key={bot.id} bot={bot} busy={data.active?.includes(bot.id)} waiting={data.approvals?.some(item => item.botId === bot.id)} presence={data.presence?.[bot.id]}
       routines={(data.routines || []).filter(item => item.botId === bot.id && item.enabled).length} items={(data.pendingItems || []).filter(item => item.botId === bot.id && item.state === 'open').length}
       onPress={() => onOpen(bot.id)} onProfile={() => onProfile(bot)} />)
       : <View style={styles.emptyBots}>
@@ -870,18 +882,19 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   const running = data.tasks?.find(task => task.bot_id === bot.id && ['queued', 'running', 'waiting_approval'].includes(task.state));
   const step = running && data.activity?.find(item => item.task_id === running.id && /^tool_|^approval_/.test(item.kind));
   const waiting = data.approvals?.some(item => item.botId === bot.id);
-  const working = data.active?.includes(bot.id);
+  const asleep = offline(data, bot.id);
+  const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
   return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={styles.chatHeader}>
       <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} />
-      <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : working ? 'working' : 'idle'} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{bot.name}</Text>
         {waiting ? <Text style={[styles.chatSubtitle, { color: C.amber }]}>Esperando sua decisão</Text>
           : working ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: hue }]}>Trabalhando</Text><Dots color={hue} /></View>
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
-            <Text style={styles.chatSubtitle} numberOfLines={1}>{findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · {EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
+            <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
       {phone ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen} onPress={() => !assumed && setBrowserOpen(value => !value)} size={40} /> : null}
       <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />
@@ -891,7 +904,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
     {phone && browserOpen ? <BotBrowserPanel bot={bot} browser={data.browser} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
     <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
-      {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
+      {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
       </View>}
@@ -899,6 +912,13 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {phone && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+      {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />
+        <View style={styles.thinkingCard}>
+          <Text style={styles.thinkingText}>Esperando o computador ligar</Text>
+          <Text style={styles.thinkingStep}>{bot.name} vive no computador. A mensagem segue assim que ele conectar.</Text>
+          <Pressable accessibilityRole="button" onPress={onCancel} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Cancelar</Text></Pressable>
+        </View>
+      </View> : null}
       {working && <View style={styles.thinking}><Avatar bot={bot} size={34} state={waiting ? 'waiting' : 'working'} tile={false} />
         <View style={styles.thinkingCard}>
           <View style={styles.botWorking}><Text style={styles.thinkingText}>{waiting ? 'Esperando sua aprovação' : running?.state === 'queued' ? 'Na fila' : 'Pensando'}</Text>{waiting ? null : <Dots color={hue} />}</View>
@@ -1019,8 +1039,8 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
         ? <Message key={message.id} message={message} bot={byId[message.botId] || members[0]} models={data.models || []} busy={sending} onRetry={() => retry(message)} onFile={onFile} fileBusy={fileBusy} />
         : <Text key={message.id} style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>)}
       {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
-      {working.map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : 'working'} tile={false} />
-        <View style={styles.thinkingCard}><View style={styles.botWorking}><Text style={styles.thinkingText}>{bot.name} {data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.state === 'queued' ? 'na fila' : 'pensando'}</Text><Dots color={HUE_OF(bot)} /></View>
+      {working.map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : offline(data, bot.id) ? 'sleeping' : 'working'} tile={false} />
+        <View style={styles.thinkingCard}><View style={styles.botWorking}><Text style={styles.thinkingText}>{bot.name} {offline(data, bot.id) ? 'responde quando o computador ligar' : data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.state === 'queued' ? 'na fila' : 'pensando'}</Text>{offline(data, bot.id) ? null : <Dots color={HUE_OF(bot)} />}</View>
           <Pressable accessibilityRole="button" onPress={() => onCancel(bot.id)} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable></View>
       </View>)}
     </ScrollView>
@@ -1519,7 +1539,7 @@ function AppMain() {
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
     {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
-      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []}
+      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []} nodes={data.nodes || []}
       memories={(data.memories || []).filter(item => item.botId === profileId)} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
       accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
@@ -1656,6 +1676,8 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modeButton: { flexDirection: 'row', alignItems: 'center', gap: 7, height: 38, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   modeButtonText: { color: C.text2, fontFamily: F.s, fontSize: 12 },
+  presenceDot: { position: 'absolute', right: -2, bottom: -2, width: 15, height: 15, borderRadius: 8, borderWidth: 3, borderColor: C.surface, backgroundColor: C.faint },
+  presenceOn: { backgroundColor: C.mint },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint }, statusGood: { backgroundColor: C.mint, shadowColor: C.mint, shadowOpacity: 1, shadowRadius: 6 },
   greeting: { color: C.text, fontFamily: F.x, fontSize: 32, letterSpacing: -1.2, marginTop: 26 },
   tagline: { color: C.muted, fontFamily: F.m, fontSize: 14, marginTop: 4, marginBottom: 18 },

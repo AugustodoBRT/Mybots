@@ -35,10 +35,13 @@ export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : tool;
 export const AVATARS = ['orbit', 'pixel', 'cat', 'spark'];
 // Pouco acesso, médio (pergunta na primeira vez) e acesso total. Bots without a level keep their switches.
 export const ACCESS_LEVELS = ['basic', 'ask', 'full'];
+// Where a bot lives: on the phone, on the computer (offline while it is off) or wherever is on (the computer when connected).
+export const HOMES = ['phone', 'pc', 'any'];
 export function validateProfile(data) {
   if (data.avatar !== undefined && !AVATARS.includes(data.avatar)) throw new Error('Escolha uma aparência válida.');
   if (data.autonomy !== undefined && !['ask', 'local'].includes(data.autonomy)) throw new Error('Escolha uma autonomia válida.');
   if (data.access !== undefined && !ACCESS_LEVELS.includes(data.access)) throw new Error('Escolha um nível de acesso válido.');
+  if (data.home !== undefined && !HOMES.includes(data.home)) throw new Error('Escolha onde o bot vive: celular, computador ou onde estiver.');
 }
 export function toolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Argumentos inválidos.');

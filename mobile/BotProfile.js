@@ -11,10 +11,16 @@ export const ACCESS = [
   ['ask', 'Médio', 'Pode tudo, mas pergunta na primeira vez que precisar (ler notificações, mandar SMS…). Responda “Sempre permitir” e ele não pergunta de novo.'],
   ['full', 'Acesso total', 'Faz tudo sem perguntar: ler notificações, e-mails, SMS, mandar notificações e mensagens, agir nos apps da sua conta.']
 ];
+// Where the bot lives, like a person who is online only where they are.
+export const HOMES = [
+  ['phone', 'Celular', 'Sempre online enquanto o celular está ligado. Para lembretes, faculdade, e-mails e rotinas.'],
+  ['pc', 'Computador', 'Online só com o computador ligado. Para programar e mexer no PC. Com ele desligado, suas mensagens esperam.'],
+  ['any', 'Onde estiver', 'Sempre online. Quando o computador liga, ele passa a trabalhar lá e ganha os poderes do PC.']
+];
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, accountApps = [], accountServers = [], onApps, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
-  const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', ...defaultSelection };
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], accountApps = [], accountServers = [], onApps, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+  const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null);
   useEffect(() => {
     if (!visible) return;
@@ -61,6 +67,8 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
           <Text style={s.label}>NOME</Text><TextInput accessibilityLabel="Nome do bot" value={form.name || ''} onChangeText={v => field('name', v)} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.mint} style={s.input} />
           <Text style={s.label}>PERSONALIDADE E FUNÇÃO</Text><TextInput accessibilityLabel="Personalidade e função" value={form.instructions || ''} onChangeText={v => field('instructions', v)} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.mint} style={[s.input, s.instructions]} />
           <Text style={s.label}>INTELIGÊNCIA</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider) => setForm(old => ({ ...old, model, reasoningEffort, provider }))} />
+          {phone && <><Text style={s.label}>ONDE ELE VIVE</Text>{HOMES.map(([key, title, detail]) => radio(form.home === key, title, detail, () => field('home', key), { disabled: saving || active }))}
+            {form.home !== 'phone' && !nodes.length ? <Text style={s.hint}>Nenhum computador conectado ainda. Até ele chegar, {form.home === 'pc' ? 'as mensagens para este bot ficam esperando' : 'este bot trabalha no celular'}.</Text> : null}</>}
           {phone && !bot && <><Text style={s.label}>NÍVEL DE ACESSO</Text>{ACCESS.map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
           {active && <Text style={s.hint}>Aguarde ou cancele a tarefa para salvar o perfil.</Text>}
           <Pressable accessibilityRole="button" disabled={!canSave} onPress={() => act(() => onSave(form))} style={({ pressed }) => [s.primary, !canSave && s.disabled, pressed && s.pressed]}>

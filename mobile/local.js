@@ -125,7 +125,7 @@ export function validateBackup(value) {
   const bots = new Set();
   for (const bot of value.bots) {
     if (!bot || typeof bot !== 'object') throw new Error('Bot inválido no backup.');
-    if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home))) throw new Error('Perfil inválido no backup.');
+    if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home)) || (bot.folders !== undefined && (!Array.isArray(bot.folders) || bot.folders.length > 10 || bot.folders.some(path => typeof path !== 'string' || path.length > 301)))) throw new Error('Perfil inválido no backup.');
     if (!validId(bot.id) || bots.has(bot.id) || typeof bot.name !== 'string' || !bot.name.trim() || bot.name.length > 40 || typeof bot.instructions !== 'string' || bot.instructions.length > 2000 || !['green', 'blue', 'purple', 'orange'].includes(bot.color) || !validDate(bot.createdAt) || !validDate(bot.updatedAt) || (bot.codexSessionId !== undefined && !validId(bot.codexSessionId)) || !Array.isArray(bot.messages) || bot.messages.length > 2000) throw new Error('O backup contém um bot inválido.');
     bots.add(bot.id);
     const messages = new Set();

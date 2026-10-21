@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
-import { TOOL_DEFINITIONS, BROWSER_TOOLS, grantOf, toolArguments } from './tool-policy.mjs';
+import { TOOL_DEFINITIONS, BROWSER_TOOLS, grantOf, toolArguments, SENSITIVE } from './tool-policy.mjs';
 import { BROWSER_NOTICE } from './browser.mjs';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
@@ -22,8 +22,6 @@ export const connectorRead = action => READ.test(action) && !CHANGE.test(action)
 // Claude Code's own tools, when a bot answers from the computer. Edits inside the bot's folder never get here
 // (acceptEdits); reads and writes elsewhere and every command do, and are decided here like any other permission.
 const COMPUTER_TOOLS = { Bash: 'shell', Read: 'read', Glob: 'read', Grep: 'read', Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write' };
-// Keys, passwords and the MyBots pairing stay out of reach whatever the level.
-const SENSITIVE = /(^|[\s/~'"=])\.(ssh|gnupg|password-store|mybots-pc|aws|kube|docker)(\/|\s|$|['"])|\.claude\/\.credentials|\.codex\/auth\.json|\.config\/(gh|rclone)\b|\/etc\/(shadow|sudoers)|keyrings?\b/i;
 // Commands that change the system or leave the computer: the person always decides, even on Acesso total.
 const RISKY = /(^|[;&|(\s])(sudo|su|doas|pkexec|mkfs\S*|dd|shutdown|reboot|poweroff|systemctl|passwd|chown|crontab)(\s|$)|\brm\s+(-\S*\s+)*(\/|~|\$HOME)(\s|\/?\*?\s*$|$)|\bgit\s+push\b|\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b|>\s*\/dev\/sd/i;
 

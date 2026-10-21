@@ -1,9 +1,9 @@
 import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
 import { randomBytes, randomUUID, X509Certificate, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
@@ -11,6 +11,7 @@ import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
+import { SENSITIVE } from '../supervisor/tool-policy.mjs';
 import { createUi, phoneBridge, DEFAULT_UI_PORT } from './ui.mjs';
 
 export const DEFAULT_PORT = 3230;
@@ -65,6 +66,23 @@ export function workspaceFor(directory, projects, bot) {
   }
   mkdirSync(map[id], { recursive: true, mode: 0o700 });
   return map[id];
+}
+
+/** What the bot may edit here: its own folder, the folders the person freed for it, or the whole home on Acesso total. */
+export function computerFor(allowed, workspace, home = homedir()) {
+  if (!allowed) return false;
+  const folders = (Array.isArray(allowed.folders) ? allowed.folders : []).map(path => resolve(path.startsWith('~') ? join(home, path.slice(1)) : path))
+    .filter(path => !SENSITIVE.test(path) && path !== home && path !== '/' && existsSync(path) && statSync(path).isDirectory());
+  return { workspace, folders: [...new Set(folders)], full: Boolean(allowed.full), home };
+}
+
+// Folders with keys, passwords and the other IA's login. Every IA turn here runs in a bubblewrap view of the disk where
+// they are empty, so no command or file read can reach them, whatever the IA decides.
+const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone'];
+export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path))) {
+  if (!bwrap) return null;
+  const hidden = [...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).filter(path => existsSync(path) && statSync(path).isDirectory());
+  return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', ...hidden.flatMap(path => ['--tmpfs', path])];
 }
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude') };
@@ -161,7 +179,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         log(`Respondendo como ${bot.name}.`);
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
-          tools: message.tools ? { ...message.tools, device: me.name, computer: message.tools.computer ? { workspace } : false, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          wrap: sandboxFor(bot.provider) || undefined,
+          tools: message.tools ? { ...message.tools, device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {}
         });
         send({ type: 'done', id: message.id, reply });

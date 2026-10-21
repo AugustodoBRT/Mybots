@@ -188,7 +188,7 @@ export class Link {
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
       this.runs.set(id, { onSession, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
-      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: Boolean(tools.computer) } : null });
+      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {
         send({ type: 'cancel', id });
         timer = setTimeout(() => this.runs.get(id)?.reject(new Error('Pedido cancelado.')), 8000);

@@ -208,3 +208,38 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   assert.equal(saved.path, join(pcDir, 'Downloads', 'nota.txt')); assert.equal(readFileSync(saved.path, 'utf8'), 'feito no celular');
   assert.equal((await client.call('desktop.file', { id: file.id, name: 'nota.txt', action: 'save' })).path, join(pcDir, 'Downloads', 'nota (2).txt'));
 });
+
+test('freed folders: ~ paths resolve on the computer; Claude gets --add-dir, Codex writable roots; keys and the other IA\'s login are hidden', async t => {
+  const { computerFor, sandboxFor } = await import('../pc/server.mjs');
+  const { default: claude } = await import('../lib/claude-runner.cjs');
+  const { default: codex } = await import('../lib/codex-runner.cjs');
+  const { mkdirSync } = await import('node:fs');
+  const home = await mkdtemp(join(tmpdir(), 'mybots-home-')); t.after(() => rm(home, { recursive: true, force: true }));
+  for (const path of ['vscodeProjects', '.ssh', '.codex', '.claude', 'MyBots/Dev']) mkdirSync(join(home, path), { recursive: true });
+  const computer = computerFor({ folders: ['~/vscodeProjects', '~/nao-existe', '~/.ssh', '~'], full: false }, join(home, 'MyBots/Dev'), home);
+  assert.deepEqual(computer.folders, [join(home, 'vscodeProjects')]);
+  const tools = { endpoint: 'http://127.0.0.1:1', token: 'x', entry: '/tmp/e.mjs', device: 'pc', computer };
+  const claudeArgs = claude.claudeArguments({ model: 'haiku' }, randomUUID(), tools);
+  assert.equal(claudeArgs[claudeArgs.indexOf('--add-dir') + 1], join(home, 'vscodeProjects'));
+  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /vscodeProjects.*pedem a sua aprovação|vscodeProjects/);
+  const codexArgs = codex.chatArguments('/tmp/out', { model: 'test' }, tools);
+  assert.ok(codexArgs.includes(`sandbox_workspace_write.writable_roots=${JSON.stringify([join(home, 'vscodeProjects')])}`));
+  assert.ok(codexArgs.includes(`sandbox_workspace_write.writable_roots=${JSON.stringify([home])}`) === false);
+  // Acesso total: the whole home is writable (keys stay hidden by the sandbox).
+  const full = codex.chatArguments('/tmp/out', { model: 'test' }, { ...tools, computer: computerFor({ folders: [], full: true }, join(home, 'MyBots/Dev'), home) });
+  assert.ok(full.includes(`sandbox_workspace_write.writable_roots=${JSON.stringify([home])}`));
+  const forCodex = sandboxFor('codex', home, '/usr/bin/bwrap');
+  assert.deepEqual(forCodex.slice(0, 5), ['/usr/bin/bwrap', '--dev-bind', '/', '/', '--die-with-parent']);
+  assert.ok(forCodex.includes(join(home, '.ssh')) && forCodex.includes(join(home, '.claude')) && !forCodex.includes(join(home, '.codex')));
+  assert.ok(sandboxFor('claude', home, '/usr/bin/bwrap').includes(join(home, '.codex')));
+  assert.equal(sandboxFor('codex', home, null), null);
+});
+
+test('a bot\'s freed folders are checked on the phone: never the whole home or a folder of keys', async t => {
+  const phoneDir = await mkdtemp(join(tmpdir(), 'mybots-phone-'));
+  const app = await createSupervisor({ directory: phoneDir, port: 0, codex });
+  t.after(async () => { await app.close(); await rm(phoneDir, { recursive: true, force: true }); });
+  const bot = await app.rpc('bot.create', { name: 'Dev', ...selection, home: 'pc' });
+  assert.deepEqual((await app.rpc('bot.update', { botId: bot.id, folders: ['~/vscodeProjects'] })).folders, ['~/vscodeProjects']);
+  for (const folders of [['~'], ['~/.ssh'], ['/'], ['../x'], ['relativa']]) await assert.rejects(app.rpc('bot.update', { botId: bot.id, folders }), /até 10 pastas/);
+});

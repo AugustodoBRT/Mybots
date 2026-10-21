@@ -32,8 +32,10 @@ Os dados do nó ficam em `~/.mybots-pc/` (diretório 700): identidade, certifica
 Com **Mexer no computador** (perfil → Acesso; vale para bots que vivem no computador ou "Onde estiver" com ele ligado):
 
 - Cada bot tem uma pasta em `~/MyBots/<Nome>` (o nome fica, mesmo se o bot for renomeado). Nela, cria e edita arquivos e projetos sem perguntar.
+- **Pastas no computador** (perfil → Acesso): até 10 pastas liberadas por bot, como `~/vscodeProjects`, onde ele também vê, cria e edita livremente (Claude: `--add-dir`; Codex: `writable_roots`). Nunca a pasta pessoal inteira nem pastas de chaves. No **Acesso total**, a pasta pessoal inteira fica livre.
+- **Senhas e chaves escondidas de verdade**: toda resposta no computador roda dentro do bubblewrap, numa visão do disco em que `~/.ssh`, `~/.gnupg`, `~/.mybots-pc`, `~/.password-store`, `~/.aws`, `~/.kube`, `~/.docker`, chaveiros, `~/.config/gh` e `~/.config/rclone` aparecem vazios, e o login da outra IA também (o Codex não vê `~/.claude`, o Claude não vê `~/.codex`). Cada IA continua lendo o próprio login.
 - **Claude Code**: ganha terminal e arquivos (Bash, Read, Write, Edit, Glob, Grep). Ler ou salvar fora da pasta e rodar comandos passam pelo MyBots: no **Acesso total** rodam direto; no **Médio** viram cartão de aprovação no celular (e na janela), com "Sempre permitir" por tipo (comandos, salvar fora, ler fora). `sudo`, `systemctl`, apagar `/` ou `~`, `git push`, `curl | sh` e parecidos **sempre** pedem. Caminhos com senhas e chaves (`~/.ssh`, `~/.gnupg`, `~/.mybots-pc`, credenciais do Claude/Codex, chaveiros) são recusados em qualquer nível.
-- **Codex**: roda no sandbox `workspace-write` do próprio Codex: escreve e roda comandos só dentro da pasta (sem rede nos comandos); fora dela, só lê.
+- **Codex**: roda no sandbox `workspace-write` do próprio Codex: escreve e roda comandos só na pasta dele e nas liberadas (sem rede nos comandos); fora delas, só lê.
 - **Pouco acesso**: o computador fica fechado; o bot é avisado e não finge salvar.
 
 ## Como funciona

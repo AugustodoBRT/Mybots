@@ -39,10 +39,10 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], accountApps = [], accountServers = [], onApps, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], accountApps = [], accountServers = [], onApps, onFolders, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
-  const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null);
+  const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
   useEffect(() => {
     if (!visible) return;
     setForm(initialForm());
@@ -109,6 +109,19 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
                 {toggle(accountApps.includes(name), on => act(() => onApps(on ? [...accountApps, name] : accountApps.filter(item => item !== name))), name)}
               </View>)}
               {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
+            </View></> : null}
+          {phone && bot && bot.home && bot.home !== 'phone' && grants.find(item => item.name === 'computer')?.state !== 'deny' ? <>
+            <Text style={s.label}>PASTAS NO COMPUTADOR</Text>
+            <View style={s.group}>
+              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>{bot.name} vê, cria e edita livremente na pasta dele (~/MyBots/{bot.name}) e nestas.{bot.access === 'full' ? ' Com Acesso total, também no resto da sua pasta pessoal.' : ' Fora delas, ler e salvar pedem sua aprovação.'} Senhas e chaves (como ~/.ssh) ficam sempre escondidas.</Text>
+              {(bot.folders || []).map(path => <View key={path} style={s.permission}>
+                <Icon name="list" size={16} color={C.mint} /><View style={s.permissionCopy}><Text style={s.itemTitle}>{path}</Text></View>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Tirar ${path}`} hitSlop={8} disabled={saving || active} onPress={() => act(() => onFolders((bot.folders || []).filter(item => item !== path)))}><Icon name="trash" size={16} color={C.faint} /></Pressable>
+              </View>)}
+              <View style={[s.permission, { borderBottomWidth: 0 }]}>
+                <TextInput accessibilityLabel="Nova pasta no computador" value={folder} onChangeText={setFolder} placeholder="~/vscodeProjects" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} selectionColor={C.mint} style={[s.input, { flex: 1, minHeight: 44, paddingVertical: 8 }]} />
+                <Pressable accessibilityRole="button" disabled={saving || active || !folder.trim()} onPress={() => act(async () => { await onFolders([...new Set([...(bot.folders || []), folder.trim().replace(/\/+$/, '')])]); setFolder(''); })} style={[s.smallButton, { marginTop: 0 }, (!folder.trim() || active) && s.disabled]}><Icon name="plus" size={14} color={C.mint} /><Text style={s.link}>Liberar</Text></Pressable>
+              </View>
             </View></> : null}
           <Pressable accessibilityRole="button" onPress={() => setFine(value => !value)} style={s.disclosure}><Text style={s.link}>Ajustes finos</Text><Icon name={fine || !bot?.access ? 'back' : 'down'} size={15} color={C.mint} /></Pressable>
           {(fine || !bot?.access) && <View style={s.group}><Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Cada interruptor vale por cima do nível. Desligar uma ferramenta também cancela a aprovação que estiver aberta.</Text>

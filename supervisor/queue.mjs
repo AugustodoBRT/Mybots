@@ -83,7 +83,7 @@ export class Queue extends EventEmitter {
           workspace: capability?.workspace,
           tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full',
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
-            computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' } : undefined,
+            computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' ? { folders: Array.isArray(bot.folders) ? bot.folders : [], full: bot.access === 'full' } : false } : undefined,
           onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
           // Only a local process can be found again (and stopped) after a crash.
           onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }

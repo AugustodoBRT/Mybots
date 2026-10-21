@@ -1746,6 +1746,7 @@ function AppMain() {
       routines={(data.routines || []).filter(item => item.botId === profileId)}
       accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
+      onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await loadSupervisorState(); }}
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
       onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await loadSupervisorState(); }}

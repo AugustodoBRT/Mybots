@@ -27,7 +27,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 6) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 7) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -90,6 +90,11 @@ export class Database {
         CREATE INDEX room_turns_room ON room_turns(room_id);
         CREATE TABLE room_sessions (room_id TEXT NOT NULL REFERENCES rooms(id), bot_id TEXT NOT NULL REFERENCES bots(id), session_id TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (room_id, bot_id));
         PRAGMA user_version=6;`);
+    });
+    // Skills: small programs a bot made that run on the phone without the IA (code and manifest in body).
+    if (version < 7) this.transaction(() => {
+      this.db.exec(`CREATE TABLE skills (id TEXT PRIMARY KEY, body TEXT NOT NULL, created_at TEXT NOT NULL);
+        PRAGMA user_version=7;`);
     });
   }
   /** One reply's tokens. Codex reports the session's running totals: the reply is the difference from the last one. */
@@ -210,7 +215,7 @@ export class Database {
   record(kind, detail, botId = null, taskId = null) {
     this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
   }
-  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), roomsState: { schema: 1, rooms: this.rooms() }, toolsState: {
+  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), roomsState: { schema: 1, rooms: this.rooms() }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
     schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
   } }; }
   validateTools(snapshot) {
@@ -275,6 +280,11 @@ export class Database {
         this.run('DELETE FROM room_sessions');
         for (const room of snapshot.roomsState.rooms.slice(0, 200)) if (uuid(room?.id) && typeof room.name === 'string' && Array.isArray(room.botIds) && Array.isArray(room.messages))
           this.putRoom({ ...room, messages: room.messages.slice(-1000), updatedAt: typeof room.updatedAt === 'string' ? room.updatedAt : stamp });
+      }
+      // Skills came with backups from v42 on; older backups leave the installed ones as they are.
+      if (snapshot.skillsState?.schema === 1 && Array.isArray(snapshot.skillsState.skills)) {
+        this.run('DELETE FROM skills');
+        for (const row of snapshot.skillsState.skills.slice(0, 200)) if (uuid(row?.id) && typeof row.body === 'string' && row.body.length < 300000 && typeof row.created_at === 'string') this.run('INSERT INTO skills VALUES(?,?,?)', row.id, row.body, row.created_at);
       }
       for (const row of snapshot.toolsState?.memory || []) this.run('INSERT INTO memory VALUES(?,?,?,?)', row.id, row.bot_id, row.body, row.updated_at);
       for (const row of snapshot.toolsState?.pendingItems || []) this.run('INSERT INTO pending_items VALUES(?,?,?,?,?)', row.id, row.bot_id, row.body, row.state, row.created_at);

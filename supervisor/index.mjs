@@ -26,6 +26,8 @@ import { Browser } from './browser.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
 import { Link } from './link.mjs';
+import { Skills, describeResult } from './skills.mjs';
+import { create as createFile } from './creator.mjs';
 
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
@@ -136,6 +138,26 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     browser = new Browser({ changed: broadcast }); tools.browser = browser;
     attachments.pdf = args => browser.device('pdfRead', args);
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock }); tools.routines = routines;
+    // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
+    const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
+    const runSkill = async ({ id: routineId, title, skill, input = {}, notify: notice = true }, bot, manual = false) => {
+      let reply, summary, failure = null;
+      try {
+        const { result } = await skills.run(skill, input); const shown = describeResult(title, result); summary = shown.summary;
+        let files = [];
+        if (shown.count) try { files = [attachments.store(bot.id, await createFile({ name: `${title} ${new Date().toISOString().slice(0, 10)}`, format: 'xlsx', content: shown.table }, {}))]; } catch {}
+        reply = { text: shown.text, status: 'complete', ...(files.length ? { attachments: files } : {}) };
+      } catch (error) { failure = error; summary = error.message; reply = { text: '', status: 'error', error: error.message }; }
+      const stamp = now(); const current = db.requireBot(bot.id);
+      db.putBot({ ...current, updatedAt: stamp, messages: [...current.messages,
+        { id: randomUUID(), role: 'user', text: `Rodar a habilidade “${title}”`, status: 'complete', origin: 'routine', ...(routineId ? { routineId } : {}), routineTitle: manual ? `${title} · agora` : title, createdAt: stamp },
+        { id: randomUUID(), role: 'assistant', ...reply, createdAt: stamp }] });
+      db.record(failure ? 'skill_failed' : 'skill_ran', `${title}: ${summary}`.slice(0, 300), bot.id); broadcast('activity.new');
+      if (notice && !failure) await deliver({ title, body: summary }, { id: 'mybots-skill-' + skill, botId: bot.id, botName: bot.name }).catch(() => {});
+      if (failure) throw failure;
+      return summary;
+    };
+    routines.runSkill = runSkill;
     // Pending items and their notice the day before the deadline (as MyBots, without calling the model).
     items = new Items(db, { notify: tools.notify, changed: broadcast, timeZone: () => routines.timeZone(), clock }); tools.items = items;
     const nextWake = () => [routines.nextDue(), items.next()].filter(Boolean).sort()[0] || null;
@@ -226,6 +248,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     queue.rememberServers = rememberServers;
     const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
       rooms: rooms.list().map(room => ({ ...room, active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
+      skills: tools.skills?.all() || [],
       presence: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
       accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
       active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
@@ -286,6 +309,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'computer.pair': { if (typeof params.link !== 'string' || params.link.length > 2000) throw new Error('Leia o QR do computador.'); const result = await link.pair(params.link); broadcast('activity.new'); return result; }
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();
+        case 'skill.run': {
+          const bot = db.requireBot(params.botId); const skill = skills.all().find(item => item.id === params.id && (bot.skills || []).includes(item.id));
+          if (!skill) throw new Error('Habilidade não encontrada neste bot.');
+          return { summary: await runSkill({ title: skill.title, skill: skill.id, input: params.input && typeof params.input === 'object' ? params.input : {}, notify: false }, bot, true).catch(error => error.message) };
+        }
+        case 'skill.remove': return skills.remove(params.id);
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
           if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');

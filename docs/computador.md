@@ -38,6 +38,15 @@ Com **Mexer no computador** (perfil → Acesso; vale para bots que vivem no comp
 - **Codex**: roda no sandbox `workspace-write` do próprio Codex: escreve e roda comandos só na pasta dele e nas liberadas (sem rede nos comandos); fora delas, só lê.
 - **Pouco acesso**: o computador fica fechado; o bot é avisado e não finge salvar.
 
+## Habilidades: programas que rodam sozinhos no celular
+
+O bot do computador escreve um módulo JavaScript (`export async function run(input, kit)` que devolve `{ summary, items }`), testa com `node` no PC (os comandos do Codex no PC têm internet desde a v42) e propõe com `skill_propose`: nome, o que faz, os **sites** que acessa, e se quiser um **bot novo no celular** e uma **rotina diária**. A proposta **sempre** vira cartão de aprovação ("Instalar uma habilidade no celular"), mesmo no Acesso total. Aprovada, fica em `~/.mybots/skills/<id>/` no celular, com versão (propor de novo com o mesmo nome atualiza).
+
+- **Roda isolada no Node do Termux** (`supervisor/skill-host.mjs`): `node --permission` lê só a pasta dela e grava só em `data/`; sem processos, workers ou addons; `node:net`, `http`, `https`, `dns`, `child_process` e afins são recusados no import; `fetch` só alcança os sites declarados (redirecionamentos também conferidos); tempo máximo de 5 a 300 s.
+- **Sem IA**: a rotina da habilidade roda o programa direto; o resultado chega na conversa do bot (resumo e lista com "abrir"), numa planilha anexada e numa notificação. O bot também pode rodá-la numa conversa (`skill_run`) e responder sobre o resultado.
+- Perfil do bot → Rotinas → **Habilidades**: o que faz, sites, versão, Rodar agora e Remover. O backup leva as habilidades.
+- Limite honesto: o modelo de permissões do Node não fecha a rede sozinho; o bloqueio de rede é feito pelos imports recusados e pelo `fetch` conferido.
+
 ## Como funciona
 
 - O **celular liga para o computador** (porta 3230); o supervisor do celular continua escutando só em `127.0.0.1`. Ele tenta os endereços salvos (rede local e Tailscale, atualizados a cada conexão), com espera de 2 a 30 segundos entre tentativas, e na hora quando o app volta à tela.

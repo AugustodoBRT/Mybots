@@ -34,7 +34,7 @@ export class Routines {
   next(trigger) { const at = nextRun(trigger, this.clock(), this.timeZone()); return at === null ? null : new Date(at).toISOString(); }
   row(row) {
     const body = JSON.parse(row.body);
-    return { id: row.id, botId: row.bot_id, ...body, label: describeTrigger(body.trigger), enabled: Boolean(row.enabled), nextRunAt: row.next_run_at, lastRunAt: row.last_run_at,
+    return { id: row.id, botId: row.bot_id, ...body, label: describeTrigger(body.trigger) + (body.skill ? ' · habilidade, sem IA' : ''), enabled: Boolean(row.enabled), nextRunAt: row.next_run_at, lastRunAt: row.last_run_at,
       pending: Boolean(row.pending), lastResult: row.last_result, createdAt: row.created_at, runsToday: this.runsToday(row.id) };
   }
   all() { return this.db.all('SELECT * FROM routines ORDER BY created_at').map(row => this.row(row)); }
@@ -55,6 +55,19 @@ export class Routines {
       this.db.run('INSERT INTO routines(id,bot_id,body,enabled,next_run_at,last_event_at,pending,created_at,updated_at) VALUES(?,?,?,1,?,?,0,?,?)',
         id, bot.id, JSON.stringify({ ...routine, notify: true, origin }), this.next(routine.trigger), stamp, stamp, stamp);
       this.db.record('routine_created', `Rotina “${routine.title}” criada: ${describeTrigger(routine.trigger)}.`, bot.id);
+    });
+    this.changed('activity.new'); return this.get(id);
+  }
+  /** A daily routine that runs one of the bot's skills directly (no IA): the result goes to its chat and a notice. */
+  createSkill(botId, { title, time, skill, input = {} }) {
+    const bot = this.db.requireBot(botId);
+    if (this.list(botId).length >= LIMITS.perBot) throw new Error(`Cada bot pode ter até ${LIMITS.perBot} rotinas.`);
+    const trigger = routineArguments({ title, instructions: 'Habilidade', trigger: { type: 'daily', time, days: [0, 1, 2, 3, 4, 5, 6] } }).trigger;
+    const id = randomUUID(); const stamp = now();
+    this.db.transaction(() => {
+      this.db.run('INSERT INTO routines(id,bot_id,body,enabled,next_run_at,last_event_at,pending,created_at,updated_at) VALUES(?,?,?,1,?,?,0,?,?)',
+        id, bot.id, JSON.stringify({ title: title.slice(0, 80), instructions: `Roda a habilidade ${title} e manda o resultado.`, trigger, skill, input, notify: true, origin: 'skill' }), this.next(trigger), stamp, stamp, stamp);
+      this.db.record('routine_created', `Rotina “${title}” criada: ${describeTrigger(trigger)}, com a habilidade (sem IA).`, bot.id);
     });
     this.changed('activity.new'); return this.get(id);
   }
@@ -124,6 +137,13 @@ export class Routines {
     const bot = this.db.bot(routine.botId);
     if (!bot || bot.deletedAt) { this.db.run('UPDATE routines SET enabled=0 WHERE id=?', routine.id); return false; }
     const schedule = routine.trigger.type !== 'notification';
+    // A skill routine runs the program itself, without the IA and without the queue.
+    if (routine.skill && this.runSkill) {
+      this.db.run('UPDATE routines SET last_run_at=?,next_run_at=?,pending=0,last_result=? WHERE id=?', now(), schedule && !manual ? this.next(routine.trigger) : routine.nextRunAt, 'Executando…', routine.id);
+      this.runSkill(routine, bot, manual).then(summary => this.db.run('UPDATE routines SET last_result=? WHERE id=?', clip(summary, 200), routine.id))
+        .catch(error => this.db.run('UPDATE routines SET last_result=? WHERE id=?', clip(error.message, 200), routine.id)).finally(() => this.changed('activity.new'));
+      return true;
+    }
     if (this.runsToday(routine.id) >= LIMITS.runsPerDay) return this.skip(routine, `limite de ${LIMITS.runsPerDay} execuções em 24 h atingido.`, schedule);
     const { selection, error, wait } = this.ready(bot);
     if (wait) return false;

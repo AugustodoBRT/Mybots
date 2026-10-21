@@ -28,6 +28,10 @@ export const TOOL_DEFINITIONS = [
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
   // Bots answering from the paired computer: files in their own folder there are free; the rest goes by the level.
   { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Fora da pasta e comandos pedem aprovação no Médio; sudo, apagar pastas inteiras e git push sempre pedem.' },
+  // Skills: small programs a bot made, run on the phone without the IA. Installing one always asks the person.
+  { name: 'skill.list', label: 'Ver habilidades', description: 'Consulta as habilidades deste bot.', readOnly: true, defaultAllowed: true },
+  { name: 'skill.run', label: 'Usar habilidades', description: 'Roda no celular uma habilidade deste bot (um programa que você aprovou) e lê o resultado.', readOnly: true, defaultAllowed: true },
+  { name: 'skill.propose', label: 'Criar habilidades', description: 'Propõe instalar no celular um programa que o bot escreveu (ex.: buscar vagas todo dia), com os sites que ele acessa. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
@@ -61,7 +65,8 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
-    'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'] }[tool];
+    'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'],
+    'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
     // Models often send "" for a filter they do not want; for optional fields that means no filter.
@@ -115,6 +120,14 @@ export function toolArguments(tool, args) {
     if (!['open', 'done', 'all'].includes(state)) throw new Error('Use state open, done ou all.');
     return { state, limit: integer('limit', 1, 200, 50) };
   }
+  if (tool === 'skill.list') return {};
+  if (tool === 'skill.run') {
+    const input = args.input === undefined ? {} : args.input;
+    if (!input || typeof input !== 'object' || Array.isArray(input) || JSON.stringify(input).length > 10000) throw new Error('Em input, mande um objeto JSON pequeno.');
+    return { name: text('name', 40), input };
+  }
+  // The proposal itself is checked by skillProposal (supervisor/skills.mjs) when it runs.
+  if (tool === 'skill.propose') { if (JSON.stringify(args).length > 260000) throw new Error('Proposta grande demais.'); return args; }
   if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.read' || tool === 'browser.screenshot' || tool === 'browser.login') return {};
   if (tool === 'browser.open') return { url: safeUrl(text('url', 2000)) };
   if (tool === 'browser.click') return { id: integer('id', 1, 100000) };

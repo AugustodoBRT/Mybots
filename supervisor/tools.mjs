@@ -10,9 +10,10 @@ import { IMAGE_HINT } from './attachments.mjs';
 import { create as createFile } from './creator.mjs';
 import { MCP_TOOLS, MCP_NAMES } from './mcp/catalog.mjs';
 import { describeTrigger } from '../mobile/routine-text.js';
+import { skillProposal, SKILL_NOTICE } from './skills.mjs';
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
-const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update']);
+const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose']);
 
 // Connector actions whose names only read. Anything that also mentions a change goes to the person.
 const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view|download)([_.\-]|$)/i;
@@ -38,6 +39,7 @@ function approvalText(tool, args, app) {
   if (tool === 'browser/submit') return { title: APPROVAL_TITLES[tool], summary: [args.label && `Botão: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'browser/login') return { title: APPROVAL_TITLES[tool], summary: [args.page && `Site: ${args.page}`, 'O MyBots preenche a senha que você salvou; o bot não vê a senha.'].filter(Boolean).join('\n') };
   if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
+  if (tool === 'skill.propose') return { title: 'Instalar uma habilidade no celular', summary: args.summary };
   if (BROWSER_TOOLS.includes(tool)) return { title: 'Usar o navegador', summary: args.url || args.reason || BROWSER_LABELS[tool] };
   // First use of a tool on the Médio level: the card names the tool ("Buscar e-mails"), not a generic action.
   return { title: APPROVAL_TITLES[tool] || TOOL_DEFINITIONS.find(item => item.name === tool)?.label || 'Executar uma ação', summary: Object.values(args).filter(value => typeof value === 'string' && value).join('\n') };
@@ -205,6 +207,18 @@ export class Tools {
       const definition = TOOL_DEFINITIONS.find(item => item.name === tool);
       // Older bots: read-only tools run on the switch alone; changes follow the bot's autonomy.
       const gate = this.gate(bot, tool, { readOnly: definition.readOnly, alwaysAsk: definition.alwaysAsk, legacyAsk: !definition.readOnly && (definition.alwaysAsk || bot.autonomy !== 'local') });
+      // Installing code on the phone is always the person's decision, whatever the level.
+      if (tool === 'skill.propose') {
+        if (!this.skills) throw new Error('As habilidades não estão disponíveis.');
+        const proposal = skillProposal(args);
+        const summary = [`${proposal.title}: ${proposal.description}`, `Acessa: ${proposal.sites.length ? proposal.sites.join(', ') : 'nenhum site'}`,
+          proposal.newBot ? `Para um bot novo no celular: ${proposal.newBot.name}` : `Para ${bot.name}`, proposal.daily ? `Roda sozinha todo dia às ${proposal.daily}, sem usar a IA` : 'Roda quando o bot pedir',
+          `Código: ${Math.max(1, Math.round(proposal.code.length / 1024))} KB, isolado no celular (sem arquivos seus, sem outros programas)`].join('\n');
+        if (!(await this.ask(run, tool, { summary }, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. Nada foi instalado.');
+        this.requireGrant(run, tool);
+        const result = await this.installSkill(run, bot, proposal);
+        this.db.record('tool_done', `${label}: concluído.`, run.botId, run.taskId); this.changed('activity.new'); return result;
+      }
       if (gate.ask) {
         const approved = await this.ask(run, tool, args, hash, null, gate.always);
         if (!approved) throw new Error('Ação recusada, expirada ou cancelada. Nada foi executado.');
@@ -252,6 +266,15 @@ export class Tools {
         if (tool === 'routine.list') result = { routines: this.routines.list(run.botId).map(({ botId, ...item }) => item) };
         else if (tool === 'routine.create') result = this.routines.create(run.botId, args);
         else result = args.delete ? this.routines.remove(args.id, run.botId) : this.routines.update(args.id, { enabled: args.enabled }, run.botId);
+      } else if (tool === 'skill.list') {
+        if (!this.skills) throw new Error('As habilidades não estão disponíveis.');
+        result = { skills: this.skills.forBot(run.botId).map(({ name, title, description, sites, version }) => ({ name, title, description, sites, version })) };
+      } else if (tool === 'skill.run') {
+        if (!this.skills) throw new Error('As habilidades não estão disponíveis.');
+        const skill = this.skills.byName(run.botId, args.name);
+        const { result: output, log } = await this.skills.run(skill.id, args.input, { signal: run.signal });
+        const text = JSON.stringify(output ?? null);
+        result = { untrusted: true, notice: SKILL_NOTICE, result: text.length > 60000 ? text.slice(0, 60000) + '…' : output, log };
       } else if (DEVICE_CALLS[tool]) {
         if (!this.device) throw new Error('As capacidades do celular não estão disponíveis.');
         result = await this.device[DEVICE_CALLS[tool]](args);
@@ -279,6 +302,25 @@ export class Tools {
     const approved = await this.ask(run, 'account.connectors/' + name, input, hash, { server: { name: server.replace(/^claude_ai_/, '').replace(/_/g, ' ') }, tool: { name: action } }, bot.access === 'ask' ? 'account.connectors/write' : null);
     this.db.record(approved ? 'tool_done' : 'tool_denied', `${label}: ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
     return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
+  }
+  /**
+   * An approved skill: installed for the bot that proposed it or a new phone bot, with its daily routine, then run
+   * once here with the example input so the proposer sees it works on the phone too.
+   */
+  async installSkill(run, proposer, proposal) {
+    let owner = proposer;
+    if (proposal.newBot) {
+      const { provider, model, reasoningEffort } = proposer;
+      owner = this.db.create({ name: proposal.newBot.name, instructions: proposal.newBot.instructions || `Cuida da habilidade ${proposal.title}: roda, resume e responde sobre os resultados.`, home: 'phone', access: 'ask', color: 'blue' }, { ...(provider ? { provider } : {}), model, reasoningEffort });
+      this.setAccountApps(owner.id, []);
+    }
+    const skill = this.skills.install(proposal, { by: proposer.id, botId: owner.id });
+    const routine = proposal.daily && this.routines ? this.routines.createSkill(owner.id, { title: proposal.title, time: proposal.daily, skill: skill.id, input: proposal.input }) : null;
+    let test;
+    try { const { result } = await this.skills.run(skill.id, proposal.input, { signal: run.signal }); test = { ok: true, result: JSON.stringify(result ?? null).slice(0, 4000) }; }
+    catch (error) { test = { ok: false, error: error.message }; }
+    return { installed: true, skill: skill.name, version: skill.version, bot: owner.name, newBot: Boolean(proposal.newBot), routine: routine ? routine.label : null, testOnPhone: test,
+      next: test.ok ? 'Conte à pessoa o que foi instalado e o resultado do teste no celular.' : 'O teste no celular falhou: corrija o código e proponha de novo com o mesmo name (vira uma nova versão).' };
   }
   /**
    * The computer's files and terminal (Claude Code's own tools). Sensitive paths are refused; risky commands always

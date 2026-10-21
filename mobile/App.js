@@ -1680,6 +1680,9 @@ function AppMain() {
   };
   const openLogs = termuxLog ? () => { setLogsCopied(false); setLogsVisible(true); } : null;
   const { width: windowWidth } = useWindowDimensions();
+  // React Native's Alert does nothing on the web: on the computer the same confirmations open as a small dialog.
+  const [confirm, setConfirm] = useState(null);
+  useEffect(() => { if (desktop) Alert.alert = (title, message, buttons = [{ text: 'OK' }]) => setConfirm({ title, message, buttons }); }, []);
   const bot = data?.bots.find(item => item.id === selected);
   const room = data?.rooms?.find(item => item.id === roomId);
   const roomSave = async payload => {
@@ -1774,6 +1777,14 @@ function AppMain() {
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
+    {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
+      <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
+        <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>{confirm.buttons.map(button => <Pressable key={button.text} accessibilityRole="button" onPress={() => { setConfirm(null); button.onPress?.(); }}
+          style={[button.style === 'cancel' ? styles.denyButton : styles.confirmButton, { flex: 1 }, button.style === 'destructive' && { backgroundColor: C.red + '22', borderColor: C.red + '66' }]}>
+          <Text style={[styles.denyText, button.style === 'destructive' && { color: C.red }, !button.style && { color: C.mint }]}>{button.text}</Text></Pressable>)}</View>
+      </View></View>
+    </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
     {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []} nodes={data.nodes || []}
@@ -1782,6 +1793,11 @@ function AppMain() {
       accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await loadSupervisorState(); }}
+      skills={(data.skills || []).filter(skill => data.bots.find(item => item.id === profileId)?.skills?.includes(skill.id))}
+      onSkill={async (method, id) => {
+        if (method === 'skill.remove') await new Promise((resolve, reject) => Alert.alert('Remover a habilidade?', 'O programa e a rotina dele saem deste celular.', [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Remover', style: 'destructive', onPress: resolve }]));
+        await supervisor.current.call(method, method === 'skill.run' ? { id, botId: profileId } : { id }); await loadSupervisorState();
+      }}
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
       onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await loadSupervisorState(); }}
@@ -1952,6 +1968,7 @@ const styles = StyleSheet.create({
   todayRowTitle: { color: C.text, fontFamily: F.s, fontSize: 13.5, lineHeight: 18 }, todayRowMeta: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 2 },
   todayEmpty: { color: C.muted, fontFamily: F.m, fontSize: 12.5, paddingVertical: 4 }, todayMore: { color: C.mint, fontFamily: F.b, fontSize: 12 },
   todayActivity: { paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: C.line }, todayActivityText: { color: C.text2, fontFamily: F.m, fontSize: 12.5, lineHeight: 17, marginTop: 2 },
+  confirmButton: { minHeight: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2 },
   pairQr: { alignSelf: 'center', alignItems: 'center', gap: 8, marginTop: 12, padding: 14, borderRadius: 18, backgroundColor: '#FFFFFF' },
   presenceDot: { position: 'absolute', right: -2, bottom: -2, width: 15, height: 15, borderRadius: 8, borderWidth: 3, borderColor: C.surface, backgroundColor: C.faint },
   presenceOn: { backgroundColor: C.mint },

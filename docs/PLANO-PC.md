@@ -91,7 +91,7 @@ Honestidade: o `--permission` do Node não limita a rede de forma confiável (o 
 | **v39** ✅ | App Tauri na bandeja + interface do app via react-native-web servida pelo nó + início com a sessão; **e** os poderes do PC (`computer`: pasta `~/MyBots/<Nome>`, Claude com terminal e arquivos decididos no celular, Codex em `workspace-write`) | Janela abre no Hyprland e conversa; bots criam e rodam scripts; comando no Médio vira cartão |
 | **v40** ✅ | Pastas liberadas por bot (`folders`), Acesso total com a pasta pessoal inteira e bubblewrap escondendo chaves e senhas de toda resposta no computador | Codex e Claude reais: pasta liberada grava, fora dela bloqueia ou pede, `~/.ssh` vazio |
 | **v41** ✅ | Respostas longas: limite por inatividade (10 min sem sinal, até 2 h) e falas durante o trabalho na conversa e nas salas, com o passo atual sob "Pensando" | Codex e Claude reais contaram cada etapa de um script com teste |
-| **v42** | Habilidades + `bot.propose` + execução isolada no Termux | Bot de vagas criado no PC roda a rotina no celular com o PC desligado |
+| **v42** ✅ | Habilidades: `skill_propose` (sempre com aprovação), bot novo no celular, rotina diária sem IA, `skill_run`, execução isolada no Node do Termux; internet nos comandos do Codex no PC | Codex real escreveu `buscar_vagas` (Gupy), testou no PC, o emulador instalou e rodou: 19 vagas na conversa e na planilha |
 | **v43** | Controle do desktop (grim/hyprctl/ydotool) + Playwright com perfis | Bot abre app, clica, screenshot; tecla de pânico interrompe |
 | **v44** | Modo tampa fechada, `rtcwake` para rotinas, modo celular-ausente | Rotina das 8h acorda o notebook e roda |
 

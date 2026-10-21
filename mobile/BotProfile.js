@@ -39,7 +39,7 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], accountApps = [], accountServers = [], onApps, onFolders, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -141,7 +141,16 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
             <View style={s.routineActions}><Pressable accessibilityRole="button" disabled={saving || active} onPress={() => act(() => onRoutine('routine.run', item.id))} style={[s.smallButton, active && s.disabled]}><Icon name="play" size={14} color={C.mint} /><Text style={s.link}>Executar agora</Text></Pressable>
               <Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onRoutine('routine.delete', item.id))} style={s.smallButton}><Icon name="trash" size={14} color={C.red} /><Text style={s.deleteText}>Apagar</Text></Pressable></View>
           </View>) : <View style={s.emptyBox}><Icon name="bolt" size={26} color={C.faint} /><Text style={s.empty}>Nenhuma rotina ainda. Peça uma na conversa.</Text></View>}
-          <Text style={s.hint}>O resultado de cada rotina chega como notificação do MyBots.</Text></>}
+          <Text style={s.hint}>O resultado de cada rotina chega como notificação do MyBots.</Text>
+          {skills.length ? <><Text style={s.label}>HABILIDADES</Text>
+            <Text style={s.hint}>Programas que você aprovou. Rodam neste celular, isolados e sem usar a IA: só acessam os sites listados, sem seus arquivos e sem outros programas.</Text>
+            {skills.map(skill => <View key={skill.id} style={s.item}>
+              <View style={s.routineHead}><View style={s.itemIcon}><Icon name="spark" size={17} color={C.sky} /></View><Text style={[s.itemTitle, { flex: 1 }]}>{skill.title}</Text><Text style={s.hint}>v{skill.version}</Text></View>
+              <Text style={s.itemText}>{skill.description}</Text>
+              <Text style={s.hint}>{skill.sites?.length ? `Acessa: ${skill.sites.join(', ')}` : 'Não acessa a internet'}</Text>
+              <View style={s.routineActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onSkill('skill.run', skill.id))} style={s.smallButton}><Icon name="play" size={14} color={C.mint} /><Text style={s.link}>{saving ? 'Rodando…' : 'Rodar agora'}</Text></Pressable>
+                <Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onSkill('skill.remove', skill.id))} style={s.smallButton}><Icon name="trash" size={14} color={C.red} /><Text style={s.deleteText}>Remover</Text></Pressable></View>
+            </View>)}</> : null}</>}
         {tab === 'memory' && <><Text style={s.sectionTitle}>O que {bot?.name} guardou</Text><Text style={s.hint}>Estas lembranças pertencem somente a este bot.</Text>
           {memories.length ? memories.map(item => <View key={item.id} style={s.item}><Text style={s.itemTitle}>{item.key}</Text><Text selectable style={s.itemText}>{item.text}</Text></View>) : <View style={s.emptyBox}><Icon name="memory" size={26} color={C.faint} /><Text style={s.empty}>Nenhuma lembrança ainda. Peça para o bot guardar algo.</Text></View>}
           <Text style={s.label}>PENDÊNCIAS</Text>

@@ -124,3 +124,18 @@ O bot começa por `browser_read` ou `browser_find` (busca por rótulo, texto, pl
 No Médio, cliques que enviam formulários ou compram/pagam, Enter em formulário e arrastes pedem aprovação, com **Sempre permitir** para a mesma permissão de envio do navegador. No Total passam diretamente; uploads continuam pedindo sempre. Assumir bloqueia as ferramentas do bot até devolver.
 
 No celular, a WebView oferece busca, caixas, capturas numeradas, cliques, hover, rolagem e teclas por eventos da página. Arrastar, clique direito e abas informam “Disponível só quando o bot responde pelo computador.” Eventos sintéticos podem não funcionar em sites que exigem eventos físicos; nesses casos o bot pede ajuda.
+
+
+## Meu Chrome (v48)
+
+No perfil do bot → **Acesso → Navegador no computador**, escolha:
+
+- **Chrome próprio do bot**: padrão, perfil separado e Chrome sem janela, visto dentro do MyBots.
+- **Meu Chrome**: Codex ou Claude usa seus logins do Chrome, inclusive Google, em abas criadas para esse bot. Os bots desse modo compartilham cookies e logins, mas têm abas próprias. Não lista, navega nem fecha suas outras abas.
+- **Claude in Chrome**: opção só para Claude, com a extensão oficial. A escolha antiga “Usar meu Chrome principal” é convertida para esta opção.
+
+Para usar Meu Chrome, primeiro libere **Navegador** (não existe em Pouco acesso). No seu Chrome do computador, abra `chrome://inspect/#remote-debugging` e ligue a depuração remota uma vez. Ao conectar, confirme a solicitação no Chrome. Mantenha o Chrome aberto; o MyBots não o inicia nem copia seu perfil. Para revogar o acesso, desligue a depuração nessa mesma tela.
+
+A tela ao vivo, as cinco abas por bot e o cofre funcionam como no Chrome próprio. No Médio, leituras passam; abrir páginas, clicar, preencher, arrastar e outras ações pedem aprovação própria de **Meu Chrome**, com Sempre permitir. Upload continua pedindo sempre. Assumir em qualquer bot desse modo bloqueia novas ações de todos os bots Meu Chrome até devolver. Mudar o modo inicia uma sessão nova da IA e atualiza o painel.
+
+Ao interromper ou encerrar o nó, o MyBots fecha só as abas que criou e desconecta; o Chrome e suas abas continuam abertos. Popups abertos pela página são convertidos em novas abas com endereço conferido antes da navegação. Sites que dependem de uma referência JavaScript à janela de origem podem exigir ajuda da pessoa; o bot deve pedir pelo cartão, sem tentar contornar.

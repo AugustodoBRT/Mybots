@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
-import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, grantOf, toolArguments, SENSITIVE, mainChrome } from './tool-policy.mjs';
+import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode } from './tool-policy.mjs';
 import { BROWSER_NOTICE } from './browser.mjs';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
@@ -33,6 +33,7 @@ const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.t
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 function approvalText(tool, args, app) {
+  if (tool === 'browser/mine/write') return { title: 'Agir no Meu Chrome', summary: args.summary };
   if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
   if (tool.startsWith('desktop/')) return { title: 'Controlar a tela do computador', summary: args.summary };
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
@@ -175,7 +176,7 @@ export class Tools {
     const run = this.context(token, bridgeId);
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
     const bot = this.db.requireBot(run.botId); const basic = bot.access === 'basic';
-    const chrome = run.lane === 'pc' && mainChrome(bot);
+    const chrome = run.lane === 'pc' && browserMode(bot) === 'claude';
     return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!basic || this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny')), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
@@ -324,7 +325,7 @@ export class Tools {
   async chromePermission(run, name, input) {
     try {
       const bot = this.db.requireBot(run.botId);
-      if (run.lane !== 'pc' || !mainChrome(bot)) throw new Error('O Chrome principal só é usado por bots Claude que escolheram “Usar meu Chrome principal”, respondendo pelo computador.');
+      if (run.lane !== 'pc' || browserMode(bot) !== 'claude') throw new Error('O Chrome principal só é usado por bots Claude que escolheram “Usar meu Chrome principal”, respondendo pelo computador.');
       const action = name.slice('mcp__claude-in-chrome__'.length);
       const hash = createHash('sha256').update(JSON.stringify({ botId: bot.id, taskId: run.taskId, name, input })).digest('hex');
       const shown = { summary: `Chrome principal (logins compartilhados) · ${action}\n${JSON.stringify(input, null, 1).slice(0, 1500)}` };
@@ -425,15 +426,22 @@ export class Tools {
       const bot = this.db.requireBot(run.botId);
       if (!this.browser) throw new Error('O navegador não está disponível neste supervisor.');
       if (this.browser.control.get(run.botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
-      if (run.lane === 'pc' && mainChrome(bot)) {
+      if (run.lane === 'pc' && browserMode(bot) === 'claude') {
         if (tool !== 'browser.ask_user') throw new Error('Use as ferramentas oficiais mcp__claude-in-chrome__ no Chrome principal. Login e CAPTCHA são feitos pela pessoa nesse Chrome.');
         this.browser.pages.set(bot.id, { where: 'pc', engine: 'claude-chrome', title: 'Chrome principal · Claude', url: '' });
       }
+      const mine = run.lane === 'pc' && browserMode(bot) === 'mine';
+      const checkMine = () => {
+        if (mine && [...this.browser.control].some(([id, who]) => who === 'person' && browserMode(this.db.bot(id)) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
+      };
+      checkMine();
+      if (mine && this.policy(bot.id, 'browser') !== 'allow') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.');
       const refused = 'Ação recusada, expirada ou cancelada. Nada foi executado.';
       const gate = this.gate(bot, 'browser', { readOnly: true });
       if (gate.ask && !(await this.ask(run, tool, args, hash, null, gate.always))) throw new Error(refused);
       this.requireGrant(run, 'browser');
       const command = async (botId, op, input = {}) => {
+        checkMine();
         this.requireGrant(run, 'browser');
         if (this.browser.control.get(botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
         if (run.lane !== 'pc') return this.browser.command(botId, op, input);
@@ -451,6 +459,11 @@ export class Tools {
           throw error;
         }
       };
+      const reading = ['browser.read','browser.find','browser.screenshot','browser.wait','browser.ask_user'].includes(tool) || tool === 'browser.tabs' && ['list','switch'].includes(args.action) || tool === 'browser.act' && (['hover','scroll'].includes(args.action) || args.action === 'key' && ['Tab','Shift+Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(args.key));
+      if (mine && !reading && tool !== 'browser.upload') {
+        const write = this.gate(bot, 'browser', { writeKey: 'browser/mine/write', legacyAsk: true });
+        if (write.ask && !await this.ask(run, 'browser/mine/write', { summary: `Meu Chrome · ${label}\n${JSON.stringify(args).slice(0, 1500)}` }, hash, null, write.always)) throw new Error(refused);
+      }
       let result;
       if (tool === 'browser.ask_user') {
         this.browser.requestHelp(run.botId, args.reason);
@@ -458,7 +471,7 @@ export class Tools {
       } else if (tool === 'browser.act') {
         const target = await command(run.botId, 'inspect', args);
         const writeAction = args.action === 'drag' || ['click','double_click','right_click'].includes(args.action) && target.kind === 'submit' || args.action === 'key' && (args.key === 'Enter' && target.kind === 'submit' || ['Space','Backspace','Delete'].includes(args.key));
-        if (writeAction) {
+        if (writeAction && !mine) {
           const write = this.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: bot.autonomy !== 'local' });
           if (write.ask && !(await this.ask(run, 'browser/submit', { ...args, label: target.label || '', page: target.url || '' }, hash, null, write.always))) throw new Error(refused);
         }
@@ -466,7 +479,7 @@ export class Tools {
       } else if (tool === 'browser.click' || tool === 'browser.type') {
         const target = await command(run.botId, 'inspect', { id: args.id });
         if (tool === 'browser.type' && target.kind === 'password') throw new Error('Campos de senha só a pessoa preenche. Use browser_ask_user para pedir que ela entre.');
-        if (tool === 'browser.click' ? target.kind === 'submit' : args.submit) {
+        if (!mine && (tool === 'browser.click' ? target.kind === 'submit' : args.submit)) {
           const write = this.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: bot.autonomy !== 'local' });
           if (write.ask && !(await this.ask(run, 'browser/submit', { ...args, label: target.label || '', page: target.url || '' }, hash, null, write.always))) throw new Error(refused);
         }
@@ -474,7 +487,7 @@ export class Tools {
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, tool.slice(8), args), next: 'Use browser_read para ver como a página ficou.' };
       } else if (tool === 'browser.login') {
         // Logging in with a saved password: on Médio the first time asks ("Sempre permitir" remembers it).
-        const write = this.gate(bot, 'browser', { writeKey: 'browser/login', legacyAsk: bot.autonomy !== 'local' });
+        const write = mine ? { ask: false } : this.gate(bot, 'browser', { writeKey: 'browser/login', legacyAsk: bot.autonomy !== 'local' });
         if (write.ask && !(await this.ask(run, 'browser/login', { page: this.browser.pages.get(run.botId)?.url || '' }, hash, null, write.always))) throw new Error(refused);
         this.requireGrant(run, 'browser');
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'login'), next: 'Use browser_read para confirmar que entrou. Se a página pedir código ou CAPTCHA, use browser_ask_user.' };

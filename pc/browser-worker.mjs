@@ -5,7 +5,8 @@ import { readPage, inspectPoint, markPage } from '../supervisor/browser-page.mjs
 import { safeUrl } from '../supervisor/browser.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
+import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 // Keep password fields and their values out of reads; screenshots mask them as well.
@@ -16,14 +17,32 @@ export async function allowedUrl(value) {
   return url.href;
 }
 
+export const CHROME_SETUP = 'Abra o Chrome e ligue a depuração em chrome://inspect/#remote-debugging (uma vez).';
+export function chromeEndpoint(profile = join(homedir(), '.config/google-chrome')) {
+  try {
+    const lines = readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').trim().split(/\r?\n/);
+    if (lines.length !== 2 || !/^\d{1,5}$/.test(lines[0]) || Number(lines[0]) < 1 || Number(lines[0]) > 65535 || !/^\/devtools\/browser\/[a-zA-Z0-9-]{1,200}$/.test(lines[1])) throw new Error();
+    return `ws://127.0.0.1:${lines[0]}${lines[1]}`;
+  } catch { throw new Error(CHROME_SETUP); }
+}
+export async function connectMine(endpoint) {
+  try { return await chromium.connectOverCDP(endpoint, { timeout: 30000, noDefaults: true }); }
+  catch (error) { throw new Error(/403|denied|rejected|forbidden|1008|socket hang up|closed before the connection was established/i.test(error.message) ? 'Você recusou a conexão no Chrome.' : CHROME_SETUP); }
+}
+
 // Keys the person may press on the page from the MyBots app.
 const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Shift+Tab', 'Space'];
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true } = {}) { this.profile = profile; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; }
+  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; }
   start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
   async launch() {
+    if (this.mode === 'mine') {
+      this.browser = await (this.connect ? this.connect() : connectMine(chromeEndpoint(this.profile)));
+      this.context = this.browser.contexts()[0];
+      if (!this.context) throw new Error(CHROME_SETUP);
+    } else {
     const path = join(this.profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
     let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
     prefs.credentials_enable_service = false;
@@ -35,26 +54,79 @@ export class BrowserSession {
       args: [...(this.headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
     });
     await this.context.clearPermissions();
-    await this.context.route('**/*', async route => {
-      try { await allowedUrl(route.request().url()); await route.continue(); }
-      catch { await route.abort().catch(() => {}); }
-    });
-    this.pages = []; this.tabError = null;
+    await this.context.route('**/*', route => this.route(route));
+    }
+    this.pages = []; this.metrics = new Map(); this.tabError = null; this.closing = false;
     const add = page => {
-      if (this.pages.length >= 5) { this.tabError = 'Até 5 abas por bot. Feche uma aba antes de abrir outra.'; page.close().catch(() => {}); return; }
+      if (this.pages.length >= 5) { this.tabError = 'Até 5 abas por bot. Feche uma aba antes de abrir outra.'; this.closePage(page).catch(() => {}); return; }
       this.pages.push(page);
+      if (this.mode === 'mine') {
+        page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
+      }
       page.on('domcontentloaded', () => { if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
+        this.metrics.get(page)?.detach().catch(() => {}); this.metrics.delete(page);
         this.pages = this.pages.filter(item => item !== page);
-        if (this.page === page && this.pages.length) this.activate(this.pages[0]).catch(() => {});
+        if (!this.closing && this.page === page && this.pages.length) this.activate(this.pages[0]).catch(() => {});
       });
     };
-    this.context.pages().forEach(add);
-    this.context.on('page', add);
-    this.page = this.pages[0] || await this.context.newPage();
-    this.context.on('close', () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.frame?.({ closed: true }); });
+    this.addPage = add;
+    if (this.mode === 'mine') {
+      this.page = await this.newPage();
+    } else {
+      this.context.pages().forEach(add);
+      this.context.on('page', add);
+      this.page = this.pages[0] || await this.context.newPage();
+    }
+    const closed = () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.frame?.({ closed: true }); };
+    if (this.mode === 'mine') { this.onDisconnect = closed; this.browser.on('disconnected', closed); } else this.context.on('close', closed);
+  }
+  async route(route) {
+    try { await allowedUrl(route.request().url()); await route.continue(); } catch { await route.abort().catch(() => {}); }
+  }
+  async newPage(url) {
+    if (this.closing) throw new Error('O navegador do bot foi interrompido.');
+    if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
+    const safe = url ? await allowedUrl(url) : null;
+    const page = await this.context.newPage();
+    if (this.closing) { await this.closePage(page); throw new Error('O navegador do bot foi interrompido.'); }
+    if (this.mode === 'mine') {
+      this.addPage(page); await page.route('**/*', route => this.route(route));
+      const metrics = await this.context.newCDPSession(page); this.metrics.set(page, metrics);
+      await metrics.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+      await this.preparePopups(page);
+    }
+    if (safe) await page.goto(safe, { waitUntil: 'domcontentloaded' });
+    return page;
+  }
+  async closePage(page) {
+    if (page.isClosed()) return;
+    if (this.mode !== 'mine') return page.close();
+    const cdp = this.metrics.get(page) || await page.context().newCDPSession(page);
+    const { targetInfo } = await cdp.send('Target.getTargetInfo');
+    await cdp.send('Target.closeTarget', { targetId: targetInfo.targetId });
+    await cdp.detach().catch(() => {});
+  }
+  async preparePopups(page) {
+    // A page route cannot stop a popup's first request. Open it through the checked path instead.
+    await page.exposeBinding('__mybotsOpen', async ({ frame }, url) => {
+      if (frame !== page.mainFrame() || page.isClosed()) return;
+      try { await this.newPage(new URL(url || 'about:blank', page.url()).href); if (this.cdp) await this.view(true); }
+      catch (error) { this.tabError = /Até 5 abas/.test(error.message) ? error.message : 'Não consegui abrir a aba. Use browser_tabs com um endereço http ou https válido.'; }
+    });
+    await page.addInitScript(() => {
+      window.open = url => { window.__mybotsOpen(String(url || '')).catch(() => {}); return null; };
+      const submit = HTMLFormElement.prototype.submit;
+      HTMLFormElement.prototype.submit = function() { this.target = '_self'; return submit.call(this); };
+      document.addEventListener('submit', event => { event.target.target = '_self'; }, true);
+      document.addEventListener('click', event => {
+        if (event.target.closest?.('[formtarget]')) event.target.closest('[formtarget]').formTarget = '_self';
+        const link = event.target.closest?.('a[target]');
+        if (link && !['_self','_parent','_top',''].includes(link.target.toLowerCase())) { event.preventDefault(); window.__mybotsOpen(link.href).catch(() => {}); }
+      }, true);
+    });
   }
   /**
    * The live view: Chrome's screencast, about 8 frames a second at most and only when the page changes. Each frame
@@ -71,7 +143,7 @@ export class BrowserSession {
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
     } else if (on) {
       // Another viewer joined: the screencast only sends changes, so it gets the current page as one frame.
-      const { width, height } = this.page.viewportSize();
+      const { width, height } = this.viewportSize();
       const { data } = await this.cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
       this.frame?.({ image: data, width, height, url: this.page.url(), tabs: this.tabList() });
     } else if (!on && this.cdp) {
@@ -83,7 +155,7 @@ export class BrowserSession {
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
     await this.start();
-    const { width, height } = this.page.viewportSize();
+    const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
@@ -97,6 +169,7 @@ export class BrowserSession {
     else throw new Error('Ação inválida.');
     return this.info();
   }
+  viewportSize() { return this.page.viewportSize() || { width: 1280, height: 800 }; }
   tabList() { return (this.pages || []).map((page, n) => ({ tab: n + 1, title: this.tabTitles?.get(page) || page.url().slice(0, 100), active: page === this.page })); }
   async activate(page) {
     const watching = Boolean(this.cdp); if (watching) await this.view(false);
@@ -127,10 +200,10 @@ export class BrowserSession {
     return redact(result);
   }
   async perform(op, input = {}) {
+    if (op === 'login_cancel') { this.login = null; return { cancelled: true }; }
     await this.start();
     const { expectedTarget, ...publicInput } = input;
     const args = ['inspect', 'login_fill', 'login_cancel', 'upload'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
-    if (op === 'login_cancel') { this.login = null; return { cancelled: true }; }
     if (op === 'open') { await this.page.goto(await allowedUrl(args.url), { waitUntil: 'domcontentloaded' }); return this.info(); }
     if (op === 'read' || op === 'find') {
       const content = await this.page.evaluate(readPage, op === 'find' ? args : {});
@@ -146,14 +219,14 @@ export class BrowserSession {
       if (args.action === 'new') {
         if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
         const url = args.url ? await allowedUrl(args.url) : null;
-        const page = await this.context.newPage(); await this.activate(page);
+        const page = await this.newPage(); await this.activate(page);
         if (url) await page.goto(url, { waitUntil: 'domcontentloaded' });
       } else if (args.action === 'switch' || args.action === 'close') {
         const page = this.pages[args.tab - 1]; if (!page) throw new Error('Aba não encontrada.');
         if (args.action === 'switch') await this.activate(page);
         else {
           if (this.pages.length === 1) { await page.goto('about:blank'); this.login = null; }
-          else { if (this.page === page) await this.activate(this.pages.find(item => item !== page)); await page.close(); }
+          else { if (this.page === page) await this.activate(this.pages.find(item => item !== page)); await this.closePage(page); }
         }
       }
       return this.info();
@@ -198,7 +271,7 @@ export class BrowserSession {
     if (op === 'screenshot') {
       try {
         if (args.marks) { const read = await this.page.evaluate(readPage); await this.page.evaluate(markPage, read.elements); }
-        return { ...await this.info(), ...this.page.viewportSize(), image: (await this.page.screenshot({ type: 'jpeg', quality: 65, mask: [...this.page.frames().map(frame => frame.locator('input[type=password]')), ...[...this.secrets].map(secret => this.page.getByText(secret, { exact: false }))] })).toString('base64') };
+        return { ...await this.info(), ...this.viewportSize(), image: (await this.page.screenshot({ type: 'jpeg', quality: 65, mask: [...this.page.frames().map(frame => frame.locator('input[type=password]')), ...[...this.secrets].map(secret => this.page.getByText(secret, { exact: false }))] })).toString('base64') };
       } finally { if (args.marks) await this.page.evaluate(markPage, null).catch(() => {}); }
     }
     if (op === 'login') {
@@ -238,25 +311,47 @@ export class BrowserSession {
     }
     throw new Error('Comando do navegador inválido.');
   }
-  async close() { this.login = null; await this.context?.close(); }
+  async close() {
+    this.login = null; this.closing = true;
+    if (this.mode === 'mine') {
+      if (this.onDisconnect) this.browser?.off('disconnected', this.onDisconnect);
+      if (this.cdp) await this.view(false).catch(() => {});
+      await Promise.all((this.pages || []).map(page => this.closePage(page).catch(() => {})));
+      this.pages = []; this.page = null; this.context = null; this.starting = null;
+      if (!this.connect) await this.browser?.close();
+      this.frame?.({ closed: true });
+    } else await this.context?.close();
+  }
 }
 
 if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const session = new BrowserSession(process.argv[2]);
-  session.frame = frame => process.send?.({ frame });
-  let busy = false, person = Promise.resolve();
-  process.on('message', async ({ id, op, args }) => {
-    // The live view and the person's own input run beside the bot's commands, one after another.
-    if (op === 'view' || op === 'input') {
-      person = person.then(() => op === 'view' ? session.view(Boolean(args?.on)) : session.input(args)).then(result => process.send?.({ id, result }),
-        error => process.send?.({ id, error: /Endereço|navegador do bot|link/.test(error.message) ? error.message : 'O Chrome do bot não conseguiu fazer isso agora.' }));
-      return;
+  const mine = process.argv[3] === 'mine', sessions = new Map(), secrets = new Set(); let connection;
+  const connect = () => connection ||= connectMine(process.argv[4]).then(browser => { browser.on('disconnected', () => { connection = null; }); return browser; }).catch(error => { connection = null; throw error; });
+  const sessionFor = botId => {
+    if (!sessions.has(botId)) {
+      const session = new BrowserSession(process.argv[2], { mode: mine ? 'mine' : 'own', ...(mine ? { connect } : {}) });
+      if (mine) session.secrets = secrets;
+      session.frame = frame => process.send?.({ frame, botId }); sessions.set(botId, session);
     }
-    if (busy) { process.send?.({ id, error: 'Aguarde a ação atual do navegador.' }); return; }
-    busy = true;
-    try { process.send?.({ id, result: await session.command(op, args) }); }
-    catch (error) { process.send?.({ id, error: /Até 5 abas|Aba não encontrada/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' }); }
-    finally { busy = false; }
+    return sessions.get(botId);
+  };
+  let commands = Promise.resolve(); const people = new Map();
+  const handle = async ({ id, botId = basename(process.argv[2]), op, args }) => {
+    if (!/^[0-9a-f-]{36}$/i.test(botId || '')) return;
+    try {
+      if (op === 'close') { await sessions.get(botId)?.close(); sessions.delete(botId); if (id) process.send?.({ id, result: { closed: true } }); return; }
+      if (op === 'view' && !args?.on && !sessions.get(botId)?.cdp) { process.send?.({ id, result: { watching: false } }); return; }
+      const session = sessionFor(botId);
+      const result = op === 'view' ? await session.view(Boolean(args?.on)) : op === 'input' ? await session.input(args) : await session.command(op, args);
+      process.send?.({ id, result });
+    } catch (error) {
+      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
+    }
+  };
+  process.on('message', message => {
+    if (message.op === 'view' || message.op === 'input' || message.op === 'close') { const pending = (people.get(message.botId) || Promise.resolve()).then(() => handle(message)); people.set(message.botId, pending); }
+    else commands = commands.then(() => handle(message));
   });
-  process.on('disconnect', () => session.close().finally(() => process.exit()));
+  const close = async () => { await Promise.all([...sessions.values()].map(session => session.close().catch(() => {}))); if (connection) await connection.then(browser => browser.close()).catch(() => {}); process.exit(); };
+  process.on('disconnect', close); process.on('SIGTERM', close);
 }

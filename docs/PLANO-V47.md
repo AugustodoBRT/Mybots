@@ -108,7 +108,7 @@ Peça ao bot que mora no PC, um por vez, e confira a resposta e a tela ao vivo:
 
 ---
 
-## 3. v48 — "Meu Chrome": o bot usa o Chrome logado da pessoa
+## 3. v48 — "Meu Chrome": o bot usa o Chrome logado da pessoa — concluída na v48
 
 **Por quê**: é o único jeito de o bot ter a conta Google (e todos os logins) da pessoa. O OpenMausBot faz assim ("My Chrome") e mediu: Chrome iniciado pela pessoa com a depuração remota ligada passa no login do Google (`navigator.webdriver` falso); Chrome iniciado por automação não passa.
 
@@ -141,6 +141,8 @@ Peça ao bot que mora no PC, um por vez, e confira a resposta e a tela ao vivo:
 - Política: Médio pede `browser/mine/write` em clique de envio; Pouco não tem `'mine'`.
 
 ### 3.5 Aceite (com a pessoa)
+
+**Pendente na conta Google da pessoa**: implementação e aceite em Chrome separado/emulador concluídos; este passo exige ativar a depuração e confirmar a conexão no Chrome pessoal.
 
 A pessoa liga a depuração. Bot Codex em "Meu Chrome": "Abra https://myaccount.google.com e me diga só o primeiro nome que aparece" (mostra que está logado no Google). Conferir que as abas da pessoa não mudaram e que, ao terminar, só a aba do bot fechou.
 

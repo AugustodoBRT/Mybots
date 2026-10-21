@@ -1841,7 +1841,7 @@ function AppMain() {
       accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await loadSupervisorState(); }}
-      onMainChrome={async mainChrome => { await supervisor.current.call('bot.update', { botId: profileId, mainChrome }); await loadSupervisorState(); }}
+      onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await loadSupervisorState(); }}
       skills={(data.skills || []).filter(skill => data.bots.find(item => item.id === profileId)?.skills?.includes(skill.id))}
       onSkill={async (method, id) => {
         if (method === 'skill.remove') await new Promise((resolve, reject) => Alert.alert('Remover a habilidade?', 'O programa e a rotina dele saem deste celular.', [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Remover', style: 'destructive', onPress: resolve }]));

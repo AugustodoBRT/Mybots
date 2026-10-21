@@ -52,9 +52,11 @@ export function validFolders(list) {
   if (!Array.isArray(list) || list.length > 10) return false;
   return list.every(path => typeof path === 'string' && /^(~|\/)[^\u0000-\u001f]{0,300}$/.test(path) && !/(^|\/)\.\.(\/|$)/.test(path) && !SENSITIVE.test(path) && !['/', '~', '~/'].includes(path.trim()));
 }
-/** A Claude bot that chose the person's main Chrome (Claude in Chrome) instead of its own Chrome on the computer. */
-export const mainChrome = bot => bot?.provider === 'claude' && bot.mainChrome === true;
+export { browserMode } from '../mobile/local.js';
 export function validateProfile(data) {
+  if (data.browserMode !== undefined && !['own','mine','claude'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');
+  if (data.browserMode === 'claude' && data.provider !== 'claude') throw new Error('Claude in Chrome só está disponível para bots Claude.');
+  if (data.browserMode === 'mine' && data.access === 'basic') throw new Error('Meu Chrome exige Navegador e não está disponível em Pouco acesso.');
   if (data.mainChrome !== undefined && typeof data.mainChrome !== 'boolean') throw new Error('Escolha se o bot usa o seu Chrome principal.');
   if (data.avatar !== undefined && !AVATARS.includes(data.avatar)) throw new Error('Escolha uma aparência válida.');
   if (data.autonomy !== undefined && !['ask', 'local'].includes(data.autonomy)) throw new Error('Escolha uma autonomia válida.');

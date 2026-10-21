@@ -5,7 +5,7 @@ import { promptFor } from '../mobile/local.js';
 import { friendlyError } from '../lib/codex.mjs';
 import { now } from './database.mjs';
 import { processIdentity, stopOrphan } from './process.mjs';
-import { mainChrome } from './tool-policy.mjs';
+import { browserMode } from './tool-policy.mjs';
 import { fileURLToPath } from 'node:url';
 
 export const runReply = (bot, prompt, options) => bot.provider === 'claude'
@@ -68,7 +68,7 @@ export class Queue extends EventEmitter {
         const turn = this.db.roomTurn(task.id);
         // An IA session lives on the machine that made it: a bot that changed device starts a new one, with the history.
         const marker = 'session.lane.' + (turn ? turn.room_id + '.' : '') + task.bot_id;
-        const sessionLane = next.lane === 'pc' && mainChrome(this.db.requireBot(task.bot_id)) ? 'pc:claude-chrome' : next.lane;
+        const sessionLane = next.lane === 'pc' && (browserMode(this.db.requireBot(task.bot_id)) === 'claude') ? 'pc:claude-chrome' : next.lane === 'pc' && browserMode(this.db.requireBot(task.bot_id)) === 'mine' ? 'pc:mine' : next.lane;
         if ((this.db.get('SELECT value FROM metadata WHERE key=?', marker)?.value || 'phone') !== sessionLane) {
           if (turn) this.db.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', turn.room_id, task.bot_id); else this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', task.bot_id);
           this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', marker, sessionLane);

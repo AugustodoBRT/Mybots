@@ -194,3 +194,28 @@ test('browser coordinate actions: Médio gates sends and drag, reads pass, Total
   id = await f.start([['browser_act', { action: 'hover', x: 1, y: 2 }], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }]]);
   assert.ok((await f.finish(id)).every(result => result.isError)); assert.equal(f.actions.length, count);
 });
+
+test('Meu Chrome: Médio approves all mutations with its own key; reads pass; takeover blocks every bot in the mode', async t => {
+  const f = await setup(t); f.app.tools.grant(f.bot.id, 'browser', true);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask', browserMode: 'mine' });
+  let id = await f.start([['browser_read'], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }], ['browser_act', { action: 'hover', x: 1, y: 2 }]]);
+  await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
+  id = await f.start([['browser_open', { url: 'https://example.com' }], ['browser_click', { id: 1 }]]);
+  const card = await f.approve(true, true); assert.equal(card.title, 'Agir no Meu Chrome'); assert.equal(card.canAlways, true);
+  await f.finish(id);
+  assert.equal(f.app.tools.saved(f.bot.id, 'browser/mine/write'), 'true'); assert.equal(f.app.tools.saved(f.bot.id, 'browser/write'), undefined);
+  const other = await f.app.rpc('bot.create', { name: 'Outro Chrome', home: 'pc', access: 'full', browserMode: 'mine', ...selection });
+  await f.app.rpc('browser.control', { botId: other.id, who: 'person' });
+  const before = f.actions.length;
+  id = await f.start([['browser_read'], ['browser_click', { id: 1 }]]);
+  assert.ok((await f.finish(id)).every(result => result.isError)); assert.equal(f.actions.length, before);
+  await f.app.rpc('browser.control', { botId: other.id, who: 'bot' });
+  await f.app.rpc('bot.update', { botId: other.id, access: 'ask' });
+  await assert.rejects(f.app.rpc('browser.view', { botId: other.id, on: true }), /Libere Navegador/);
+  await assert.rejects(f.app.rpc('browser.view', { botId: other.id, on: false }), /Abra o navegador/);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
+  id = await f.start([['browser_click', { id: 1 }]]); await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
+  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'own');
+  await assert.rejects(f.app.rpc('bot.update', { botId: f.bot.id, browserMode: 'mine' }), /Libere Navegador|Pouco acesso/);
+});

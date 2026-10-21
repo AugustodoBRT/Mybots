@@ -1,3 +1,4 @@
+import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Image, PanResponder, TextInput } from 'react-native';
 import { BotBrowserView, browserAction, browserInfo } from './termux';
@@ -28,6 +29,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   live.current = { assumed, frame };
   const send = input => call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message));
   useEffect(() => {
+    setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
       if (data.closed) setState('closed');
@@ -38,7 +40,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     const watch = () => call('browser.view', { botId: bot.id, on: true }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });
     watch();
     return () => { browserFrames.delete(listener); call('browser.view', { botId: bot.id, on: false }).catch(() => {}); };
-  }, [bot.id]);
+  }, [bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true })).catch(e => setProblem(e.message)); };
   // A short touch is a click; a drag scrolls the page under the finger (sent while dragging, a few times a second).
   const touch = useRef(null);
@@ -67,7 +69,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.mint : C.muted} /></View>
       {assumed && address !== null ? <TextInput autoFocus style={[styles.address, { flex: 1 }]} value={address} onChangeText={setAddress} onSubmitEditing={go} onBlur={() => setAddress(null)} selectTextOnFocus placeholder="Endereço do site" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" />
         : <Pressable style={{ flex: 1 }} disabled={!assumed} onPress={() => setAddress(frame?.url && frame.url !== 'about:blank' ? frame.url : '')} accessibilityRole={assumed ? 'button' : undefined} accessibilityLabel={assumed ? 'Digitar endereço' : undefined}>
-          <Text style={styles.title} numberOfLines={1}>Chrome de {bot.name} · computador</Text>
+          <Text style={styles.title} numberOfLines={1}>{browserMode(bot) === 'mine' ? 'Meu Chrome' : `Chrome de ${bot.name}`} · computador</Text>
           <Text style={styles.url} numberOfLines={1}>{shown || (state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Toque aqui para digitar um endereço.' : 'Ainda não abriu nenhuma página.')}</Text>
         </Pressable>}
       {assumed ? <>
@@ -93,7 +95,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       </View>
       <View style={styles.keys}>{[['Enter', 'Enter'], ['Tab', 'Tab'], ['⌫', 'Backspace'], ['Esc', 'Escape'], ['↑', 'ArrowUp'], ['↓', 'ArrowDown']].map(([label, key]) =>
         <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Tecla ${key}`} onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}</View>
-      <Text style={styles.hint}>Toque na página para clicar e arraste para rolar. O bot espera até você devolver. O Google não aceita login neste Chrome; para Gmail, Agenda e Drive use os apps da conta.</Text>
+      <Text style={styles.hint}>{browserMode(bot) === 'mine' ? 'Meu Chrome usa seus logins. Toque para clicar e arraste para rolar. Todos os bots que usam Meu Chrome esperam até você devolver.' : 'Toque na página para clicar e arraste para rolar. O bot espera até você devolver. O Google não aceita login neste Chrome; para Gmail, Agenda e Drive use os apps da conta.'}</Text>
     </> : null}
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
@@ -112,7 +114,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const assumed = browser?.control?.[bot.id] === 'person';
-  const chrome = bot.provider === 'claude' && bot.mainChrome === true && (pc || browser?.pages?.[bot.id]?.engine === 'claude-chrome');
+  const chrome = browserMode(bot) === 'claude' && (pc || browser?.pages?.[bot.id]?.engine === 'claude-chrome');
   const onPc = pc || browser?.pages?.[bot.id]?.where === 'pc';
   useEffect(() => { if (!onPc) browserInfo().then(setInfo).catch(() => {}); }, [onPc]);
   const control = async who => {

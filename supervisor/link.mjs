@@ -1,3 +1,4 @@
+import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
@@ -143,8 +144,8 @@ export class Link {
         // The computer's addresses change with the network; the ones it reports are tried first next time.
         if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
         this.attempt = 0; this.set('online');
-        for (const botId of this.watching) send({ type: 'browser_view', botId, on: true });
-        send({ type: 'browser_control', control: this.controls });
+        for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, browserMode: browserMode(this.db.bot(botId)) });
+        send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
@@ -193,10 +194,10 @@ export class Link {
   /** Starts or stops the live view of a bot's Chrome on the computer. */
   view(botId, on) {
     if (on) this.watching.add(botId); else this.watching.delete(botId);
-    this.post({ type: 'browser_view', botId, on: Boolean(on) });
+    this.post({ type: 'browser_view', botId, on: Boolean(on), browserMode: browserMode(this.db.bot(botId)) });
   }
   /** Who controls each bot's browser: the computer takes the person's taps only for a browser taken over here. */
-  control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls }); }
+  control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) }); }
   /** A tap, key or address from the person, already checked against "Assumir" on the phone. */
   input(botId, input) {
     if (!this.post({ type: 'browser_input', botId, input })) throw new Error('O computador está desconectado.');

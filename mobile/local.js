@@ -1,3 +1,5 @@
+export const browserMode = bot => bot?.browserMode || (bot?.provider === 'claude' && bot?.mainChrome === true ? 'claude' : 'own');
+
 export const emptyLocalStore = () => ({ schema: 1, mode: 'computer', bots: [] });
 
 export function createId() {
@@ -70,7 +72,7 @@ export const TOOLS_TEXT = 'Você pode usar somente as ferramentas mybots-tools: 
 const CHAT_ONLY_TEXT = 'Seu papel nesta versão é somente conversar. Não use ferramentas, não execute comandos e não diga que realizou ações externas.';
 
 // Bump when the base instructions change: the supervisor then starts new IA sessions so every bot gets them.
-export const PROMPT_VERSION = 3;
+export const PROMPT_VERSION = 4;
 
 export function promptFor(bot, messageId, { tools = false } = {}) {
   if (bot.codexSessionId) {
@@ -124,6 +126,7 @@ export function validateBackup(value) {
   const validDate = date => typeof date === 'string' && Number.isFinite(Date.parse(date));
   const bots = new Set();
   for (const bot of value.bots) {
+    if (bot?.browserMode !== undefined && (!['own','mine','claude'].includes(bot.browserMode) || bot.browserMode === 'claude' && bot.provider !== 'claude' || bot.browserMode === 'mine' && bot.access === 'basic')) throw new Error('Navegador inválido no backup.');
     if (!bot || typeof bot !== 'object') throw new Error('Bot inválido no backup.');
     if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home)) || (bot.folders !== undefined && (!Array.isArray(bot.folders) || bot.folders.length > 10 || bot.folders.some(path => typeof path !== 'string' || path.length > 301))) || (bot.skills !== undefined && (!Array.isArray(bot.skills) || bot.skills.length > 50 || bot.skills.some(id => !validId(id))))) throw new Error('Perfil inválido no backup.');
     if (!validId(bot.id) || bots.has(bot.id) || typeof bot.name !== 'string' || !bot.name.trim() || bot.name.length > 40 || typeof bot.instructions !== 'string' || bot.instructions.length > 2000 || !['green', 'blue', 'purple', 'orange'].includes(bot.color) || !validDate(bot.createdAt) || !validDate(bot.updatedAt) || (bot.codexSessionId !== undefined && !validId(bot.codexSessionId)) || !Array.isArray(bot.messages) || bot.messages.length > 2000) throw new Error('O backup contém um bot inválido.');

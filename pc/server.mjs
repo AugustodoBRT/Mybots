@@ -12,7 +12,7 @@ import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
-import { SENSITIVE } from '../supervisor/tool-policy.mjs';
+import { SENSITIVE, browserMode } from '../supervisor/tool-policy.mjs';
 import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
@@ -130,9 +130,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
-  const views = new Map(); let assumed = new Set();
+  const views = new Map(), browserModes = new Map(); let assumed = new Set();
+  const configureBrowser = bot => { const mode = browserMode(bot); browserModes.set(bot.id, mode); browser.configure?.(bot.id, mode); };
   browser.onFrame = (botId, frame) => { for (const sink of views.get(botId) || []) sink(frame); };
-  const watch = async (botId, sink, on) => {
+  const watch = async (botId, sink, on, mode) => {
+    if (on) {
+      if (mode) configureBrowser({ id: botId, browserMode: mode });
+      else { const state = await bridge.call('state.get', {}); const bot = state.bots?.find(bot => bot.id === botId); if (!bot) throw new Error('Bot não encontrado.'); if (browserMode(bot) === 'mine' && (bot.access === 'basic' || state.grants?.[botId]?.find(grant => grant.name === 'browser')?.state !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); configureBrowser(bot); }
+    }
     const sinks = views.get(botId) || new Set(); const before = sinks.size;
     if (on) sinks.add(sink); else sinks.delete(sink);
     if (sinks.size) views.set(botId, sinks); else views.delete(botId);
@@ -144,7 +149,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     if (!assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
     return browser.command(botId, 'input', input);
   };
-  const panic = () => { for (const run of controls) run.controller.abort('panic'); browser.close(); };
+  const panic = () => { for (const run of controls) run.controller.abort('panic'); return browser.close(); };
   const panicPath = join(directory, 'panic.sock');
   // Refuse a second node using this directory. A stale socket can be removed after an unclean shutdown.
   if (existsSync(panicPath)) {
@@ -225,10 +230,10 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         if (message.on && !ws.views.has(message.botId)) ws.views.set(message.botId, paced(frame => send({ type: 'browser_frame', botId: message.botId, ...frame }), () => ws.bufferedAmount > 1_000_000));
         const sink = ws.views.get(message.botId);
         if (!message.on) ws.views.delete(message.botId);
-        if (sink) watch(message.botId, sink, Boolean(message.on)).catch(() => {});
+        if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own').catch(() => {});
         return;
       }
-      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); return; }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).catch(error => send({ type: 'browser_frame', botId: message.botId, error: error.message }));
         return;
@@ -240,9 +245,10 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         try {
           if (!run || run.controller.signal.aborted) throw new Error('A resposta no computador já foi interrompida.');
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
-          const mainChrome = run.bot.provider === 'claude' && Boolean(run.bot.mainChrome);
+          const mainChrome = browserMode(run.bot) === 'claude';
           const chrome = mainChrome && message.op === 'chrome.begin';
           if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.');
           owner = run;
           run.indicator ||= desktop.indicate(run.bot);
@@ -259,7 +265,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       runs.set(message.id, run); controls.add(run);
       controller.signal.addEventListener('abort', () => { if (controller.signal.reason !== 'finished') browser.stop(run.bot.id); run.indicator?.then(dismiss => dismiss(), () => {}); }, { once: true });
       try {
-        const bot = message.bot || {};
+        const bot = message.bot || {}; configureBrowser(bot);
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         const wrap = sandboxFor(bot.provider, homedir(), undefined, directory);
@@ -268,7 +274,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, chrome: bot.provider === 'claude' && Boolean(bot.mainChrome) && Boolean(message.tools.browser), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });
@@ -278,7 +284,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         send({ type: 'failed', id: message.id, error: controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
       } finally {
         runs.delete(message.id); controls.delete(run); if (owner === run) owner = null;
-        if (!controller.signal.aborted && browser.workers?.has(run.bot.id)) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
+        if (!controller.signal.aborted && (browser.workers?.has(run.bot.id) || browserMode(run.bot) === 'mine' && browser.workers?.has('mine'))) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
         controller.abort('finished');
       }
     });
@@ -299,5 +305,5 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
     phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
-    async close() { panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close()]); } };
 }

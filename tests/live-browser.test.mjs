@@ -112,15 +112,15 @@ test('the bot\'s Chrome process streams frames to the node over IPC and reports 
 });
 
 test('Claude bots use their own Chrome unless the person picks the main Chrome', async t => {
-  const { mainChrome, validateProfile } = await import('../supervisor/tool-policy.mjs');
-  assert.equal(mainChrome({ provider: 'claude' }), false);
-  assert.equal(mainChrome({ provider: 'claude', mainChrome: true }), true);
-  assert.equal(mainChrome({ provider: 'codex', mainChrome: true }), false);
+  const { browserMode, validateProfile } = await import('../supervisor/tool-policy.mjs');
+  assert.equal(browserMode({ provider: 'claude' }), 'own');
+  assert.equal(browserMode({ provider: 'claude', mainChrome: true }), 'claude');
+  assert.equal(browserMode({ provider: 'codex', mainChrome: true }), 'own');
   assert.throws(() => validateProfile({ mainChrome: 'sim' }), /Chrome principal/);
   const directory = await mkdtemp(join(tmpdir(), 'mybots-main-chrome-'));
   const app = await createSupervisor({ directory, port: 0, codex });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const bot = await app.rpc('bot.create', { name: 'Claude', home: 'pc', ...selection });
   const updated = await app.rpc('bot.update', { botId: bot.id, mainChrome: true });
-  assert.equal(updated.mainChrome, true); assert.equal(app.db.requireBot(bot.id).mainChrome, true);
+  assert.equal(updated.browserMode, 'own'); assert.equal(app.db.requireBot(bot.id).browserMode, 'own');
 });

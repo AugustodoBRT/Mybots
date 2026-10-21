@@ -1,3 +1,4 @@
+import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Keyboard, Switch, StyleSheet } from 'react-native';
 import BotAvatar, { BOT_COLORS, BOT_FORMS, BOT_FORM_NAMES, formFor } from './BotAvatar';
@@ -39,7 +40,7 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onMainChrome, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -110,13 +111,16 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
               </View>)}
               {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
             </View></> : null}
-          {phone && bot?.provider === 'claude' && bot.home && bot.home !== 'phone' ? <>
+          {phone && bot?.home && bot.home !== 'phone' ? <>
             <Text style={s.label}>NAVEGADOR NO COMPUTADOR</Text>
-            <View style={s.group}><View style={[s.permission, { borderBottomWidth: 0 }]}>
-              <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar meu Chrome principal</Text>
-                <Text style={s.hint}>{bot.mainChrome ? `${bot.name} usa o seu Chrome com a extensão Claude in Chrome e todos os seus logins, inclusive o Google. Essa janela fica no computador, fora do MyBots.` : `${bot.name} usa um Chrome só dele, que você vê ao vivo no MyBots e assume quando precisar. Ligue para ele usar o seu Chrome, com os seus logins (precisa da extensão Claude in Chrome).`}</Text></View>
-              {toggle(Boolean(bot.mainChrome), on => act(() => onMainChrome(on)), 'Usar meu Chrome principal')}
-            </View></View></> : null}
+            {[
+              ['own', 'Chrome próprio do bot', 'Perfil separado, visto ao vivo no MyBots. O Google pode recusar login neste navegador.'],
+              ['mine', 'Meu Chrome', 'Usa seus logins do Chrome, inclusive o Google, em abas próprias do bot. Suas outras abas são preservadas. No Médio, ações pedem aprovação.'],
+              ...(bot.provider === 'claude' ? [['claude', 'Claude in Chrome', 'Integração oficial do Claude, com extensão no seu Chrome e logins compartilhados.']] : [])
+            ].map(([mode, title, detail]) => radio(browserMode(bot) === mode, title, detail, () => act(() => onBrowserMode(mode)), { disabled: saving || active || mode !== 'own' && (bot.access === 'basic' || grants.find(item => item.name === 'browser')?.state !== 'allow') }))}
+            {browserMode(bot) === 'mine' ? <Text style={s.hint}>No computador, abra o Chrome que você já usa. Entre em chrome://inspect/#remote-debugging e ligue a depuração remota uma vez. Quando o bot conectar, confirme a solicitação no Chrome. Ele usa só as abas que criou; nunca fecha seu Chrome. Para parar, desligue a depuração nessa mesma tela.</Text> : null}
+            {grants.find(item => item.name === 'browser')?.state !== 'allow' ? <Text style={s.hint}>Libere Navegador em Ajustes finos para usar seus logins do Chrome.</Text> : null}
+          </> : null}
           {phone && bot && bot.home && bot.home !== 'phone' && grants.find(item => item.name === 'computer')?.state !== 'deny' ? <>
             <Text style={s.label}>PASTAS NO COMPUTADOR</Text>
             <View style={s.group}>

@@ -23,7 +23,7 @@ import { Routines } from './routines.mjs';
 import { Attachments } from './attachments.mjs';
 import { Apps } from './apps.mjs';
 import { Browser, personInput } from './browser.mjs';
-import { mainChrome } from './tool-policy.mjs';
+import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
 import { Link } from './link.mjs';
@@ -288,7 +288,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'bot.apps': return { apps: tools.setAccountApps(params.botId, params.apps) };
-        case 'bot.update': { const bot = db.requireBot(params.botId); await refresh(); const updated = db.configure(bot.id, selectionFor(catalog(), { ...bot, ...params }), params); broadcast('activity.new'); return updated; }
+        case 'bot.update': { const bot = db.requireBot(params.botId); if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const updated = db.configure(bot.id, selectionFor(catalog(), { ...bot, ...params }), params); link.control(browser.status().control); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };
         case 'chat.history': return db.requireBot(params.botId).messages;
@@ -353,6 +353,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // The live view of a bot's Chrome on the computer, sent only to the app connections watching it.
         case 'browser.view': {
           const bot = db.requireBot(params.botId);
+          if (params.on && browserMode(bot) === 'mine' && (bot.access === 'basic' || tools.policy(bot.id, 'browser') !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.');
           if (!socket) throw new Error('Abra o navegador do bot no app.');
           socket.views ||= new Set();
           if (params.on) socket.views.add(bot.id); else socket.views.delete(bot.id);
@@ -374,7 +375,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             await refresh();
             const selection = selectionFor(catalog(), bot);
             if (statusFor(bot)?.loggedIn) {
-              const reader = mainChrome(bot) && browser.pages.get(bot.id)?.engine === 'claude-chrome' ? 'as ferramentas oficiais Claude in Chrome' : 'browser_read';
+              const reader = browserMode(bot) === 'claude' && browser.pages.get(bot.id)?.engine === 'claude-chrome' ? 'as ferramentas oficiais Claude in Chrome' : 'browser_read';
               const task = db.enqueue(bot.id, randomUUID(), `[Navegador devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o navegador. Continue de onde parou; confira a página com ${reader}.`, selection);
               broadcast('task.progress', { taskId: task.id }); queue.schedule();
             }

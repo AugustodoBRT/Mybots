@@ -242,7 +242,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
           const mainChrome = run.bot.provider === 'claude' && Boolean(run.bot.mainChrome);
           const chrome = mainChrome && message.op === 'chrome.begin';
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.');
           owner = run;
           run.indicator ||= desktop.indicate(run.bot);

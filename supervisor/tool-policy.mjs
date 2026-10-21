@@ -36,7 +36,7 @@ export const TOOL_DEFINITIONS = [
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
-export const BROWSER_TOOLS = ['browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
 export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : tool;
@@ -70,7 +70,7 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
-    'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','timeoutSeconds'], 'browser.screenshot': [], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
@@ -158,7 +158,36 @@ export function toolArguments(tool, args) {
   }
   // The proposal itself is checked by skillProposal (supervisor/skills.mjs) when it runs.
   if (tool === 'skill.propose') { if (JSON.stringify(args).length > 260000) throw new Error('Proposta grande demais.'); return args; }
-  if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.read' || tool === 'browser.screenshot' || tool === 'browser.login') return {};
+  if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.read' || tool === 'browser.login') return {};
+  if (tool === 'browser.act') {
+    if (!['click','double_click','right_click','hover','scroll','key','drag'].includes(args.action)) throw new Error('Ação inválida no navegador.');
+    const result = { action: args.action };
+    for (const [name, max] of [['x',1280],['y',800],['toX',1280],['toY',800]]) {
+      if (args[name] !== undefined || (args.action !== 'key' && ['x','y'].includes(name)) || (args.action === 'drag' && ['toX','toY'].includes(name))) {
+        if (!Number.isFinite(args[name]) || args[name] < 0 || args[name] > max) throw new Error('Coordenadas fora da captura.');
+        result[name] = args[name];
+      }
+    }
+    if (args.action === 'key' || args.key !== undefined) {
+      if (!['Enter','Tab','Shift+Tab','Escape','Backspace','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Space'].includes(args.key)) throw new Error('Tecla inválida.');
+      result.key = args.key;
+    }
+    for (const name of ['dx','dy']) if (args.action === 'scroll' || args[name] !== undefined) {
+      const value = args[name] ?? 0;
+      if (!Number.isFinite(value) || Math.abs(value) > 5000) throw new Error('Rolagem fora dos limites.');
+      result[name] = value;
+    }
+    return result;
+  }
+  if (tool === 'browser.tabs') {
+    if (!['list','switch','new','close'].includes(args.action)) throw new Error('Ação de abas inválida.');
+    return { action: args.action, ...(['switch','close'].includes(args.action) || args.tab !== undefined ? { tab: integer('tab', 1, 5) } : {}), ...(args.url !== undefined ? { url: safeUrl(text('url', 2000)) } : {}) };
+  }
+  if (tool === 'browser.find') return { query: text('query', 200), limit: integer('limit', 1, 20, 5) };
+  if (tool === 'browser.screenshot') {
+    if (args.marks !== undefined && typeof args.marks !== 'boolean') throw new Error('Use marks true ou false.');
+    return { marks: args.marks === true };
+  }
   if (tool === 'browser.open') return { url: safeUrl(text('url', 2000)) };
   if (tool === 'browser.click') return { id: integer('id', 1, 100000) };
   if (tool === 'browser.type') {
@@ -170,7 +199,7 @@ export function toolArguments(tool, args) {
     if (typeof args.file !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.file)) throw new Error('Em file, informe o id de um arquivo deste bot (veja em files_list).');
     return { id: integer('id', 1, 100000), file: args.file.toLowerCase() };
   }
-  if (tool === 'browser.wait') return { text: text('text', 200, true), selector: text('selector', 200, true), timeoutSeconds: integer('timeoutSeconds', 1, 30, 10) };
+  if (tool === 'browser.wait') return { url: text('url', 200, true), text: text('text', 200, true), selector: text('selector', 200, true), timeoutSeconds: integer('timeoutSeconds', 1, 30, 10) };
   if (tool === 'browser.ask_user') return { reason: text('reason', 300) };
   if (tool === 'routine.create') return routineArguments(args);
   if (tool === 'connector.permission') {

@@ -113,3 +113,14 @@ A permissão é **Navegador**, independente de “Mexer no computador”, “Con
 Toda chamada passa por um hook oficial antes de executar, pelo túnel até o celular. Se o supervisor recusar, desconectar ou o hook falhar/expirar, a ação é bloqueada. O PC mostra o mesmo aviso de controle e usa a mesma tecla de pânico; interromper o bot preserva o Chrome principal aberto. Uma ação já enviada à extensão pode terminar antes de o cancelamento chegar.
 
 O painel informa “Chrome principal · Claude”. **Assumir** bloqueia novas chamadas de todos os bots Claude a esse Chrome até devolver. Login, senha, CAPTCHA e códigos são preenchidos manualmente nesse Chrome; `browser_ask_user` pede ajuda. O cofre do celular e `browser_login` cifrado continuam disponíveis para Codex/Playwright, não são usados pela extensão oficial. Não há troca silenciosa para Playwright se a extensão estiver desconectada.
+
+
+## Navegação ampliada (v47)
+
+O Chrome próprio de cada bot aceita até **5 abas**. Popups de login aparecem como abas; no painel ao vivo, a faixa de abas mostra a ativa. Depois de **Assumir**, toque numa aba para trocar. A sexta aba é recusada; feche outra antes de abrir mais.
+
+O bot começa por `browser_read` ou `browser_find` (busca por rótulo, texto, placeholder, título e nome). A leitura inclui caixas, rolagem e iframes da mesma origem. Quando precisar da imagem, `browser_screenshot` com `marks: true` numera os elementos e informa o tamanho da captura. `browser_act` permite hover, rolagem, teclas, cliques por ponto e arraste; `browser_wait` também espera um trecho da URL.
+
+No Médio, cliques que enviam formulários ou compram/pagam, Enter em formulário e arrastes pedem aprovação, com **Sempre permitir** para a mesma permissão de envio do navegador. No Total passam diretamente; uploads continuam pedindo sempre. Assumir bloqueia as ferramentas do bot até devolver.
+
+No celular, a WebView oferece busca, caixas, capturas numeradas, cliques, hover, rolagem e teclas por eventos da página. Arrastar, clique direito e abas informam “Disponível só quando o bot responde pelo computador.” Eventos sintéticos podem não funcionar em sites que exigem eventos físicos; nesses casos o bot pede ajuda.

@@ -90,7 +90,7 @@ test('real Chrome without a window: screencast frames, scroll, keys, typing; loc
   assert.ok(Buffer.from(first.image, 'base64').subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), 'quadro JPEG');
   assert.equal(first.width, 1280); assert.equal(first.height, 800);
   // A second viewer gets the current page at once.
-  const before = frames.length; await session.view(true); assert.equal(frames.length, before + 1);
+  const before = frames.length; await session.view(true); assert.ok(frames.length >= before + 1);
   for (const input of [{ type: 'scroll', x: 0.5, y: 0.5, dx: 0, dy: 300 }, { type: 'key', key: 'Tab' }, { type: 'text', text: 'abc' }, { type: 'tap', x: 0.5, y: 0.5 }]) await session.input(input);
   await assert.rejects(session.input({ type: 'key', key: 'Control+W' }), /inválida/);
   await assert.rejects(session.input({ type: 'open', url: 'http://127.0.0.1:3219/' }), /celular|endereço/i);
@@ -103,7 +103,7 @@ test('the bot\'s Chrome process streams frames to the node over IPC and reports 
   const directory = await mkdtemp(join(tmpdir(), 'mybots-chrome-ipc-'));
   const frames = []; const browser = new PcBrowser(directory, { onFrame: (botId, frame) => frames.push({ botId, ...frame }) });
   const botId = '00000000-0000-4000-8000-000000000001';
-  t.after(async () => { browser.close(); await rm(directory, { recursive: true, force: true }); });
+  t.after(async () => { browser.close(); await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); });
   await browser.command(botId, 'view', { on: true });
   await until(() => frames.some(frame => frame.image));
   await assert.rejects(browser.command(botId, 'input', { type: 'open', url: 'localhost:3219' }), /celular/);

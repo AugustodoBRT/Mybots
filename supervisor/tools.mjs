@@ -29,7 +29,7 @@ const RISKY = /(^|[;&|(\s])(sudo|su|doas|pkexec|mkfs\S*|dd|shutdown|reboot|power
 const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
   'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina',
   'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva' };
-const BROWSER_LABELS = { 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva',
+const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 function approvalText(tool, args, app) {
@@ -38,7 +38,7 @@ function approvalText(tool, args, app) {
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
   if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}\n${args.instructions}` };
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
-  if (tool === 'browser/submit') return { title: APPROVAL_TITLES[tool], summary: [args.label && `Botão: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
+  if (tool === 'browser/submit') return { title: args.action === 'drag' ? 'Arrastar um item no navegador' : APPROVAL_TITLES[tool], summary: [args.action === 'drag' && `De (${args.x}, ${args.y}) para (${args.toX}, ${args.toY})`, args.label && `Alvo: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'browser/login') return { title: APPROVAL_TITLES[tool], summary: [args.page && `Site: ${args.page}`, 'O MyBots preenche a senha que você salvou; o bot não vê a senha.'].filter(Boolean).join('\n') };
   if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'skill.propose') return { title: 'Instalar uma habilidade no celular', summary: args.summary };
@@ -424,6 +424,7 @@ export class Tools {
       this.requireGrant(run, 'browser');
       const bot = this.db.requireBot(run.botId);
       if (!this.browser) throw new Error('O navegador não está disponível neste supervisor.');
+      if (this.browser.control.get(run.botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
       if (run.lane === 'pc' && mainChrome(bot)) {
         if (tool !== 'browser.ask_user') throw new Error('Use as ferramentas oficiais mcp__claude-in-chrome__ no Chrome principal. Login e CAPTCHA são feitos pela pessoa nesse Chrome.');
         this.browser.pages.set(bot.id, { where: 'pc', engine: 'claude-chrome', title: 'Chrome principal · Claude', url: '' });
@@ -454,6 +455,14 @@ export class Tools {
       if (tool === 'browser.ask_user') {
         this.browser.requestHelp(run.botId, args.reason);
         result = { requested: true, message: 'A pessoa vai ver o cartão com o seu pedido e o botão para abrir o navegador. Termine agora a resposta explicando o que ela precisa fazer. Quando ela tocar em “Devolver ao bot”, você recebe uma nova mensagem para continuar.' };
+      } else if (tool === 'browser.act') {
+        const target = await command(run.botId, 'inspect', args);
+        const writeAction = args.action === 'drag' || ['click','double_click','right_click'].includes(args.action) && target.kind === 'submit' || args.action === 'key' && (args.key === 'Enter' && target.kind === 'submit' || ['Space','Backspace','Delete'].includes(args.key));
+        if (writeAction) {
+          const write = this.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: bot.autonomy !== 'local' });
+          if (write.ask && !(await this.ask(run, 'browser/submit', { ...args, label: target.label || '', page: target.url || '' }, hash, null, write.always))) throw new Error(refused);
+        }
+        result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'act', { ...args, expectedTarget: target }) };
       } else if (tool === 'browser.click' || tool === 'browser.type') {
         const target = await command(run.botId, 'inspect', { id: args.id });
         if (tool === 'browser.type' && target.kind === 'password') throw new Error('Campos de senha só a pessoa preenche. Use browser_ask_user para pedir que ela entre.');
@@ -482,9 +491,9 @@ export class Tools {
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'upload', { id: args.id, name: file.name, mime: file.mime, data }), attached: file.name,
           next: 'O arquivo está no campo, mas ainda não foi enviado. Use browser_read e clique no botão de enviar do formulário.' };
       } else if (tool === 'browser.screenshot') {
-        const shot = await command(run.botId, 'screenshot');
+        const shot = await command(run.botId, 'screenshot', args);
         if (typeof shot.image !== 'string' || shot.image.length > 4_000_000) throw new Error('Não consegui capturar a tela do navegador.');
-        result = { mcpContent: [{ type: 'text', text: `${IMAGE_HINT}\n${BROWSER_NOTICE}\n${shot.title || ''} · ${shot.url || ''}` }, { type: 'image', data: shot.image, mimeType: 'image/jpeg' }] };
+        result = { mcpContent: [{ type: 'text', text: `${IMAGE_HINT}\n${BROWSER_NOTICE}\n${shot.title || ''} · ${shot.url || ''} · ${shot.width} × ${shot.height}` }, { type: 'image', data: shot.image, mimeType: 'image/jpeg' }] };
       } else result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, tool.slice(8), args) };
       this.db.record('tool_done', label + ': concluído.', run.botId, run.taskId); this.changed('activity.new'); return result;
     } catch (error) {

@@ -75,6 +75,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
         <Pressable accessibilityRole="button" accessibilityLabel="Recarregar página" hitSlop={6} onPress={() => send({ type: 'reload' })} style={styles.tool}><Icon name="refresh" size={17} color={C.text2} /></Pressable>
       </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
     </View>
+    {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { size.current = event.nativeEvent.layout; }} {...responder.panHandlers}>
       {frame ? <Image source={{ uri: 'data:image/jpeg;base64,' + frame.image }} style={StyleSheet.absoluteFill} resizeMode="stretch" fadeDuration={0} />

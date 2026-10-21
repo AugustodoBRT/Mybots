@@ -146,6 +146,8 @@ internal object BotBrowser {
     val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null }
       ?: throw IllegalStateException("A página ainda não carregou. Use browser_wait.")
     val json = JSONObject(text)
+    val scale = onMain { val web = tab(context, botId).web; val width = web.width.coerceAtLeast(1); val height = web.height.coerceAtLeast(1); minOf(1f, 720f / width, 800f / height) * web.scale }
+    json.optJSONArray("elements")?.let { elements -> for (n in 0 until elements.length()) elements.optJSONObject(n)?.optJSONObject("box")?.let { box -> for (key in listOf("x", "y", "w", "h")) box.put(key, box.optDouble(key) * scale) } }
     if (json.has("error")) throw IllegalStateException(json.getString("error"))
     return json
   }
@@ -197,6 +199,10 @@ internal object BotBrowser {
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")
     val args = command.optJSONObject("args") ?: JSONObject()
     if (command.getString("op") == "pcLogin") return PasswordVault.forComputer(context, botId, args)
+    if (command.getString("op") in listOf("act", "inspect") && args.has("action")) {
+      val scale = onMain { val web = tab(context, botId).web; val width = web.width.coerceAtLeast(1); val height = web.height.coerceAtLeast(1); minOf(1f, 720f / width, 800f / height) * web.scale }
+      for (key in listOf("x", "y", "toX", "toY")) if (args.has(key)) args.put(key, args.getDouble(key) / scale)
+    }
     val id = args.optInt("id", 0)
     return when (command.getString("op")) {
       "open" -> {
@@ -210,7 +216,27 @@ internal object BotBrowser {
         page(context, botId).also { result -> file?.let { result.put("download", it) } }
       }
       "read" -> js(context, botId, READ_JS).also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
-      "inspect" -> js(context, botId, "($INSPECT_JS)($id)")
+      "inspect" -> if (args.has("action")) js(context, botId, "JSON.stringify(($POINT_JS)($args))") else js(context, botId, "($INSPECT_JS)($id)")
+      "tabs" -> throw IllegalStateException("Disponível só quando o bot responde pelo computador.")
+      "find" -> js(context, botId, "JSON.stringify(($READ_PAGE)($args))")
+      "act" -> {
+        if (args.optString("action") in listOf("drag", "right_click")) throw IllegalStateException("Disponível só quando o bot responde pelo computador.")
+        args.optJSONObject("expectedTarget")?.let { expected ->
+          val actual = js(context, botId, "JSON.stringify(($POINT_JS)($args))")
+          if (listOf("kind", "label", "url").any { actual.optString(it) != expected.optString(it) }) throw IllegalStateException("O alvo mudou. Leia a página e tente de novo.")
+        }
+        js(context, botId, "($ACT_JS)($args)")
+        if (args.optString("action") == "hover") onMain {
+          val web = tab(context, botId).web
+          val time = android.os.SystemClock.uptimeMillis()
+          for (action in listOf(MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE)) {
+            val event = MotionEvent.obtain(time, time, action, (args.optDouble("x") * web.scale).toFloat(), (args.optDouble("y") * web.scale).toFloat(), 0)
+            event.source = android.view.InputDevice.SOURCE_MOUSE
+            web.dispatchGenericMotionEvent(event); event.recycle()
+          }
+        }
+        page(context, botId)
+      }
       "click" -> {
         val before = DeviceFiles.downloadSerial()
         onMain { tabs[botId]?.failure = null }; js(context, botId, "($CLICK_JS)($id)"); waitLoaded(botId, 12_000)
@@ -254,7 +280,7 @@ internal object BotBrowser {
       }
       "wait" -> {
         val until = System.currentTimeMillis() + args.optInt("timeoutSeconds", 10).coerceIn(1, 30) * 1000L
-        val check = "($WAIT_JS)(${JSONObject.quote(args.optString("text"))}, ${JSONObject.quote(args.optString("selector"))})"
+        val check = "($WAIT_JS)(${JSONObject.quote(args.optString("text"))}, ${JSONObject.quote(args.optString("selector"))}, ${JSONObject.quote(args.optString("url"))})"
         var found = false
         while (System.currentTimeMillis() < until) {
           val loaded = onMain { tabs[botId]?.let { !it.loading && it.progress >= 100 } ?: false }
@@ -263,7 +289,13 @@ internal object BotBrowser {
         }
         page(context, botId).put("found", found)
       }
-      "screenshot" -> onMain(15_000) { screenshot(context, botId) }
+      "screenshot" -> {
+        try {
+          js(context, botId, "(() => { const data = ($READ_PAGE)({}); if (${args.optBoolean("marks")}) ($MARK_JS)(data.elements); const layer = document.createElement('div'); layer.setAttribute('data-mybots-mask',''); layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647'; for (const el of document.querySelectorAll('input[type=password]')) { const r=el.getBoundingClientRect(); const box=document.createElement('div'); box.style.cssText='position:absolute;background:#000;left:'+r.x+'px;top:'+r.y+'px;width:'+r.width+'px;height:'+r.height+'px'; layer.append(box); } document.documentElement.append(layer); return JSON.stringify({ok:true}); })()")
+          Thread.sleep(100)
+          onMain(15_000) { screenshot(context, botId) }
+        } finally { runCatching { js(context, botId, "(() => { ($MARK_JS)(null); document.querySelector('[data-mybots-mask]')?.remove(); return JSON.stringify({ok:true}); })()") } }
+      }
       else -> throw IllegalArgumentException("Comando de navegador inválido.")
     }
   }
@@ -274,11 +306,11 @@ internal object BotBrowser {
     layoutDetached(context, web)
     val bitmap = Bitmap.createBitmap(web.width.coerceAtLeast(1), web.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     web.draw(Canvas(bitmap))
-    val scale = minOf(1f, 720f / bitmap.width)
+    val scale = minOf(1f, 720f / bitmap.width, 800f / bitmap.height)
     val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
     val out = ByteArrayOutputStream()
     scaled.compress(Bitmap.CompressFormat.JPEG, 70, out)
-    return JSONObject().put("url", web.url ?: "").put("title", web.title ?: "").put("image", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
+    return JSONObject().put("url", web.url ?: "").put("title", web.title ?: "").put("width", scaled.width).put("height", scaled.height).put("image", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
   }
 
   // A browser with no panel on screen still needs a size to lay out pages and draw screenshots.
@@ -422,62 +454,111 @@ internal object BotBrowser {
   }
 
   // The scripts below run inside the page. Elements get a stable data-mybots-id until the page changes.
-  private val READ_JS = """
-    (() => {
-      const clean = v => String(v || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-      const visible = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-      const kindOf = el => {
-        const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
-        if (tag === 'input' && type === 'password') return 'password';
-        if (tag === 'input' && type === 'file') return 'file';
-        if ((tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form)) return 'submit';
-        if (tag === 'a') return 'link';
-        if (tag === 'select') return 'select';
-        if (tag === 'input' && (type === 'checkbox' || type === 'radio')) return 'check';
-        if (tag === 'textarea' || tag === 'input' || el.isContentEditable) return 'field';
-        return 'button';
-      };
-      const labelOf = el => {
-        const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
-        if (el.labels && el.labels.length) return clean(el.labels[0].innerText);
-        if (tag === 'input' && (type === 'submit' || type === 'button')) return clean(el.value);
-        return clean(el.getAttribute('aria-label') || (tag === 'input' || tag === 'textarea' ? el.placeholder : el.innerText) || el.placeholder || el.title || el.alt || el.name || el.getAttribute('href'));
-      };
-      window.__mybotsNext = window.__mybotsNext || 1;
-      const elements = [];
-      for (const el of document.querySelectorAll('a[href],button,input,select,textarea,[role=button],[role=link],[role=checkbox],[role=tab],[onclick],[contenteditable=true],summary')) {
-        if (elements.length >= 200) break;
-        const fileInput = el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'file';
-        if (el.disabled || (el.getAttribute('type') || '').toLowerCase() === 'hidden' || (!visible(el) && !fileInput)) continue;
-        if (!el.dataset.mybotsId) el.dataset.mybotsId = String(window.__mybotsNext++);
-        const kind = kindOf(el);
-        const item = { id: Number(el.dataset.mybotsId), kind, label: labelOf(el) };
-        if (kind === 'link') item.href = String(el.href).slice(0, 300);
-        if (kind === 'field') item.value = String(el.isContentEditable ? el.innerText : el.value || '').slice(0, 200);
-        if (kind === 'check') item.checked = el.checked;
-        if (kind === 'file') { item.accept = String(el.accept || '').slice(0, 120); item.multiple = el.multiple; item.files = [...(el.files || [])].map(f => f.name).slice(0, 5); if (!item.label) item.label = clean(el.closest('label, td, div') && el.closest('label, td, div').innerText) || 'Arquivo'; }
-        if (kind === 'select') { item.value = el.selectedOptions[0] ? clean(el.selectedOptions[0].text) : ''; item.options = [...el.options].slice(0, 30).map(o => clean(o.text)); }
-        elements.push(item);
+  private val READ_PAGE = """function readPage({ query = '', limit = 5 } = {}) {
+  const elements = [], texts = [];
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const normalize = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const words = normalize(query).split(/\s+/).filter(word => !['botao','campo','link','de','o','a'].includes(word));
+  window.__mybotsNext ||= 1;
+  let frame = 0;
+  const visit = (doc, ox = 0, oy = 0, parentFrame = '') => {
+    const win = doc.defaultView;
+    for (const el of doc.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[onclick],[contenteditable=true],summary')) {
+      if (elements.length >= 300) break;
+      const r = el.getBoundingClientRect(), style = win.getComputedStyle(el);
+      const visible = r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      if (!visible && el.type !== 'file') continue;
+      if (!el.dataset.mybotsId) el.dataset.mybotsId = String(window.__mybotsNext++);
+      const kind = el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' && el.form ? 'submit' : el.tagName.toLowerCase();
+      const label = clean(el.getAttribute('aria-label') || (el.labels?.[0]?.innerText) || el.getAttribute('placeholder') || el.textContent || el.title || el.name || el.getAttribute('href'));
+      const item = { id: Number(el.dataset.mybotsId), kind, label };
+      if (visible && r.bottom > 0 && r.right > 0 && r.top < win.innerHeight && r.left < win.innerWidth) item.box = { x: r.x + ox, y: r.y + oy, w: r.width, h: r.height };
+      if (parentFrame) item.frame = parentFrame;
+      if (el.tagName === 'SELECT') item.options = [...el.options].map(o => clean(o.text)).slice(0, 50);
+      if (query) {
+        const haystack = normalize([label, el.textContent, el.placeholder, el.getAttribute('aria-label'), el.title, el.name].join(' '));
+        item.score = words.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
       }
-      const text = document.body ? document.body.innerText.replace(/\n{3,}/g, '\n\n') : '';
-      return JSON.stringify({ url: location.href, title: document.title, text: text.slice(0, 15000), truncated: text.length > 15000, elements });
-    })()
+      elements.push(item);
+    }
+    const copy = doc.body?.cloneNode(true);
+    copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]').forEach(el => el.remove());
+    texts.push((copy?.textContent || '').replace(/\s+/g, ' '));
+    for (const el of doc.querySelectorAll('iframe')) {
+      try {
+        if (!el.contentDocument?.body || el.contentWindow.location.origin !== location.origin) continue;
+        const r = el.getBoundingClientRect(); visit(el.contentDocument, ox + r.x, oy + r.y, `frame:${'$'}{++frame}`);
+      } catch {}
+    }
+  };
+  visit(document);
+  return { text: texts.join('\n').slice(0, 20000), elements: query ? elements.filter(el => el.score > 0).sort((a, b) => b.score - a.score).slice(0, limit) : elements, scroll: { y: scrollY, height: document.documentElement.scrollHeight } };
+}""".trimIndent()
+  private val READ_JS = "JSON.stringify(($READ_PAGE)({}))"
+  private val POINT_JS = """function inspectPoint(args) {
+  let doc = document, el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x, args.y);
+  while (el?.tagName === 'IFRAME') {
+    try { const r = el.getBoundingClientRect(); doc = el.contentDocument; if (!doc) break; el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x - r.x, args.y - r.y); } catch { break; }
+  }
+  el = el?.closest('button,a,input,textarea,select,[role=button],[contenteditable=true]') || el;
+  const label = String(el?.getAttribute('aria-label') || el?.textContent || el?.name || '').replace(/\s+/g, ' ').slice(0, 200);
+  const write = !!el && (el.type === 'submit' || el.type === 'image' || !!el.form || el.tagName === 'A' && /comprar|pagar|pagamento|checkout|buy|purchase|pay/i.test(label + ' ' + el.getAttribute('href')));
+  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href };
+}""".trimIndent()
+  private val MARK_JS = """function markPage(elements) {
+  document.querySelector('[data-mybots-marks]')?.remove();
+  if (!elements) return;
+  const layer = document.createElement('div'); layer.setAttribute('data-mybots-marks', '');
+  layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647';
+  for (const { id, box } of elements) {
+    if (!box) continue;
+    const node = document.createElement('div'); node.textContent = String(id);
+    node.style.cssText = `position:absolute;left:${'$'}{box.x}px;top:${'$'}{box.y}px;width:${'$'}{box.w}px;height:${'$'}{box.h}px;border:2px solid #e22;color:#fff;background:#a0000022;font:bold 14px sans-serif;box-sizing:border-box`;
+    layer.append(node);
+  }
+  document.documentElement.append(layer);
+}""".trimIndent()
+
+  private val ACT_JS = """
+    args => {
+      const el = args.action === 'key' ? document.activeElement : document.elementFromPoint(args.x, args.y);
+      if (args.action === 'scroll') window.scrollBy(args.dx, args.dy);
+      else if (args.action === 'key') {
+        const key = args.key === 'Space' ? ' ' : args.key;
+        if (key === 'Tab' || key === 'Shift+Tab') {
+          const all = [...document.querySelectorAll('a[href],button,input,textarea,select,[tabindex]')].filter(e => !e.disabled && e.tabIndex >= 0 && e.getBoundingClientRect().width > 0);
+          const i = all.indexOf(el), step = key === 'Tab' ? 1 : -1; all[(i + step + all.length) % all.length]?.focus();
+        } else {
+          const allowed = el?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+          if (allowed && key === 'Enter' && el?.form) el.form.requestSubmit();
+          if (['PageDown','PageUp','ArrowDown','ArrowUp','Home','End'].includes(key)) window.scrollBy(0, key === 'Home' ? -document.documentElement.scrollHeight : key === 'End' ? document.documentElement.scrollHeight : (key.endsWith('Up') ? -1 : 1) * (key.startsWith('Page') ? innerHeight : 40));
+          el?.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+        }
+      } else if (el) {
+        const link = el.closest('a[target]');
+        if (args.action !== 'hover' && link && !['_self','_top','_parent',''].includes(link.target.toLowerCase())) return JSON.stringify({ error: 'Abas: disponível só quando o bot responde pelo computador.' });
+        el.focus();
+        for (const type of (args.action === 'hover' ? ['mouseover','mouseenter','mousemove'] : args.action === 'double_click' ? ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick'] : ['mousedown','mouseup','click'])) el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: args.x, clientY: args.y, view: window }));
+      }
+      return JSON.stringify({ok:true});
+    }
   """.trimIndent()
 
-  private val FIND = "const el = document.querySelector('[data-mybots-id=\"' + id + '\"]'); if (!el) return JSON.stringify({ error: 'Elemento não encontrado. A página mudou: use browser_read de novo.' });"
+  private val FIND = "let el = document.querySelector('[data-mybots-id=\"' + id + '\"]'); if (!el) { const visit = doc => { for (const f of doc.querySelectorAll('iframe')) { try { const d = f.contentDocument; if (!d) continue; const found = d.querySelector('[data-mybots-id=\"' + id + '\"]') || visit(d); if (found) return found; } catch {} } }; el = visit(document); } if (!el) return JSON.stringify({ error: 'Elemento não encontrado. A página mudou: use browser_read de novo.' });"
 
   private val INSPECT_JS = """
     (id) => { $FIND
       const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
       const kind = tag === 'input' && type === 'password' ? 'password' : tag === 'input' && type === 'file' ? 'file' : (tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form) ? 'submit' : tag === 'a' ? 'link' : 'other';
       const near = kind === 'file' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || (el.closest('label, td, div, fieldset') || {}).innerText || el.name) : '';
-      const label = String(near || (tag === 'input' ? el.value || el.placeholder : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const label = String(near || (tag === 'input' ? (type === 'password' ? el.placeholder : el.value || el.placeholder) : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
       return JSON.stringify({ kind, label, url: location.href }); }
   """.trimIndent()
 
   private val CLICK_JS = """
     (id) => { $FIND
-      el.scrollIntoView({ block: 'center' }); if (el.tagName === 'A') el.removeAttribute('target'); el.click();
+      if (el.closest('a[target]') && !['_self','_top','_parent',''].includes(el.closest('a[target]').target.toLowerCase())) return JSON.stringify({ error: 'Abas: disponível só quando o bot responde pelo computador.' });
+      el.scrollIntoView({ block: 'center' }); el.click();
       return JSON.stringify({ ok: true }); }
   """.trimIndent()
 
@@ -549,8 +630,9 @@ internal object BotBrowser {
   """.trimIndent()
 
   private val WAIT_JS = """
-    (text, selector) => {
+    (text, selector, url) => {
       let found = document.readyState === 'complete';
+      if (found && url) found = location.href.includes(url);
       if (found && text) found = !!document.body && document.body.innerText.includes(text);
       if (found && selector) { try { found = !!document.querySelector(selector); } catch (e) { return JSON.stringify({ error: 'Seletor CSS inválido.' }); } }
       return JSON.stringify({ found }); }

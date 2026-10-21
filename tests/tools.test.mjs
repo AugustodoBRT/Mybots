@@ -96,7 +96,7 @@ test('real stdio MCP handshake routes through HTTP and UI approval response with
   child.stdout.on('data', chunk => { buffer += chunk; let i; while ((i = buffer.indexOf('\n')) >= 0) { replies.push(JSON.parse(buffer.slice(0, i))); buffer = buffer.slice(i + 1); } });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   send(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); await until(() => replies.some(r => r.id === 1)); assert.equal(replies[0].result.serverInfo.name, 'mybots-tools');
-  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 35);
+  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 38);
   send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } }); await until(() => app.state().approvals.length);
   const approval = app.state().approvals[0]; assert.equal(app.db.all('SELECT * FROM pending_items').length, 0);
   await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });

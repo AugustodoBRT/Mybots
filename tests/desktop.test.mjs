@@ -173,3 +173,24 @@ test('system Chrome: bot profiles keep their own cookies; real reads hide passwo
   await a.close();
   const again = await open('bot-a'); assert.equal((await again.context.cookies()).find(c => c.name === 'dono').value, 'a');
 });
+
+test('browser coordinate actions: Médio gates sends and drag, reads pass, Total runs, Pouco hides, takeover refuses', async t => {
+  const f = await setup(t); f.app.tools.grant(f.bot.id, 'browser', true);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask' });
+  let id = await f.start([['browser_act', { action: 'hover', x: 10, y: 20 }], ['browser_act', { action: 'scroll', x: 10, y: 20, dy: 400 }], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }]]);
+  await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
+  id = await f.start([['browser_act', { action: 'click', x: 10, y: 20 }]]);
+  const card = await f.approve(true, true); assert.equal(card.canAlways, true); await f.finish(id);
+  assert.ok(f.app.db.get('SELECT * FROM grants WHERE bot_id=? AND tool=?', f.bot.id, 'browser/write'));
+  id = await f.start([['browser_act', { action: 'drag', x: 1, y: 2, toX: 100, toY: 200 }]]);
+  await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
+  id = await f.start([['browser_act', { action: 'click', x: 10, y: 20 }]]); await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
+  id = await f.start([['browser_tabs', { action: 'list' }]]); assert.equal((await f.finish(id))[0].isError, true); assert.ok(!f.listed.includes('browser_act'));
+  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
+  f.app.tools.browser.setControl(f.bot.id, 'person');
+  const count = f.actions.length;
+  id = await f.start([['browser_act', { action: 'hover', x: 1, y: 2 }], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }]]);
+  assert.ok((await f.finish(id)).every(result => result.isError)); assert.equal(f.actions.length, count);
+});

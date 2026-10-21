@@ -59,7 +59,7 @@ export class Queue extends EventEmitter {
     const controller = new AbortController();
     const current = { id: task.id, controller, done: null }; this.running.set(next.lane, current);
     const execute = next.lane === 'phone' ? this.execute : this.nodes.executor(next.lane);
-    const capability = this.tools?.open(task, controller.signal);
+    const capability = this.tools?.open(task, controller.signal, next.lane);
     this.emit('changed', { event: 'task.progress', taskId: task.id });
     current.done = (async () => {
       try {
@@ -81,7 +81,9 @@ export class Queue extends EventEmitter {
         const reply = await execute(bot, prompt, {
           signal: controller.signal,
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full' } : undefined,
+          tools: capability ? { token: capability.token, endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full',
+            // On the computer the IA may use its files and terminal, each step decided by the bot's level.
+            computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' } : undefined,
           onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
           // Only a local process can be found again (and stopped) after a crash.
           onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }

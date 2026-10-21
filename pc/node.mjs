@@ -18,7 +18,7 @@ const stamp = () => new Date().toLocaleTimeString('pt-BR');
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit' });
 
 async function serve() {
-  const node = await createNode({ directory, port, log: line => console.log(`[${stamp()}] ${line}`) });
+  const node = await createNode({ directory, port, ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
   console.log(`[${stamp()}] MyBots no computador "${node.name}" esperando o celular na porta ${node.port}.`);
   if (!node.phones().length) console.log('Nenhum celular pareado ainda. Em outro terminal: node pc/node.mjs pair');
   const stop = () => node.close().then(() => process.exit(0));

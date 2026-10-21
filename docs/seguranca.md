@@ -93,5 +93,6 @@ Aprovação = SHA-256 de bot + tarefa + ferramenta + argumentos normalizados; va
 - O certificado TLS do computador é fixado pelo QR; um aparelho que se passe por ele no mesmo endereço é recusado antes de qualquer dado sair do celular.
 - O código do QR vale uma vez e por 10 minutos. Quem fotografar o QR depois disso não consegue parear.
 - O computador só alcança do celular as ferramentas da execução em andamento (`/mcp`, `/tools/*`), com o token daquela execução; nada de banco, senhas, backups ou do WebSocket do app. As permissões e aprovações continuam decididas no celular.
-- Na v37 o Claude e o Codex rodam no computador com as mesmas travas do celular (sem shell nem arquivos do computador). Ferramentas do computador chegam na v38, com aprovação própria.
+- Na v37 o Claude e o Codex rodavam no computador com as mesmas travas do celular. Desde a v39, com **Mexer no computador**: pasta própria `~/MyBots/<Nome>` livre; o resto do Claude passa pela ferramenta de permissão do MyBots (decidida no celular, pelo nível); comandos que mexem no sistema ou saem do computador sempre pedem; senhas e chaves sempre recusadas; Codex preso ao sandbox `workspace-write` da pasta.
+- A janela do computador fala com o celular por uma lista fechada de métodos (sem segredos, backup, conectores com senha, pareamento ou hardware do celular).
 - Risco residual: quem tiver acesso à conta do computador lê `~/.mybots-pc/` (segredo do celular e certificado). Esquecer o computador no celular e apagar a pasta revoga o pareamento.

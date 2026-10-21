@@ -6,6 +6,13 @@ export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list
 export const MAX_FRAME = 32 * 1024 * 1024;
 const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
+// What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
+// backups, connectors with passwords, pairing or the phone's own hardware.
+export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'chat.history', 'chat.send',
+  'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
+  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry'];
+// Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
+const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
@@ -31,8 +38,8 @@ export function parsePairing(text) {
  * the pairing secret, and then lends the computer to the queue as a node (`nodes.connect`) until the link drops.
  */
 export class Link {
-  constructor(db, nodes, { port, changed = () => {}, WebSocketClass = WebSocket } = {}) {
-    Object.assign(this, { db, nodes, port, changed, WebSocketClass });
+  constructor(db, nodes, { port, changed = () => {}, rpc = null, WebSocketClass = WebSocket } = {}) {
+    Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass });
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
   }
   saved() { try { return JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='link.computer'")?.value || 'null'); } catch { return null; } }
@@ -138,6 +145,7 @@ export class Link {
       }
       if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
+      if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
       const run = this.runs.get(message.id);
       if (!run) return;
       if (message.type === 'session') await run.onSession?.(message.sessionId);
@@ -165,6 +173,14 @@ export class Link {
       return { status: response.status, body: await response.text(), headers: Object.fromEntries(['content-type', 'mcp-session-id'].filter(name => response.headers.get(name)).map(name => [name, response.headers.get(name)])) };
     } catch { return { status: 502, headers: {}, body: '' }; }
   }
+  /** A request from the MyBots window on the computer, answered by the phone's supervisor like the app's own. */
+  async desktop({ method, params }) {
+    if (!DESKTOP_METHODS.includes(method) || !this.rpc) return { error: 'Isto só pode ser feito no celular.' };
+    try { return { result: await this.rpc(method, params && typeof params === 'object' && !Array.isArray(params) ? params : {}) }; }
+    catch (error) { return { error: error.code ? 'Não foi possível gravar ou ler os dados do supervisor.' : error.message }; }
+  }
+  /** Supervisor events, for the window on the computer to refresh. */
+  event(event, data) { if (DESKTOP_EVENTS.includes(event) && this.socket?.readyState === 1 && this.state === 'online') this.socket.send(JSON.stringify({ type: 'event', event, data })); }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */
   run(send, bot, prompt, { signal, tools, onSession } = {}) {
     return new Promise((resolve, reject) => {
@@ -172,7 +188,7 @@ export class Link {
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
       this.runs.set(id, { onSession, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
-      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites } : null });
+      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: Boolean(tools.computer) } : null });
       signal?.addEventListener('abort', () => {
         send({ type: 'cancel', id });
         timer = setTimeout(() => this.runs.get(id)?.reject(new Error('Pedido cancelado.')), 8000);

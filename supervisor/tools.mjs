@@ -19,8 +19,17 @@ const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view
 const CHANGE = /(send|delete|create|update|modify|archive|trash|move|remove|write|draft|label|reply|forward|share|upload|insert|patch|add|set|mark|invite|cancel|accept|decline|post|edit|copy|rename)/i;
 export const connectorRead = action => READ.test(action) && !CHANGE.test(action);
 
+// Claude Code's own tools, when a bot answers from the computer. Edits inside the bot's folder never get here
+// (acceptEdits); reads and writes elsewhere and every command do, and are decided here like any other permission.
+const COMPUTER_TOOLS = { Bash: 'shell', Read: 'read', Glob: 'read', Grep: 'read', Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write' };
+// Keys, passwords and the MyBots pairing stay out of reach whatever the level.
+const SENSITIVE = /(^|[\s/~'"=])\.(ssh|gnupg|password-store|mybots-pc|aws|kube|docker)(\/|\s|$|['"])|\.claude\/\.credentials|\.codex\/auth\.json|\.config\/(gh|rclone)\b|\/etc\/(shadow|sudoers)|keyrings?\b/i;
+// Commands that change the system or leave the computer: the person always decides, even on Acesso total.
+const RISKY = /(^|[;&|(\s])(sudo|su|doas|pkexec|mkfs\S*|dd|shutdown|reboot|poweroff|systemctl|passwd|chown|crontab)(\s|$)|\brm\s+(-\S*\s+)*(\/|~|\$HOME)(\s|\/?\*?\s*$|$)|\bgit\s+push\b|\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b|>\s*\/dev\/sd/i;
+
 const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
-  'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva' };
+  'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina',
+  'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva' };
 const BROWSER_LABELS = { 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
@@ -59,11 +68,12 @@ export class Tools {
     this.outgoing = new Map();
     for (const approval of db.all("SELECT id FROM approvals WHERE state IN ('pending','approved')")) db.run("UPDATE approvals SET state='expired' WHERE id=?", approval.id);
   }
-  open(task, signal) {
+  /** A run's capability. `lane` says where the IA runs: on the computer, its own tools may ask for permission. */
+  open(task, signal, lane = 'phone') {
     const token = randomBytes(32).toString('hex');
     const workspace = join(this.db.directory, 'workspaces', task.bot_id); mkdirSync(workspace, { recursive: true, mode: 0o700 });
     mkdirSync(join(this.db.directory, 'secrets'), { recursive: true, mode: 0o700 });
-    const run = { taskId: task.id, botId: task.bot_id, signal, calls: new Map() };
+    const run = { taskId: task.id, botId: task.bot_id, signal, lane, calls: new Map() };
     this.runs.set(token, run);
     const close = () => {
       this.runs.delete(token);
@@ -259,6 +269,7 @@ export class Tools {
    */
   async connectorPermission(run, { tool_name: name, input }) {
     const deny = message => ({ behavior: 'deny', message });
+    if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
     const bot = this.db.requireBot(run.botId);
     if (this.policy(run.botId, 'account.connectors') === 'deny') return deny('Este bot não tem permissão para usar os apps da conta. A pessoa pode liberar em Permissões, no perfil dele.');
     const match = /^mcp__(.+?)__(.+)$/.exec(name);
@@ -269,6 +280,30 @@ export class Tools {
     const hash = createHash('sha256').update(JSON.stringify({ botId: run.botId, taskId: run.taskId, name, input })).digest('hex');
     const approved = await this.ask(run, 'account.connectors/' + name, input, hash, { server: { name: server.replace(/^claude_ai_/, '').replace(/_/g, ' ') }, tool: { name: action } }, bot.access === 'ask' ? 'account.connectors/write' : null);
     this.db.record(approved ? 'tool_done' : 'tool_denied', `${label}: ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
+    return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
+  }
+  /**
+   * The computer's files and terminal (Claude Code's own tools). Sensitive paths are refused; risky commands always
+   * go to the person; otherwise Acesso total runs, and Médio asks with "Sempre permitir" for each kind.
+   */
+  async computerPermission(run, name, input) {
+    const deny = message => ({ behavior: 'deny', message });
+    const kind = COMPUTER_TOOLS[name]; const bot = this.db.requireBot(run.botId);
+    if (run.lane !== 'pc') return deny('Isto só existe quando o bot responde pelo computador.');
+    if (this.policy(run.botId, 'computer') === 'deny') return deny('Este bot não pode mexer no computador. A pessoa pode liberar em Acesso, no perfil dele.');
+    const target = String(kind === 'shell' ? input.command || '' : input.file_path || input.notebook_path || input.path || input.pattern || '').slice(0, 2000);
+    if (SENSITIVE.test(target)) { this.db.record('tool_denied', `Computador: ${target.slice(0, 120)} bloqueado (senhas e chaves).`, run.botId, run.taskId); this.changed('activity.new'); return deny('Esse caminho guarda senhas ou chaves e fica fora do alcance dos bots.'); }
+    const risky = kind === 'shell' && RISKY.test(target);
+    const key = 'computer/' + kind;
+    const label = kind === 'shell' ? `comando ${target.slice(0, 160)}` : `${kind === 'read' ? 'ler' : 'salvar'} ${target.slice(0, 160)}`;
+    if (!risky && (bot.access === 'full' || this.saved(run.botId, key) === 'true' || this.saved(run.botId, 'computer') === 'true')) {
+      this.db.record('tool_done', `Computador: ${label}.`, run.botId, run.taskId); this.changed('activity.new');
+      return { behavior: 'allow', updatedInput: input };
+    }
+    const hash = createHash('sha256').update(JSON.stringify({ botId: run.botId, taskId: run.taskId, name, input })).digest('hex');
+    const shown = kind === 'shell' ? { command: target, ...(typeof input.description === 'string' ? { description: input.description.slice(0, 300) } : {}) } : { path: target };
+    const approved = await this.ask(run, key, shown, hash, null, risky ? null : key);
+    this.db.record(approved ? 'tool_done' : 'tool_denied', `Computador: ${label} ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
     return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
   }
   /**

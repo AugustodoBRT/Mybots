@@ -1,0 +1,17 @@
+[package]
+name = "mybots-desktop"
+version = "0.20.0"
+description = "MyBots no computador"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"

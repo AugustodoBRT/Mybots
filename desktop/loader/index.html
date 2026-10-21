@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>MyBots</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #090B10; color: #E9EDF5; font-family: system-ui, sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; text-align: center; }
+  h1 { font-size: 22px; margin: 18px 0 6px; } p { color: #8B94A6; font-size: 14px; max-width: 360px; line-height: 1.5; }
+  code { color: #7EE2B8; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: #7EE2B8; margin: auto; animation: pulse 1.2s infinite ease-in-out; }
+  @keyframes pulse { 50% { opacity: .25; transform: scale(.7); } }
+</style>
+</head>
+<body>
+<div>
+  <div class="dot"></div>
+  <h1>Abrindo o MyBots…</h1>
+  <p id="hint">Esperando o MyBots do computador.</p>
+</div>
+<script>
+  // The window shows the interface the computer's node serves; until the node answers, it waits here.
+  const target = 'http://127.0.0.1:3232/';
+  let tries = 0;
+  async function check() {
+    try { await fetch(target + 'health', { cache: 'no-store' }); location.replace(target); return; } catch {}
+    if (++tries === 8) document.getElementById('hint').innerHTML = 'O MyBots do computador não está rodando. Inicie com <code>node pc/node.mjs install</code> ou <code>systemctl --user start mybots-pc</code>.';
+    setTimeout(check, 1500);
+  }
+  check();
+</script>
+</body>
+</html>

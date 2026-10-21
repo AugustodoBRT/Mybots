@@ -15,6 +15,7 @@ import BotProfile from './BotProfile';
 import BotBrowserPanel, { BrowserHelpCard } from './BotBrowserPanel';
 import { RichText, FileCard, FileChip, FileBadge, fileIcon, formatSize } from './RichMessage';
 import { SupervisorClient } from './supervisor-client';
+import { desktop, column } from './desktop';
 import { activePhoneBots, createPhoneClient } from './phone';
 
 const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
@@ -328,7 +329,7 @@ function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnecti
     <View style={styles.homeHeader}>
       <View style={styles.brandRow}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={34} tile={false} /><Text style={styles.brand}>mybots</Text></View>
       <View style={styles.headerActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" onPress={onMode} style={styles.modeButton}><View style={[styles.statusDot, data?.connection?.loggedIn && styles.statusGood]} /><Text style={styles.modeButtonText}>{mode === 'phone' ? 'No celular' : 'No PC'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={styles.modeButton}><View style={[styles.statusDot, data?.connection?.loggedIn && styles.statusGood]} /><Text style={styles.modeButtonText}>{desktop ? 'No computador' : mode === 'phone' ? 'No celular' : 'No PC'}</Text></Pressable>
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={38} />
       </View>
     </View>
@@ -876,8 +877,11 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
   const selection = bot.model ? bot : data.defaultSelection;
-  const own = data.connections?.[selection?.provider || 'codex'];
-  const status = error || (own && !own.loggedIn ? own.message : !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
+  // A bot answering from the computer needs its IA logged in there, not on the phone; while the computer is off it just waits.
+  const presence = data.presence?.[bot.id]; const computer = data.nodes?.find(node => node.online);
+  const remote = presence?.where === 'pc' || (bot.home === 'pc' && !presence?.online);
+  const own = remote ? (presence?.online ? computer?.connections?.[selection?.provider || 'codex'] || { loggedIn: false, message: 'Esta IA não está conectada no computador.' } : null) : data.connections?.[selection?.provider || 'codex'];
+  const status = error || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
   const phone = mode === 'phone' && termuxAvailable;
   const [files, setFiles] = useState([]); const [composerError, setComposerError] = useState('');
   // The bot's own browser panel; it stays open while the person has taken over.
@@ -991,7 +995,9 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
         {phone && <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={typing || files.length >= 5} onPress={attach} style={({ pressed }) => [styles.composerTool, (typing || files.length >= 5) && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable>}
         <TextInput accessibilityLabel="Sua mensagem" value={draft} onChangeText={setDraft} editable={!typing}
           placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`} placeholderTextColor={C.faint}
-          multiline maxLength={8000} textAlignVertical="center" style={styles.messageInput} selectionColor={C.mint} />
+          multiline maxLength={8000} textAlignVertical="center" style={styles.messageInput} selectionColor={C.mint}
+          // On the computer, Enter sends and Shift+Enter breaks the line.
+          onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(draft, files).then(sent => sent && setFiles([])); } } : undefined} />
         {phone && !draft.trim() && !files.length ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={typing} onPress={speak}
           style={({ pressed }) => [styles.sendButton, styles.micButton, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable>
         : <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend}
@@ -1100,7 +1106,8 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
       </ScrollView>
       <View style={styles.composer}>
         <TextInput ref={input} accessibilityLabel="Mensagem para a sala" value={draft} onChangeText={setDraft} editable={!sending} multiline maxLength={8000} textAlignVertical="center" style={[styles.messageInput, { paddingLeft: 14 }]} selectionColor={C.mint}
-          placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} placeholderTextColor={C.faint} />
+          placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} placeholderTextColor={C.faint}
+          onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (draft.trim() && !sending) send(draft); } } : undefined} />
         <Pressable accessibilityRole="button" accessibilityLabel="Enviar para a sala" disabled={!draft.trim() || sending} onPress={() => send(draft)} style={({ pressed }) => [styles.sendButton, (!draft.trim() || sending) && styles.sendDisabled, pressed && styles.pressed]}>
           <Icon name="send" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
       </View>
@@ -1119,7 +1126,7 @@ function AppMain() {
   const [data, setData] = useState(null);
   const [apiToken, setApiToken] = useState('');
   const [apiBase, setApiBase] = useState(DEFAULT_API_URL);
-  const [mode, setMode] = useState('computer');
+  const [mode, setMode] = useState(desktop ? 'phone' : 'computer');
   const [localCache, setLocalCache] = useState(emptyLocalStore());
   const [selected, setSelected] = useState(null);
   // The open room, and the create/edit sheet (null closed, {} new, {room} editing).
@@ -1210,6 +1217,8 @@ function AppMain() {
   }, []);
   // Every (re)connection hands the supervisor the secrets key and, once per release, the connector bundle.
   const prepareSupervisor = useCallback(async () => {
+    // The window on the computer only talks to the phone; secrets, connectors and the time zone are the phone's.
+    if (desktop) return;
     await supervisor.current.call('secrets.unlock', { key: await readSecretsKey() });
     // Bot notifications are shown by MyBots itself; Android 13+ asks once.
     notificationPermission().catch(() => {});
@@ -1224,7 +1233,7 @@ function AppMain() {
   if (!supervisor.current) supervisor.current = new SupervisorClient({
     onEvent: (event, data) => {
       // A bot notice while the app is open: MyBots shows it and confirms, so Termux:API does not repeat it.
-      if (event === 'bot.notify' && data?.id) {
+      if (event === 'bot.notify' && data?.id && !desktop) {
         showBotNotification(data).then(shown => shown && supervisor.current.call('outbox.ack', { ids: [data.id] })).catch(() => {});
         return;
       }
@@ -1244,9 +1253,14 @@ function AppMain() {
     return next;
   }, [apiBase, apiToken]);
   const refreshPhone = useCallback(async (saved = localCache) => {
-    if (!termuxAvailable) throw new Error('O supervisor exige o APK próprio do MyBots.');
+    if (!termuxAvailable && !desktop) throw new Error('O supervisor exige o APK próprio do MyBots.');
     if (phoneConnecting.current) return phoneConnecting.current;
     phoneConnecting.current = (async () => {
+      if (desktop) {
+        setData(current => current || { bots: [], active: [], models: [], supervisorConnected: false, connection: { available: false, loggedIn: false, message: 'Conectando ao celular pelo computador…' }, device: 'MyBots no computador' });
+        await supervisor.current.connect({ port: desktop.port, token: desktop.token });
+        return loadSupervisorState();
+      }
       const store = { ...emptyLocalStore(), ...(saved || {}), mode: 'phone', bots: saved?.bots || [] };
       setLocalCache(store);
       setData(current => ({ ...(current || {}), bots: store.bots.filter(bot => !bot.deletedAt), active: activePhoneBots(store), models: current?.models || [],
@@ -1287,6 +1301,7 @@ function AppMain() {
   useEffect(() => {
     let mounted = true;
     const loadFromLink = async url => {
+      if (desktop) { if (mounted) setMode('phone'); await refreshPhone(); return; }
       const params = url ? new URL(url).searchParams : null;
       const token = params?.get('token');
       if (!token) {
@@ -1333,6 +1348,12 @@ function AppMain() {
 
   const fileAct = async (file, action) => {
     setFileBusy(file.id); setFileNote('');
+    // On the computer the node saves the file in ~/Downloads and opens it with the default app.
+    if (desktop) {
+      try { const result = await supervisor.current.call('desktop.file', { id: file.id, name: file.name, action }); if (action === 'save') setFileNote(`Salvo em ${result.path}.`); else setFileSheet(null); }
+      catch (error) { setFileNote(error.message); } finally { setFileBusy(null); }
+      return;
+    }
     try {
       if (!staged.current.has(file.id)) {
         let offset = 0, first = true;
@@ -1605,25 +1626,26 @@ function AppMain() {
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
           {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
             <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
-          {mode === 'phone' ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
-          {mode === 'phone' ? <><Text style={styles.sheetSection}>COMPUTADOR</Text><ComputerPanel computer={data?.computer} nodes={data?.nodes}
+          {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
+          {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>COMPUTADOR</Text><ComputerPanel computer={data?.computer} nodes={data?.nodes}
             onPair={async link => { const result = await supervisor.current.call('computer.pair', { link }); await loadSupervisorState(); return result; }}
             onForget={async () => { await supervisor.current.call('computer.forget', {}); await loadSupervisorState(); }}
             onRetry={async () => { await supervisor.current.call('computer.retry', {}); await loadSupervisorState(); }} /></> : null}
+          {desktop ? <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup, e-mail por senha de app, senhas de sites e o pareamento ficam nos Ajustes do app do celular.</Text></View> : <>
           <Text style={styles.sheetSection}>CELULAR</Text>
           {termuxAvailable ? <WidgetRow /> : null}
-          <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} />
+          <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
           {termuxAvailable ? <><Text style={styles.sheetSection}>SENHAS</Text><PasswordsPanel bots={data?.bots || []} /></> : null}
           <Text style={styles.sheetSection}>CONTAS E APPS</Text>
-          <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
+          {desktop ? null : <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();
             setMaintenanceText(result?.message || 'Conta de e-mail desconectada.');
-          })} />
+          })} />}
           <AccountConnections load={async refresh => supervisor.current.call('account.connectors', { refresh })} />
-          <AppConnections apps={data?.apps} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
+          {desktop ? null : <AppConnections apps={data?.apps} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();
             setMaintenanceText(method === 'app.remove' ? 'App desconectado; os bots perderam o acesso a ele.' : result?.status === 'connected' ? `${result.name}: ${result.tools.length} ferramentas disponíveis. Libere no perfil de cada bot.` : result?.message || 'Pronto.');
-          })} />
+          })} />}
           {termuxAvailable ? <><Text style={styles.sheetSection}>ATUALIZAÇÕES</Text>
             {update?.info?.available ? <UpdateCard compact update={update} onInstall={installUpdate} />
               : <View style={[styles.modeOption, styles.rowOption]}>
@@ -1632,7 +1654,7 @@ function AppMain() {
                   <Text style={[styles.optionDetail, update?.error && { color: C.amber }]}>{update?.checking ? 'Procurando…' : update?.error || (update?.info ? 'Você está na versão mais nova.' : 'O app procura versões novas sozinho ao abrir.')}</Text></View>
                 <Pressable accessibilityRole="button" disabled={update?.checking} onPress={() => checkUpdate(true)} style={styles.stopButton}><Icon name="refresh" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Procurar</Text></Pressable>
               </View>}</> : null}
-          <Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
+          {desktop ? null : <><Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
           <View style={styles.modeOption}><Text selectable style={styles.optionDetail}>{maintenanceText}</Text></View>
           <PrimaryButton icon="download" tone="ghost" title="Salvar backup agora" disabled={maintenanceBusy} onPress={() => maintenance(async () => {
             const backup = await saveBackup(); setMaintenanceText(`Backup salvo em ${backup.path}`);
@@ -1647,7 +1669,7 @@ function AppMain() {
             const result = await supervisor.current.call('environment.get');
             setMaintenanceText(`${device}\n\n${result.report}`);
           })} />
-          <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.mint} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable>
+          <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.mint} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable></>}
         </ScrollView>
       </View></View>
     </Modal>
@@ -1686,7 +1708,8 @@ function AppMain() {
         <View style={styles.sheetHandle} />
         {fileSheet ? <View style={{ alignItems: 'center', marginBottom: 6 }}><FileBadge file={fileSheet} size={64} /></View> : null}
         <SheetHeader title={fileSheet?.name || ''} subtitle={`${fileSheet ? formatSize(fileSheet.size) : ''}${fileBusy ? ' · preparando…' : ''}`} onClose={() => { setFileSheet(null); setFileNote(''); }} />
-        {[['open', 'Abrir', 'Num app do celular que abra este tipo de arquivo.', 'open'], ['share', 'Compartilhar', 'WhatsApp, Drive, e-mail ou outro app.', 'share'], ['save', 'Salvar em Downloads', 'Fica na pasta Download/MyBots.', 'download']].map(([action, title, detail, icon]) =>
+        {(desktop ? [['open', 'Abrir', 'No programa padrão do computador (fica salvo em Downloads).', 'open'], ['save', 'Salvar em Downloads', 'Na pasta Downloads do computador.', 'download']]
+          : [['open', 'Abrir', 'Num app do celular que abra este tipo de arquivo.', 'open'], ['share', 'Compartilhar', 'WhatsApp, Drive, e-mail ou outro app.', 'share'], ['save', 'Salvar em Downloads', 'Fica na pasta Download/MyBots.', 'download']]).map(([action, title, detail, icon]) =>
           <Pressable key={action} accessibilityRole="button" disabled={Boolean(fileBusy)} onPress={() => fileAct(fileSheet, action)} style={({ pressed }) => [styles.modeOption, styles.rowOption, fileBusy && { opacity: 0.5 }, pressed && styles.pressed]}>
             <View style={styles.rowIcon}><Icon name={icon} size={19} color={C.mint} /></View>
             <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{title}</Text><Text style={styles.optionDetail}>{detail}</Text></View>
@@ -1704,7 +1727,7 @@ function AppMain() {
 const TOP = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 50;
 const card = { backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 22 };
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: C.bg },
+  app: { flex: 1, backgroundColor: C.bg, ...column },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   // Buttons
   primaryButton: { minHeight: 52, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, borderRadius: 18, backgroundColor: C.mint, marginTop: 10 },
@@ -1887,7 +1910,7 @@ const styles = StyleSheet.create({
   choiceChevron: { position: 'absolute', right: 12, top: 17, color: C.muted, fontSize: 16 },
   // Sheets
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3' },
-  sheet: { maxHeight: '88%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: C.bg2, borderTopWidth: 1, borderColor: C.line2 },
+  sheet: { ...column, maxHeight: '88%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: C.bg2, borderTopWidth: 1, borderColor: C.line2 },
   sheetTall: { height: '90%' },
   sheetHandle: { alignSelf: 'center', width: 42, height: 5, borderRadius: 3, backgroundColor: C.line2, marginBottom: 12 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },

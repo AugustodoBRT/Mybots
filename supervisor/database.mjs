@@ -214,7 +214,7 @@ export class Database {
         if (key === 'grants') {
           // account.apps keeps the list of account apps the bot loads; every other grant is true or false.
           const apps = row.tool === 'account.apps' && (() => { try { const list = JSON.parse(row.body); return Array.isArray(list) && list.length <= 30 && list.every(name => typeof name === 'string' && name.length <= 60); } catch { return false; } })();
-          if (!(apps || ((TOOL_DEFINITIONS.some(tool => tool.name === row.tool) || /^(mcp:[0-9a-f]{8}|account\.connectors|browser)(\/write)?$/.test(row.tool)) && ['true','false'].includes(row.body))) || row.id !== row.bot_id + ':' + row.tool) throw new Error('Permissão inválida no backup.');
+          if (!(apps || ((TOOL_DEFINITIONS.some(tool => tool.name === row.tool) || /^(mcp:[0-9a-f]{8}|account\.connectors|browser)(\/write)?$|^computer\/(shell|write|read)$/.test(row.tool)) && ['true','false'].includes(row.body))) || row.id !== row.bot_id + ':' + row.tool) throw new Error('Permissão inválida no backup.');
         } else {
           // Items also keep their dedupe key and when their deadline notice went out.
           const { key: itemKey, remindedAt, ...args } = JSON.parse(row.body);

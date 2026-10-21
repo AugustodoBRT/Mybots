@@ -26,6 +26,8 @@ export const TOOL_DEFINITIONS = [
   { name: 'routine.list', label: 'Ver rotinas', description: 'Consulta as rotinas deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'routine.create', label: 'Criar rotinas', description: 'Propõe uma rotina por horário ou por notificação. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
+  // Bots answering from the paired computer: files in their own folder there are free; the rest goes by the level.
+  { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Fora da pasta e comandos pedem aprovação no Médio; sudo, apagar pastas inteiras e git push sempre pedem.' },
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
@@ -123,7 +125,8 @@ export function toolArguments(tool, args) {
   if (tool === 'connector.permission') {
     if (typeof args.tool_name !== 'string' || !args.tool_name || args.tool_name.length > 200) throw new Error('Pedido de permissão inválido.');
     const input = args.input === undefined ? {} : args.input;
-    if (!input || typeof input !== 'object' || Array.isArray(input) || JSON.stringify(input).length > 12000) throw new Error('Pedido de permissão inválido.');
+    // A file written on the computer comes whole in the request; the card only shows its path.
+    if (!input || typeof input !== 'object' || Array.isArray(input) || JSON.stringify(input).length > 300000) throw new Error('Pedido de permissão inválido.');
     return { tool_name: args.tool_name, input };
   }
   if (tool === 'attachment.read') {

@@ -28,3 +28,6 @@ supervisor/connectors/node_modules/
 mobile/modules/termux-bridge/android/src/main/assets/mybots-connectors.bin
 mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz
 mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.sha256
+pc/ui/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

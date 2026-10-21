@@ -18,7 +18,7 @@ export async function handleMcp(request, response, tools) {
   let message;
   try {
     let size = 0; const chunks = [];
-    for await (const chunk of request) { size += chunk.length; if (size > 16000) throw new Error('size'); chunks.push(chunk); }
+    for await (const chunk of request) { size += chunk.length; if (size > 400000) throw new Error('size'); chunks.push(chunk); }
     message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch { return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Pedido inválido.' } }); }
   if (!message || Array.isArray(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string') return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Pedido inválido.' } });

@@ -75,6 +75,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const broadcast = (event, data = {}) => {
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.bufferedAmount < 2_000_000) socket.send(JSON.stringify({ event, data }));
       for (const poller of widgetPollers) poller();
+      link?.event(event, data);
     };
     const vault = new Vault(directory);
     const bundle = bundleOption || new ConnectorBundle(directory);
@@ -243,6 +244,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
       email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
       computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' });
+    link.rpc = (method, params) => rpc(method, params);
     const rpc = async (method, params = {}) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
       switch (method) {

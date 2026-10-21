@@ -11,6 +11,7 @@ import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
+import { createUi, phoneBridge, DEFAULT_UI_PORT } from './ui.mjs';
 
 export const DEFAULT_PORT = 3230;
 const PAIRING_MS = 10 * 60000;
@@ -49,6 +50,23 @@ export function startPairing(directory, port = DEFAULT_PORT, advertise = address
   return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise() }), name: me.name };
 }
 
+/**
+ * Each bot's own folder on the computer, where it creates and edits freely: ~/MyBots/<name>. The folder keeps its
+ * name if the bot is renamed (the mapping is saved), and two bots with the same name get "Nome 2".
+ */
+export function workspaceFor(directory, projects, bot) {
+  const file = join(directory, 'workspaces.json'); const map = read(file, {});
+  const id = /^[0-9a-f-]{36}$/i.test(bot.id || '') ? bot.id : 'geral';
+  if (!map[id]) {
+    const base = String(bot.name || 'Bot').replace(/[\u0000-\u001f/\\:*?"<>|]/g, ' ').replace(/^\.+/, '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Bot';
+    const taken = new Set(Object.values(map));
+    let name = base; for (let n = 2; taken.has(join(projects, name)); n++) name = `${base} ${n}`;
+    map[id] = join(projects, name); write(file, map);
+  }
+  mkdirSync(map[id], { recursive: true, mode: 0o700 });
+  return map[id];
+}
+
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude') };
 /** Which IAs are logged in on this computer, and their models, for the phone to show and check. */
 async function localStatus() {
@@ -65,7 +83,7 @@ async function localStatus() {
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, log = () => {} } = {}) {
   const me = identity(directory);
   const phonesFile = join(directory, 'phones.json');
   const server = createHttps({ key: me.key, cert: me.cert, minVersion: 'TLSv1.3' }, (request, response) => response.writeHead(404).end());
@@ -74,6 +92,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const refresh = async () => { current = await status(); for (const ws of sockets.clients) if (ws.phone) ws.send(JSON.stringify({ type: 'status', ...current })); };
   await refresh().catch(() => {});
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
+  // The MyBots window on this computer talks to the phone through the paired phone's connection.
+  const bridge = phoneBridge();
+  const ui = createUi({ port: uiPort, phone: bridge, log, ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -84,7 +105,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     send({ type: 'hello', id: me.id, name: me.name, nonce });
 
     const ready = phone => {
-      clearTimeout(timer); ws.phone = phone;
+      clearTimeout(timer); ws.phone = phone; bridge.attach(ws); ui.broadcast('desktop.phone', { online: true });
       log(`${phone.name} conectado (${request.socket.remoteAddress}).`);
       send({ type: 'ready', id: me.id, name: me.name, addresses: advertise(), port: server.address().port, ...current });
     };
@@ -127,18 +148,20 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         }
         ready(phone); return;
       }
+      if (message.type === 'rpc_reply') { bridge.answer(message); return; }
+      if (message.type === 'event') { ui.broadcast(message.event, message.data); return; }
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
       if (message.type === 'cancel') { runs.get(message.id)?.abort('cancelled'); return; }
       if (message.type !== 'run' || typeof message.id !== 'string' || runs.has(message.id)) return;
       const controller = new AbortController(); runs.set(message.id, controller);
       try {
         const bot = message.bot || {};
-        const workspace = join(directory, 'workspaces', /^[0-9a-f-]{36}$/i.test(bot.id || '') ? bot.id : 'geral'); mkdirSync(workspace, { recursive: true, mode: 0o700 });
+        const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         log(`Respondendo como ${bot.name}.`);
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
-          tools: message.tools ? { ...message.tools, device: me.name, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, device: me.name, computer: message.tools.computer ? { workspace } : false, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {}
         });
         send({ type: 'done', id: message.id, reply });
@@ -152,13 +175,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       for (const controller of runs.values()) controller.abort('phone_lost');
       for (const done of waiting.values()) done({ status: 502, headers: {}, body: '' });
       proxy?.then(http => http.close(), () => {});
-      if (ws.phone) log(`${ws.phone.name} desconectado.`);
+      if (ws.phone) { log(`${ws.phone.name} desconectado.`); bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); }
     });
   });
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
-  return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, refresh,
+  const windowPort = await ui.listen();
+  return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
     phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone),
-    async close() { clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await new Promise(resolve => server.close(resolve)); } };
+    async close() { clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([new Promise(resolve => server.close(resolve)), ui.close()]); } };
 }

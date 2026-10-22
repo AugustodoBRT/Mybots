@@ -100,7 +100,7 @@ test('queue is persistent and startup marks uncertain running work as failed wit
   assert.equal(db.tasks().length, 1); db.close();
 });
 
-test('queued tasks survive restart, use saved session and run one at a time across bots', async t => {
+test('queued tasks survive restart, use saved session and run together across bots', async t => {
   const path = await directory(t); let db = new Database(path);
   const source = initial(); db.importLegacy(source); const second = db.create({ name: 'Outra' }, selection);
   const a = db.enqueue(source.bots[0].id, randomUUID(), 'Primeira', selection);
@@ -108,7 +108,7 @@ test('queued tasks survive restart, use saved session and run one at a time acro
   db = new Database(path); let concurrent = 0, maximum = 0; const sessions = [];
   const queue = new Queue(db, async bot => { concurrent++; maximum = Math.max(maximum, concurrent); sessions.push(bot.codexSessionId); await new Promise(resolve => setTimeout(resolve, 20)); concurrent--; return { text: 'Oi', codexSessionId: bot.codexSessionId || randomUUID(), ...selection }; });
   queue.recover(); queue.schedule(); await until(() => db.task(b.id).state === 'done');
-  assert.equal(db.task(a.id).state, 'done'); assert.equal(maximum, 1); assert.equal(sessions[0], source.bots[0].codexSessionId);
+  assert.equal(db.task(a.id).state, 'done'); assert.equal(maximum, 2); assert.equal(sessions[0], source.bots[0].codexSessionId);
   await queue.close(); db.close();
 });
 
@@ -148,20 +148,22 @@ test('cancel queued work, delete and restore preserve IDs and protect active wor
   const a = await f.client.call('bot.create', { name: 'Lua', ...selection });
   const b = await f.client.call('bot.create', { name: 'Sol', ...selection });
   const first = await f.client.call('chat.send', { botId: a.id, requestId: randomUUID(), text: 'Oi' }); await until(() => finish);
-  const queued = await f.client.call('chat.send', { botId: b.id, requestId: randomUUID(), text: 'Oi' });
+  // A bot answers one turn at a time: a second message to it waits in line (other bots would run alongside).
+  const queued = await f.client.call('chat.send', { botId: a.id, requestId: randomUUID(), text: 'Oi de novo' });
+  assert.equal(f.app.db.task(queued.taskId).state, 'queued');
   await f.client.call('task.cancel', { taskId: queued.taskId });
   assert.equal(f.app.db.task(queued.taskId).state, 'cancelled');
   await assert.rejects(f.client.call('bot.delete', { botId: a.id }), /Aguarde/);
   finish({ text: 'Oi', codexSessionId: randomUUID(), ...selection }); await until(() => f.app.db.task(first.taskId).state === 'done');
   const updated = await f.client.call('bot.update', { botId: a.id, name: 'Lua nova', instructions: 'Seja direta.' });
   assert.equal(updated.name, 'Lua nova'); assert.equal(updated.codexSessionId, undefined);
-  assert.equal(updated.messages.length, 2);
+  assert.equal(updated.messages.length, 3);
   const backup = await f.client.call('backup.create');
   const snapshot = await f.client.call('backup.read', { name: backup.name });
   await f.client.call('bot.delete', { botId: a.id });
   assert.equal((await f.client.call('bots.list')).length, 1);
   await f.client.call('backup.restore', { snapshot });
-  assert.equal((await f.client.call('bots.list')).find(bot => bot.id === a.id).messages.length, 2);
+  assert.equal((await f.client.call('bots.list')).find(bot => bot.id === a.id).messages.length, 3);
   await assert.rejects(f.client.call('backup.read', { name: '../token' }), /Backup inválido/);
   await assert.rejects(f.client.call('approval.respond', { approved: true }), /Nenhuma ação/);
 });

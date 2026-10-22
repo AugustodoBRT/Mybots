@@ -18,12 +18,18 @@ const STOPPED = {
   node_lost: 'O computador desconectou durante esta resposta. O histórico foi preservado; mande de novo quando ele voltar.'
 };
 
+// How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
+// from talking to the others. Small on the phone, whose Termux has little memory.
+export const LANE_LIMITS = { phone: 3, pc: 4 };
+
 /**
- * Turns run one at a time per device ("lane"): one on the phone and one on the connected computer, so a long job
- * on the computer does not hold the phone's bots. A turn whose bot lives on the computer waits while it is off.
+ * Different bots answer at the same time, up to the lane's limit; one bot answers one turn at a time (its private chat
+ * and its rooms share that), and the turns of one message to a room (several bots, or a chain of @) keep their order.
+ * A turn whose bot lives on the computer waits while it is off.
  */
 export class Queue extends EventEmitter {
-  constructor(db, execute = runReply, tools) { super(); this.db = db; this.execute = execute; this.tools = tools; this.running = new Map(); this.stopped = false; this.steps = new Map(); }
+  constructor(db, execute = runReply, tools) { super(); this.db = db; this.execute = execute; this.tools = tools; this.running = new Map(); // task id -> { id, lane, controller, done }
+    this.stopped = false; this.steps = new Map(); }
   recover() {
     for (const task of this.db.tasks().filter(task => ['running','waiting_approval'].includes(task.state))) {
       stopOrphan(task);
@@ -37,17 +43,19 @@ export class Queue extends EventEmitter {
     const bot = body ? JSON.parse(body) : null;
     return this.nodes ? this.nodes.lane(bot) : 'phone';
   }
-  /** The first queued turn for a free lane. A bot answers one turn at a time, and a room's turns keep their order. */
+  /** The first queued turn that may start: its lane has room, its bot is free and no earlier turn of its room message runs. */
   next() {
     // Conversation with the person goes before routine runs.
     const queued = this.db.all("SELECT id,bot_id FROM tasks WHERE state='queued' ORDER BY id IN (SELECT task_id FROM routine_runs),created_at,rowid");
-    const busyRooms = new Set(this.db.all("SELECT room_id FROM room_turns JOIN tasks ON tasks.id=room_turns.task_id WHERE tasks.state IN ('running','waiting_approval')").map(row => row.room_id));
+    // A room's turns of the same conversation (same origin) wait for each other; another message of the person does not wait.
+    const busyChains = new Set(this.db.all("SELECT room_id,origin_id FROM room_turns JOIN tasks ON tasks.id=room_turns.task_id WHERE tasks.state IN ('running','waiting_approval')").map(row => row.room_id + ':' + row.origin_id));
+    const used = {}; for (const current of this.running.values()) used[current.lane] = (used[current.lane] || 0) + 1;
     const busyBots = new Set(this.db.all("SELECT bot_id FROM tasks WHERE state IN ('running','waiting_approval')").map(row => row.bot_id));
     for (const task of queued) {
       const lane = this.laneOf(task.bot_id);
-      if (!lane || this.running.has(lane) || busyBots.has(task.bot_id)) continue;
-      const room = this.db.roomTurn(task.id)?.room_id;
-      if (room && busyRooms.has(room)) continue;
+      if (!lane || (used[lane] || 0) >= (LANE_LIMITS[lane] || 1) || busyBots.has(task.bot_id)) continue;
+      const turn = this.db.roomTurn(task.id);
+      if (turn && busyChains.has(turn.room_id + ':' + turn.origin_id)) continue;
       return { id: task.id, lane };
     }
     return null;
@@ -58,7 +66,7 @@ export class Queue extends EventEmitter {
     if (!next) return;
     const task = this.db.start(next.id);
     const controller = new AbortController();
-    const current = { id: task.id, controller, done: null }; this.running.set(next.lane, current);
+    const current = { id: task.id, lane: next.lane, controller, done: null }; this.running.set(task.id, current);
     const execute = next.lane === 'phone' ? this.execute : this.nodes.executor(next.lane);
     const capability = this.tools?.open(task, controller.signal, next.lane);
     this.emit('changed', { event: 'task.progress', taskId: task.id });
@@ -108,22 +116,22 @@ export class Queue extends EventEmitter {
         this.db.finish(task.id, controller.signal.aborted && !stopped ? 'cancelled' : 'failed', { attachments: this.tools?.takeOutgoing(task.id) || [] }, detail);
       } finally {
         capability?.close();
-        this.running.delete(next.lane); this.steps.delete(task.id);
+        this.running.delete(task.id); this.steps.delete(task.id);
         this.emit('changed', { event: 'task.done', taskId: task.id });
         this.schedule();
       }
     })();
-    // The other lane may have work too.
+    // Other bots, or the other lane, may have work too.
     this.schedule();
     await current.done;
   }
   /** The computer went away: its running turn ends as interrupted (never replayed), waiting turns keep waiting. */
-  lost(lane = 'pc') { this.running.get(lane)?.controller.abort('node_lost'); this.schedule(); }
+  lost(lane = 'pc') { for (const current of this.running.values()) if (current.lane === lane) current.controller.abort('node_lost'); this.schedule(); }
   async cancel(id) {
     const task = this.db.task(id);
     if (!task) throw new Error('Tarefa não encontrada.');
     if (!['queued','running','waiting_approval'].includes(task.state)) return task;
-    const current = [...this.running.values()].find(item => item.id === id);
+    const current = this.running.get(id);
     if (current) {
       this.db.run('UPDATE tasks SET cancel_requested=1 WHERE id=?', id);
       current.controller.abort('cancelled');

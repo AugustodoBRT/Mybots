@@ -15,7 +15,7 @@ async function until(check) { for (let i = 0; i < 600; i++) { if (await check())
 async function setup(t, answer = bot => `Sou ${bot.name}.`) {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-rooms-'));
   const calls = [];
-  const execute = async (bot, prompt) => { calls.push({ bot: bot.name, prompt, session: bot.codexSessionId }); const session = bot.codexSessionId || randomUUID(); return { text: answer(bot, prompt, calls), ...selection, codexSessionId: session }; };
+  const execute = async (bot, prompt) => { calls.push({ bot: bot.name, prompt, session: bot.codexSessionId }); const session = bot.codexSessionId || randomUUID(); return { text: await answer(bot, prompt, calls), ...selection, codexSessionId: session }; };
   const app = await createSupervisor({ directory, port: 0, codex, execute });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const make = name => app.rpc('bot.create', { name, instructions: `Bot ${name}.`, ...selection });
@@ -88,4 +88,25 @@ test('rooms survive a backup restore; a room with answers in line cannot be dele
   await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: 'de novo' });
   await assert.rejects(f.app.rpc('room.delete', { roomId: room.id }), /Aguarde/);
   release(); await f.idle();
+});
+
+test('a bot working for a long time does not hold the others: private chats and the room go on, while one bot still answers one turn at a time', async t => {
+  let release; const hold = new Promise(resolve => { release = resolve; });
+  const f = await setup(t, async bot => { if (bot.name === 'Lento') await hold; return `Sou ${bot.name}.`; });
+  const [slow, quick, outside] = [await f.make('Lento'), await f.make('Rapido'), await f.make('Fora')];
+  const room = await f.app.rpc('room.create', { name: 'Equipe', botIds: [slow.id, quick.id] });
+  await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Lento faça o trabalho grande' });
+  await until(() => f.app.db.tasks().some(task => task.bot_id === slow.id && task.state === 'running'));
+  // Another message of the person to the other member of the same room, and a private chat with it: both answer now.
+  await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Rapido e você?' });
+  await until(() => f.app.db.room(room.id).messages.some(item => item.botId === quick.id));
+  await f.app.rpc('chat.send', { botId: quick.id, requestId: randomUUID(), text: 'Oi no privado' });
+  await until(() => f.app.db.bot(quick.id).messages.some(item => item.role === 'assistant'));
+  // The busy bot itself waits its turn: a second message to it stays queued, in order.
+  const again = await f.app.rpc('chat.send', { botId: slow.id, requestId: randomUUID(), text: 'E no privado?' });
+  assert.equal(f.app.db.task(again.taskId).state, 'queued');
+  assert.equal(f.app.db.task(f.app.db.all('SELECT task_id FROM room_turns').find(row => f.app.db.task(row.task_id).bot_id === slow.id).task_id).state, 'running');
+  release(); await f.idle();
+  assert.equal(f.app.db.bot(slow.id).messages.filter(item => item.role === 'assistant').length, 1);
+  assert.equal(f.app.db.bot(outside.id).messages.length, 0);
 });

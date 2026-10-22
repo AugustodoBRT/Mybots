@@ -716,3 +716,11 @@ Release pública [v49](https://github.com/AugustodoBRT/Mybots/releases/tag/v49) 
 **167 testes passando** (novo `tests/team.test.mjs`). Interface das salas e do perfil não conferida no emulador antes da Release (verificada só por compilação do APK e pelos testes do supervisor).
 
 APK `dist/apk/mybots-v50.apk`, versionCode 50, 0.30.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `c3c63f026ea6289296323f89105c667de65c50b4f49a75c6541ca88897eb2826`.
+
+
+## 22/10/2026 — v51 (0.30.1): bots diferentes respondem ao mesmo tempo
+
+- **Fila**: antes rodava uma resposta por vez em cada dispositivo, e uma sala inteira esperava o bot ocupado. Agora bots diferentes respondem juntos (`LANE_LIMITS`: 3 no celular, 4 no computador). Um bot responde um turno por vez (privado e salas juntos); numa sala, só as respostas a uma mesma mensagem (mesma origem) mantêm a ordem, então falar com outro bot da sala enquanto um trabalha não entra na fila.
+- **168 testes passando**: novo teste em `tests/rooms.test.mjs` (bot lento, outro da sala, privado dele e bot de fora); dois testes antigos de `tests/supervisor.test.mjs` ajustados (dois bots rodam juntos; a fila de um mesmo bot continua em ordem). Não conferido no emulador nem no celular real.
+
+APK `dist/apk/mybots-v51.apk`, versionCode 51, 0.30.1, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `5d4b44d47331166cef34b9b67f280dbba1403fc08fdf174f55f7dc602550a30b`.

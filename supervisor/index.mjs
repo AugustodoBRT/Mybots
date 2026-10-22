@@ -13,6 +13,7 @@ import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { PROMPT_VERSION } from '../mobile/local.js';
 import { Rooms } from './rooms.mjs';
+import { Team } from './team.mjs';
 import { selectionFor, PROVIDER_NAMES } from '../lib/models.mjs';
 import { handleMcp } from './mcp/http.mjs';
 import { Vault } from './vault.mjs';
@@ -114,6 +115,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device }); queue.tools = tools;
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
+    tools.team = new Team(db, { rooms, changed: broadcast, selectionFor: bot => selectionFor(catalog(), bot),
+      createBot: (data, selection) => { const bot = db.create(data, selection); tools.setAccountApps(bot.id, []); return bot; } });
     // The computer: turns of its bots wait while it is off and start as soon as it connects.
     nodes = new Nodes(db, { changed: (event, data) => { if (data?.node && !nodes.computer()) queue.lost('pc'); else queue.schedule(); broadcast(event, data); broadcast('activity.new'); } }); queue.nodes = nodes;
     // The models to pick from: the phone's, plus those of an IA that is logged in only on the computer.
@@ -145,7 +148,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       if (!status?.loggedIn) return { error: status?.message || 'a IA deste bot não está conectada.' };
       try { return { selection: selectionFor(catalog(), bot) }; } catch (error) { return { error: error.message }; }
     };
-    const attachments = new Attachments(db); tools.attachments = attachments;
+    const attachments = new Attachments(db); tools.attachments = attachments; rooms.attachments = attachments;
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
     browser = new Browser({ changed: broadcast }); tools.browser = browser;
     attachments.pdf = args => browser.device('pdfRead', args);
@@ -317,7 +320,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'room.create': return rooms.create(params);
         case 'room.update': return rooms.update(params.roomId, params);
         case 'room.delete': rooms.remove(params.roomId); return { deleted: true };
-        case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection); }
+        case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection, params.attachments); }
         case 'computer.pair': { if (typeof params.link !== 'string' || params.link.length > 2000) throw new Error('Leia o QR do computador.'); const result = await link.pair(params.link); broadcast('activity.new'); return result; }
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();

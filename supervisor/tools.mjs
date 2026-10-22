@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
-import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode } from './tool-policy.mjs';
+import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode } from './tool-policy.mjs';
 import { BROWSER_NOTICE } from './browser.mjs';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
@@ -142,6 +142,8 @@ export class Tools {
   policy(botId, tool) {
     const bot = this.db.requireBot(botId); const saved = this.saved(botId, tool);
     // Desktop is never inherited from the level, another permission, or an old bot's defaults.
+    // The team switch is the person's, at every level: off blocks it even on Acesso total; Pouco acesso needs it turned on.
+    if (tool === 'team') return saved === 'false' ? 'deny' : bot.access === 'basic' ? (saved === 'true' ? 'allow' : 'deny') : bot.access ? 'allow' : this.allowed(botId, tool) ? 'allow' : 'deny';
     if (tool === 'desktop') return bot.access !== 'basic' && bot.home !== 'phone' && saved === 'true' ? 'allow' : 'deny';
     if (TOOL_DEFINITIONS.find(item => item.name === tool)?.internal) return 'allow';
     if (bot.access === 'full') return 'allow';
@@ -202,7 +204,7 @@ export class Tools {
     if (previous) { if (previous.hash !== hash) throw new Error('Esta chamada já foi usada com outros argumentos.'); return previous.promise; }
     if (run.calls.size >= 100 || run.busy) throw new Error('Aguarde a ferramenta atual ou inicie outra mensagem.');
     run.busy = true;
-    const promise = (app ? this.performApp(run, tool, app, normalized, hash) : DESKTOP_TOOLS.includes(tool) ? this.performDesktop(run, tool, normalized, hash) : BROWSER_TOOLS.includes(tool) ? this.performBrowser(run, tool, normalized, hash) : this.perform(run, tool, normalized, hash)).finally(() => { run.busy = false; });
+    const promise = (app ? this.performApp(run, tool, app, normalized, hash) : DESKTOP_TOOLS.includes(tool) ? this.performDesktop(run, tool, normalized, hash) : TEAM_TOOLS.includes(tool) ? this.performTeam(run, tool, normalized) : BROWSER_TOOLS.includes(tool) ? this.performBrowser(run, tool, normalized, hash) : this.perform(run, tool, normalized, hash)).finally(() => { run.busy = false; });
     run.calls.set(callId, { hash, promise }); return promise;
   }
   async perform(run, tool, args, hash) {
@@ -401,6 +403,18 @@ export class Tools {
    * The bot's browser runs in the app. Using it follows the "browser" switch and level (Médio asks the first time);
    * sending a form (a submit button, or typing with submit) is a write: on Médio it asks, with "Sempre permitir".
    */
+  /** Team tools never ask: the switch (Permissões → Equipe de bots) is the person's decision. */
+  performTeam(run, tool, args) {
+    try {
+      this.requireGrant(run, 'team');
+      if (!this.team) throw new Error('A equipe de bots não está disponível.');
+      const result = this.team.perform(run, tool, args);
+      this.db.record('tool_done', `Equipe: ${tool.slice(5).replace(/_/g, ' ')} concluído.`, run.botId, run.taskId); this.changed('activity.new');
+      return Promise.resolve(result);
+    } catch (error) {
+      this.db.record('tool_denied', `Equipe: ${error.message}`.slice(0, 300), run.botId, run.taskId); this.changed('activity.new'); return Promise.reject(error);
+    }
+  }
   async performDesktop(run, tool, args, hash) {
     try {
       if (run.lane !== 'pc' || !this.pcCommand) throw new Error('Isto só existe quando o bot responde pelo computador.');

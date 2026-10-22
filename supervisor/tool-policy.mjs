@@ -34,12 +34,15 @@ export const TOOL_DEFINITIONS = [
   { name: 'skill.run', label: 'Usar habilidades', description: 'Roda no celular uma habilidade deste bot (um programa que você aprovou) e lê o resultado.', readOnly: true, defaultAllowed: true },
   { name: 'skill.propose', label: 'Criar habilidades', description: 'Propõe instalar no celular um programa que o bot escreveu (ex.: buscar vagas todo dia), com os sites que ele acessa. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
+  // The team: bots making bots, opening rooms, adding and removing members. No approval cards; one switch turns it all off.
+  { name: 'team', label: 'Equipe de bots', description: 'Criar outros bots, abrir salas, pôr e tirar bots delas, sair sozinho e chamar os outros para trabalhar (@Nome), tudo sem perguntar. Um bot nunca cria outro com mais acesso do que o próprio. Desligado em Pouco acesso, a menos que você ligue.', defaultAllowed: true },
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
 export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
-export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : tool;
+export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : TEAM_TOOLS.includes(tool) ? 'team' : tool;
 export const AVATARS = ['orbit', 'pixel', 'cat', 'spark'];
 // Pouco acesso, médio (pergunta na primeira vez) e acesso total. Bots without a level keep their switches.
 export const ACCESS_LEVELS = ['basic', 'ask', 'full'];
@@ -74,6 +77,8 @@ export function toolArguments(tool, args) {
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
     'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
+    'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
+    'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
     'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
@@ -152,6 +157,23 @@ export function toolArguments(tool, args) {
     if (!['open', 'done', 'all'].includes(state)) throw new Error('Use state open, done ou all.');
     return { state, limit: integer('limit', 1, 200, 50) };
   }
+  if (tool === 'team.bots' || tool === 'team.rooms') return {};
+  if (tool === 'team.create_bot') {
+    const color = text('color', 10, true); const avatar = text('avatar', 10, true); const access = text('access', 10, true); const home = text('home', 10, true);
+    if (color && !['green','blue','purple','orange'].includes(color)) throw new Error('Use color green, blue, purple ou orange.');
+    if (avatar && !AVATARS.includes(avatar)) throw new Error('Use avatar orbit, pixel, cat ou spark.');
+    if (access && !ACCESS_LEVELS.includes(access)) throw new Error('Use access basic, ask ou full.');
+    if (home && !HOMES.includes(home)) throw new Error('Use home phone, pc ou any.');
+    return { name: text('name', 40), instructions: text('instructions', 2000, true), ...(color ? { color } : {}), ...(avatar ? { avatar } : {}), ...(access ? { access } : {}), ...(home ? { home } : {}) };
+  }
+  if (tool === 'team.create_room') {
+    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 7 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 60)) throw new Error('Em bots, liste de 1 a 7 nomes (ou ids) de bots; você entra na sala sozinho.');
+    return { name: text('name', 40), bots: args.bots.map(item => item.trim()), message: text('message', 4000, true) };
+  }
+  if (tool === 'team.add_to_room' || tool === 'team.remove_from_room') return { room: text('room', 60), bot: tool === 'team.add_to_room' ? text('bot', 60) : text('bot', 60, true) };
+  if (tool === 'team.leave_room' || tool === 'team.close_room') return { room: text('room', 60) };
+  if (tool === 'team.post') return { room: text('room', 60), text: text('text', 4000) };
+  if (tool === 'team.read_room') return { room: text('room', 60), limit: integer('limit', 1, 60, 30) };
   if (tool === 'skill.list') return {};
   if (tool === 'skill.run') {
     const input = args.input === undefined ? {} : args.input;

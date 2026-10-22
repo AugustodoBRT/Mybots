@@ -67,7 +67,7 @@ test('a bot naming another hands it the next turn, at most MAX_ROUNDS times afte
   await f.idle();
   const answers = f.app.db.room(room.id).messages.filter(item => item.role === 'assistant');
   assert.equal(answers.length, 1 + MAX_ROUNDS);
-  assert.deepEqual(answers.map(item => item.botId), [ping.id, pong.id, ping.id, pong.id]);
+  assert.deepEqual(answers.map(item => item.botId), Array.from({ length: 1 + MAX_ROUNDS }, (_, index) => index % 2 ? pong.id : ping.id));
   // Turns from other bots tell the bot who called it.
   assert.match(f.calls[1].prompt, /Ping chamou você/);
 });

@@ -705,3 +705,14 @@ APK `dist/apk/mybots-v48.apk`, versionCode 48, 0.28.0, somente ARM64, build offl
 APK `dist/apk/mybots-v49.apk`, versionCode 49, 0.29.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `994b3672ba3e0abb547e116ee851be65a5352e7989225d89c9276ee7ef87505a`.
 
 Release pública [v49](https://github.com/AugustodoBRT/Mybots/releases/tag/v49) conferida com `mybots-v49.apk` e `.sha256`, incluindo hash do APK igual ao local. **PC atualizado nesta mesma entrega**, sem pedir nova confirmação: interface regenerada, janela compilada/instalada e binário instalado conferido com o compilado. Serviço real `mybots-pc` reiniciado em 21/10/2026 às 14h17 (Brasília), `active/running`. UDP 3234 ouvindo; pergunta por broadcast feita do próprio PC recebeu a resposta real com porta 3230 e endereço `192.168.1.106`. Isso confere o serviço na interface de rede, sem substituir o aceite no celular físico. Verificação local `ok: true`, celular ainda desconectado no momento da entrega. Nó temporário encerrado.
+
+
+## 22/10/2026 — v50 (0.30.0): arquivos em salas, equipe de bots e apps do Codex
+
+- **Arquivos em salas**: `room.send` aceita `attachments` (até 5 arquivos, 10 MB). O arquivo é guardado uma vez e aberto à sala (`room_files`, migração v8); cada bot que está na sala lê com `attachment_read`, inclusive quem entrar depois. Bot fora da sala não lê. O app ganhou o "+" e a bandeja de anexos nas salas (modo Só no celular, como na conversa privada).
+- **Equipe de bots** (permissão nova "Equipe de bots", ligada por padrão; desligada em Pouco acesso até a pessoa ligar; o interruptor desligado vale até no Acesso total): `team_bots`, `team_rooms`, `team_create_bot`, `team_create_room`, `team_add_to_room`, `team_remove_from_room`, `team_leave_room`, `team_close_room`, `team_post`, `team_read_room`. Sem cartão de aprovação. Freios: bot criado nunca tem mais acesso que o criador; só mexe em sala em que está ou que criou; sala fica com 2 bots ou mais; até 5 bots e 3 salas por vez, 30 bots e 20 salas no total; encadeamento de chamadas por @ sobe de 3 para 6 rodadas. Entradas e saídas aparecem como avisos na sala.
+- **Apps da conta no Codex**: bots Codex novos nasciam sem apps (a lista de escolha só existia para Claude). Perfil → Permissões ganhou o interruptor "Apps da sua conta do Codex". Conferido ao vivo com o Codex real: com `apps` ligado e as opções do MyBots, o Indeed busca vagas.
+
+**167 testes passando** (novo `tests/team.test.mjs`). Interface das salas e do perfil não conferida no emulador antes da Release (verificada só por compilação do APK e pelos testes do supervisor).
+
+APK `dist/apk/mybots-v50.apk`, versionCode 50, 0.30.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `c3c63f026ea6289296323f89105c667de65c50b4f49a75c6541ca88897eb2826`.

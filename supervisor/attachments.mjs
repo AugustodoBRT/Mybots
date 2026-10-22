@@ -47,9 +47,23 @@ export class Attachments {
   }
   meta(botId, id) {
     if (!uuid(id)) throw new Error('Informe o id de um arquivo deste bot (veja em files_list).');
-    const row = this.db.get('SELECT * FROM attachments WHERE id=? AND bot_id=?', id, botId);
+    const row = this.db.get('SELECT * FROM attachments WHERE id=? AND bot_id=?', id, botId) || this.shared(botId, id);
     if (!row) throw new Error('Arquivo não encontrado entre os arquivos deste bot.');
     return row;
+  }
+  /** A file sent to a room is readable by the bots that are in that room now (also the ones who joined later). */
+  shared(botId, id) {
+    for (const link of this.db.all('SELECT room_id FROM room_files WHERE attachment_id=?', id)) {
+      const room = this.db.room(link.room_id);
+      if (room && !room.deletedAt && room.botIds.includes(botId)) return this.db.get('SELECT * FROM attachments WHERE id=?', id);
+    }
+    return null;
+  }
+  /** Stores what the person sent to a room under its first member and opens it to the room. */
+  saveForRoom(room, files) {
+    const saved = this.save(room.botIds[0], files);
+    for (const file of saved) this.db.run('INSERT OR IGNORE INTO room_files VALUES(?,?)', file.id, room.id);
+    return saved;
   }
   bytes(botId, id) { this.meta(botId, id); return readFileSync(this.path(id)); }
   discard(items) { for (const item of items) { rmSync(this.path(item.id), { force: true }); this.db.run('DELETE FROM attachments WHERE id=?', item.id); } }

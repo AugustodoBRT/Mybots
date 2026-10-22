@@ -83,7 +83,7 @@ test('memory, local items, grants and avatars survive backup restore and databas
   const snapshot = f.db.snapshot(); const file = f.db.backup();
   const invalid = structuredClone(snapshot); invalid.toolsState.grants[0].bot_id = randomUUID(); assert.throws(() => f.db.restore(invalid));
   f.db.run('DELETE FROM memory'); f.db.run('DELETE FROM pending_items'); f.db.restore(JSON.parse(await readFile(file.path, 'utf8')));
-  assert.equal(f.db.all('SELECT * FROM memory').length, 1); assert.equal(f.db.all('SELECT * FROM pending_items').length, 1); assert.equal(f.db.bot(f.bot.id).avatar, 'cat'); assert.equal(f.db.get("PRAGMA user_version").user_version, 7);
+  assert.equal(f.db.all('SELECT * FROM memory').length, 1); assert.equal(f.db.all('SELECT * FROM pending_items').length, 1); assert.equal(f.db.bot(f.bot.id).avatar, 'cat'); assert.equal(f.db.get("PRAGMA user_version").user_version, 8);
 });
 
 test('real stdio MCP handshake routes through HTTP and UI approval response without blocking state reads', async t => {
@@ -96,7 +96,7 @@ test('real stdio MCP handshake routes through HTTP and UI approval response with
   child.stdout.on('data', chunk => { buffer += chunk; let i; while ((i = buffer.indexOf('\n')) >= 0) { replies.push(JSON.parse(buffer.slice(0, i))); buffer = buffer.slice(i + 1); } });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   send(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); await until(() => replies.some(r => r.id === 1)); assert.equal(replies[0].result.serverInfo.name, 'mybots-tools');
-  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 38);
+  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 48);
   send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } }); await until(() => app.state().approvals.length);
   const approval = app.state().approvals[0]; assert.equal(app.db.all('SELECT * FROM pending_items').length, 0);
   await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });

@@ -27,7 +27,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 7) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 8) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -95,6 +95,12 @@ export class Database {
     if (version < 7) this.transaction(() => {
       this.db.exec(`CREATE TABLE skills (id TEXT PRIMARY KEY, body TEXT NOT NULL, created_at TEXT NOT NULL);
         PRAGMA user_version=7;`);
+    });
+    // Files the person sends to a room: kept once, readable by whoever is a member of that room.
+    if (version < 8) this.transaction(() => {
+      this.db.exec(`CREATE TABLE room_files (attachment_id TEXT NOT NULL, room_id TEXT NOT NULL, PRIMARY KEY (attachment_id, room_id));
+        CREATE INDEX room_files_room ON room_files(room_id);
+        PRAGMA user_version=8;`);
     });
   }
   /** One reply's tokens. Codex reports the session's running totals: the reply is the difference from the last one. */

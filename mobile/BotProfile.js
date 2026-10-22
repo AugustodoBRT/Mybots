@@ -111,6 +111,15 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
               </View>)}
               {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
             </View></> : null}
+          {phone && bot && bot.provider !== 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
+            <Text style={s.label}>APPS DA SUA CONTA DO CODEX</Text>
+            <View style={s.group}>
+              <View style={[s.permission, { borderBottomWidth: 0 }]}>
+                <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar os apps conectados (Indeed, Gmail, Agenda…)</Text>
+                  <Text style={s.hint}>São os apps que você ligou na sua conta do ChatGPT/Codex. Ligado, {bot.name} pode usá-los; desligado, não vê nenhum. Cada app usado gasta mais tokens por resposta.</Text></View>
+                {toggle(accountApps.length > 0, on => act(() => onApps(on ? ['ChatGPT'] : [])), 'Apps da conta do Codex')}
+              </View>
+            </View></> : null}
           {phone && bot?.home && bot.home !== 'phone' ? <>
             <Text style={s.label}>NAVEGADOR NO COMPUTADOR</Text>
             {[

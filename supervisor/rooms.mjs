@@ -4,8 +4,8 @@ import { TOOLS_TEXT } from '../mobile/local.js';
 
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
 // Bots asking each other (@Nome) continue at most this many rounds after the person's message.
-export const MAX_ROUNDS = 3;
-const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+export const MAX_ROUNDS = 6;
+export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** The members named with @ in a text ("@Faculdade", "@pobre jobs"), in order, without repeats. */
 export function mentions(text, bots) {
@@ -34,9 +34,9 @@ export class Rooms {
     for (const id of botIds) this.db.requireBot(id);
     return { name: name.trim(), botIds };
   }
-  create(data) {
+  create(data, extra = {}) {
     const { name, botIds } = this.validate(data); const stamp = now();
-    const room = { id: randomUUID(), name, botIds, messages: [], createdAt: stamp, updatedAt: stamp };
+    const room = { id: randomUUID(), name, botIds, messages: [], ...extra, createdAt: stamp, updatedAt: stamp };
     this.db.transaction(() => { this.db.putRoom(room); this.db.record('room_created', `Sala ${name} criada com ${botIds.length} bots.`); });
     this.changed('activity.new'); return room;
   }
@@ -46,9 +46,11 @@ export class Rooms {
     const updated = { ...room, ...next, updatedAt: now() };
     this.db.putRoom(updated); this.changed('activity.new'); return updated;
   }
-  remove(id) {
+  remove(id, { except } = {}) {
     const room = this.db.requireRoom(id);
-    if (this.active(id).length) throw new Error('Aguarde os bots terminarem de responder antes de apagar a sala.');
+    // A bot closing the room from inside its own turn does not wait for itself.
+    this.cancelQueued(id, { except });
+    if (this.active(id).filter(task => task.id !== except).length) throw new Error('Aguarde os bots terminarem de responder antes de apagar a sala.');
     this.db.transaction(() => {
       this.db.putRoom({ ...room, deletedAt: now(), updatedAt: now(), messages: [] });
       this.db.run('DELETE FROM room_sessions WHERE room_id=?', id);
@@ -56,24 +58,59 @@ export class Rooms {
     });
     this.changed('activity.new');
   }
+  /** Turns still waiting (not running) in a room, of one bot or of all of them, are dropped. */
+  cancelQueued(roomId, { botId, except } = {}) {
+    for (const task of this.active(roomId)) if (task.state === 'queued' && task.id !== except && (!botId || task.bot_id === botId)) this.db.finish(task.id, 'cancelled', null, 'Esta vez foi cancelada: o bot saiu da sala ou a sala foi encerrada.');
+  }
+  /** A line of the room's history that nobody said: someone joined, left or was removed. */
+  notice(roomId, text) {
+    const room = this.db.requireRoom(roomId); const stamp = now();
+    this.db.putRoom({ ...room, messages: [...room.messages, { id: randomUUID(), role: 'system', text, status: 'complete', createdAt: stamp }].slice(-1000), updatedAt: stamp });
+  }
+  /**
+   * A bot writes in a room by itself (not as an answer to a turn). The members it names with @ get a turn, one
+   * round after the turn it is in (or the first, from a private chat), so a chain still stops at MAX_ROUNDS.
+   */
+  post(roomId, bot, text, selectionFor, round = 0) {
+    const room = this.db.requireRoom(roomId);
+    if (!room.botIds.includes(bot.id)) throw new Error('Você não está nesta sala.');
+    const clean = typeof text === 'string' ? text.trim() : '';
+    if (!clean || clean.length > 4000) throw new Error('Escreva de 1 a 4.000 caracteres.');
+    const called = mentions(clean, this.members(room)).filter(item => item.id !== bot.id);
+    const turns = round + 1 <= MAX_ROUNDS ? called : [];
+    if (turns.length && this.active(roomId).length + turns.length > 12) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Espere um pouco.');
+    const stamp = now(); const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: stamp };
+    const waiting = new Set(this.active(roomId).filter(task => task.state === 'queued').map(task => task.bot_id));
+    this.db.transaction(() => {
+      this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
+      for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, message.id, selectionFor(target));
+    });
+    this.changed('task.progress'); this.schedule();
+    return { posted: true, called: turns.map(item => item.name), ...(called.length > turns.length ? { limit: 'Limite de encadeamento atingido: ninguém foi chamado agora. Espere a pessoa continuar.' } : {}), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
+  }
   /** The room's tasks still to answer, oldest first. */
   active(roomId) {
     return this.db.all('SELECT t.*, r.round, r.room_id FROM room_turns r JOIN tasks t ON t.id=r.task_id WHERE r.room_id=? ORDER BY t.created_at, t.rowid', roomId).filter(task => ACTIVE.includes(task.state));
   }
   /** The person writes in the room: the named bots (or all of them) get a turn each, in order. */
-  send(roomId, requestId, text, selectionFor) {
+  send(roomId, requestId, text, selectionFor, files) {
     const room = this.db.requireRoom(roomId);
-    if (!uuid(requestId) || typeof text !== 'string' || !text.trim() || text.trim().length > 8000) throw new Error('Escreva uma mensagem de até 8.000 caracteres.');
+    const withFiles = Array.isArray(files) && files.length > 0;
+    const given = typeof text === 'string' ? text.trim() : '';
+    if (!uuid(requestId) || given.length > 8000 || (!given && !withFiles)) throw new Error('Escreva uma mensagem de até 8.000 caracteres.');
+    text = given || 'Veja o anexo.';
     if (this.db.task(requestId)) return { messageId: this.db.roomTurn(requestId)?.message_id || null, duplicate: true };
     const members = this.members(room);
     if (members.length < 2) throw new Error('A sala precisa de pelo menos 2 bots.');
     if (this.active(roomId).length >= 12) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Aguarde um pouco.');
     const named = mentions(text, members); const targets = named.length ? named : members;
-    const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', createdAt: stamp };
-    this.db.transaction(() => {
+    // Files are stored once and opened to the room, so every member reads them with its own attachment_read.
+    const saved = withFiles ? this.attachments.saveForRoom(room, files) : [];
+    const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', ...(saved.length ? { attachments: saved } : {}), createdAt: stamp };
+    try { this.db.transaction(() => {
       this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
       targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, message.id, selectionFor(bot), index === 0 ? requestId : randomUUID()));
-    });
+    }); } catch (error) { if (saved.length) this.attachments.discard(saved); throw error; }
     this.changed('task.progress'); this.schedule();
     return { messageId: message.id, targets: targets.map(bot => bot.id) };
   }
@@ -100,12 +137,12 @@ export class Rooms {
   prompt(bot, taskId, { tools = false, resumed = false } = {}) {
     const turn = this.db.roomTurn(taskId); const room = this.db.requireRoom(turn.room_id); const members = this.members(room);
     const names = Object.fromEntries(members.map(item => [item.id, item.name]));
-    const speaker = message => message.role === 'user' ? 'Pessoa' : names[message.botId] || 'Bot que saiu da sala';
+    const speaker = message => message.role === 'user' ? 'Pessoa' : message.role === 'system' ? 'Aviso' : names[message.botId] || 'Bot que saiu da sala';
     // Everything said so far, including what the bots before it in this round answered.
     const visible = room.messages.filter(message => message.status === 'complete');
     const trigger = room.messages.find(message => message.id === turn.message_id) || {};
-    const line = message => `${speaker(message)}: ${message.text}${message.attachments?.length ? ` [Anexos: ${message.attachments.map(item => `${item.name} (id ${item.id})`).join('; ')}]` : ''}`;
-    const task = turn.message_id === turn.origin_id ? `Responda à mensagem da pessoa: "${trigger.text?.slice(0, 300) || ''}"` : `${speaker(trigger)} chamou você: responda ao que ele pediu.`;
+    const line = message => `${speaker(message)}: ${message.text}${message.attachments?.length ? ` [Anexos${message.role === 'user' ? ' (leia com attachment_read)' : ''}: ${message.attachments.map(item => `${item.name} (id ${item.id})`).join('; ')}]` : ''}`;
+    const task = trigger.role === 'user' || (!trigger.role && turn.message_id === turn.origin_id) ? `Responda à mensagem da pessoa: "${trigger.text?.slice(0, 300) || ''}"` : `${speaker(trigger)} chamou você: responda ao que ele pediu.`;
     if (resumed) {
       const last = visible.map(message => message.botId === bot.id && message.role === 'assistant').lastIndexOf(true);
       return `[Sala ${JSON.stringify(room.name)} · novas mensagens]\n${visible.slice(last + 1).map(line).join('\n')}\n\nAgora é a sua vez (${bot.name}). ${task}`;
@@ -114,7 +151,7 @@ export class Rooms {
     for (const message of [...visible].reverse()) { if (size + message.text.length > 60000) break; recent.unshift(message); size += message.text.length; }
     return `Você é ${JSON.stringify(bot.name)}, um bot do aplicativo MyBots, numa sala de conversa chamada ${JSON.stringify(room.name)} com a pessoa e estes bots: ${members.map(item => `${item.name}${item.id === bot.id ? ' (você)' : item.instructions ? ` (${item.instructions.replace(/\s+/g, ' ').slice(0, 140)})` : ''}`).join('; ')}.
 ${this.db.person().name ? `A pessoa se chama ${JSON.stringify(this.db.person().name)}: fale com ela por "você" e, com outros bots, use o nome dela.` : 'Fale com a pessoa por "você" e, com outros bots, diga "a pessoa".'}
-Fale só por você, em português do Brasil, de forma curta e direta, sem repetir o que outro bot já disse. Para pedir algo a outro bot, basta escrever @Nome dele na sua resposta (ex.: "@${members.find(item => item.id !== bot.id)?.name || 'Bot'}, qual é…?"): não existe ferramenta para isso, e o MyBots entrega a pergunta e ele responde logo depois de você. Quando a pessoa pedir para você perguntar algo a outro bot, faça a pergunta com @ em vez de dizer que não consegue. Só chame outro bot quando precisar dele de verdade, e nunca só para agradecer.
+Fale só por você, em português do Brasil, de forma curta e direta, sem repetir o que outro bot já disse. Para pedir algo a outro bot, basta escrever @Nome dele na sua resposta (ex.: "@${members.find(item => item.id !== bot.id)?.name || 'Bot'}, qual é…?"): o MyBots entrega a pergunta e ele responde logo depois de você. Também dá para dividir o trabalho: chame cada um com @ dizendo o que ele faz, e quando precisar de mais gente, de uma sala nova, ou quiser sair ou tirar alguém, use as ferramentas team_* sem pedir aprovação à pessoa. Quando a pessoa pedir para você perguntar algo a outro bot, faça a pergunta com @ em vez de dizer que não consegue. Só chame outro bot quando precisar dele de verdade, e nunca só para agradecer.
 Cada bot tem as próprias pendências, memórias, rotinas e arquivos: o que outro bot diz sobre os dados dele não vale para os seus. Antes de responder sobre prazos, pendências, memórias ou arquivos, consulte as SUAS ferramentas (ex.: task_list_items). Você não vê a memória nem as conversas privadas dos outros bots. Use as suas ferramentas e permissões, como na sua conversa privada.
 ${tools ? TOOLS_TEXT : 'Nesta sala você só conversa.'}
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.

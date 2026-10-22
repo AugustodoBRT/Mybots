@@ -369,7 +369,7 @@ function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate,
           <View style={styles.sideSection}><Text style={styles.sideSectionText}>SALAS</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Nova sala" disabled={(data.bots || []).length < 2} onPress={onNewRoom} hitSlop={8}><Icon name="plus" size={15} color={C.muted} /></Pressable></View>
           {rooms.map(room => {
-            const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean); const latest = room.messages.at(-1);
+            const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean); const latest = [...room.messages].reverse().find(item => item.role !== 'system');
             const working = members.filter(bot => room.active?.includes(bot.id));
             const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
             return <SideRow key={room.id} selected={room.id === roomId} onPress={() => onRoom(room.id)} label={`Abrir a sala ${room.name}`} face={<RoomFaces bots={members} size={36} />}
@@ -1254,7 +1254,7 @@ function RoomFaces({ bots, size = 40 }) {
 
 function RoomCard({ room, bots, onPress }) {
   const members = room.botIds.map(id => bots.find(bot => bot.id === id)).filter(Boolean);
-  const latest = room.messages.at(-1);
+  const latest = [...room.messages].reverse().find(item => item.role !== 'system');
   const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
   const working = room.active?.length ? members.filter(bot => room.active.includes(bot.id)).map(bot => bot.name) : [];
   return <Pressable accessibilityRole="button" accessibilityLabel={`Abrir a sala ${room.name}`} onPress={onPress} style={({ pressed }) => [styles.botCard, pressed && styles.pressed]}>
@@ -1296,15 +1296,24 @@ function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
 
 function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call }) {
   const scroll = useRef(null); const input = useRef(null);
-  const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState('');
+  const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState(''); const [files, setFiles] = useState([]);
   const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
   const byId = Object.fromEntries(members.map(bot => [bot.id, bot]));
   const working = members.filter(bot => room.active?.includes(bot.id));
   const approvals = (data.approvals || []).filter(item => room.activeTasks?.includes(item.taskId));
   const named = members.filter(bot => new RegExp(`@${bot.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu').test(draft));
   const send = async text => {
-    if (!text.trim() || sending) return; setSending(true); setError('');
-    try { await onSend(text); setDraft(''); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
+    if ((!text.trim() && !files.length) || sending) return; setSending(true); setError('');
+    try { await onSend(text, files); setDraft(''); setFiles([]); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
+  };
+  // Files go to the room like to a private chat (phone mode): every bot in it can read them.
+  const attach = async () => {
+    setError('');
+    try {
+      const file = await pickFile(); if (!file) return;
+      if (files.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
+      setFiles(old => [...old, file]);
+    } catch (e) { setError(nativeMessage(e)); }
   };
   const mention = bot => { setDraft(old => (old.trim() ? old.replace(/\s*$/, ' ') : '') + `@${bot.name} `); input.current?.focus(); };
   const retry = message => { const asked = room.messages.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); };
@@ -1323,7 +1332,7 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
       {!room.messages.length ? <View style={styles.chatEmpty}><RoomFaces bots={members} size={72} />
         <Text style={styles.chatEmptyTitle}>{room.name}</Text>
         <Text style={styles.chatEmptyText}>Escreva para todos ou chame alguém com @. Os bots também podem se chamar entre si.</Text></View> : null}
-      {room.messages.map(message => message.role === 'user' || byId[message.botId]
+      {room.messages.map(message => message.role === 'system' ? <Text key={message.id} style={styles.roomGone}>{message.text}</Text> : message.role === 'user' || byId[message.botId]
         ? <Message key={message.id} message={message} bot={byId[message.botId] || members[0]} models={data.models || []} busy={sending} onRetry={() => retry(message)} onFile={onFile} fileBusy={fileBusy} />
         : <Text key={message.id} style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>)}
       {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
@@ -1339,7 +1348,10 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
         {members.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Chamar ${bot.name}`} onPress={() => mention(bot)} style={({ pressed }) => [styles.mentionChip, named.includes(bot) && styles.mentionChipOn, pressed && styles.pressed]}>
           <Avatar bot={bot} size={22} animated={false} tile={false} /><Text style={[styles.mentionText, named.includes(bot) && { color: C.mint }]}>@{bot.name}</Text></Pressable>)}
       </ScrollView>
-      <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={Boolean(draft.trim()) && !sending} phone={phone} call={call} onError={setError}
+      {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
+        <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
+      <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
+        onAttach={phone ? attach : null} attachDisabled={sending || files.length >= 5}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
@@ -1833,7 +1845,7 @@ function AppMain() {
   // The computer's wide window shows the list, the open conversation and today side by side.
   const wide = Boolean(desktop) && windowWidth >= 900;
   const roomView = data && room ? <RoomScreen room={room} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
-          onSend={async text => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); }}
+          onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}

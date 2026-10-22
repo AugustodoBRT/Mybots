@@ -733,3 +733,11 @@ APK `dist/apk/mybots-v51.apk`, versionCode 51, 0.30.1, somente ARM64, build offl
 - **169 testes passando** (novo em `tests/desktop.test.mjs`: falha sem a correção). Não conferido no emulador nem no celular real.
 
 APK `dist/apk/mybots-v52.apk`, versionCode 52, 0.31.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `fa7c1fff544d5046247a01a532f6830a98d350f55fc92d68ed04c084f17b9be3`.
+
+
+## 22/10/2026 — v53 (0.31.1): bots chamados com @ trabalham ao mesmo tempo
+
+- **Fila das salas**: na v51 os bots chamados por uma mesma mensagem (a pessoa com "@A e @B", ou um bot chamando dois na mesma resposta) esperavam um ao outro. Agora cada bot chamado com @ tem a própria origem e roda junto com os outros; só a mensagem para todos, sem @, continua em sequência (cada bot lê o que o anterior respondeu). Um bot continua respondendo um turno por vez.
+- **170 testes passando** (novo em `tests/rooms.test.mjs`: Diretor chama dois bots e a pessoa chama dois, ambos rodam juntos). Não conferido no celular real.
+
+APK `dist/apk/mybots-v53.apk`, versionCode 53, 0.31.1, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `4109150720159d021bb028c93d944a15b32f789ff0b3fef68e661ddec4b2c63f`.

@@ -110,3 +110,24 @@ test('a bot working for a long time does not hold the others: private chats and 
   assert.equal(f.app.db.bot(slow.id).messages.filter(item => item.role === 'assistant').length, 1);
   assert.equal(f.app.db.bot(outside.id).messages.length, 0);
 });
+
+test('bots called together with @ (by the person or by another bot) work at the same time; a message to everyone still goes in turn', async t => {
+  let running = 0, most = 0; const release = [];
+  const f = await setup(t, async bot => {
+    if (['Produtor', 'Operador'].includes(bot.name)) { running++; most = Math.max(most, running); await new Promise(resolve => release.push(resolve)); running--; }
+    return bot.name === 'Diretor' ? 'Chamando @Produtor e @Operador.' : `Feito, ${bot.name}.`;
+  });
+  const [director, producer, operator] = [await f.make('Diretor'), await f.make('Produtor'), await f.make('Operador')];
+  const room = await f.app.rpc('room.create', { name: 'TikTok', botIds: [director.id, producer.id, operator.id] });
+  // The director calls both in one answer: they start together.
+  await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Diretor organize o vídeo' });
+  await until(() => release.length === 2);
+  assert.equal(most, 2);
+  release.splice(0).forEach(resolve => resolve()); await f.idle();
+  // The person names two at once: also together.
+  most = 0; running = 0;
+  await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Produtor e @Operador, comecem' });
+  await until(() => release.length === 2);
+  assert.equal(most, 2);
+  release.splice(0).forEach(resolve => resolve()); await f.idle();
+});

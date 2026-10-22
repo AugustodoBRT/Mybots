@@ -24,7 +24,7 @@ export const LANE_LIMITS = { phone: 3, pc: 4 };
 
 /**
  * Different bots answer at the same time, up to the lane's limit; one bot answers one turn at a time (its private chat
- * and its rooms share that), and the turns of one message to a room (several bots, or a chain of @) keep their order.
+ * and its rooms share that). Only a room message with no @ (everyone answers in turn) keeps its order.
  * A turn whose bot lives on the computer waits while it is off.
  */
 export class Queue extends EventEmitter {
@@ -47,7 +47,7 @@ export class Queue extends EventEmitter {
   next() {
     // Conversation with the person goes before routine runs.
     const queued = this.db.all("SELECT id,bot_id FROM tasks WHERE state='queued' ORDER BY id IN (SELECT task_id FROM routine_runs),created_at,rowid");
-    // A room's turns of the same conversation (same origin) wait for each other; another message of the person does not wait.
+    // The turns of a room message to everyone (same origin) wait for each other; bots called with @ have their own origin.
     const busyChains = new Set(this.db.all("SELECT room_id,origin_id FROM room_turns JOIN tasks ON tasks.id=room_turns.task_id WHERE tasks.state IN ('running','waiting_approval')").map(row => row.room_id + ':' + row.origin_id));
     const used = {}; for (const current of this.running.values()) used[current.lane] = (used[current.lane] || 0) + 1;
     const busyBots = new Set(this.db.all("SELECT bot_id FROM tasks WHERE state IN ('running','waiting_approval')").map(row => row.bot_id));

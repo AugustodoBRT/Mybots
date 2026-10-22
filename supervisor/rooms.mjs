@@ -83,7 +83,7 @@ export class Rooms {
     const waiting = new Set(this.active(roomId).filter(task => task.state === 'queued').map(task => task.bot_id));
     this.db.transaction(() => {
       this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
-      for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, message.id, selectionFor(target));
+      for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
     });
     this.changed('task.progress'); this.schedule();
     return { posted: true, called: turns.map(item => item.name), ...(called.length > turns.length ? { limit: 'Limite de encadeamento atingido: ninguém foi chamado agora. Espere a pessoa continuar.' } : {}), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
@@ -109,7 +109,8 @@ export class Rooms {
     const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', ...(saved.length ? { attachments: saved } : {}), createdAt: stamp };
     try { this.db.transaction(() => {
       this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
-      targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, message.id, selectionFor(bot), index === 0 ? requestId : randomUUID()));
+      // Without @ the bots answer in turn (each reads what the ones before it said); bots named with @ work side by side.
+      targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, named.length ? randomUUID() : message.id, selectionFor(bot), index === 0 ? requestId : randomUUID()));
     }); } catch (error) { if (saved.length) this.attachments.discard(saved); throw error; }
     this.changed('task.progress'); this.schedule();
     return { messageId: message.id, targets: targets.map(bot => bot.id) };
@@ -130,7 +131,7 @@ export class Rooms {
     const waiting = new Set(this.active(room.id).map(item => item.bot_id));
     const next = mentions(reply.text, this.members(room)).filter(bot => bot.id !== task.bot_id && !waiting.has(bot.id));
     if (!next.length) return;
-    this.db.transaction(() => { for (const bot of next) this.turn(room.id, bot, reply.id, turn.round + 1, turn.origin_id, selectionFor(bot)); });
+    this.db.transaction(() => { for (const bot of next) this.turn(room.id, bot, reply.id, turn.round + 1, randomUUID(), selectionFor(bot)); });
     this.changed('task.progress'); this.schedule();
   }
   /** What a bot reads for its turn: who is in the room and the conversation (or, in a resumed session, what is new). */

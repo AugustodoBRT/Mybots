@@ -57,7 +57,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 internal object BotBrowser {
   private val main = Handler(Looper.getMainLooper())
-  private const val MAX_TABS = 4
+  private const val MAX_TABS = 6
   private val UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
   class Tab(val botId: String, val web: WebView, val wrapper: MutableContextWrapper) {
@@ -116,18 +116,28 @@ internal object BotBrowser {
         val commands = JSONObject(body).optJSONArray("commands") ?: JSONArray()
         for (index in 0 until commands.length()) {
           val command = commands.getJSONObject(index)
-          val answer = JSONObject().put("id", command.optString("id"))
-          try { answer.put("ok", true).put("value", run(context, command)) }
-          catch (error: Exception) { answer.put("ok", false).put("error", error.message ?: "O navegador não conseguiu fazer isso.") }
-          val result = URL("http://127.0.0.1:$port/device/browser/result").openConnection() as HttpURLConnection
-          result.requestMethod = "POST"; result.doOutput = true; result.connectTimeout = 3000; result.readTimeout = 10_000
-          result.setRequestProperty("Authorization", "Bearer $token"); result.setRequestProperty("Content-Type", "application/json")
-          result.outputStream.use { it.write(answer.toString().toByteArray(Charsets.UTF_8)) }
-          result.responseCode; result.disconnect()
+          // One bot's commands keep their order; different bots (and PDF work) never wait for each other.
+          lane(command.optString("botId").takeIf { it.isNotEmpty() && it != "null" } ?: "device").execute { respond(context, port, token, command) }
         }
       } catch (_: InterruptedException) { return }
       catch (_: Exception) { try { Thread.sleep(5000) } catch (_: InterruptedException) { return } }
     }
+  }
+
+  private val lanes = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.ExecutorService>()
+  private fun lane(key: String): java.util.concurrent.ExecutorService = lanes.getOrPut(key) { java.util.concurrent.Executors.newSingleThreadExecutor { task -> Thread(task, "mybots-browser-$key").apply { isDaemon = true } } }
+
+  private fun respond(context: Context, port: Int, token: String, command: JSONObject) {
+    val answer = JSONObject().put("id", command.optString("id"))
+    try { answer.put("ok", true).put("value", run(context, command)) }
+    catch (error: Exception) { answer.put("ok", false).put("error", error.message ?: "O navegador não conseguiu fazer isso.") }
+    try {
+      val result = URL("http://127.0.0.1:$port/device/browser/result").openConnection() as HttpURLConnection
+      result.requestMethod = "POST"; result.doOutput = true; result.connectTimeout = 3000; result.readTimeout = 10_000
+      result.setRequestProperty("Authorization", "Bearer $token"); result.setRequestProperty("Content-Type", "application/json")
+      result.outputStream.use { it.write(answer.toString().toByteArray(Charsets.UTF_8)) }
+      result.responseCode; result.disconnect()
+    } catch (_: Exception) {}
   }
 
   private fun <T> onMain(timeoutMs: Long = 10_000, block: () -> T): T {

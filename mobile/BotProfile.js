@@ -78,8 +78,8 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} style={{ marginHorizontal: -20, paddingHorizontal: 20, flexGrow: 0 }}>
               {[{ id: 'blank', label: 'Do zero', hint: 'Você escreve tudo.', profile: { name: '', instructions: '' } }, ...BOT_TEMPLATES].map(template => {
                 const chosen = template.id === 'blank' ? !BOT_TEMPLATES.some(item => item.profile.instructions === form.instructions) : form.instructions === template.profile.instructions;
-                return <Pressable key={template.id} accessibilityRole="button" onPress={() => setForm(old => ({ ...old, ...template.profile }))} style={[s.template, chosen && s.choiceOn]}>
-                  <Icon name={template.id === 'blank' ? 'edit' : 'calendar'} size={20} color={chosen ? C.mint : C.muted} /><Text style={s.itemTitle}>{template.label}</Text><Text style={s.hint} numberOfLines={3}>{template.hint}</Text></Pressable>;
+                return <Pressable key={template.id} accessibilityRole="button" onPress={() => setForm(old => { const { browserMode: _mode, ...rest } = old; return { ...rest, ...template.profile }; })} style={[s.template, chosen && s.choiceOn]}>
+                  <Icon name={template.id === 'blank' ? 'edit' : template.icon || 'calendar'} size={20} color={chosen ? C.mint : C.muted} /><Text style={s.itemTitle}>{template.label}</Text><Text style={s.hint} numberOfLines={3}>{template.hint}</Text></Pressable>;
               })}
               <View style={{ width: 20 }} />
             </ScrollView></> : null}

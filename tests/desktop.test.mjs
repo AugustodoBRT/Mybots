@@ -219,3 +219,18 @@ test('Meu Chrome: Médio approves all mutations with its own key; reads pass; ta
   assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'own');
   await assert.rejects(f.app.rpc('bot.update', { botId: f.bot.id, browserMode: 'mine' }), /Libere Navegador|Pouco acesso/);
 });
+
+test('each bot has its own browser on the computer: a bot using it does not block another; the screen and mouse still have one pilot', async t => {
+  const f = await setup(t);
+  const other = await f.app.rpc('bot.create', { name: 'Outro', home: 'pc', access: 'full', ...selection });
+  f.app.tools.grant(f.bot.id, 'computer', true); f.app.tools.grant(f.bot.id, 'desktop', true); f.app.tools.grant(other.id, 'desktop', true);
+  // The first bot opens a page and keeps its turn open (waits for the panic key); the second one works meanwhile.
+  const first = await f.start([['browser_open', { url: 'https://example.com' }]], 'esperar pânico');
+  await until(() => f.actions.some(a => a.op === 'open' && a.botId === f.bot.id));
+  const sent = await f.app.rpc('chat.send', { botId: other.id, requestId: randomUUID(), text: 'executar' });
+  await until(() => f.actions.some(a => a.op === 'open' && a.botId === other.id));
+  assert.equal(f.app.db.task(first).state, 'running');
+  await until(() => f.app.db.task(sent.taskId).state === 'done');
+  assert.equal(f.actions.filter(a => a.op === 'open').length, 2);
+  await f.app.queue.cancel(first);
+});

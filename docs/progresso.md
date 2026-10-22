@@ -724,3 +724,12 @@ APK `dist/apk/mybots-v50.apk`, versionCode 50, 0.30.0, somente ARM64, build offl
 - **168 testes passando**: novo teste em `tests/rooms.test.mjs` (bot lento, outro da sala, privado dele e bot de fora); dois testes antigos de `tests/supervisor.test.mjs` ajustados (dois bots rodam juntos; a fila de um mesmo bot continua em ordem). Não conferido no emulador nem no celular real.
 
 APK `dist/apk/mybots-v51.apk`, versionCode 51, 0.30.1, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `5d4b44d47331166cef34b9b67f280dbba1403fc08fdf174f55f7dc602550a30b`.
+
+
+## 22/10/2026 — v52 (0.31.0): um navegador por bot sem fila e modelo Google
+
+- **Navegador sem fila**: no PC, o aviso "Outro bot está controlando o computador" valia para o navegador; agora só vale para tela e mouse (`pc/server.mjs`). O navegador de cada bot roda sozinho, e no Meu Chrome (worker compartilhado) cada bot tem a própria fila de comandos (`pc/browser-worker.mjs`). No celular, um fio só executava todos os comandos; agora há um fio por bot (`BotBrowser.kt`) e o limite de WebViews subiu de 4 para 6.
+- **Modelo Google** (Novo bot → modelos): vive no computador, em Meu Chrome (logins do Chrome da pessoa), acesso Médio; instruções para trocar de conta, usar só as próprias abas e confirmar antes de enviar, compartilhar, apagar ou mudar configurações. Depende da depuração remota do Chrome (aceite da v48 ainda pendente).
+- **169 testes passando** (novo em `tests/desktop.test.mjs`: falha sem a correção). Não conferido no emulador nem no celular real.
+
+APK `dist/apk/mybots-v52.apk`, versionCode 52, 0.31.0, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `fa7c1fff544d5046247a01a532f6830a98d350f55fc92d68ed04c084f17b9be3`.

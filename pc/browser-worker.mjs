@@ -335,7 +335,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
     }
     return sessions.get(botId);
   };
-  let commands = Promise.resolve(); const people = new Map();
+  const commands = new Map(); const people = new Map();
   const handle = async ({ id, botId = basename(process.argv[2]), op, args }) => {
     if (!/^[0-9a-f-]{36}$/i.test(botId || '')) return;
     try {
@@ -350,7 +350,8 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
   };
   process.on('message', message => {
     if (message.op === 'view' || message.op === 'input' || message.op === 'close') { const pending = (people.get(message.botId) || Promise.resolve()).then(() => handle(message)); people.set(message.botId, pending); }
-    else commands = commands.then(() => handle(message));
+    // One bot's commands keep their order; bots that share this browser (Meu Chrome) do not wait for each other.
+    else { const key = message.botId || ''; commands.set(key, (commands.get(key) || Promise.resolve()).then(() => handle(message))); }
   });
   const close = async () => { await Promise.all([...sessions.values()].map(session => session.close().catch(() => {}))); if (connection) await connection.then(browser => browser.close()).catch(() => {}); process.exit(); };
   process.on('disconnect', close); process.on('SIGTERM', close);

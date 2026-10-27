@@ -145,3 +145,26 @@ test('paced binary frames discard intermediate frames while bufferedAmount is hi
   bufferedAmount = 0; await until(() => sent.length);
   assert.deepEqual(sent, [frames[2]]);
 });
+
+test('/frames authenticates the app token and relays binary JPEG only for the selected bot, without RPC pixels', async t => {
+  const { decodeFrame } = await import('../supervisor/browser-frame.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-native-frames-'));
+  const app = await createSupervisor({ directory, port: 0, codex }); const sockets = [];
+  t.after(async () => { sockets.forEach(ws => ws.terminate()); await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const a = await app.rpc('bot.create', { name: 'A', ...selection }); const b = await app.rpc('bot.create', { name: 'B', ...selection });
+  const endpoint = id => `ws://127.0.0.1:${app.port}/frames?bot=${id}`;
+  const rejected = new WebSocket(endpoint(a.id), { headers: { Authorization: 'Bearer errado' } }); sockets.push(rejected); rejected.on('error', () => {});
+  const status = await new Promise(resolve => rejected.once('unexpected-response', (request, response) => { resolve(response.statusCode); response.resume(); rejected.terminate(); }));
+  assert.equal(status, 401);
+  const connect = async id => { const ws = new WebSocket(endpoint(id), { headers: { Authorization: `Bearer ${app.token}` } }); sockets.push(ws); const frames = []; ws.on('message', (bytes, binary) => { assert.ok(binary); frames.push(decodeFrame(bytes)); }); await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); }); return { ws, frames }; };
+  const first = await connect(a.id); const second = await connect(b.id);
+  const rpc = await client(`ws://127.0.0.1:${app.port}`, app.token); sockets.push(rpc.ws);
+  await rpc.call('browser.view', { botId: a.id, on: true, native: true });
+  const frame = { botId: a.id, width: 320, height: 200, seq: 1, image: Buffer.from([255,216,255,217]), url: 'https://example.com/', title: 'Teste', tabs: [] };
+  app.link.onFrame(frame); await until(() => first.frames.length);
+  assert.equal(first.frames[0].botId, a.id); assert.deepEqual(first.frames[0].image, frame.image);
+  assert.equal(second.frames.length, 0); assert.equal(rpc.frames.length, 0);
+  first.ws.close(); await until(() => first.ws.readyState === 3);
+  await rpc.call('browser.view', { botId: a.id, on: false }); await until(() => !app.link.watching.has(a.id));
+  assert.ok(app.link.watching.has(b.id));
+});

@@ -1,7 +1,7 @@
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Image, PanResponder, TextInput } from 'react-native';
-import { BotBrowserView, browserAction, browserInfo } from './termux';
+import { BotBrowserView, BotFrameView, browserAction, browserInfo } from './termux';
 import { C, F, Icon } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
@@ -34,7 +34,7 @@ function LiveImages({ frame }) {
     if (ok) { state.front = index; setFront(index); }
     load();
   };
-  return layers.map((image, index) => image ? <Image key={index} source={{ uri: 'data:image/jpeg;base64,' + image }} style={[StyleSheet.absoluteFill, { zIndex: index === front ? 1 : 0 }]} resizeMode="stretch" fadeDuration={0} onLoad={() => ready(index, true)} onError={() => ready(index, false)} /> : null);
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>{layers.map((image, index) => image ? <Image key={index} source={{ uri: 'data:image/jpeg;base64,' + image }} style={[StyleSheet.absoluteFill, { zIndex: index === front ? 1 : 0 }]} resizeMode="stretch" fadeDuration={0} onLoad={() => ready(index, true)} onError={() => ready(index, false)} /> : null)}</View>;
 }
 
 /**
@@ -53,14 +53,14 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       if (data?.botId !== bot.id) return;
       if (data.closed) setState('closed');
       else if (data.error) setProblem(data.error);
-      else if (data.image) { setFrame(data); setState('live'); setProblem(''); }
+      else if (data.image || data.width) { setFrame(data); setState('live'); setProblem(''); }
     };
     browserFrames.add(listener);
-    const watch = () => call('browser.view', { botId: bot.id, on: true }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });
+    const watch = () => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView) }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });
     watch();
     return () => { browserFrames.delete(listener); call('browser.view', { botId: bot.id, on: false }).catch(() => {}); };
   }, [bot.id, browserMode(bot)]);
-  const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true })).catch(e => setProblem(e.message)); };
+  const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView) })).catch(e => setProblem(e.message)); };
   // A short touch is a click; a drag scrolls the page under the finger (sent while dragging, a few times a second).
   const touch = useRef(null);
   const responder = useRef(PanResponder.create({
@@ -99,7 +99,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { size.current = event.nativeEvent.layout; }} {...responder.panHandlers}>
-      {frame ? <LiveImages key={bot.id} frame={frame} />
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={StyleSheet.absoluteFill} onMetadata={event => { const data = event.nativeEvent; if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}

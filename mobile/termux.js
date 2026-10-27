@@ -54,7 +54,10 @@ export const setKeepAlive = enabled => native.setKeepAlive(enabled);
 export const startKeepAlive = () => native?.startKeepAlive();
 export const openPowerSettings = target => native.openPowerSettings(target);
 // Each bot's own browser: the live WebView for the chat panel, and the person's back/reload after "Assumir".
-export const BotBrowserView = native ? requireNativeViewManager('TermuxBridge') : null;
+export const BotBrowserView = native ? requireNativeViewManager('TermuxBridge', 'BotBrowserView') : null;
+let frameView;
+try { frameView = native ? requireNativeViewManager('TermuxBridge', 'BotFrameView') : null; } catch {}
+export const BotFrameView = frameView;
 export const browserInfo = () => native.browserInfo();
 export const browserAction = (botId, action) => native.browserAction(botId, action);
 export const fileStage = (id, name, chunk, append) => native.fileStage(id, name, chunk, append);

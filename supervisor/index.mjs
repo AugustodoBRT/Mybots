@@ -27,6 +27,7 @@ import { Browser, personInput } from './browser.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
+import { encodeFrame, frameMetadata } from './browser-frame.mjs';
 import { Link } from './link.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
@@ -48,7 +49,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -127,13 +128,20 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
     const watchBrowsers = () => {
-      const wanted = new Set([...(sockets?.clients || [])].flatMap(socket => [...(socket.views || [])]));
+      if (closed) return;
+      const wanted = new Set([...(sockets?.clients || []), ...(frameSockets?.clients || [])].flatMap(socket => [...(socket.views || [])]));
       for (const botId of wanted) if (!link.watching.has(botId)) link.view(botId, true);
       for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
     };
     link.onFrame = frame => {
-      const text = JSON.stringify({ event: 'browser.frame', data: { ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } });
-      for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && socket.bufferedAmount < 1_500_000) socket.send(text);
+      let text;
+      for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && !socket.nativeViews?.has(frame.botId) && socket.bufferedAmount < 1_500_000) {
+        text ||= JSON.stringify({ event: 'browser.frame', data: { ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } }); socket.send(text);
+      }
+      for (const socket of frameSockets?.clients || []) if (socket.readyState === 1 && socket.views.has(frame.botId) && socket.bufferedAmount < 1_000_000) {
+        if (frame.image) { socket.send(encodeFrame(frame, socket.previous)); socket.previous = frameMetadata(frame); }
+        else socket.send(JSON.stringify(frame));
+      }
     };
     // Whether a bot's IA is logged in where its next turn runs: the computer reports its own; while it is off,
     // a turn of a computer bot just waits (and is checked by the computer when it runs there).
@@ -362,7 +370,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const bot = db.requireBot(params.botId);
           if (params.on && browserMode(bot) === 'mine' && (bot.access === 'basic' || tools.policy(bot.id, 'browser') !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.');
           if (!socket) throw new Error('Abra o navegador do bot no app.');
-          socket.views ||= new Set();
+          socket.views ||= new Set(); socket.nativeViews ||= new Set();
+          if (params.on && params.native) socket.nativeViews.add(bot.id); else socket.nativeViews.delete(bot.id);
           if (params.on) socket.views.add(bot.id); else socket.views.delete(bot.id);
           watchBrowsers();
           return { watching: Boolean(params.on), online: link.status().state === 'online' };
@@ -564,9 +573,24 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         });
       } else response.writeHead(404).end();
     });
+    frameSockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
     sockets = new WebSocketServer({ noServer: true, maxPayload: 20_000_000, perMessageDeflate: false });
     server.on('upgrade', (request, socket, head) => {
       const origin = request.headers.origin;
+      if (request.url.startsWith('/frames?')) {
+        const refuse = status => { socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`); };
+        if (!equal(request.headers.authorization, 'Bearer ' + token)) { refuse('401 Unauthorized'); return; }
+        if (origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) { refuse('403 Forbidden'); return; }
+        const bot = db.bot(new URL(request.url, 'http://local').searchParams.get('bot'));
+        if (!bot) { refuse('404 Not Found'); return; }
+        if (browserMode(bot) === 'mine' && (bot.access === 'basic' || tools.policy(bot.id, 'browser') !== 'allow')) { refuse('403 Forbidden'); return; }
+        frameSockets.handleUpgrade(request, socket, head, ws => {
+          ws.views = new Set([bot.id]); ws.previous = {}; ws.alive = true;
+          ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); ws.on('message', () => ws.close(1008));
+          ws.on('close', () => { ws.views.clear(); watchBrowsers(); });
+          const watching = link.watching.has(bot.id); watchBrowsers(); if (watching) link.view(bot.id, true);
+        }); return;
+      }
       if (request.url !== '/' || (origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))) { socket.destroy(); return; }
       sockets.handleUpgrade(request, socket, head, ws => sockets.emit('connection', ws));
     });
@@ -597,14 +621,14 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         } finally { processing = false; }
       });
     });
-    pingTimer = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 30000);
+    pingTimer = setInterval(() => { for (const ws of [...sockets.clients, ...frameSockets.clients]) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 30000);
     await new Promise((resolveStart, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveStart); });
     const actualPort = server.address().port; queue.toolEndpoint = `http://127.0.0.1:${actualPort}`;
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
     api = { db, queue, tools, routines, items, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
       clearInterval(timer); clearInterval(pingTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
-      for (const ws of sockets.clients) ws.terminate();
+      for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
       for (const poller of [...widgetPollers]) poller(true);
@@ -619,7 +643,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     return api;
   } catch (error) {
     clearInterval(timer); clearInterval(pingTimer); email?.stop(); routines?.stop(); link?.close();
-    for (const socket of sockets?.clients || []) socket.terminate();
+    for (const socket of [...(sockets?.clients || []), ...(frameSockets?.clients || [])]) socket.terminate();
     server?.close(); db?.close();
     try { unlinkSync(lock); } catch {}
     throw error;

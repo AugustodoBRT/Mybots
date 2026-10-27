@@ -174,6 +174,10 @@ class TermuxBridgeModule : Module() {
       Prop("botId") { view: BotBrowserView, id: String? -> view.show(id) }
       Prop("interactive") { view: BotBrowserView, value: Boolean -> view.interactive = value }
     }
+    View(BotFrameView::class) {
+      Events("onMetadata")
+      Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
+    }
     AsyncFunction("browserInfo") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       BotBrowser.start(context.applicationContext)

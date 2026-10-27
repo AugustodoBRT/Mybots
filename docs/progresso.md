@@ -741,3 +741,41 @@ APK `dist/apk/mybots-v52.apk`, versionCode 52, 0.31.0, somente ARM64, build offl
 - **170 testes passando** (novo em `tests/rooms.test.mjs`: Diretor chama dois bots e a pessoa chama dois, ambos rodam juntos). Não conferido no celular real.
 
 APK `dist/apk/mybots-v53.apk`, versionCode 53, 0.31.1, somente ARM64, build offline. Certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK `4109150720159d021bb028c93d944a15b32f789ff0b3fef68e661ddec4b2c63f`.
+
+
+## 27/10/2026 — v54 (0.32.0): navegador sem piscar e tela ao vivo nativa
+
+Somente a seção v54 do `PLANO-V54.md`. O trabalho anterior de rolagem da conversa já estava commitado (`41a7a20`) e foi preservado. Implementação em quatro commits, na ordem pedida: `076ad0e` (duas imagens), `af27471` (JPEG binário), `50a94c8` (view nativa e `/frames`) e `822148b` (qualidade adaptativa).
+
+### Mudanças por arquivo
+
+- `mobile/BotBrowserPanel.js`: reserva com duas imagens, promoção somente após decodificação, retenção do quadro mais recente e reutilização de JPEG já carregado; seleciona a view nativa quando disponível e informa dimensões físicas do visor. Toques, rolagem, teclas e caixa de digitação permanecem no RPC serial.
+- `mobile/termux.js`: exporta as duas views pelos nomes próprios e mantém a reserva quando a view de quadros não existe.
+- `mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotFrameView.kt`: socket OkHttp autenticado com o token guardado nativamente, parser binário, decodificação em fio de fundo com `BitmapFactory`/`inBitmap`, dois bitmaps e troca na thread principal; conserva metadados mesmo ao descartar JPEG intermediário e envia à JS no máximo dois eventos por segundo.
+- `TermuxBridgeModule.kt`: registra `BotFrameView` junto da WebView existente. `android/build.gradle` do módulo: usa o React Native já instalado para acessar seu OkHttp, sem biblioteca nova.
+- `pc/browser-worker.mjs`: bytes de JPEG, sequência crescente, limite de tamanho em `Page.startScreencast`, 5 quadros/s e qualidade 55 ao olhar, 15 quadros/s e qualidade 70 com Assumir e ACK imediato. Reduz qualidade sob pressão e conserva o último quadro pendente. Máscara visual de senha também na transmissão, inclusive em iframes.
+- `pc/browser.mjs`: serialização avançada no IPC para preservar os bytes de JPEG.
+- `pc/server.mjs`: agrega os tamanhos dos visores, aplica o controle decidido pelo supervisor, codifica o link binário e reduz qualidade quando há acúmulo no link ou no relay.
+- `pc/ui.mjs`: mantém a reserva web/PC e o `paced` que pula quadros intermediários, com aviso de pressão antes do descarte.
+- `supervisor/browser-frame.mjs`: cabeçalho binário MBF1 de 34 bytes, UUID, dimensões, sequência, metadados opcionais e validação de limites. URL, título e abas só seguem quando mudam.
+- `supervisor/link.mjs`: decodifica os quadros sem JSON/base64, conserva os metadados e reenvia dimensões/qualidade na reconexão.
+- `supervisor/index.mjs`: `/frames?bot=<id>` no mesmo servidor loopback, autenticação Bearer antes do upgrade, isolamento por bot, controle de pressão e encerramento dos sockets. Conexões nativas não recebem pixels pelo RPC; o limite de um pedido por conexão permanece.
+- `scripts/package-supervisor.mjs`: inclui o módulo binário novo no pacote entregue ao Termux.
+- `tests/live-browser.test.mjs`: seis testes novos de protocolo, descarte, autenticação/relay, tamanho/qualidade/ACK, Chrome animado e redução de qualidade antes do descarte; testes existentes adaptados aos bytes binários.
+- `mobile/app.json` e `mobile/android/app/build.gradle`: versionCode 54, versão 0.32.0. `README.md`, `docs/computador.md`, `docs/seguranca.md` e o plano atualizados. `mobile/supervisor-client.js` e a WebView de `BotBrowser.kt` foram lidos e preservados.
+
+### Testes e emulador
+
+- Base: **171/171**. Implementação: **177/177 testes passaram**, zero falhas, cancelamentos ou skips, incluindo Chrome real em `/usr/bin/google-chrome-stable`; última execução completa em aproximadamente 23 s. Registro: `/tmp/mybots-v54-final-tests.log`. Uma tentativa anterior teve timeouts com pressão de memória durante a compilação/emulador; depois de encerrar os daemons Gradle, a suíte completa passou novamente.
+- APK x86_64 v54 instalado no Android 16/API 36; supervisor embarcado conferido pelo hash. Nó de PC **isolado** em `/tmp/mybots-v54-node`, portas 3231/3233, pastas próprias e interface web exportada para esse diretório. Nenhum teste usou ou reiniciou o serviço real `mybots-pc`.
+- reCAPTCHA e hCaptcha reais abertos nos endereços do plano. Os dois desafios visuais abriram ao tocar no app; não foram resolvidos automaticamente. A análise dos vídeos depois da mudança, quadro a quadro, encontrou **0 quadros vazios em 258 quadros de reCAPTCHA e 278 de hCaptcha** (536 no total). Recorte interno do visor: x=90, y=530, 900×530, reduzido a 450×265; verificação de região branca sem conteúdo e inspeção das capturas. Isso verifica essas gravações no emulador, não todos os aparelhos.
+- Assumir: toque abriu os desafios; digitação pelo campo do app apareceu como **Teste-v54** no formulário hCaptcha; dois arrastos na página `infinite_scroll` moveram a rolagem para **y=723**, altura do documento 1907. Devolver ao bot e Só olhando também conferidos. Um cliente adicional no `/frames` real do emulador recebeu JPEG **960×600**, com sequência crescente.
+- Gravações em `.build-tools/emulator-state/v54/`: `antes-recaptcha.mp4`, `antes-hcaptcha.mp4`, `antes-hcaptcha-desafio.mp4`, `depois-recaptcha.mp4`, `depois-hcaptcha.mp4`, `assumir-digitacao.mp4`, `assumir-rolagem.mp4` e `so-olhando.mp4`. Capturas de prova: `recaptcha.png`, `hcaptcha.png`, `digitacao-prova.png`, `rolagem.png` e `so-olhando.png`; contagens em `analise-depois-*.jsonl`. A gravação anterior de reCAPTCHA inclui uma navegação para hCaptcha; seus quadros brancos durante essa transição não foram usados como medida causal do piscar.
+- Reserva web/PC conferida em Chrome real na interface do nó isolado: sete JPEGs de teste na sequência A/B/A/B/A/B/C foram promovidos corretamente, inclusive as repetições de fontes já carregadas. Prova em `reserva-web.png` e `reserva-web.log` na mesma pasta de gravações.
+- Limites: não testado no POCO físico nem em rede lenta real; pressão e descarte foram simulados nos testes. CAPTCHA continua exigindo a pessoa. Zoom, tela cheia e novo teclado/toque da v55 ficaram fora do escopo.
+
+### Entrega
+
+APK ARM64 offline: `dist/apk/mybots-v54.apk` e `.sha256`, versionCode 54 / 0.32.0. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
+
+SHA-256 do APK final (39.672.059 bytes): `0c2aece7f799096f0b331794b84a14c35677c221a214d4a5c5239ae2dc53b766`. A Release e a atualização do PC serão registradas após sua execução.

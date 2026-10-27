@@ -35,7 +35,7 @@ Antes da v54: terminar e commitar o trabalho em andamento no `mobile/App.js` (ro
 
 ---
 
-## v54 — Navegador sem piscar e tela ao vivo nativa
+## v54 — Navegador sem piscar e tela ao vivo nativa — concluída na v54
 
 Objetivo: a tela do Chrome do PC fica estável no celular, mesmo com CAPTCHA animando, e o chat não engasga enquanto ela roda.
 

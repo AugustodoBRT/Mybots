@@ -21,20 +21,22 @@ export const browserFrames = new Set();
 // Keep the displayed bitmap until the other Image has finished decoding; retain only the newest waiting frame.
 function LiveImages({ frame }) {
   const [layers, setLayers] = useState([null, null]); const [front, setFront] = useState(0);
-  const buffer = useRef({ front: 0, loading: null, latest: null });
+  const buffer = useRef({ front: 0, loading: null, latest: null, decoded: [null, null] });
   const load = () => {
     const state = buffer.current; if (state.loading !== null || !state.latest) return;
-    const next = 1 - state.front, image = state.latest; state.latest = null; state.loading = next;
+    const next = 1 - state.front, image = state.latest; state.latest = null;
+    if (state.decoded[next] === image) { state.front = next; setFront(next); return; }
+    state.loading = next; state.decoded[next] = null;
     setLayers(current => current.map((value, index) => index === next ? image : value));
   };
   useEffect(() => { if (frame?.image) { buffer.current.latest = frame.image; load(); } }, [frame?.image]);
-  const ready = (index, ok) => {
+  const ready = (index, image, ok) => {
     const state = buffer.current; if (state.loading !== index) return;
     state.loading = null;
-    if (ok) { state.front = index; setFront(index); }
+    if (ok) { state.decoded[index] = image; state.front = index; setFront(index); }
     load();
   };
-  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>{layers.map((image, index) => image ? <Image key={index} source={{ uri: 'data:image/jpeg;base64,' + image }} style={[StyleSheet.absoluteFill, { zIndex: index === front ? 1 : 0 }]} resizeMode="stretch" fadeDuration={0} onLoad={() => ready(index, true)} onError={() => ready(index, false)} /> : null)}</View>;
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>{layers.map((image, index) => image ? <Image key={index} source={{ uri: 'data:image/jpeg;base64,' + image }} style={[StyleSheet.absoluteFill, { zIndex: index === front ? 1 : 0 }]} resizeMode="stretch" fadeDuration={0} onLoad={() => ready(index, image, true)} onError={() => ready(index, image, false)} /> : null)}</View>;
 }
 
 /**

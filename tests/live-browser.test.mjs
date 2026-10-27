@@ -165,6 +165,12 @@ test('/frames authenticates the app token and relays binary JPEG only for the se
   app.link.onFrame(frame); await until(() => first.frames.length);
   assert.equal(first.frames[0].botId, a.id); assert.deepEqual(first.frames[0].image, frame.image);
   assert.equal(second.frames.length, 0); assert.equal(rpc.frames.length, 0);
+  // Reopening must refresh the worker even while the native socket keeps watching.
+  let refreshes = 0; const view = app.link.view.bind(app.link);
+  app.link.view = (botId, on, options) => { if (botId === a.id && on) refreshes++; return view(botId, on, options); };
+  await rpc.call('browser.view', { botId: a.id, on: false });
+  await rpc.call('browser.view', { botId: a.id, on: true, native: true });
+  assert.equal(refreshes, 1);
   first.ws.close(); await until(() => first.ws.readyState === 3);
   await rpc.call('browser.view', { botId: a.id, on: false }); await until(() => !app.link.watching.has(a.id));
   assert.ok(app.link.watching.has(b.id));

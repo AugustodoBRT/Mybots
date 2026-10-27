@@ -127,7 +127,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
-    const watchBrowsers = () => {
+    const watchBrowsers = refresh => {
       if (closed) return;
       const viewers = [...(sockets?.clients || []), ...(frameSockets?.clients || [])];
       const wanted = new Set(viewers.flatMap(socket => [...(socket.views || [])]));
@@ -136,7 +136,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         const options = sizes.length ? { maxWidth: Math.max(...sizes.map(size => size.maxWidth)), maxHeight: Math.max(...sizes.map(size => size.maxHeight)) } : viewSize();
         options.congested = viewers.some(socket => socket.views?.has(botId) && socket.bufferedAmount > 250_000);
         const before = link.viewOptions.get(botId);
-        if (!link.watching.has(botId) || before?.maxWidth !== options.maxWidth || before?.maxHeight !== options.maxHeight || before?.congested !== options.congested) link.view(botId, true, options);
+        if (botId === refresh || !link.watching.has(botId) || before?.maxWidth !== options.maxWidth || before?.maxHeight !== options.maxHeight || before?.congested !== options.congested) link.view(botId, true, options);
       }
       for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
     };
@@ -382,7 +382,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (params.on) socket.viewOptions.set(bot.id, viewSize(params)); else socket.viewOptions.delete(bot.id);
           if (params.on && params.native) socket.nativeViews.add(bot.id); else socket.nativeViews.delete(bot.id);
           if (params.on) socket.views.add(bot.id); else socket.views.delete(bot.id);
-          watchBrowsers();
+          watchBrowsers(params.on ? bot.id : undefined);
           return { watching: Boolean(params.on), online: link.status().state === 'online' };
         }
         case 'browser.input': {
@@ -597,7 +597,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           ws.views = new Set([bot.id]); ws.previous = {}; ws.alive = true;
           ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); ws.on('message', () => ws.close(1008));
           ws.on('close', () => { ws.views.clear(); watchBrowsers(); });
-          const watching = link.watching.has(bot.id); watchBrowsers(); if (watching) link.view(bot.id, true, link.viewOptions.get(bot.id));
+          watchBrowsers(bot.id);
         }); return;
       }
       if (request.url !== '/' || (origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))) { socket.destroy(); return; }

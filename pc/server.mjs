@@ -1,3 +1,4 @@
+import { personInput as cleanPersonInput } from '../supervisor/browser.mjs';
 import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
 import { createServer as createSocket } from 'node:net';
@@ -166,7 +167,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   };
   const personInput = async (botId, input) => {
     if (!assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
-    return browser.command(botId, 'input', input);
+    return browser.command(botId, 'input', cleanPersonInput(input));
   };
   const panic = () => { for (const run of controls) run.controller.abort('panic'); return browser.close(); };
   const panicPath = join(directory, 'panic.sock');

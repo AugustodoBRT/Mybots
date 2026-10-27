@@ -458,6 +458,9 @@ internal object BotBrowser {
     when (action) {
       "back" -> if (web.canGoBack()) web.goBack() else return false
       "reload" -> web.reload()
+      "keyboard" -> { web.requestFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
+      "zoom" -> web.zoomIn()
+      "zoomOut" -> web.zoomOut()
       else -> throw IllegalArgumentException("Ação inválida.")
     }
     return true
@@ -654,6 +657,8 @@ class BotBrowserView(context: Context, appContext: AppContext) : ExpoView(contex
   override val shouldUseAndroidLayout = true
   private val onPage by EventDispatcher()
   private var bot: String? = null
+  private var pageWidth = 0
+  private var pageHeight = 0
   var interactive = false
     set(value) { field = value; bot?.let { BotBrowser.setCapture(it, value) } }
   private val listener: (Map<String, Any>) -> Unit = { onPage(it) }
@@ -667,6 +672,20 @@ class BotBrowserView(context: Context, appContext: AppContext) : ExpoView(contex
 
   override fun onAttachedToWindow() { super.onAttachedToWindow(); bot?.let { BotBrowser.attach(context, it, this, listener) } }
   override fun onDetachedFromWindow() { bot?.let { BotBrowser.setCapture(it, false); BotBrowser.detach(context, it, this, listener) }; super.onDetachedFromWindow() }
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    if (interactive) {
+      val width = View.MeasureSpec.getSize(widthMeasureSpec)
+      val height = View.MeasureSpec.getSize(heightMeasureSpec)
+      if (width != pageWidth || pageHeight == 0) { pageWidth = width; pageHeight = height }
+      else pageHeight = maxOf(pageHeight, height)
+      getChildAt(0)?.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(pageHeight, View.MeasureSpec.EXACTLY))
+    } else { pageWidth = 0; pageHeight = 0 }
+  }
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    if (interactive && pageHeight > 0) getChildAt(0)?.layout(0, 0, right - left, pageHeight)
+  }
   override fun onInterceptTouchEvent(event: MotionEvent) = !interactive || super.onInterceptTouchEvent(event)
   @SuppressLint("ClickableViewAccessibility")
   override fun onTouchEvent(event: MotionEvent) = !interactive || super.onTouchEvent(event)

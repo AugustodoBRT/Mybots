@@ -65,11 +65,22 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
 
   private var awaitingFrame = 0L
   private val slowInput = Runnable { if (awaitingFrame != 0L) { metadata["slow"] = true; onMetadata(metadata.toMap()) } }
+  private var lastViewport: JSONObject? = null
   private var inputKey: java.security.PublicKey? = null
   private var lastText = ""
   private var secret = false
   private var changingEditor = false
-  private val editor = EditText(context).apply {
+  private val editor = object : EditText(context) {
+    override fun onCreateInputConnection(outAttrs: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+      val connection = super.onCreateInputConnection(outAttrs) ?: return null
+      return object : android.view.inputmethod.InputConnectionWrapper(connection, false) {
+        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+          if (text.isEmpty() && beforeLength > 0) { input(JSONObject().put("type", "key").put("key", "Backspace").toString()); return true }
+          return super.deleteSurroundingText(beforeLength, afterLength)
+        }
+      }
+    }
+  }.apply {
     alpha = 0f; setTextColor(android.graphics.Color.TRANSPARENT); setBackgroundColor(android.graphics.Color.TRANSPARENT)
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -113,6 +124,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   fun input(value: String?) {
     val command = runCatching { JSONObject(value ?: return) }.getOrNull() ?: return
     command.remove("nonce")
+    if (command.optString("type") == "viewport") lastViewport = JSONObject(command.toString())
     if (command.optString("type") == "keyboard") { editor.requestFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT); return }
     if (command.optString("type") == "key") sendText()
     if (command.optString("type") == "touch" && command.optString("phase") == "touchMove") inputs.removeAll { it.optString("phase") == "touchMove" }
@@ -160,7 +172,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
     worker = worker ?: Executors.newSingleThreadExecutor { task -> Thread(task, "mybots-frame").apply { isDaemon = true } }
     val request = Request.Builder().url("http://127.0.0.1:$port/frames?bot=$id").header("Authorization", "Bearer $token").build()
     socket = OkHttpClientProvider.getOkHttpClient().newWebSocket(request, object : WebSocketListener() {
-      override fun onOpen(webSocket: WebSocket, response: Response) { main.post { if (epoch == generation) flushInput() } }
+      override fun onOpen(webSocket: WebSocket, response: Response) { main.post { if (epoch == generation) { if (inputs.isEmpty()) lastViewport?.let { inputs.add(JSONObject(it.toString())) }; flushInput() } } }
       override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
         if (bytes.size > 4_020_000) { webSocket.close(1008, "Quadro inválido."); return }
         val data = bytes.toByteArray()

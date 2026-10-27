@@ -119,8 +119,28 @@ test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for 
   assert.ok(shown.rect.y > 0 && shown.rect.y + shown.rect.height < 640);
   await s.page.evaluate(() => scrollTo(0, 0)); await s.page.evaluate(captchaState, { reveal: true });
   assert.equal(await s.page.evaluate(() => scrollY), 0);
+  // Leaving the page is not solving it.
+  await s.page.setContent('<iframe style="width:300px;height:200px" src="https://www.google.com/recaptcha/api2/anchor"></iframe>', { waitUntil:'domcontentloaded' });
+  await s.checkChallenge(); assert.equal(events.at(-1).captcha.present, true);
+  await s.page.evaluate(() => { location.hash = 'outra-pagina'; document.querySelector('iframe').remove(); });
+  await s.checkChallenge(); assert.equal(events.at(-1).captcha.solved, false);
   await s.page.setContent('<iframe src="https://google.com.evil.test/recaptcha/test"></iframe>');
   assert.equal((await s.page.evaluate(captchaState)).present,false);
+});
+
+test('an image challenge opened beside the checkbox turns the tab desktop while open, without saving it for the site', real, async t => {
+  const s = await session(t), events = []; s.frame = f => events.push(f);
+  await s.page.setContent('<meta name="viewport" content="width=device-width"><iframe style="width:304px;height:78px;border:0" src="https://www.google.com/recaptcha/api2/anchor"></iframe><div id="popup" style="position:absolute;left:439px;top:0;visibility:hidden"><iframe style="width:400px;height:580px;border:0" src="https://www.google.com/recaptcha/api2/bframe"></iframe></div>', { waitUntil: 'domcontentloaded' });
+  await s.input({ type: 'viewport', width: 360, height: 640, deviceScaleFactor: 2 });
+  await s.checkChallenge(); assert.equal(s.desktop, false);
+  await s.page.evaluate(() => { document.querySelector('#popup').style.visibility = 'visible'; });
+  await s.checkChallenge(); assert.equal(s.desktop, true);
+  assert.deepEqual(await s.page.evaluate(() => [innerWidth, navigator.maxTouchPoints]), [1280, 0]);
+  assert.ok(events.some(e => e.desktop === true));
+  assert.ok(!Object.values(s.siteViews).includes(true));
+  await s.page.evaluate(() => { document.querySelector('#popup').style.visibility = 'hidden'; });
+  await s.checkChallenge(); assert.equal(s.desktop, false);
+  assert.equal(await s.page.evaluate(() => navigator.maxTouchPoints), 5);
 });
 
 test('live input validates gestures and encrypted envelopes without echoing payloads', async () => {

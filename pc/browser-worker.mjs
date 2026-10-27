@@ -195,9 +195,16 @@ export class BrowserSession {
     this.checkingChallenge = true;
     try {
       const state = await this.page.evaluate(captchaState, { reveal: Boolean(this.viewOptions?.interactive) });
+      // reCAPTCHA opens its image challenge beside the checkbox, out of a phone-wide page: the tab turns desktop
+      // while it is open (not saved as the site's choice) and back to the phone when it closes.
+      const r = state.rect, area = r ? r.width * r.height : 0, origin = new URL(this.page.url()).origin;
+      if (this.device && !this.desktop && r && (r.x < -1 || r.x + r.width > this.device.width + 1)) { this.challengeDesktop = { origin, area }; await this.deviceView(this.device); return; }
+      if (this.challengeDesktop && (this.challengeDesktop.origin !== origin || state.solved || area < this.challengeDesktop.area / 2)) { this.challengeDesktop = null; if (this.device) { await this.deviceView(this.device); return; } }
       for (const frame of this.page.frames()) if (frame !== this.page.mainFrame()) { const child = await frame.evaluate(captchaState).catch(() => null); if (child?.solved) state.solved = true; }
+      // A challenge that vanished counts as solved only on the page that showed it, not after leaving that page.
+      if (this.challengeSeen && this.challengeSeen !== this.page.url()) this.challengeSeen = null;
       const captcha = { ...state, solved: state.solved || !!this.challengeSeen && !state.present, width: this.viewportSize().width, height: this.viewportSize().height, autoReturn: this.autoReturn };
-      if (state.present) this.challengeSeen = true;
+      if (state.present) this.challengeSeen = this.page.url();
       const signature = JSON.stringify(captcha);
       if (signature !== this.lastChallenge) { this.lastChallenge = signature; this.emitFrame({ captcha }); }
     } finally { this.checkingChallenge = false; }
@@ -291,7 +298,7 @@ export class BrowserSession {
     }
     this.inputKeys ||= generateKeyPairSync('rsa', { modulusLength: 2048 });
     this.device = { width: args.width, height: args.height, deviceScaleFactor: args.deviceScaleFactor };
-    this.desktop = this.siteViews[origin] === true;
+    this.desktop = this.siteViews[origin] === true || this.challengeDesktop?.origin === origin;
     const metrics = this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
     await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });

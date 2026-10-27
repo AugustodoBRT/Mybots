@@ -1,3 +1,4 @@
+import { textEdit, protectEdit } from './browser-input';
 import { framePoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
@@ -55,19 +56,23 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
   useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
-  const [text, setText] = useState(''); const [secret, setSecret] = useState(false); const [address, setAddress] = useState(null);
+  const [address, setAddress] = useState(null); const keyboard = useRef(null); const webInput = useRef({ before: '', text: '', key: null, secret: false }); const typeTimer = useRef(null);
+  const webType = text => { webInput.current.text = text; clearTimeout(typeTimer.current); typeTimer.current = setTimeout(async () => { const input = webInput.current, next = input.text; if (!input.key || next === input.before) return; const edit = { ...textEdit(input.before, next), secret: input.secret }; input.before = next; try { send(await protectEdit(input.key, edit)); } catch { setProblem('Não consegui proteger a digitação.'); } }, 30); };
+  useEffect(() => () => clearTimeout(typeTimer.current), []);
   const [nativeInput, setNativeInput] = useState(null); const nonce = useRef(0);
   const [zoom, setZoom] = useState({ scale: 1, translateX: 0, translateY: 0, rotation: 0 });
   const zoomRef = useRef(zoom); zoomRef.current = zoom; const lastTap = useRef(0);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
   live.current = { assumed, frame, desktop };
-  const send = input => { if (BotFrameView) setNativeInput(JSON.stringify({ ...input, nonce: ++nonce.current })); else call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message)); };
+  const send = input => { if (!BotFrameView && input.type === 'keyboard') { keyboard.current?.focus(); return; } if (BotFrameView) setNativeInput(JSON.stringify({ ...input, nonce: ++nonce.current })); else call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message)); };
   useEffect(() => { setDrag({ x: 0, y: 0 }); }, [frame?.seq]);
   useEffect(() => {
     setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      if (data.inputKey) webInput.current.key = data.inputKey;
+      if (data.focus && !BotFrameView) { webInput.current.secret = data.focus.secret; if (data.focus.active) { webInput.current.before = ''; webInput.current.text = ''; keyboard.current?.clear(); keyboard.current?.focus(); } else keyboard.current?.blur(); }
       if (typeof data.desktop === 'boolean') setDesktop(data.desktop);
       if (data.closed) setState('closed');
       else if (data.error) setProblem(data.error);
@@ -117,7 +122,6 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     },
     onPanResponderTerminate: () => { touch.current = null; send({ type: 'touch', phase: 'touchCancel', points: [] }); setDrag({ x: 0, y: 0 }); }
   })).current;
-  const typeText = () => { if (!text) return; send({ type: 'text', text }); setText(''); };
   const go = () => { if (address?.trim()) send({ type: 'open', url: address.trim() }); setAddress(null); };
   const shown = frame?.url && frame.url !== 'about:blank' ? frame.url.replace(/^https?:\/\//, '') : '';
   return <BrowserSurface assumed={assumed} control={control}><View style={[styles.panel, assumed && styles.fullPanel]}>
@@ -145,14 +149,11 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {assumed ? <>
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
-      <View style={styles.typeRow}>
-        <TextInput style={[styles.address, { flex: 1 }]} value={text} onChangeText={setText} onSubmitEditing={typeText} secureTextEntry={secret} blurOnSubmit={false}
-          placeholder={secret ? 'Senha ou código (não vai para a IA)' : 'Digitar no campo tocado'} placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} returnKeyType="send" />
-        <Pressable accessibilityRole="switch" accessibilityState={{ checked: secret }} accessibilityLabel="Esconder o que digito" onPress={() => setSecret(value => !value)} style={[styles.tool, secret && styles.toolOn]}><Icon name="key" size={16} color={secret ? C.mint : C.text2} /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Digitar na página" disabled={!text} onPress={typeText} style={styles.tool}><Icon name="send" size={16} color={text ? C.mint : C.faint} /></Pressable>
+      {!BotFrameView ? <TextInput ref={keyboard} style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} onChangeText={webType} autoCapitalize="none" onSubmitEditing={() => send({ type:'key',key:'Enter' })} blurOnSubmit={false} /> : null}
+      <View style={styles.keys}>
+        <Pressable accessibilityRole="button" onPress={() => send({ type: 'keyboard' })} style={styles.key}><Text style={styles.keyText}>Teclado</Text></Pressable>
+        {[['Enter','Enter'],['Tab','Tab'],['Esc','Escape']].map(([label,key]) => <Pressable key={key} accessibilityRole="button" onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}
       </View>
-      <View style={styles.keys}>{[['Enter', 'Enter'], ['Tab', 'Tab'], ['⌫', 'Backspace'], ['Esc', 'Escape'], ['↑', 'ArrowUp'], ['↓', 'ArrowDown']].map(([label, key]) =>
-        <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Tecla ${key}`} onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}</View>
       <Text style={styles.hint}>{browserMode(bot) === 'mine' ? 'Meu Chrome usa seus logins. Toque para clicar e arraste para rolar. Todos os bots que usam Meu Chrome esperam até você devolver.' : 'Toque na página para clicar e arraste para rolar. O bot espera até você devolver. O Google não aceita login neste Chrome; para Gmail, Agenda e Drive use os apps da conta.'}</Text>
     </> : null}
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}

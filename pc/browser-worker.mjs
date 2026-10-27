@@ -62,7 +62,7 @@ export class BrowserSession {
     this.pages = []; this.metrics = new Map(); this.tabError = null; this.closing = false;
     const add = page => {
       if (this.pages.length >= 5) { this.tabError = 'Até 5 abas por bot. Feche uma aba antes de abrir outra.'; this.closePage(page).catch(() => {}); return; }
-      this.pages.push(page);
+      this.pages.push(page); this.observe(page).catch(() => {});
       if (this.mode === 'mine') {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
@@ -83,7 +83,8 @@ export class BrowserSession {
       this.context.on('page', add);
       this.page = this.pages[0] || await this.context.newPage();
     }
-    const closed = () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.frame?.({ closed: true }); };
+    await Promise.all(this.pages.map(page => this.observe(page)));
+    const closed = () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.emitFrame({ closed: true }); };
     if (this.mode === 'mine') { this.onDisconnect = closed; this.browser.on('disconnected', closed); } else this.context.on('close', closed);
   }
   async route(route) {
@@ -101,6 +102,7 @@ export class BrowserSession {
       await metrics.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
       await this.preparePopups(page);
     }
+    await this.observe(page);
     if (safe) await page.goto(safe, { waitUntil: 'domcontentloaded' });
     return page;
   }
@@ -148,7 +150,7 @@ export class BrowserSession {
     }
     if (on) for (const frame of this.page.frames()) await frame.evaluate(() => {
       if (document.querySelector('style[data-mybots-live-mask]')) return;
-      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password] { color:transparent!important; text-shadow:none!important; caret-color:transparent!important; }'; document.documentElement.append(style);
+      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { color:transparent!important; text-shadow:none!important; caret-color:transparent!important; }'; document.documentElement.append(style);
     }).catch(() => {});
     const quality = (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
     if (on && !this.cdp) {
@@ -179,10 +181,62 @@ export class BrowserSession {
       if (this.cdp !== cdp || !this.pendingFrame) return;
       const next = this.pendingFrame; this.pendingFrame = null; this.lastFrameAt = Date.now();
       if (Date.now() - (this.lastInfoAt || 0) >= 500) { this.lastInfoAt = Date.now(); this.info().catch(() => {}); }
-      this.frame?.({ ...next, seq: ++this.seq, url: this.page?.url() || '', title: this.tabTitles?.get(this.page) || '', tabs: this.tabList() });
+      this.emitFrame({ ...next, seq: ++this.seq, url: this.page?.url() || '', title: this.tabTitles?.get(this.page) || '', tabs: this.tabList() });
     };
     const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
     if (delay) this.frameTimer = setTimeout(flush, delay); else flush();
+  }
+  redact(value) {
+    if (typeof value === 'string') { for (const secret of this.secrets) value = value.split(secret).join('[senha protegida]'); return value; }
+    if (Array.isArray(value)) return value.map(item => this.redact(item));
+    if (value && typeof value === 'object' && !Buffer.isBuffer(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, ['image','inputKey'].includes(key) ? item : this.redact(item)]));
+    return value;
+  }
+  emitFrame(frame) { this.frame?.(this.redact(frame)); }
+  observe(page) {
+    if (page.__mybotsObservation) return page.__mybotsObservation;
+    return page.__mybotsObservation = (async () => {
+      await page.exposeBinding('__mybotsFocus', async ({ frame }) => {
+        if (page !== this.page || !this.device || page.isClosed()) return;
+        const focus = await frame.evaluate(() => {
+          const el = document.activeElement;
+          const active = !!el && (['INPUT','TEXTAREA'].includes(el.tagName) || el.isContentEditable) && !el.disabled && !el.readOnly;
+          const secret = active && (el.type === 'password' || el.autocomplete === 'one-time-code' || /otp|token|code|codigo|código|verification/i.test(el.name + ' ' + el.id + ' ' + el.autocomplete));
+          const r = active ? el.getBoundingClientRect() : null;
+          return { active, type: active ? el.type || 'text' : '', secret: !!secret, rect: r ? { x:r.x,y:r.y,width:r.width,height:r.height } : null };
+        }).catch(() => ({ active: false, secret: false }));
+        if (frame !== page.mainFrame() && focus.rect) { const box = await (await frame.frameElement()).boundingBox().catch(() => null); if (box) { focus.rect.x += box.x; focus.rect.y += box.y; } }
+        this.focus = focus; this.emitFrame({ focus });
+      });
+      const script = () => {
+        if (window.__mybotsNotify) document.removeEventListener('focusin', window.__mybotsNotify, true);
+        const notify = window.__mybotsNotify = () => window.__mybotsFocus().catch(() => {});
+        document.addEventListener('focusin', notify, true);
+        document.addEventListener('focusout', () => setTimeout(notify, 0), true);
+      };
+      await page.addInitScript(script); page.on('domcontentloaded', () => page.evaluate(script).catch(() => {})); await page.evaluate(script).catch(() => {});
+    })();
+  }
+  async protectedEdit(args) {
+    if (!this.inputKeys || !this.device) throw new Error('Assuma o navegador de novo.');
+    try {
+      const key = privateDecrypt({ key: this.inputKeys.privateKey, oaepHash: 'sha256' }, Buffer.from(args.key, 'base64'));
+      const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(args.iv, 'base64'));
+      decipher.setAuthTag(Buffer.from(args.tag, 'base64')); decipher.setAAD(Buffer.from('mybots-input'));
+      const bytes = Buffer.concat([decipher.update(Buffer.from(args.data, 'base64')), decipher.final()]); key.fill(0);
+      const edit = JSON.parse(bytes.toString('utf8')); bytes.fill(0);
+      if (!Number.isInteger(edit.delete) || edit.delete < 0 || edit.delete > 2000 || typeof edit.text !== 'string' || edit.text.length > 2000) throw new Error();
+      const sensitive = await this.page.evaluate(() => { let el = document.activeElement; while (el?.tagName === 'IFRAME') { try { el = el.contentDocument.activeElement; } catch { return true; } } return el?.type === 'password' || el?.autocomplete === 'one-time-code'; });
+      // Retain every private fragment before touching the page; even a page that echoes it cannot leak it through reads.
+      if (edit.text && (sensitive || this.focus?.secret || edit.secret)) this.secrets.add(edit.text);
+      for (let i = 0; i < edit.delete; i++) await this.page.keyboard.press('Backspace');
+      if (edit.text) await this.page.keyboard.insertText(edit.text);
+      if (sensitive || this.focus?.secret) for (const frame of this.page.frames()) {
+        const value = await frame.evaluate(() => { const el = document.activeElement; return ['INPUT','TEXTAREA'].includes(el?.tagName) ? el.value : ''; }).catch(() => '');
+        if (value) this.secrets.add(value);
+      }
+      return { sent: true };
+    } catch { throw new Error('Não consegui digitar no campo protegido.'); }
   }
   async deviceView(args) {
     if (!this.page) return;
@@ -209,12 +263,14 @@ export class BrowserSession {
       mkdirSync(this.profile, { recursive: true, mode: 0o700 });
       writeFileSync(join(this.profile, 'site-views.json'), JSON.stringify(this.siteViews), { mode: 0o600 });
     }
+    this.inputKeys ||= generateKeyPairSync('rsa', { modulusLength: 2048 });
     this.device = { width: args.width, height: args.height, deviceScaleFactor: args.deviceScaleFactor };
     this.desktop = this.siteViews[origin] === true;
     const metrics = this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
     await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });
-    this.frame?.({ desktop: this.desktop, viewport: metrics });
+    this.emitFrame({ desktop: this.desktop, viewport: metrics, inputKey: this.inputKeys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64') });
+    await this.page.evaluate(() => window.__mybotsFocus?.()).catch(() => {});
   }
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
@@ -222,6 +278,7 @@ export class BrowserSession {
     const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
+    if (args.type === 'encrypted') return this.protectedEdit(args);
     if (args.type === 'touch') {
       const cdp = this.devices.get(this.page)?.cdp || this.cdp; if (!cdp || this.desktop) throw new Error('Ative o modo celular.');
       await cdp.send('Input.dispatchTouchEvent', { type: args.phase, touchPoints: args.points.map(p => ({ x: p.x * width, y: p.y * height, id: p.id, radiusX: 1, radiusY: 1, force: 1 })) }); return { sent: true };
@@ -230,13 +287,13 @@ export class BrowserSession {
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
     if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));
     else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
-    else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) await (args.text.length <= 200 ? this.page.keyboard.type(args.text) : this.page.keyboard.insertText(args.text));
+    else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) { if (args.text) this.secrets.add(args.text); await this.page.keyboard.insertText(args.text); }
     else if (args.type === 'key' && KEYS.includes(args.key)) await this.page.keyboard.press(args.key);
     else if (args.type === 'open' && typeof args.url === 'string' && args.url.length <= 2000) await this.page.goto(await allowedUrl(/^[a-z]+:\/\//i.test(args.url.trim()) ? args.url.trim() : 'https://' + args.url.trim()), { waitUntil: 'commit' });
     else if (args.type === 'back') await this.page.goBack({ waitUntil: 'commit' }).catch(() => {});
     else if (args.type === 'reload') await this.page.reload({ waitUntil: 'commit' }).catch(() => {});
     else throw new Error('Ação inválida.');
-    return this.info();
+    return { sent: true };
   }
   viewportSize() { return this.device ? (this.desktop ? { width: 1280, height: 800 } : this.device) : this.page.viewportSize() || { width: 1280, height: 800 }; }
   tabList() { return (this.pages || []).map((page, n) => ({ tab: n + 1, title: this.tabTitles?.get(page) || page.url().slice(0, 100), active: page === this.page })); }
@@ -260,14 +317,9 @@ export class BrowserSession {
   async command(op, input = {}) {
     const result = await this.perform(op, input);
     if (op === 'login') return result; // Internal encryption material goes only to the phone's vault, never to MCP.
-    const redact = value => {
-      if (typeof value === 'string') { for (const secret of this.secrets) value = value.split(secret).join('[senha protegida]'); return value; }
-      if (Array.isArray(value)) return value.map(redact);
-      if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === 'image' ? item : redact(item)]));
-      return value;
-    };
-    return redact(result);
+    return this.redact(result);
   }
+
   async perform(op, input = {}) {
     if (op === 'login_cancel') { this.login = null; return { cancelled: true }; }
     await this.start();
@@ -388,7 +440,7 @@ export class BrowserSession {
       await Promise.all((this.pages || []).map(page => this.closePage(page).catch(() => {})));
       this.pages = []; this.page = null; this.context = null; this.starting = null;
       if (!this.connect) await this.browser?.close();
-      this.frame?.({ closed: true });
+      this.emitFrame({ closed: true });
     } else await this.context?.close();
   }
 }

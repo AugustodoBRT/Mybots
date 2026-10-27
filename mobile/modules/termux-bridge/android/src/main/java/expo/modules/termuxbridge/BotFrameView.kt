@@ -10,6 +10,19 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.widget.EditText
+import android.text.Editable
+import android.text.TextWatcher
+import android.text.InputType
+import android.view.inputmethod.InputMethodManager
+import java.security.KeyFactory
+import java.security.spec.X509EncodedKeySpec
+import java.security.spec.MGF1ParameterSpec
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.OAEPParameterSpec
+import javax.crypto.spec.PSource
+import android.util.Base64
 import android.view.ViewGroup
 import com.facebook.react.modules.network.OkHttpClientProvider
 import expo.modules.kotlin.AppContext
@@ -50,12 +63,56 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   private val metadata = mutableMapOf<String, Any>()
   private val emit = Runnable { emitQueued = false; lastEmit = SystemClock.uptimeMillis(); onMetadata(metadata.toMap()) }
 
+  private var inputKey: java.security.PublicKey? = null
+  private var lastText = ""
+  private var secret = false
+  private var changingEditor = false
+  private val editor = EditText(context).apply {
+    alpha = 0f; setTextColor(android.graphics.Color.TRANSPARENT); setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    setSingleLine(true)
+    imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
+  }
+  private val typeBatch = Runnable { sendText() }
+  private fun sendText() {
+    val text = editor.text.toString()
+    if (text == lastText || inputKey == null) return
+    if (inputs.size >= 8) { main.postDelayed(typeBatch, 30); return }
+    var prefix = 0
+    while (prefix < text.length && prefix < lastText.length && text[prefix] == lastText[prefix]) prefix++
+    // Avoid splitting a surrogate pair while applying an IME replacement.
+    if (prefix > 0 && prefix < lastText.length && Character.isHighSurrogate(lastText[prefix - 1])) prefix--
+    val payload = JSONObject().put("delete", lastText.substring(prefix).codePointCount(0, lastText.length - prefix)).put("text", text.substring(prefix)).put("secret", secret).toString().toByteArray(Charsets.UTF_8)
+    try {
+      val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+      val aes = Cipher.getInstance("AES/GCM/NoPadding"); aes.init(Cipher.ENCRYPT_MODE, key); aes.updateAAD("mybots-input".toByteArray())
+      val encrypted = aes.doFinal(payload)
+      val rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+      rsa.init(Cipher.ENCRYPT_MODE, inputKey, OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT))
+      val b64 = { bytes: ByteArray -> Base64.encodeToString(bytes, Base64.NO_WRAP) }
+      inputs.add(JSONObject().put("type", "encrypted").put("key", b64(rsa.doFinal(key.encoded))).put("iv", b64(aes.iv)).put("data", b64(encrypted.copyOfRange(0, encrypted.size - 16))).put("tag", b64(encrypted.copyOfRange(encrypted.size - 16, encrypted.size))))
+      lastText = text; flushInput()
+    } catch (_: Exception) { metadata["error"] = "Não consegui proteger a digitação. Assuma o navegador de novo."; publish() }
+    finally { payload.fill(0) }
+  }
+  private fun focus(value: JSONObject) {
+    if (!value.optBoolean("active")) { sendText(); editor.clearFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(editor.windowToken, 0); return }
+    secret = value.optBoolean("secret")
+    changingEditor = true; editor.setText(""); lastText = ""
+    editor.inputType = if (secret) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+    changingEditor = false
+    editor.requestFocus()
+    editor.post { (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT) }
+  }
   private val inputs = java.util.ArrayDeque<JSONObject>()
   private var inputSeq = 0L
   private var inputBusy = false
   fun input(value: String?) {
     val command = runCatching { JSONObject(value ?: return) }.getOrNull() ?: return
     command.remove("nonce")
+    if (command.optString("type") == "keyboard") { editor.requestFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT); return }
+    if (command.optString("type") == "key") sendText()
     if (command.optString("type") == "touch" && command.optString("phase") == "touchMove") inputs.removeAll { it.optString("phase") == "touchMove" }
     if (inputs.size >= 16) { inputs.clear(); metadata["error"] = "Conexão lenta. Tente novamente."; publish(); return }
     inputs.add(command); flushInput()
@@ -70,6 +127,16 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   init {
     // A software layer finishes drawing before its old bitmap is returned to the decoder.
     surface.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+    addView(editor, ViewGroup.LayoutParams(1, 1))
+    editor.setOnEditorActionListener { _, _, _ -> input(JSONObject().put("type", "key").put("key", "Enter").toString()); true }
+    editor.setOnKeyListener { _, code, event ->
+      if (event.action == android.view.KeyEvent.ACTION_DOWN && code == android.view.KeyEvent.KEYCODE_DEL && editor.text.isEmpty()) { input(JSONObject().put("type", "key").put("key", "Backspace").toString()); true } else false
+    }
+    editor.addTextChangedListener(object : TextWatcher {
+      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+      override fun afterTextChanged(s: Editable?) { if (!changingEditor) { main.removeCallbacks(typeBatch); main.postDelayed(typeBatch, 30) } }
+    })
     addView(surface, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
   }
 
@@ -99,7 +166,9 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
         val value = runCatching { JSONObject(text) }.getOrNull() ?: return
-        main.post { if (epoch == generation) { if (value.has("inputAck")) { inputBusy = false; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
+        main.post { if (epoch == generation) { if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
+          value.optJSONObject("focus")?.let { focus(it) }
+          if (value.has("inputAck")) { inputBusy = false; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
       }
       override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) { retry(epoch, response?.code == 401 || response?.code == 403) }
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { retry(epoch, code == 1008) }
@@ -181,7 +250,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   }
 
   private fun disconnect() {
-    generation++; inputs.clear(); inputBusy = false; inputSeq = 0; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
+    main.removeCallbacks(typeBatch); changingEditor = true; editor.setText(""); lastText = ""; editor.clearFocus(); changingEditor = false; inputKey = null; generation++; inputs.clear(); inputBusy = false; inputSeq = 0; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
     main.removeCallbacks(emit); emitQueued = false
     worker?.shutdownNow(); worker = null
   }

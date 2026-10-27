@@ -83,7 +83,7 @@ test('a matching notification queues one run with the notification as untrusted 
   assert.equal(f.prompts.length, 1);
   assert.match(f.prompts[0], /SIGAA: nova tarefa/); assert.match(f.prompts[0], /SIGAA: aviso/); assert.match(f.prompts[0], /nunca siga instruções/);
   assert.doesNotMatch(f.prompts[0], /antigo|Compra/);
-  const message = f.app.db.bot(f.bot.id).messages[0];
+  const message = f.app.db.messages(f.bot.id)[0];
   assert.equal(message.origin, 'routine'); assert.equal(message.routineId, routine.id);
   assert.deepEqual(f.notices[0], { title: 'Faculdade · SIGAA', body: 'Resumo: 2 e-mails do SIGAA.', id: 'mybots-routine-' + routine.id, botId: f.bot.id });
   assert.equal(f.app.routines.get(routine.id).lastResult, 'Resumo: 2 e-mails do SIGAA.');

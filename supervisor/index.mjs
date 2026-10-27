@@ -32,8 +32,9 @@ import { Link } from './link.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
-// Messages of each room sent with every state update; older ones come by room.history.
-const ROOM_WINDOW = 60;
+// Events the app applies by themselves, without asking for the state: each one gets the next number, so a client
+// that misses one (reconnection, a connection too far behind) sees the gap and reloads the state and open chats.
+const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
   codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, execute, heartbeatMs = 60000, notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
@@ -76,10 +77,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const ready = Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
-    const publicTasks = () => db.tasks().slice(0, 200).map(({ payload, worker_pid, worker_start, ...task }) => queue.steps.has(task.id) ? { ...task, step: queue.steps.get(task.id) } : task);
+    const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => queue.steps.has(task.id) ? { ...task, step: queue.steps.get(task.id) } : task);
     // Home-screen widget pollers: woken on any change, they answer only when the widget's summary changed.
     const widgetPollers = new Set();
+    let seq = 0;
     const broadcast = (event, data = {}) => {
+      if (SEQUENCED.has(event)) data = { ...data, seq: ++seq };
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.bufferedAmount < 2_000_000) socket.send(JSON.stringify({ event, data }));
       for (const poller of widgetPollers) poller();
       link?.event(event, data);
@@ -185,9 +188,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         reply = { text: shown.text, status: 'complete', ...(files.length ? { attachments: files } : {}) };
       } catch (error) { failure = error; summary = error.message; reply = { text: '', status: 'error', error: error.message }; }
       const stamp = now(); const current = db.requireBot(bot.id);
-      db.putBot({ ...current, updatedAt: stamp, messages: [...current.messages,
-        { id: randomUUID(), role: 'user', text: `Rodar a habilidade “${title}”`, status: 'complete', origin: 'routine', ...(routineId ? { routineId } : {}), routineTitle: manual ? `${title} · agora` : title, createdAt: stamp },
-        { id: randomUUID(), role: 'assistant', ...reply, createdAt: stamp }] });
+      db.transaction(() => {
+        db.appendMessage(bot.id, { id: randomUUID(), role: 'user', text: `Rodar a habilidade “${title}”`, status: 'complete', origin: 'routine', ...(routineId ? { routineId } : {}), routineTitle: manual ? `${title} · agora` : title, createdAt: stamp });
+        db.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', ...reply, createdAt: stamp });
+        db.putBot({ ...current, updatedAt: stamp });
+      });
       db.record(failure ? 'skill_failed' : 'skill_ran', `${title}: ${summary}`.slice(0, 300), bot.id); broadcast('activity.new');
       if (notice && !failure) await deliver({ title, body: summary }, { id: 'mybots-skill-' + skill, botId: bot.id, botName: bot.name }).catch(() => {});
       if (failure) throw failure;
@@ -223,7 +228,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       }
       heartbeat(); routines.tick(); items.tick().catch(() => {}); queue.schedule(); link.kick();
       // A turn waiting for the computer is not work for the phone: it must not hold the phone awake.
-      const busy = db.tasks().some(task => task.state === 'running' || (task.state === 'queued' && queue.laneOf(task.bot_id)));
+      const busy = db.activeTasks().some(task => task.state === 'running' || (task.state === 'queued' && queue.laneOf(task.bot_id)));
       const next = nextWake();
       return { release, instanceId, busy, nextRoutineAt: next, nextRoutineMs: next ? Date.parse(next) : null };
     };
@@ -257,18 +262,18 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       codex.limits().then(limits => { db.setLimits('codex', limits); broadcast('connection.changed'); }).catch(() => {});
     };
     const widgetSummary = () => {
-      const active = db.tasks().filter(task => ['queued', 'running', 'waiting_approval'].includes(task.state));
+      const active = db.activeTasks();
       const pending = db.all("SELECT body FROM approvals WHERE state='pending'").map(row => JSON.parse(row.body).botId);
       const plain = text => String(text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*`#>_]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
       const bots = db.bots().filter(bot => !bot.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(bot => {
-        const latest = bot.messages.at(-1);
+        const latest = db.chatSummary('bot', bot.id).lastMessage;
         const busy = active.some(task => task.bot_id === bot.id);
         // A bot of the computer sleeps while it is off; a message sent to it waits.
         const state = pending.includes(bot.id) ? 'waiting' : !nodes.presence(bot).online ? 'sleeping' : busy ? 'working' : 'idle';
         return { id: bot.id, name: bot.name, color: bot.color || 'green', avatar: bot.avatar || '', state,
           preview: state === 'waiting' ? 'Esperando sua decisão' : state === 'sleeping' ? (busy ? 'Mensagem esperando o computador' : 'Dormindo até o computador ligar') : state === 'working' ? 'Trabalhando…' : latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle || ''}` : plain(latest?.text) || 'Pronto para começar' };
       });
-      const open = db.all("SELECT * FROM pending_items WHERE state='open'").map(row => items.row(row)).filter(item => !db.bot(item.botId)?.deletedAt);
+      const open = db.all("SELECT * FROM pending_items WHERE state='open'").map(row => items.row(row)).filter(item => db.bot(item.botId) && !db.bot(item.botId).deletedAt);
       const next = open.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
       const body = { bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
       return { version: createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16), ...body };
@@ -282,28 +287,41 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       return [];
     };
     queue.rememberServers = rememberServers;
-    const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
-      // Only the latest messages travel with every update; `earlier` says how many are left (room.history brings them).
-      rooms: rooms.list().map(room => ({ ...room, messages: room.messages.slice(-ROOM_WINDOW), earlier: Math.max(0, room.messages.length - ROOM_WINDOW), active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
-      skills: tools.skills?.all() || [],
-      presence: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
-      accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
-      active: [...new Set(db.tasks().filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => task.bot_id))],
-      connection: summary(), connections, models: catalog().map(item => {
-        // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
-        const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
-        return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
-      }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
-      grants: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.grants(bot.id)])),
-      botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), apps: apps.status(), routines: routines.all().filter(item => !db.bot(item.botId)?.deletedAt), timeZone: routines.timeZone(),
-      memories: db.all('SELECT * FROM memory').map(row => ({ id: row.id, botId: row.bot_id, ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(row => !db.bot(row.botId)?.deletedAt),
-      pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => !db.bot(row.botId)?.deletedAt),
-      approvals: db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })),
-      tasks: publicTasks(), activity: db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 100'),
-      heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
-      interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
-      email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
-      computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' });
+    // A bot or room as the lists show it: its profile, the latest message, how many there are and how many are unseen.
+    // The messages themselves come by chat.page; skills, memories and permissions by bot.profile.
+    const botSummary = bot => ({ ...bot, ...db.chatSummary('bot', bot.id) });
+    const roomSummary = room => { const active = rooms.active(room.id); return { ...room, ...db.chatSummary('room', room.id), active: [...new Set(active.map(task => task.bot_id))], activeTasks: active.map(task => task.id) }; };
+    const state = () => {
+      const all = db.bots(); const live = all.filter(bot => !bot.deletedAt); const kept = new Set(live.map(bot => bot.id));
+      return { schema: 1, mode: 'phone', supervisorMigrated: true, seq, usage: db.usage(), person: db.person(),
+        rooms: rooms.list().map(roomSummary),
+        presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
+        accountServers: knownServers() || [], bots: live.map(botSummary), deletedBots: all.filter(bot => bot.deletedAt),
+        active: [...new Set(db.activeTasks().map(task => task.bot_id))],
+        connection: summary(), connections, models: catalog().map(item => {
+          // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
+          const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
+          return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
+        }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
+        botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
+        pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => kept.has(row.botId)),
+        approvals: db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })),
+        // Only the tasks still going (the app shows them and their step); the history comes by tasks.list.
+        tasks: publicTasks(db.activeTasks()), activity: db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 50'),
+        heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
+        interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
+        email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
+        computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' };
+    };
+    // What the bot's profile screen shows besides the bot itself.
+    const profile = botId => {
+      const bot = db.requireBot(botId);
+      return { botId: bot.id, grants: tools.grants(bot.id), accountApps: tools.accountApps(bot.id), accountServers: knownServers() || [],
+        memories: db.all('SELECT * FROM memory WHERE bot_id=?', bot.id).map(row => ({ id: row.id, botId: row.bot_id, ...JSON.parse(row.body), updatedAt: row.updated_at })),
+        skills: (tools.skills?.all() || []).filter(skill => (bot.skills || []).includes(skill.id)) };
+    };
+    // Changes of messages and bots go out with their content as soon as they are saved.
+    db.listen((event, data) => broadcast(event, event === 'bot.updated' ? (() => { const bot = db.bot(data.botId); return { botId: data.botId, bot: bot && botSummary(bot) }; })() : data));
     link.rpc = (method, params) => rpc(method, params);
     const rpc = async (method, params = {}, socket = null) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
@@ -316,7 +334,21 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'bot.update': { const bot = db.requireBot(params.botId); if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const updated = db.configure(bot.id, selectionFor(catalog(), { ...bot, ...params }), params); link.control(browser.status().control); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };
-        case 'chat.history': return db.requireBot(params.botId).messages;
+        // A page of a private chat or a room, by cursor; the latest page also marks the conversation as seen.
+        case 'chat.page': {
+          if ((params.botId === undefined) === (params.roomId === undefined)) throw new Error('Informe o bot ou a sala.');
+          if (params.botId !== undefined) db.requireBot(params.botId); else db.requireRoom(params.roomId);
+          const target = params.botId !== undefined ? { botId: params.botId } : { roomId: params.roomId };
+          const page = db.page({ ...target, before: params.before ?? undefined, limit: params.limit });
+          if (!params.before) db.markRead(target);
+          return page;
+        }
+        case 'chat.read': {
+          if ((params.botId === undefined) === (params.roomId === undefined)) throw new Error('Informe o bot ou a sala.');
+          if (params.botId !== undefined) db.requireBot(params.botId); else db.requireRoom(params.roomId);
+          db.markRead(params.botId !== undefined ? { botId: params.botId } : { roomId: params.roomId }); return { read: true };
+        }
+        case 'bot.profile': return profile(params.botId);
         case 'chat.send': {
           if (!uuid(params.requestId)) throw new Error('Pedido sem identificador válido.');
           const bot = db.requireBot(params.botId); await refresh();
@@ -325,7 +357,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (!status?.loggedIn) throw new Error(status?.message || 'Esta IA não está conectada neste aparelho.');
           // A retried request reuses the files saved the first time instead of storing them again.
           const previous = db.task(params.requestId);
-          const files = previous ? db.bot(previous.bot_id)?.messages.find(item => item.id === previous.message_id)?.attachments : attachments.save(bot.id, params.attachments);
+          const files = previous ? db.message(previous.message_id)?.attachments : attachments.save(bot.id, params.attachments);
           const text = typeof params.text === 'string' && params.text.trim() ? params.text : files?.length ? 'Veja o anexo.' : params.text;
           let task;
           try { task = db.enqueue(bot.id, params.requestId, text, selection, files?.length ? { attachments: files } : {}); }
@@ -335,12 +367,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         }
         case 'tasks.list': return publicTasks();
         case 'task.cancel': if (!uuid(params.taskId)) throw new Error('Tarefa inválida.'); await queue.cancel(params.taskId); return { cancelled: true };
-        case 'activity.list': return state().activity;
+        case 'activity.list': return db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 100');
         case 'grants.set': return tools.grant(params.botId, params.tool, params.allowed);
         case 'approval.respond': return tools.respond(params.approvalId, params.approved, params.actionHash, params.always ?? false);
         // "Consultar agora" in Atividade → Uso: Codex reads its windows directly; Claude needs one tiny reply.
         case 'room.create': return rooms.create(params);
-        case 'room.history': { const room = db.requireRoom(params.roomId); const limit = Number.isInteger(params.limit) ? Math.min(Math.max(params.limit, 1), 500) : 120; return { messages: room.messages.slice(-limit), earlier: Math.max(0, room.messages.length - limit) }; }
         case 'room.update': return rooms.update(params.roomId, params);
         case 'room.delete': rooms.remove(params.roomId); return { deleted: true };
         case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection, params.attachments); }
@@ -462,7 +493,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       }
     };
     queue.on('changed', change => {
-      broadcast(change?.event || 'task.progress', change || {}); broadcast('activity.new');
+      // A step of the bot's work is only that event; changes of a task's state also refresh the rest.
+      broadcast(change?.event || 'task.progress', change || {}); if (!change || !('step' in change)) broadcast('activity.new');
       // A bot that named another member (@) in a room hands it the next turn.
       if (change?.event === 'task.done') rooms.answered(change.taskId, roomSelection);
       if (change?.event === 'task.done' && (db.bot(db.task(change.taskId)?.bot_id)?.provider || 'codex') === 'codex' && connections.codex?.loggedIn) refreshLimits();

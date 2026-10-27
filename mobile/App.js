@@ -18,6 +18,7 @@ import { RichText, FileCard, FileChip, FileBadge, fileIcon, formatSize } from '.
 import { SupervisorClient } from './supervisor-client';
 import { desktop, column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 import { activePhoneBots, createPhoneClient } from './phone';
+import { inSequence, addPage, applyMessage, applyToLists, applyBot, applyStep } from './chat-events';
 
 const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
 const COLORS = { green: C.mint, blue: C.sky, purple: C.lilac, orange: C.peach };
@@ -108,7 +109,8 @@ function useStickyScroll() {
   };
   const onContentSizeChange = () => { if (bottom.current) scroll.current?.scrollToEnd({ animated: false }); };
   const toEnd = () => { bottom.current = true; setAway(false); scroll.current?.scrollToEnd({ animated: true }); };
-  return { scroll, toEnd, away, props: { onScroll, onContentSizeChange, scrollEventThrottle: 100, maintainVisibleContentPosition: { minIndexForVisible: 0 } } };
+  // The screens set maintainVisibleContentPosition: with older pages to load, the anchor is the first message, after the button.
+  return { scroll, toEnd, away, props: { onScroll, onContentSizeChange, scrollEventThrottle: 100 } };
 }
 
 function ToEndButton({ onPress }) {
@@ -261,10 +263,13 @@ function ApprovalCard({ approval, bot, onRespond, busy }) {
   </View>;
 }
 
+// The latest message of a bot or room: the supervisor sends a short copy with the state; the computer backend, the whole chat.
+const latestOf = item => item.lastMessage !== undefined ? item.lastMessage : item.messages?.at(-1);
+const latestInRoom = room => room.lastMessage !== undefined ? room.lastMessage : [...(room.messages || [])].reverse().find(item => item.role !== 'system');
 const plain = text => (text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*`#>]+/g, '').replace(/\s+/g, ' ').trim();
 function BotCard({ bot, busy, waiting, presence, routines = 0, items = 0, onPress, onProfile }) {
   const asleep = presence?.online === false;
-  const latest = bot.messages.at(-1);
+  const latest = latestOf(bot);
   const preview = latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle}` : latest?.attachments?.length && latest.text === 'Veja o anexo.' ? latest.attachments[0].name : plain(latest?.text);
   const updated = new Date(bot.updatedAt);
   const time = Date.now() - updated < 86400000 ? updated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : updated.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -274,7 +279,7 @@ function BotCard({ bot, busy, waiting, presence, routines = 0, items = 0, onPres
     <View><Avatar bot={bot} size={58} state={waiting ? 'waiting' : asleep ? 'sleeping' : busy ? 'working' : 'idle'} />
       {bot.home === 'pc' || bot.home === 'any' ? <View style={[styles.presenceDot, !asleep && styles.presenceOn]} /> : null}</View>
     <View style={styles.botCardCopy}>
-      <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{bot.name}</Text><Text style={styles.botTime}>{time}</Text></View>
+      <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{bot.name}</Text><Text style={styles.botTime}>{time}</Text>{bot.unread ? <Text style={styles.unread}>{bot.unread > 99 ? '99+' : bot.unread}</Text> : null}</View>
       {asleep && !waiting ? <Text style={styles.botPreview} numberOfLines={1}>{busy ? 'Esperando o computador' : `Dormindo · ${seenText(presence)}`}</Text>
         : busy && !waiting ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: hue }]}>Trabalhando</Text><Dots color={hue} /></View>
         : <Text style={[styles.botPreview, waiting && { color: C.amber }]} numberOfLines={1}>{waiting ? 'Esperando sua decisão' : preview || 'Pronto para começar'}</Text>}
@@ -347,7 +352,7 @@ const shortTime = value => { const date = new Date(value); return Date.now() - d
 // What a bot's row says under its name, like the phone's card.
 function botLine(bot, data) {
   const waiting = data.approvals?.some(item => item.botId === bot.id); const asleep = offline(data, bot.id); const busy = data.active?.includes(bot.id);
-  const latest = bot.messages.at(-1);
+  const latest = latestOf(bot);
   if (waiting) return { text: 'Esperando sua decisão', tone: C.amber, state: 'waiting' };
   if (asleep) return { text: busy ? 'Esperando o computador' : `Dormindo · ${seenText(data.presence?.[bot.id])}`, tone: C.faint, state: 'sleeping' };
   if (busy) return { text: 'Trabalhando…', tone: HUE_OF(bot), state: 'working' };
@@ -389,7 +394,7 @@ function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate,
           <View style={styles.sideSection}><Text style={styles.sideSectionText}>SALAS</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Nova sala" disabled={(data.bots || []).length < 2} onPress={onNewRoom} hitSlop={8}><Icon name="plus" size={15} color={C.muted} /></Pressable></View>
           {rooms.map(room => {
-            const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean); const latest = [...room.messages].reverse().find(item => item.role !== 'system');
+            const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean); const latest = latestInRoom(room);
             const working = members.filter(bot => room.active?.includes(bot.id));
             const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
             return <SideRow key={room.id} selected={room.id === roomId} onPress={() => onRoom(room.id)} label={`Abrir a sala ${room.name}`} face={<RoomFaces bots={members} size={36} />}
@@ -403,7 +408,7 @@ function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate,
           const line = botLine(bot, data); const presence = data.presence?.[bot.id];
           return <SideRow key={bot.id} selected={bot.id === selected} onPress={() => onOpen(bot.id)} label={`Conversar com ${bot.name}`}
             face={<Avatar bot={bot} size={40} state={line.state} animated={line.state !== 'idle'} />} dot={bot.home === 'pc' || bot.home === 'any' ? (presence?.online === false ? C.faint : C.mint) : null}
-            title={bot.name} time={bot.messages.at(-1) ? shortTime(bot.updatedAt) : ''} line={line.text} tone={line.tone} working={line.state === 'working'} />;
+            title={bot.name} time={latestOf(bot) ? shortTime(bot.updatedAt) : ''} line={line.text} tone={line.tone} working={line.state === 'working'} />;
         })}
         {!bots.length && !needle ? <Text style={styles.sideEmpty}>Nenhum bot ainda. Toque em + para criar o primeiro.</Text> : null}
       </ScrollView>
@@ -1160,7 +1165,7 @@ function Composer({ value, setValue, onSend, canSend, placeholder, editable = tr
   </View>;
 }
 
-function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer }) {
+function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -1227,8 +1232,9 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
     {browsing && (browserOpen || assumed) ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
     <View style={styles.messagesWrap}>
-    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps}>
-      {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
+    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: more ? 1 : 0 }}>
+      {more ? <EarlierButton onPress={onEarlier} /> : null}
+      {!bot.messages.length && !bot.messageCount && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
       </View>}
@@ -1275,15 +1281,22 @@ function RoomFaces({ bots, size = 40 }) {
   </View>;
 }
 
+// The previous page of a conversation: it opens with the latest messages only.
+function EarlierButton({ onPress }) {
+  const [loading, setLoading] = useState(false);
+  const load = async () => { setLoading(true); try { await onPress(); } finally { setLoading(false); } };
+  return <Pressable accessibilityRole="button" disabled={loading} onPress={() => load().catch(() => {})} style={({ pressed }) => [styles.earlier, pressed && styles.pressed]}><Text style={styles.earlierText}>{loading ? 'Carregando…' : 'Ver mensagens anteriores'}</Text></Pressable>;
+}
+
 function RoomCard({ room, bots, onPress }) {
   const members = room.botIds.map(id => bots.find(bot => bot.id === id)).filter(Boolean);
-  const latest = [...room.messages].reverse().find(item => item.role !== 'system');
+  const latest = latestInRoom(room);
   const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
   const working = room.active?.length ? members.filter(bot => room.active.includes(bot.id)).map(bot => bot.name) : [];
   return <Pressable accessibilityRole="button" accessibilityLabel={`Abrir a sala ${room.name}`} onPress={onPress} style={({ pressed }) => [styles.botCard, pressed && styles.pressed]}>
     <RoomFaces bots={members} size={44} />
     <View style={styles.botCardCopy}>
-      <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{room.name}</Text><Text style={styles.botTime}>{members.length} bots</Text></View>
+      <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{room.name}</Text><Text style={styles.botTime}>{members.length} bots</Text>{room.unread ? <Text style={styles.unread}>{room.unread > 99 ? '99+' : room.unread}</Text> : null}</View>
       {working.length ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: C.mint }]} numberOfLines={1}>{working.join(', ')} {working.length > 1 ? 'respondendo' : 'respondendo'}</Text><Dots /></View>
         : <Text style={styles.botPreview} numberOfLines={1}>{latest ? `${who || 'Bot'}: ${plain(latest.text) || (latest.status === 'error' ? 'não conseguiu responder' : '')}` : members.map(bot => bot.name).join(', ')}</Text>}
     </View>
@@ -1317,24 +1330,13 @@ function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
   </Modal>;
 }
 
-function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call }) {
+function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll(); const input = useRef(null);
   const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState(''); const [files, setFiles] = useState([]);
   const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
   const byId = Object.fromEntries(members.map(bot => [bot.id, bot]));
-  // The state only carries the latest messages; older ones are fetched on demand and joined to the live ones.
-  const [extra, setExtra] = useState(null); const [loadingEarlier, setLoadingEarlier] = useState(false);
-  useEffect(() => { setExtra(null); }, [room.id]);
-  const shown = useMemo(() => {
-    if (!extra) return room.messages;
-    const fresh = new Map(room.messages.map(message => [message.id, message])); const seen = new Set(extra.messages.map(message => message.id));
-    return [...extra.messages.map(message => fresh.get(message.id) || message), ...room.messages.filter(message => !seen.has(message.id))];
-  }, [room.messages, extra]);
-  const earlier = extra ? extra.earlier : room.earlier || 0;
-  const loadEarlier = async () => {
-    setLoadingEarlier(true); setError('');
-    try { setExtra(await call('room.history', { roomId: room.id, limit: shown.length + 120 })); } catch (e) { setError(nativeMessage(e)); } finally { setLoadingEarlier(false); }
-  };
+  // The room's loaded pages; older ones come on demand, a page at a time.
+  const shown = room.messages;
   const working = members.filter(bot => room.active?.includes(bot.id));
   const approvals = (data.approvals || []).filter(item => room.activeTasks?.includes(item.taskId));
   const named = members.filter(bot => new RegExp(`@${bot.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu').test(draft));
@@ -1365,8 +1367,8 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
     </View>
     <View style={styles.messagesWrap}>
-    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps}>
-      {earlier > 0 ? <Pressable accessibilityRole="button" disabled={loadingEarlier} onPress={loadEarlier} style={({ pressed }) => [styles.earlier, pressed && styles.pressed]}><Text style={styles.earlierText}>{loadingEarlier ? 'Carregando…' : `Ver mensagens anteriores (${earlier})`}</Text></Pressable> : null}
+    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: more ? 1 : 0 }}>
+      {more ? <EarlierButton onPress={onEarlier} /> : null}
       {!shown.length ? <View style={styles.chatEmpty}><RoomFaces bots={members} size={72} />
         <Text style={styles.chatEmptyTitle}>{room.name}</Text>
         <Text style={styles.chatEmptyText}>Escreva para todos ou chame alguém com @. Os bots também podem se chamar entre si.</Text></View> : null}
@@ -1455,6 +1457,14 @@ function AppMain() {
   const supervisor = useRef(null);
   const phoneMode = useRef(mode); phoneMode.current = mode;
   const eventRefresh = useRef(null);
+  // The supervisor's state has no messages: the open conversations are loaded by page (chat.page) and kept up to date
+  // by the message events. `seq` is the number of the last applied event; a gap reloads the state and these pages.
+  const [chats, setChats] = useState({});
+  const chatsRef = useRef(chats); chatsRef.current = chats;
+  const lastSeq = useRef(null);
+  const openChat = useRef(null);
+  // Skills, memories and permissions of the bot whose profile is open (bot.profile).
+  const [profile, setProfile] = useState(null);
   const phoneConnecting = useRef(null);
 
   useEffect(() => {
@@ -1491,8 +1501,12 @@ function AppMain() {
   const loadSupervisorState = useCallback(async () => {
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
-    setData(next); setLoadError('');
-    const cache = { schema: 1, mode: 'phone', supervisorMigrated: true, bots: [...next.bots, ...(next.deletedBots || [])] };
+    lastSeq.current = typeof next.seq === 'number' ? next.seq : null;
+    // The conversation on screen is being read: its new messages are not unseen.
+    const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
+    setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
+    // The saved copy keeps the latest loaded messages of each conversation (the supervisor has them all).
+    const cache = { schema: 1, mode: 'phone', supervisorMigrated: true, bots: [...next.bots, ...(next.deletedBots || [])].map(bot => ({ ...bot, messages: (chatsRef.current[bot.id]?.messages || []).filter(message => ['user', 'assistant'].includes(message.role)).slice(-40) })) };
     setLocalCache(cache);
     try { await writeLocalStore(cache); }
     catch { setLoadError('Não consegui atualizar a cópia local. Os dados continuam salvos no supervisor.'); }
@@ -1513,6 +1527,22 @@ function AppMain() {
     // Keeps routines and notices working with the screen off (only if the person did not turn it off).
     startKeepAlive()?.catch(() => {});
   }, []);
+  // A page of a conversation: the latest (replacing what was loaded) or the one before the oldest loaded.
+  const loadChat = useCallback(async (target, older = false) => {
+    const key = target.botId || target.roomId; const before = older ? chatsRef.current[key]?.before : undefined;
+    if (older && !before) return;
+    const page = await supervisor.current.call('chat.page', { ...target, ...(before ? { before } : {}) });
+    setChats(old => addPage(old, key, page, older));
+    if (!older) setData(old => old ? { ...old, bots: old.bots?.map(bot => bot.id === key ? { ...bot, unread: 0 } : bot), rooms: old.rooms?.map(room => room.id === key ? { ...room, unread: 0 } : room) } : old);
+  }, []);
+  // After a missed event or a reconnection: the state again, and the latest page of each loaded conversation.
+  const resync = useCallback(async () => {
+    const next = await loadSupervisorState();
+    const known = [...(next.bots || []).map(bot => bot.id), ...(next.rooms || []).map(room => room.id)];
+    const loaded = Object.keys(chatsRef.current);
+    setChats(old => Object.fromEntries(Object.entries(old).filter(([key]) => known.includes(key))));
+    for (const key of loaded.filter(key => known.includes(key))) await loadChat((next.rooms || []).some(room => room.id === key) ? { roomId: key } : { botId: key }).catch(() => {});
+  }, []);
   if (!supervisor.current) supervisor.current = Object.assign(new SupervisorClient({
     onEvent: (event, data) => {
       // A bot notice while the app is open: MyBots shows it and confirms, so Termux:API does not repeat it.
@@ -1522,12 +1552,21 @@ function AppMain() {
       }
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
+      if (phoneMode.current === 'phone' && typeof data?.seq === 'number') {
+        const continues = inSequence(lastSeq.current, data.seq); lastSeq.current = data.seq;
+        if (!continues) { clearTimeout(eventRefresh.current); resync().catch(error => setLoadError(error.message)); return; }
+        // Messages, steps and bot changes are applied as they come, without asking for the whole state.
+        if (event === 'message.added' || event === 'message.updated') { setChats(old => applyMessage(old, event, data)); setData(old => applyToLists(old, event, data, openChat.current)); return; }
+        if (event === 'bot.updated') { setData(old => applyBot(old, data)); return; }
+        if (event === 'chat.reset') { const key = data.botId || data.roomId; if (chatsRef.current[key]) loadChat(data.botId ? { botId: key } : { roomId: key }).catch(() => {}); return; }
+        if (event === 'task.progress' && 'step' in data) { setData(old => applyStep(old, data)); return; }
+      }
       clearTimeout(eventRefresh.current);
       eventRefresh.current = setTimeout(() => { if (phoneMode.current === 'phone') loadSupervisorState().catch(error => setLoadError(error.message)); }, 150);
     },
     onConnection: connected => {
       if (phoneMode.current !== 'phone') return;
-      if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => loadSupervisorState().catch(error => setLoadError(error.message)));
+      if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => resync().catch(error => setLoadError(error.message)));
       else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : 'Supervisor desconectado. Reconectando ao Termux…' } } : current);
     }
   }), {
@@ -1812,6 +1851,21 @@ function AppMain() {
   useEffect(() => { if (desktop) Alert.alert = (title, message, buttons = [{ text: 'OK' }]) => setConfirm({ title, message, buttons }); }, []);
   const bot = data?.bots.find(item => item.id === selected);
   const room = data?.rooms?.find(item => item.id === roomId);
+  // The conversation on screen loads its latest page when opened (resync reloads it after a reconnection); leaving it
+  // marks it as seen up to the end.
+  const openKey = mode === 'phone' && data?.supervisorConnected ? room?.id || bot?.id || null : null; const openRoom = Boolean(room);
+  useEffect(() => {
+    openChat.current = openKey;
+    if (!openKey) return undefined;
+    const target = openRoom ? { roomId: openKey } : { botId: openKey };
+    loadChat(target).catch(error => setLoadError(nativeMessage(error)));
+    return () => { supervisor.current?.call('chat.read', target).catch(() => {}); };
+  }, [openKey]);
+  const loadProfile = useCallback(id => supervisor.current.call('bot.profile', { botId: id }).then(setProfile).catch(error => setLoadError(nativeMessage(error))), []);
+  useEffect(() => { if (profileId && mode === 'phone') loadProfile(profileId); else setProfile(null); }, [profileId]);
+  const shownProfile = profile?.botId === profileId ? profile : null;
+  // After a change in the profile: the state and the profile's own lists.
+  const profileChanged = async () => { await loadSupervisorState(); if (profileId) await loadProfile(profileId); };
   const roomSave = async payload => {
     if (roomSheet?.room) await supervisor.current.call('room.update', { roomId: roomSheet.room.id, ...payload });
     else { const created = await supervisor.current.call('room.create', payload); setRoomId(created.id); setSelected(null); }
@@ -1884,10 +1938,11 @@ function AppMain() {
 
   // The computer's wide window shows the list, the open conversation and today side by side.
   const wide = Boolean(desktop) && windowWidth >= 900;
-  const roomView = data && room ? <RoomScreen room={room} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen room={{ ...room, messages: chats[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chats[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
           onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
-  const chatView = data && bot && !room ? <ChatScreen bot={bot} data={data} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
+  const chatView = data && bot && !room ? <ChatScreen bot={mode === 'phone' ? { ...bot, messages: chats[bot.id]?.messages || [] } : bot} data={data}
+          more={mode === 'phone' && Boolean(chats[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
@@ -1915,22 +1970,22 @@ function AppMain() {
     </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
     {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
-      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={data.grants?.[profileId] || []} nodes={data.nodes || []}
-      memories={(data.memories || []).filter(item => item.botId === profileId)} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
+      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
+      memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
-      accountApps={data.accountApps?.[profileId] || []} accountServers={data.accountServers || []}
-      onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await loadSupervisorState(); }}
-      onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await loadSupervisorState(); }}
-      onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await loadSupervisorState(); }}
-      skills={(data.skills || []).filter(skill => data.bots.find(item => item.id === profileId)?.skills?.includes(skill.id))}
+      accountApps={shownProfile?.accountApps || []} accountServers={data.accountServers || []}
+      onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await profileChanged(); }}
+      onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await profileChanged(); }}
+      onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await profileChanged(); }}
+      skills={shownProfile?.skills || []}
       onSkill={async (method, id) => {
         if (method === 'skill.remove') await new Promise((resolve, reject) => Alert.alert('Remover a habilidade?', 'O programa e a rotina dele saem deste celular.', [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Remover', style: 'destructive', onPress: resolve }]));
-        await supervisor.current.call(method, method === 'skill.run' ? { id, botId: profileId } : { id }); await loadSupervisorState();
+        await supervisor.current.call(method, method === 'skill.run' ? { id, botId: profileId } : { id }); await profileChanged();
       }}
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
-      onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await loadSupervisorState(); }}
-      onAccess={async access => { await supervisor.current.call('bot.update', { botId: profileId, access }); await loadSupervisorState(); }}
+      onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await profileChanged(); }}
+      onAccess={async access => { await supervisor.current.call('bot.update', { botId: profileId, access }); await profileChanged(); }}
       onComplete={async id => { await supervisor.current.call('item.complete', { id }); await loadSupervisorState(); }}
       onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} />}
     <Modal transparent visible={maintenanceVisible} animationType="slide" onRequestClose={() => setMaintenanceVisible(false)}>
@@ -2120,6 +2175,7 @@ const styles = StyleSheet.create({
   botNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   botCardName: { color: C.text, fontFamily: F.b, fontSize: 16.5, flexShrink: 1, letterSpacing: -0.2 },
   botTime: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginLeft: 'auto' },
+  unread: { minWidth: 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, overflow: 'hidden', backgroundColor: C.mint, color: C.bg, fontFamily: F.b, fontSize: 11.5, textAlign: 'center' },
   botPreview: { color: C.muted, fontFamily: F.m, fontSize: 13.5 },
   botWorking: { flexDirection: 'row', alignItems: 'center' },
   botStatusRow: { flexDirection: 'row', gap: 6, marginTop: 5, flexWrap: 'wrap' },

@@ -8,6 +8,13 @@ import { validateBackup, mergeBotLists, deleteLocalBot } from '../mobile/local.j
 export const now = () => new Date().toISOString();
 export const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
+// The two kinds of conversation: a bot's private chat and a room. Both are read in pages by rowid and only appended to.
+const CHATS = { bot: ['messages', 'bot_id'], room: ['room_messages', 'room_id'] };
+const parse = row => JSON.parse(row.body);
+// What a conversation list needs of the latest message, without its whole text or files.
+const preview = message => message && { id: message.id, role: message.role, status: message.status, text: String(message.text || '').slice(0, 280), createdAt: message.createdAt,
+  ...Object.fromEntries(['botId', 'origin', 'routineTitle', 'progress', 'error'].filter(key => message[key] !== undefined).map(key => [key, key === 'error' ? String(message.error).slice(0, 200) : message[key]])),
+  ...(message.attachments?.length ? { attachments: message.attachments.slice(0, 1).map(item => ({ name: item.name })) } : {}) };
 
 const blank = () => ({ input: 0, cached: 0, output: 0, turns: 0 });
 // Token counts as the IA reported them for one reply (Codex turn.completed, Claude result.usage).
@@ -27,7 +34,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 8) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 9) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -102,6 +109,27 @@ export class Database {
         CREATE INDEX room_files_room ON room_files(room_id);
         PRAGMA user_version=8;`);
     });
+    // Room messages leave the room's JSON body: appending one no longer rewrites the whole room, and there is no cap.
+    // An SQLite index ends with the rowid, so room_messages_room (like messages_bot) is the (room_id, rowid) order.
+    // Read marks start at the current end, so updating does not show every old message as unread.
+    if (version < 9) this.transaction(() => {
+      this.db.exec(`CREATE TABLE room_messages (id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id), body TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX room_messages_room ON room_messages(room_id);`);
+      for (const row of this.all('SELECT id,body FROM rooms')) {
+        const { messages = [], earlier, ...room } = JSON.parse(row.body);
+        for (const message of messages) if (typeof message?.id === 'string') this.run('INSERT OR IGNORE INTO room_messages(id,room_id,body,created_at) VALUES(?,?,?,?)', message.id, row.id, JSON.stringify(message), message.createdAt || room.updatedAt || now());
+        this.run('UPDATE rooms SET body=? WHERE id=?', JSON.stringify(room), row.id);
+      }
+      for (const row of [...this.all('SELECT bot_id AS id, max(rowid) AS last FROM messages GROUP BY bot_id'), ...this.all('SELECT room_id AS id, max(rowid) AS last FROM room_messages GROUP BY room_id')])
+        this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'read.' + row.id, String(row.last));
+      this.db.exec('PRAGMA user_version=9;');
+    });
+  }
+  /** Changes are told to the listener (the supervisor's broadcast) only after their transaction commits. */
+  listen(listener) { this.listener = listener; }
+  notify(event, data) {
+    if (this.depth) (this.pending ||= []).push([event, data]);
+    else try { this.listener?.(event, data); } catch {}
   }
   /** One reply's tokens. Codex reports the session's running totals: the reply is the difference from the last one. */
   turnTokens(botId, reply) {
@@ -116,11 +144,25 @@ export class Database {
     if (!known) return reply.usage.resumed ? null : usage;
     return tokens({ input: usage.input - last.input, cached: Math.max(0, usage.cached - last.cached), output: usage.output - last.output });
   }
-  // Rooms (the bots' group conversations): stored like bots, one JSON body with the members and the messages.
+  // Rooms (the bots' group conversations): one JSON body with the name and members; the messages are rows of room_messages.
   room(id) { const row = uuid(id) ? this.get('SELECT body FROM rooms WHERE id=?', id) : null; return row ? JSON.parse(row.body) : null; }
   rooms() { return this.all('SELECT body FROM rooms ORDER BY updated_at DESC').map(row => JSON.parse(row.body)); }
   requireRoom(id) { const room = this.room(id); if (!room || room.deletedAt) throw new Error('Sala não encontrada.'); return room; }
-  putRoom(room) { this.run('INSERT INTO rooms(id,body,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at', room.id, JSON.stringify(room), room.updatedAt); }
+  putRoom(room) { const { messages, earlier, ...body } = room; this.run('INSERT INTO rooms(id,body,updated_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at', room.id, JSON.stringify(body), room.updatedAt); }
+  /** A new line in a room; the room moves to the top of the list. */
+  appendRoomMessage(roomId, message) {
+    const room = this.room(roomId); if (!room) return null;
+    this.run('INSERT INTO room_messages(id,room_id,body,created_at) VALUES(?,?,?,?)', message.id, roomId, JSON.stringify(message), message.createdAt);
+    this.putRoom({ ...room, updatedAt: message.createdAt });
+    this.notify('message.added', { roomId, message });
+    return message;
+  }
+  roomMessages(roomId) { return this.all('SELECT body FROM room_messages WHERE room_id=? ORDER BY rowid', roomId).map(parse); }
+  replaceRoomMessages(roomId, messages) {
+    this.run('DELETE FROM room_messages WHERE room_id=?', roomId);
+    for (const message of messages) this.run('INSERT OR IGNORE INTO room_messages(id,room_id,body,created_at) VALUES(?,?,?,?)', message.id, roomId, JSON.stringify(message), message.createdAt || now());
+    this.notify('chat.reset', { roomId });
+  }
   roomTurn(taskId) { return this.get('SELECT * FROM room_turns WHERE task_id=?', taskId); }
   roomSession(roomId, botId) { return this.get('SELECT session_id FROM room_sessions WHERE room_id=? AND bot_id=?', roomId, botId)?.session_id; }
   setRoomSession(roomId, botId, id) {
@@ -135,7 +177,7 @@ export class Database {
       ? { id: randomUUID(), role: 'assistant', botId: bot.id, text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), replyTo: turn.message_id, createdAt: stamp }
       : { id: randomUUID(), role: 'assistant', botId: bot.id, text: files.attachments ? 'Estes arquivos ficaram prontos antes da interrupção.' : '', status: 'error', error: error || 'A resposta não foi concluída.', ...files, replyTo: turn.message_id, createdAt: stamp };
     if (state === 'done' && reply?.codexSessionId) this.setRoomSession(room.id, bot.id, reply.codexSessionId);
-    this.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
+    this.appendRoomMessage(room.id, message);
   }
   /** Something the bot says while it still works: a message in its chat (or room) before the final reply. */
   progressMessage(taskId, text) {
@@ -144,8 +186,8 @@ export class Database {
     const stamp = now(); const turn = this.roomTurn(taskId);
     const message = { id: randomUUID(), role: 'assistant', text: text.trim().slice(0, 4000), status: 'complete', progress: true, createdAt: stamp };
     this.transaction(() => {
-      if (turn) { const room = this.room(turn.room_id); if (room) this.putRoom({ ...room, messages: [...room.messages, { ...message, botId: task.bot_id, replyTo: turn.message_id }].slice(-1000), updatedAt: stamp }); }
-      else { const bot = this.bot(task.bot_id); this.putBot({ ...bot, updatedAt: stamp, messages: [...bot.messages, message] }); }
+      if (turn) this.appendRoomMessage(turn.room_id, { ...message, botId: task.bot_id, replyTo: turn.message_id });
+      else { this.appendMessage(task.bot_id, message); this.putBot({ ...this.bot(task.bot_id), updatedAt: stamp }); }
     });
   }
   /** How the person wants to be called (home-screen greeting). */
@@ -185,35 +227,94 @@ export class Database {
     // Nested calls join the outer transaction, so composed writes (a routine run and its task) commit together.
     if (this.depth) return work();
     this.db.exec('BEGIN IMMEDIATE'); this.depth = 1;
-    try { const result = work(); this.db.exec('COMMIT'); return result; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    let result;
+    try { result = work(); this.db.exec('COMMIT'); }
+    catch (error) { this.db.exec('ROLLBACK'); this.pending = null; throw error; }
     finally { this.depth = 0; }
+    const pending = this.pending || []; this.pending = null;
+    for (const [event, data] of pending) this.notify(event, data);
+    return result;
   }
   close() { this.db.close(); }
+  /** A bot's profile, without its messages (those are read by page, or whole with messages()). */
   bot(id) {
     const row = this.get('SELECT body FROM bots WHERE id=?', id);
     if (!row) return null;
     const bot = JSON.parse(row.body);
-    bot.browserMode = browserMode(bot); delete bot.mainChrome;
-    bot.messages = this.all('SELECT body FROM messages WHERE bot_id=? ORDER BY rowid', id).map(item => JSON.parse(item.body));
+    bot.browserMode = browserMode(bot); delete bot.mainChrome; delete bot.messages;
     const session = this.get('SELECT session_id FROM codex_sessions WHERE bot_id=?', id);
     if (session) bot.codexSessionId = session.session_id;
     return bot;
   }
   bots() { return this.all('SELECT id FROM bots').map(row => this.bot(row.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
+  /** The bot with its whole conversation: for backups and the rare operations that rewrite it. */
+  fullBot(id) { const bot = this.bot(id); return bot && { ...bot, messages: this.messages(id) }; }
+  messages(botId) { return this.all('SELECT body FROM messages WHERE bot_id=? ORDER BY rowid', botId).map(parse); }
+  /** One message of a private chat or a room, by id. */
+  message(id) { const row = this.get('SELECT body FROM messages WHERE id=?', id) || this.get('SELECT body FROM room_messages WHERE id=?', id); return row ? parse(row) : null; }
+  /** The latest message of a bot's chat said by `role` (the reply a routine run produced). */
+  latest(botId, role) { const row = this.get("SELECT body FROM messages WHERE bot_id=? AND json_extract(body,'$.role')=? ORDER BY rowid DESC LIMIT 1", botId, role); return row ? parse(row) : null; }
+  /** A new message at the end of a bot's chat: one insert, whatever the size of the conversation. */
+  appendMessage(botId, message) {
+    this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, botId, JSON.stringify(message));
+    this.notify('message.added', { botId, message });
+    return message;
+  }
+  /** Changes fields of one message of a bot's chat (undefined removes a field). */
+  updateMessage(id, patch) {
+    const row = this.get('SELECT bot_id,body FROM messages WHERE id=?', id); if (!row) return null;
+    const message = { ...parse(row), ...patch };
+    for (const key of Object.keys(message)) if (message[key] === undefined) delete message[key];
+    this.run('UPDATE messages SET body=? WHERE id=?', JSON.stringify(message), id);
+    this.notify('message.updated', { botId: row.bot_id, message });
+    return message;
+  }
+  /** Rewrites a whole chat: restoring, merging or deleting a bot, never for a new message. */
+  replaceMessages(botId, messages) {
+    this.run('DELETE FROM messages WHERE bot_id=?', botId);
+    for (const message of messages) this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, botId, JSON.stringify(message));
+    this.notify('chat.reset', { botId });
+  }
+  /**
+   * A page of a conversation, oldest first: the `limit` messages before the rowid `before` (or the latest ones).
+   * `before` of the answer is the cursor for the next older page; `more` says whether there is one.
+   */
+  page({ botId, roomId, before, limit = 40 } = {}) {
+    const [table, column] = botId !== undefined ? CHATS.bot : CHATS.room; const owner = botId ?? roomId;
+    if (before !== undefined && before !== null && (!Number.isSafeInteger(before) || before < 1)) throw new Error('Página inválida.');
+    const size = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 200) : 40;
+    const rows = before ? this.all(`SELECT rowid,body FROM ${table} WHERE ${column}=? AND rowid<? ORDER BY rowid DESC LIMIT ?`, owner, before, size + 1)
+      : this.all(`SELECT rowid,body FROM ${table} WHERE ${column}=? ORDER BY rowid DESC LIMIT ?`, owner, size + 1);
+    const kept = rows.slice(0, size).reverse();
+    return { messages: kept.map(parse), before: kept[0]?.rowid ?? null, more: rows.length > size };
+  }
+  /** The conversation was seen up to its latest message. */
+  markRead({ botId, roomId }) {
+    const [table, column] = botId !== undefined ? CHATS.bot : CHATS.room; const owner = botId ?? roomId;
+    const last = this.get(`SELECT max(rowid) AS last FROM ${table} WHERE ${column}=?`, owner)?.last;
+    if (last) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'read.' + owner, String(last));
+  }
+  /** What the conversation lists show: the latest message (shortened), how many there are and how many came unseen. */
+  chatSummary(kind, id) {
+    const [table, column] = CHATS[kind];
+    const latest = this.get(`SELECT body FROM ${table} WHERE ${column}=?${kind === 'room' ? " AND json_extract(body,'$.role')<>'system'" : ''} ORDER BY rowid DESC LIMIT 1`, id);
+    const mark = Number(this.get('SELECT value FROM metadata WHERE key=?', 'read.' + id)?.value || 0);
+    return { lastMessage: latest ? preview(parse(latest)) : null, messageCount: this.get(`SELECT count(*) AS count FROM ${table} WHERE ${column}=?`, id).count,
+      unread: this.get(`SELECT count(*) AS count FROM (SELECT 1 FROM ${table} WHERE ${column}=? AND rowid>? AND json_extract(body,'$.role')<>'user' LIMIT 100)`, id, mark).count };
+  }
   requireBot(id) {
     if (!uuid(id)) throw new Error('Bot inválido.');
     const bot = this.bot(id);
     if (!bot || bot.deletedAt) throw new Error('Bot não encontrado.');
     return bot;
   }
+  /** Saves the bot's profile only; its messages are written with appendMessage/updateMessage. */
   putBot(bot) {
-    const { messages, codexSessionId, ...body } = bot;
+    const { messages, codexSessionId, lastMessage, messageCount, unread, ...body } = bot;
     this.run('INSERT INTO bots(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body', bot.id, JSON.stringify(body));
-    this.run('DELETE FROM messages WHERE bot_id=?', bot.id);
-    for (const message of messages) this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, bot.id, JSON.stringify(message));
     if (codexSessionId) this.session(bot.id, codexSessionId);
     else this.run('DELETE FROM codex_sessions WHERE bot_id=?', bot.id);
+    this.notify('bot.updated', { botId: bot.id });
   }
   session(botId, id) {
     if (!uuid(id)) throw new Error('Sessão inválida.');
@@ -222,7 +323,8 @@ export class Database {
   record(kind, detail, botId = null, taskId = null) {
     this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
   }
-  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots(), roomsState: { schema: 1, rooms: this.rooms() }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
+  /** Everything, with every message: backups and export. The app's state is lighter (see the supervisor's state()). */
+  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots().map(bot => ({ ...bot, messages: this.messages(bot.id) })), roomsState: { schema: 1, rooms: this.rooms().map(room => ({ ...room, messages: this.roomMessages(room.id) })) }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
     schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
   } }; }
   validateTools(snapshot) {
@@ -264,7 +366,7 @@ export class Database {
         const messages = bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? {
           ...message, status: 'error', awaitingResponse: false, error: 'Pedido anterior à migração interrompido. Envie novamente se necessário.'
         } : message);
-        this.putBot({ ...bot, messages });
+        this.putBot(bot); this.replaceMessages(bot.id, messages);
       }
       this.run("INSERT INTO metadata VALUES('legacy_imported',?)", now());
       this.record('migration', `${snapshot.bots.length} bots migrados com seus identificadores.`);
@@ -273,20 +375,22 @@ export class Database {
   }
   restore(snapshot) {
     validateBackup(snapshot); this.validateTools(snapshot);
-    if (this.tasks().some(task => ACTIVE.includes(task.state))) throw new Error('Aguarde ou cancele as tarefas antes de restaurar.');
+    if (this.activeTasks().length) throw new Error('Aguarde ou cancele as tarefas antes de restaurar.');
     this.backup();
     this.transaction(() => {
       const stamp = now();
       const restored = new Set(snapshot.bots.map(bot => bot.id));
-      for (const bot of this.bots()) if (!restored.has(bot.id)) this.putBot({ ...bot, deletedAt: stamp, updatedAt: stamp, messages: [], codexSessionId: undefined });
-      for (const bot of snapshot.bots) this.putBot({ ...bot, ...(!bot.deletedAt ? { restoredAt: stamp } : {}),
-        messages: bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? { ...message, status: 'error', awaitingResponse: false, error: 'Pedido interrompido no backup.' } : message) });
+      for (const bot of this.bots()) if (!restored.has(bot.id)) { this.putBot({ ...bot, deletedAt: stamp, updatedAt: stamp, codexSessionId: undefined }); this.replaceMessages(bot.id, []); }
+      for (const bot of snapshot.bots) { this.putBot({ ...bot, ...(!bot.deletedAt ? { restoredAt: stamp } : {}) });
+        this.replaceMessages(bot.id, bot.messages.map(message => message.status === 'pending' || message.awaitingResponse ? { ...message, status: 'error', awaitingResponse: false, error: 'Pedido interrompido no backup.' } : message)); }
       this.run('DELETE FROM memory'); this.run('DELETE FROM pending_items'); this.run('DELETE FROM grants');
       // Rooms came with backups from v35 on; older backups leave the current rooms as they are.
       if (snapshot.roomsState?.schema === 1 && Array.isArray(snapshot.roomsState.rooms)) {
         this.run('DELETE FROM room_sessions');
-        for (const room of snapshot.roomsState.rooms.slice(0, 200)) if (uuid(room?.id) && typeof room.name === 'string' && Array.isArray(room.botIds) && Array.isArray(room.messages))
-          this.putRoom({ ...room, messages: room.messages.slice(-1000), updatedAt: typeof room.updatedAt === 'string' ? room.updatedAt : stamp });
+        for (const room of snapshot.roomsState.rooms.slice(0, 200)) if (uuid(room?.id) && typeof room.name === 'string' && Array.isArray(room.botIds) && Array.isArray(room.messages)) {
+          this.putRoom({ ...room, updatedAt: typeof room.updatedAt === 'string' ? room.updatedAt : stamp });
+          this.replaceRoomMessages(room.id, room.messages.filter(message => typeof message?.id === 'string').slice(-20000));
+        }
       }
       // Skills came with backups from v42 on; older backups leave the installed ones as they are.
       if (snapshot.skillsState?.schema === 1 && Array.isArray(snapshot.skillsState.skills)) {
@@ -301,11 +405,11 @@ export class Database {
   }
   merge(incoming) {
     validateBackup({ schema: 1, bots: incoming });
-    if (this.tasks().some(task => ACTIVE.includes(task.state))) throw new Error('Aguarde as tarefas antes de sincronizar.');
-    const existing = new Map(this.bots().map(bot => [bot.id, bot]));
+    if (this.activeTasks().length) throw new Error('Aguarde as tarefas antes de sincronizar.');
+    const existing = new Map(this.bots().map(bot => [bot.id, { ...bot, messages: this.messages(bot.id) }]));
     const merged = mergeBotLists([...existing.values()], incoming.map(({ codexSessionId, ...bot }) => ({ ...bot,
       ...(existing.get(bot.id)?.codexSessionId ? { codexSessionId: existing.get(bot.id).codexSessionId } : {}) })));
-    this.transaction(() => { for (const bot of merged) this.putBot(bot); });
+    this.transaction(() => { for (const bot of merged) { this.putBot(bot); this.replaceMessages(bot.id, bot.messages); } });
   }
   create(data, selection) {
     validateProfile({ ...data, ...selection });
@@ -319,7 +423,7 @@ export class Database {
   }
   configure(id, selection, changes = {}) {
     const bot = this.requireBot(id);
-    if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a resposta antes de alterar o bot.');
+    if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
     for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode']) if (changes[field] !== undefined) updated[field] = changes[field];
     if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'own';
@@ -341,13 +445,15 @@ export class Database {
   }
   delete(id) {
     this.requireBot(id);
-    if (this.tasks().some(task => task.bot_id === id && ACTIVE.includes(task.state))) throw new Error('Aguarde a tarefa antes de apagar o bot.');
+    if (this.activeTasks(id).length) throw new Error('Aguarde a tarefa antes de apagar o bot.');
     this.backup();
-    const next = deleteLocalBot(this.snapshot(), id).bots.find(bot => bot.id === id);
-    this.transaction(() => { this.putBot(next); this.record('bot_deleted', 'Bot apagado.', id); });
+    const next = deleteLocalBot({ bots: [this.fullBot(id)] }, id).bots[0];
+    this.transaction(() => { this.putBot(next); this.replaceMessages(id, []); this.record('bot_deleted', 'Bot apagado.', id); });
   }
   task(id) { return this.get('SELECT * FROM tasks WHERE id=?', id); }
-  tasks() { return this.all('SELECT * FROM tasks ORDER BY created_at DESC, rowid DESC'); }
+  tasks(limit = -1) { return this.all('SELECT * FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?', limit); }
+  /** Tasks still to finish (of one bot, or all), without reading the whole history of tasks. */
+  activeTasks(botId) { return this.all(`SELECT * FROM tasks WHERE state IN ('queued','running','waiting_approval')${botId ? ' AND bot_id=?' : ''} ORDER BY created_at DESC, rowid DESC`, ...(botId ? [botId] : [])); }
   enqueue(botId, requestId, text, selection, origin = {}) {
     this.requireBot(botId);
     if (!uuid(requestId) || typeof text !== 'string' || !text.trim() || text.trim().length > 8000) throw new Error('Escreva uma mensagem de até 8.000 caracteres.');
@@ -358,11 +464,11 @@ export class Database {
       return existing;
     }
     // Messages sent while the bot works wait in line and become its next turns, in order.
-    if (this.tasks().filter(task => task.bot_id === botId && ACTIVE.includes(task.state)).length >= 10) throw new Error('Este bot já tem 10 mensagens esperando. Aguarde ele responder algumas.');
+    if (this.activeTasks(botId).length >= 10) throw new Error('Este bot já tem 10 mensagens esperando. Aguarde ele responder algumas.');
     return this.transaction(() => {
       const bot = this.requireBot(botId); const stamp = now(); const messageId = randomUUID();
-      this.putBot({ ...bot, ...selection, updatedAt: stamp, messages: [...bot.messages,
-        { id: messageId, requestId, role: 'user', text: text.trim(), status: 'pending', ...selection, ...origin, createdAt: stamp }] });
+      this.putBot({ ...bot, ...selection, updatedAt: stamp });
+      this.appendMessage(botId, { id: messageId, requestId, role: 'user', text: text.trim(), status: 'pending', ...selection, ...origin, createdAt: stamp });
       this.run("INSERT INTO tasks(id,bot_id,message_id,state,payload,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?)", requestId, botId, messageId, payload, stamp, stamp);
       this.event(requestId, 'queued');
       return this.task(requestId);
@@ -388,11 +494,10 @@ export class Database {
       const usage = state === 'done' ? this.turnTokens(bot.id, reply) : null;
       const turn = this.roomTurn(id);
       if (turn) this.roomReply(turn, bot, state, reply, error, files, usage);
-      const messages = turn ? null : bot.messages.map(message => message.id === task.message_id ? { ...message,
-        status: state === 'done' ? 'complete' : 'error', error: error || undefined } : message);
-      if (!turn && state === 'done') messages.push({ id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
-      else if (!turn && files.attachments) messages.push({ id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
-      if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now(), messages });
+      if (!turn) this.updateMessage(task.message_id, { status: state === 'done' ? 'complete' : 'error', error: error || undefined });
+      if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
+      else if (!turn && files.attachments) this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
+      if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now() });
       if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
       if (reply?.limits && ['codex', 'claude'].includes(bot.provider || 'codex')) this.setLimits(bot.provider || 'codex', reply.limits);
       // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".

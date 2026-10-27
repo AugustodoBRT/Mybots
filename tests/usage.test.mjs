@@ -30,7 +30,7 @@ test('each reply records its tokens per bot; the plan limits come from the IA an
   assert.equal(usage.bots[other.id], undefined);
   assert.equal(usage.days.length, 7); assert.equal(usage.days.at(-1).output, 350);
   // The reply shows its own tokens.
-  assert.deepEqual(app.db.bot(bot.id).messages.at(-1).usage, { input: 1000, output: 50 });
+  assert.deepEqual(app.db.messages(bot.id).at(-1).usage, { input: 1000, output: 50 });
   await until(() => app.db.limits().codex);
   assert.equal(app.db.limits().codex.plan, 'plus'); assert.deepEqual(app.db.limits().codex.windows.map(item => [item.key, item.used]), [['five_hour', 12], ['week', 9]]);
   await app.close();
@@ -126,7 +126,7 @@ test('a Claude reply records the exact model the alias resolved to, and the pick
   const bot = await app.rpc('bot.create', { name: 'Opus', provider: 'claude', model: 'opus', reasoningEffort: 'medium' });
   const { taskId } = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
   await until(() => app.db.task(taskId).state === 'done');
-  assert.equal(app.db.bot(bot.id).messages.at(-1).modelId, 'claude-opus-5-5');
+  assert.equal(app.db.messages(bot.id).at(-1).modelId, 'claude-opus-5-5');
   const opus = (await app.rpc('state.get')).models.find(item => item.provider === 'claude');
   assert.equal(opus.displayName, 'Claude Opus 5.5'); assert.equal(opus.modelId, 'claude-opus-5-5'); assert.equal(opus.model, 'opus');
 });
@@ -139,7 +139,7 @@ test('account apps: new bots load none, older bots keep Gmail and Calendar, and 
   const app = await createSupervisor({ directory, port: 0, codex, claude, execute: async (bot, prompt, options) => { seen = options.tools; return { text: 'ok', ...selection, accountServers: ['Gmail', 'Google Calendar', 'Miro', 'Google Drive'] }; } });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const bot = await app.rpc('bot.create', { name: 'Novo', access: 'ask', ...selection });
-  assert.deepEqual(app.state().accountApps[bot.id], []);
+  assert.deepEqual((await app.rpc('bot.profile', { botId: bot.id })).accountApps, []);
   // A bot from before the choice (no saved list) keeps the apps MyBots relies on.
   app.db.run("DELETE FROM grants WHERE tool='account.apps'");
   assert.deepEqual(app.tools.accountApps(bot.id), ['Gmail', 'Google Calendar']);
@@ -177,7 +177,7 @@ test('new base instructions (PROMPT_VERSION) start new IA sessions once, keeping
   await app.close();
   app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
-  assert.equal(app.db.bot(bot.id).codexSessionId, undefined); assert.equal(app.db.bot(bot.id).messages.length, 2);
+  assert.equal(app.db.bot(bot.id).codexSessionId, undefined); assert.equal(app.db.messages(bot.id).length, 2);
   // Same version on the next start: sessions are kept.
   app.db.session(bot.id, session); await app.close();
   app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });

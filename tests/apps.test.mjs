@@ -99,7 +99,7 @@ test('attachments are stored outside workspaces, read only by their bot, images 
     { name: 'quadro.png', mime: 'image/png', data: PNG.toString('base64') },
     { name: 'edital.pdf', mime: 'application/pdf', data: Buffer.from('%PDF-1.4').toString('base64') }] });
   await until(() => f.app.db.task(sent.taskId).state === 'done');
-  const message = f.app.db.bot(f.bot.id).messages[0];
+  const message = f.app.db.messages(f.bot.id)[0];
   assert.equal(message.text, 'Veja o anexo.'); assert.deepEqual(message.attachments.map(item => item.name), ['notas.txt', 'quadro.png', 'edital.pdf']);
   assert.ok(!message.attachments.some(item => 'data' in item));
   const [text, image, pdf] = message.attachments.map(item => item.id);

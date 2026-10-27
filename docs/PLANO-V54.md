@@ -64,7 +64,7 @@ Objetivo: resolver um CAPTCHA, fazer login ou preencher um formulário pelo celu
 
 **Testes novos**: a conversão de coordenadas com zoom e rotação (função pura em `BotBrowserPanel`); `input` com `touch` e `insertText` no Chrome real; o modo celular troca e restaura o viewport; o detector de CAPTCHA acha o iframe em páginas de teste montadas com `setContent`; a senha no modo secreto nunca aparece em log nem na resposta do `input`.
 
-## v56 — Conversas rápidas, parte 1 (supervisor e protocolo)
+## v56 — Conversas rápidas, parte 1 (supervisor e protocolo) — concluída na v56
 
 Objetivo: abrir qualquer conversa em menos de 300 ms e não reenviar o mundo inteiro a cada passo do bot.
 

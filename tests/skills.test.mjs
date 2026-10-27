@@ -32,7 +32,7 @@ async function setup(t, script) {
   return { app, notices, directory };
 }
 const approveAll = app => { const timer = setInterval(() => { for (const card of app.state().approvals) app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true }).catch(() => {}); }, 30); return () => clearInterval(timer); };
-async function say(app, bot, text = 'faz') { const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text }); await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state)); return app.db.bot(bot.id).messages.at(-1).text; }
+async function say(app, bot, text = 'faz') { const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text }); await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state)); return app.db.messages(bot.id).at(-1).text; }
 
 test('a proposal is checked: name, a run function, real domains and a sane routine time', () => {
   assert.equal(skillProposal({ name: 'buscar_vagas', title: 'Buscar vagas', description: 'Vagas de TI', code: JOBS, sites: ['https://portal.gupy.io/x'], daily_at: '08:00', new_bot: { name: 'Vagas' } }).sites[0], 'portal.gupy.io');
@@ -51,7 +51,7 @@ test('proposing asks the person even on Acesso total; once approved: a new phone
   assert.match(card.summary, /portal\.gupy\.io/); assert.match(card.summary, /bot novo no celular: Vagas/); assert.match(card.summary, /todo dia às 08:00, sem usar a IA/); assert.equal(card.canAlways, false);
   await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true });
   await sent; await until(() => !app.db.tasks().some(task => ['queued', 'running', 'waiting_approval'].includes(task.state)));
-  const reply = JSON.parse(app.db.bot(programmer.id).messages.at(-1).text);
+  const reply = JSON.parse(app.db.messages(programmer.id).at(-1).text);
   assert.equal(reply.installed, true); assert.equal(reply.bot, 'Vagas'); assert.equal(reply.testOnPhone.ok, true); assert.match(reply.testOnPhone.result, /2 vagas em BH/);
   const vagas = app.state().bots.find(bot => bot.name === 'Vagas');
   assert.equal(vagas.home, 'phone'); assert.equal(vagas.skills.length, 1);
@@ -60,8 +60,8 @@ test('proposing asks the person even on Acesso total; once approved: a new phone
   // The routine runs the program itself: a table and a spreadsheet in the chat, and a notice. No IA turn.
   const tasksBefore = app.db.tasks().length;
   await app.rpc('routine.run', { id: routine.id });
-  await until(() => app.db.bot(vagas.id).messages.length === 2);
-  const [asked, answer] = app.db.bot(vagas.id).messages;
+  await until(() => app.db.messages(vagas.id).length === 2);
+  const [asked, answer] = app.db.messages(vagas.id);
   assert.equal(asked.origin, 'routine'); assert.match(answer.text, /2 vagas em BH\.\n\n- \*\*Estágio em TI\*\* — Acme · rh@acme\.com\.br · \[abrir\]\(https:\/\/acme\.com\.br\/vagas\/1\)/);
   assert.match(answer.attachments[0].name, /Buscar vagas .*\.xlsx$/);
   assert.equal(app.db.tasks().length, tasksBefore);
@@ -74,7 +74,7 @@ test('proposing asks the person even on Acesso total; once approved: a new phone
   // Backups keep skills; removing one also removes its routine.
   assert.equal(app.db.snapshot().skillsState.skills.length, 1);
   await app.rpc('skill.remove', { id: vagas.skills[0] });
-  assert.equal(app.state().skills.length, 0); assert.equal(app.state().routines.filter(item => item.botId === vagas.id).length, 0);
+  assert.equal(app.db.all('SELECT * FROM skills').length, 0); assert.equal(app.state().routines.filter(item => item.botId === vagas.id).length, 0);
 });
 
 test('a skill runs isolated: no files of the person, no other programs, no raw sockets, only its declared sites, and a time limit', async t => {

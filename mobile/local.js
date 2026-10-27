@@ -95,7 +95,7 @@ ${tools ? TOOLS_TEXT : CHAT_ONLY_TEXT}
 
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
-${recent.length < history.length ? 'O início da conversa não está no contexto desta resposta. Seja transparente se precisar de algo anterior.' : ''}
+${recent.length < history.length || bot.earlier ? 'O início da conversa não está no contexto desta resposta. Seja transparente se precisar de algo anterior.' : ''}
 O JSON abaixo contém a conversa em ordem. Responda apenas à última mensagem da pessoa, mantendo o contexto.
 ${JSON.stringify(recent)}`;
 }
@@ -129,7 +129,7 @@ export function validateBackup(value) {
     if (bot?.browserMode !== undefined && (!['own','mine','claude'].includes(bot.browserMode) || bot.browserMode === 'claude' && bot.provider !== 'claude' || bot.browserMode === 'mine' && bot.access === 'basic')) throw new Error('Navegador inválido no backup.');
     if (!bot || typeof bot !== 'object') throw new Error('Bot inválido no backup.');
     if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home)) || (bot.folders !== undefined && (!Array.isArray(bot.folders) || bot.folders.length > 10 || bot.folders.some(path => typeof path !== 'string' || path.length > 301))) || (bot.skills !== undefined && (!Array.isArray(bot.skills) || bot.skills.length > 50 || bot.skills.some(id => !validId(id))))) throw new Error('Perfil inválido no backup.');
-    if (!validId(bot.id) || bots.has(bot.id) || typeof bot.name !== 'string' || !bot.name.trim() || bot.name.length > 40 || typeof bot.instructions !== 'string' || bot.instructions.length > 2000 || !['green', 'blue', 'purple', 'orange'].includes(bot.color) || !validDate(bot.createdAt) || !validDate(bot.updatedAt) || (bot.codexSessionId !== undefined && !validId(bot.codexSessionId)) || !Array.isArray(bot.messages) || bot.messages.length > 2000) throw new Error('O backup contém um bot inválido.');
+    if (!validId(bot.id) || bots.has(bot.id) || typeof bot.name !== 'string' || !bot.name.trim() || bot.name.length > 40 || typeof bot.instructions !== 'string' || bot.instructions.length > 2000 || !['green', 'blue', 'purple', 'orange'].includes(bot.color) || !validDate(bot.createdAt) || !validDate(bot.updatedAt) || (bot.codexSessionId !== undefined && !validId(bot.codexSessionId)) || !Array.isArray(bot.messages) || bot.messages.length > 20000) throw new Error('O backup contém um bot inválido.');
     bots.add(bot.id);
     const messages = new Set();
     for (const message of bot.messages) {

@@ -47,6 +47,13 @@ Pedidos: `{id, method, params}`; respostas: `{id, result}` ou `{id, error}`. Eve
 
 Eventos atuais: `task.progress`, `task.done`, `activity.new`, `connection.changed`. `approval.request` pertence ao suporte de ferramentas da etapa 2. `approval.respond` é recusado nesta etapa, sem executar ação alguma.
 
+### Conversas rápidas (v56)
+
+- `state.get` não leva mensagens: cada bot e sala vem com `lastMessage` (prévia de até 280 caracteres), `messageCount` e `unread` (até 100), além de `seq`, o número do último evento. Só as tarefas em andamento vão no estado (o histórico continua em `tasks.list`) e as 50 atividades mais recentes. Skills, memórias, permissões e apps da conta vêm por `bot.profile { botId }`, ao abrir o perfil.
+- `chat.page { botId | roomId, before?, limit? }` devolve `{ messages, before, more }`: até 40 mensagens (máximo 200), da mais antiga para a mais nova, antes do cursor `before` (rowid). Sem `before`, devolve as últimas e marca a conversa como lida; `chat.read` marca sem ler. `chat.history` e `room.history` deixaram de existir.
+- Eventos com conteúdo e número crescente em `data.seq`: `message.added { botId | roomId, message }`, `message.updated { botId, message }`, `bot.updated { botId, bot }`, `task.progress { taskId, botId, step }` (o passo atual; sem `step` é mudança de estado da tarefa) e `chat.reset { botId | roomId }` (restauração, mesclagem ou exclusão reescreveram a conversa). O app aplica esses eventos sem pedir o estado; se o número não for o seguinte (reconexão, conexão atrasada demais), pede `state.get` e recarrega as conversas abertas. Os demais eventos (`activity.new`, `task.done`, `connection.changed`) continuam pedindo o estado, que agora é pequeno.
+- Banco: mensagens só são acrescentadas (`appendMessage`, uma inserção) ou alteradas uma a uma (`updateMessage`); `putBot` grava só o perfil. A migração 9 tirou as mensagens das salas do JSON da sala para `room_messages` (sem o limite de 1000). Os passos do bot não regravam nada: só a mensagem de progresso visível é gravada, uma vez. Backups continuam com todas as mensagens.
+
 O app reconecta com espera progressiva (1 a 30 segundos), atualiza o estado ao voltar ao primeiro plano e não reenvia pedidos automaticamente. Se o supervisor morreu, o pareamento pode iniciá-lo novamente. O painel passa a mostrar desconexão enquanto isso.
 
 ## Heartbeat e limites

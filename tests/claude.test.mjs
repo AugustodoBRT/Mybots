@@ -79,10 +79,10 @@ test('Claude conversation keeps one session, resumes it, and switching IA starts
   assert.equal(calls[1].args[calls[1].args.indexOf('--resume') + 1], session);
   assert.equal(calls[1].input, 'Qual palavra?'); assert.match(calls[0].input, /Lembre abacaxi/);
   assert.ok(calls[0].args.includes('--mcp-config'));
-  assert.equal(app.db.bot(bot.id).messages.at(-1).model, 'sonnet');
+  assert.equal(app.db.messages(bot.id).at(-1).model, 'sonnet');
   await app.rpc('bot.update', { botId: bot.id, provider: 'codex', model: 'test', reasoningEffort: 'low' });
   assert.equal(app.db.bot(bot.id).provider, 'codex'); assert.equal(app.db.bot(bot.id).codexSessionId, undefined);
-  assert.equal(app.db.bot(bot.id).messages.length, 4);
+  assert.equal(app.db.messages(bot.id).length, 4);
   const failed = await app.rpc('bot.update', { botId: bot.id, provider: 'claude', model: 'opus', reasoningEffort: 'max' });
   assert.equal(failed.provider, 'claude');
   const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'FALHE agora' });

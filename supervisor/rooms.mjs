@@ -3,6 +3,8 @@ import { now, uuid } from './database.mjs';
 import { TOOLS_TEXT } from '../mobile/local.js';
 
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
+// How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
+const PROMPT_WINDOW = 600;
 // Bots asking each other (@Nome) continue at most this many rounds after the person's message.
 export const MAX_ROUNDS = 6;
 export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -36,7 +38,7 @@ export class Rooms {
   }
   create(data, extra = {}) {
     const { name, botIds } = this.validate(data); const stamp = now();
-    const room = { id: randomUUID(), name, botIds, messages: [], ...extra, createdAt: stamp, updatedAt: stamp };
+    const room = { id: randomUUID(), name, botIds, ...extra, createdAt: stamp, updatedAt: stamp };
     this.db.transaction(() => { this.db.putRoom(room); this.db.record('room_created', `Sala ${name} criada com ${botIds.length} bots.`); });
     this.changed('activity.new'); return room;
   }
@@ -52,7 +54,8 @@ export class Rooms {
     this.cancelQueued(id, { except });
     if (this.active(id).filter(task => task.id !== except).length) throw new Error('Aguarde os bots terminarem de responder antes de apagar a sala.');
     this.db.transaction(() => {
-      this.db.putRoom({ ...room, deletedAt: now(), updatedAt: now(), messages: [] });
+      this.db.putRoom({ ...room, deletedAt: now(), updatedAt: now() });
+      this.db.replaceRoomMessages(id, []);
       this.db.run('DELETE FROM room_sessions WHERE room_id=?', id);
       this.db.record('room_deleted', `Sala ${room.name} apagada.`);
     });
@@ -64,8 +67,8 @@ export class Rooms {
   }
   /** A line of the room's history that nobody said: someone joined, left or was removed. */
   notice(roomId, text) {
-    const room = this.db.requireRoom(roomId); const stamp = now();
-    this.db.putRoom({ ...room, messages: [...room.messages, { id: randomUUID(), role: 'system', text, status: 'complete', createdAt: stamp }].slice(-1000), updatedAt: stamp });
+    this.db.requireRoom(roomId);
+    this.db.appendRoomMessage(roomId, { id: randomUUID(), role: 'system', text, status: 'complete', createdAt: now() });
   }
   /**
    * A bot writes in a room by itself (not as an answer to a turn). The members it names with @ get a turn, one
@@ -82,7 +85,7 @@ export class Rooms {
     const stamp = now(); const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: stamp };
     const waiting = new Set(this.active(roomId).filter(task => task.state === 'queued').map(task => task.bot_id));
     this.db.transaction(() => {
-      this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
+      this.db.appendRoomMessage(room.id, message);
       for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
     });
     this.changed('task.progress'); this.schedule();
@@ -108,7 +111,7 @@ export class Rooms {
     const saved = withFiles ? this.attachments.saveForRoom(room, files) : [];
     const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', ...(saved.length ? { attachments: saved } : {}), createdAt: stamp };
     try { this.db.transaction(() => {
-      this.db.putRoom({ ...room, messages: [...room.messages, message].slice(-1000), updatedAt: stamp });
+      this.db.appendRoomMessage(room.id, message);
       // Without @ the bots answer in turn (each reads what the ones before it said); bots named with @ work side by side.
       targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, named.length ? randomUUID() : message.id, selectionFor(bot), index === 0 ? requestId : randomUUID()));
     }); } catch (error) { if (saved.length) this.attachments.discard(saved); throw error; }
@@ -126,7 +129,7 @@ export class Rooms {
     const turn = this.db.roomTurn(taskId); const task = this.db.task(taskId);
     if (!turn || task?.state !== 'done' || turn.round >= MAX_ROUNDS) return;
     const room = this.db.room(turn.room_id); if (!room || room.deletedAt) return;
-    const reply = [...room.messages].reverse().find(item => item.role === 'assistant' && item.botId === task.bot_id && item.replyTo === turn.message_id);
+    const reply = [...this.db.page({ roomId: room.id, limit: 100 }).messages].reverse().find(item => item.role === 'assistant' && item.botId === task.bot_id && item.replyTo === turn.message_id);
     if (!reply || reply.status !== 'complete') return;
     const waiting = new Set(this.active(room.id).map(item => item.bot_id));
     const next = mentions(reply.text, this.members(room)).filter(bot => bot.id !== task.bot_id && !waiting.has(bot.id));
@@ -140,8 +143,9 @@ export class Rooms {
     const names = Object.fromEntries(members.map(item => [item.id, item.name]));
     const speaker = message => message.role === 'user' ? 'Pessoa' : message.role === 'system' ? 'Aviso' : names[message.botId] || 'Bot que saiu da sala';
     // Everything said so far, including what the bots before it in this round answered.
-    const visible = room.messages.filter(message => message.status === 'complete');
-    const trigger = room.messages.find(message => message.id === turn.message_id) || {};
+    const window = this.db.page({ roomId: room.id, limit: PROMPT_WINDOW });
+    const visible = window.messages.filter(message => message.status === 'complete');
+    const trigger = this.db.message(turn.message_id) || {};
     const line = message => `${speaker(message)}: ${message.text}${message.attachments?.length ? ` [Anexos${message.role === 'user' ? ' (leia com attachment_read)' : ''}: ${message.attachments.map(item => `${item.name} (id ${item.id})`).join('; ')}]` : ''}`;
     const task = trigger.role === 'user' || (!trigger.role && turn.message_id === turn.origin_id) ? `Responda à mensagem da pessoa: "${trigger.text?.slice(0, 300) || ''}"` : `${speaker(trigger)} chamou você: responda ao que ele pediu.`;
     if (resumed) {
@@ -157,7 +161,7 @@ Cada bot tem as próprias pendências, memórias, rotinas e arquivos: o que outr
 ${tools ? TOOLS_TEXT : 'Nesta sala você só conversa.'}
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
-${recent.length < visible.length ? 'O início da sala não está no contexto desta resposta.' : ''}
+${recent.length < visible.length || window.more ? 'O início da sala não está no contexto desta resposta.' : ''}
 Conversa da sala, em ordem:
 ${recent.map(line).join('\n')}
 

@@ -56,14 +56,14 @@ test('pairing by QR: the phone checks the certificate, the code is used once, an
   const bot = await f.app.rpc('bot.create', { name: 'Programador', ...selection, home: 'pc', access: 'full' });
   const sent = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
   await until(() => f.app.db.task(sent.taskId).state === 'done');
-  assert.equal(f.app.db.bot(bot.id).messages.at(-1).text, 'Programador no computador');
+  assert.equal(f.app.db.messages(bot.id).at(-1).text, 'Programador no computador');
   assert.match(f.app.db.get('SELECT body FROM memory WHERE bot_id=?', bot.id).body, /escrito no computador/);
   assert.ok(f.app.db.bot(bot.id).codexSessionId);
   // An "any" bot answers on the phone without a computer session, and moves to a new session on the computer.
   const any = await f.app.rpc('bot.create', { name: 'Pesquisa', ...selection, home: 'any', access: 'full' });
   const there = await f.app.rpc('chat.send', { botId: any.id, requestId: randomUUID(), text: 'Oi' });
   await until(() => f.app.db.task(there.taskId).state === 'done');
-  assert.equal(f.app.db.bot(any.id).messages.at(-1).text, 'Pesquisa no computador');
+  assert.equal(f.app.db.messages(any.id).at(-1).text, 'Pesquisa no computador');
 });
 
 test('the link comes back by itself after the computer restarts; cancelling stops the turn on the computer; a stop mid-answer is an interruption', async t => {
@@ -134,7 +134,7 @@ test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; co
   const node = await createNode({ directory: pcDir, port: await freePort(), uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], projects, execute, status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }) });
   t.after(async () => { await app.close(); await node.close(); await rm(phoneDir, { recursive: true, force: true }); await rm(pcDir, { recursive: true, force: true }); });
   await app.rpc('computer.pair', { link: node.pairing().link });
-  const ask = async (bot, steps) => { script = steps; const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'faz' }); await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state)); return app.db.bot(bot.id).messages.at(-1).text; };
+  const ask = async (bot, steps) => { script = steps; const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'faz' }); await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state)); return app.db.messages(bot.id).at(-1).text; };
 
   const full = await app.rpc('bot.create', { name: 'Dev/Total', ...selection, home: 'pc', access: 'full' });
   assert.equal(await ask(full, [['Bash', { command: 'npm test' }], ['Read', { file_path: '/home/a/.ssh/id_ed25519' }], ['Bash', { command: 'cat ~/.ssh/id_rsa' }], ['Write', { file_path: '/home/a/nota.txt', content: 'oi' }]]), 'allow,deny,deny,allow');
@@ -147,7 +147,7 @@ test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; co
   assert.equal(approval.title, 'Rodar um comando no computador'); assert.match(approval.summary, /sudo pacman -Syu/); assert.equal(approval.canAlways, false);
   await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: false });
   await until(() => app.db.task(sent.taskId).state === 'done');
-  assert.equal(app.db.bot(full.id).messages.at(-1).text, 'deny');
+  assert.equal(app.db.messages(full.id).at(-1).text, 'deny');
 
   // Médio: the first command asks; "Sempre permitir" covers the next ones, not file writes.
   const ask2 = await app.rpc('bot.create', { name: 'Dev', ...selection, home: 'pc', access: 'ask' });
@@ -160,7 +160,7 @@ test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; co
   card = app.state().approvals[0]; assert.equal(card.title, 'Mexer num arquivo fora da pasta do bot');
   await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: false });
   await until(() => app.db.task(sent.taskId).state === 'done');
-  assert.equal(app.db.bot(ask2.id).messages.at(-1).text, 'allow,allow,deny');
+  assert.equal(app.db.messages(ask2.id).at(-1).text, 'allow,allow,deny');
 
   // Pouco acesso: the computer stays closed (and the IA is told so).
   const basic = await app.rpc('bot.create', { name: 'Leitor', ...selection, home: 'pc', access: 'basic' });
@@ -217,7 +217,9 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   events.length = 0;
   const fromPhone = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi do celular' });
   await until(() => events.includes('task.done') && app.db.task(fromPhone.taskId).state === 'done');
-  assert.ok((await client.call('chat.history', { botId: bot.id })).some(message => message.text === 'Oi do celular'));
+  assert.ok((await client.call('chat.page', { botId: bot.id })).messages.some(message => message.text === 'Oi do celular'));
+  // The messages themselves come with their events, so the window does not ask for the whole state for them.
+  assert.ok(events.includes('message.added') && events.includes('message.updated') && events.includes('bot.updated'));
   // The window's token survives a restart of the node, so an open window just reconnects.
   assert.equal(readFileSync(join(pcDir, 'ui-token'), 'utf8'), desktop.token);
 

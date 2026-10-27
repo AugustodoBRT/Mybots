@@ -138,7 +138,7 @@ test('the bot makes PDF, Word and spreadsheet files and sends them with its repl
   forwarded = await (await f.upload({ botId: f.bot.id, name: 'Enunciado.pdf', mime: 'application/pdf', data: Buffer.from('%PDF-1.4 enunciado').toString('base64') })).json();
   const { taskId } = await app.rpc('chat.send', { botId: f.bot.id, requestId: randomUUID(), text: 'Resolve e me manda em PDF e Word' });
   await until(() => app.db.task(taskId).state === 'done');
-  const reply = app.db.bot(f.bot.id).messages.at(-1);
+  const reply = app.db.messages(f.bot.id).at(-1);
   assert.equal(reply.text, 'Pronto: Resolução Lista 3.pdf, Resolução Lista 3.docx e notas.xlsx.');
   assert.deepEqual(reply.attachments.map(file => [file.name, file.mime]), [['Resolução Lista 3.pdf', 'application/pdf'],
     ['Resolução Lista 3.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], ['Enunciado.pdf', 'application/pdf']]);

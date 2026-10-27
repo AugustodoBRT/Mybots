@@ -12,11 +12,11 @@ const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'chat.history', 'chat.send',
+export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
-const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed'];
+const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');

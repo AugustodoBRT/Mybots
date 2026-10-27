@@ -41,12 +41,12 @@ test('the person sends files to a room: every member reads them with its own too
   const room = await f.app.rpc('room.create', { name: 'Trabalho', botIds: [a.id, b.id] });
   const data = Buffer.from('Questão 1: derive x²').toString('base64');
   await assert.rejects(f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: 'x', attachments: [{ name: 'a.exe', mime: 'application/x-msdownload', data }] }), /executáveis/);
-  assert.equal(f.app.db.room(room.id).messages.length, 0);
+  assert.equal(f.app.db.roomMessages(room.id).length, 0);
   // Only a file, no text.
   const request = randomUUID();
   await f.app.rpc('room.send', { roomId: room.id, requestId: request, attachments: [{ name: 'lista.txt', mime: 'text/plain', data }] });
   await f.idle();
-  const message = f.app.db.room(room.id).messages[0];
+  const message = f.app.db.roomMessages(room.id)[0];
   assert.equal(message.text, 'Veja o anexo.'); assert.deepEqual(message.attachments.map(file => file.name), ['lista.txt']);
   assert.deepEqual(seen, { Ana: 'Questão 1: derive x²', Beto: 'Questão 1: derive x²' });
   // The app opens it like a private chat's file; a bot outside the room cannot read it.
@@ -77,7 +77,7 @@ test('a bot makes a bot and a room, calls the others, and leaves on its own, wit
   assert.equal(room.createdBy, chefe.id);
   assert.deepEqual(f.app.db.bots().map(bot => bot.name).sort(), ['Chefe', 'Redator', 'Vagas']);
   // The two called bots answered in the room; the Redator then left and the room says so.
-  const texts = room.messages.map(item => item.role === 'system' ? 'Aviso: ' + item.text : item.text);
+  const texts = f.app.db.roomMessages(room.id).map(item => item.role === 'system' ? 'Aviso: ' + item.text : item.text);
   assert.ok(texts.some(text => /Feito, Vagas\./.test(text)) && texts.some(text => /Resumo pronto/.test(text)));
   assert.deepEqual(room.botIds.length, 2); assert.ok(texts.some(text => /Redator saiu da sala\./.test(text)));
   assert.equal((await f.app.rpc('state.get')).approvals.length, 0);

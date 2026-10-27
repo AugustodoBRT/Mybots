@@ -115,7 +115,7 @@ test('real Claude Code routes account connector actions through the MyBots permi
   t.after(async () => { await app.close(); await new Promise(r => api.close(r)); await new Promise(r => appServer.close(r)); await rm(directory, { recursive: true, force: true }); });
   const bot = await app.rpc('bot.create', { name: 'Lua', provider: 'claude', model: 'sonnet', reasoningEffort: 'low' });
   // New bots load no account apps until the person picks them.
-  assert.deepEqual(app.state().accountApps[bot.id], []);
+  assert.deepEqual((await app.rpc('bot.profile', { botId: bot.id })).accountApps, []);
   await app.rpc('bot.apps', { botId: bot.id, apps: ['notes'] });
   app.tools.grant(bot.id, 'account.connectors', true);
   const until = async check => { for (let i = 0; i < 6000; i++) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail(JSON.stringify(app.db.tasks())); };

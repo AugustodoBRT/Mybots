@@ -18,6 +18,9 @@ const STOPPED = {
   node_lost: 'O computador desconectou durante esta resposta. O histórico foi preservado; mande de novo quando ele voltar.'
 };
 
+// How much of a private chat a new IA session reads at most (promptFor keeps what fits in its size budget).
+const PROMPT_WINDOW = 400;
+
 // How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
 // from talking to the others. Small on the phone, whose Termux has little memory.
 export const LANE_LIMITS = { phone: 3, pc: 4 };
@@ -31,7 +34,7 @@ export class Queue extends EventEmitter {
   constructor(db, execute = runReply, tools) { super(); this.db = db; this.execute = execute; this.tools = tools; this.running = new Map(); // task id -> { id, lane, controller, done }
     this.stopped = false; this.steps = new Map(); }
   recover() {
-    for (const task of this.db.tasks().filter(task => ['running','waiting_approval'].includes(task.state))) {
+    for (const task of this.db.activeTasks().filter(task => ['running','waiting_approval'].includes(task.state))) {
       stopOrphan(task);
       // A chat may already have reached Codex; never replay it silently after a crash.
       this.db.finish(task.id, 'failed', null, 'O supervisor foi interrompido durante esta resposta. O histórico foi preservado; tente novamente.');
@@ -87,7 +90,7 @@ export class Queue extends EventEmitter {
         const picked = this.tools ? this.tools.accountApps(bot.id) : [];
         const connectors = Boolean(this.tools) && this.tools.policy(bot.id, 'account.connectors') !== 'deny' && picked.length > 0;
         const connectorDeny = connectors && bot.provider === 'claude' ? (await this.accountServers?.() || []).filter(name => !picked.includes(name)) : [];
-        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId) }) : promptFor(bot, task.message_id, { tools: Boolean(this.tools) });
+        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId) }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools) });
         const reply = await execute(bot, prompt, {
           signal: controller.signal,
           workspace: capability?.workspace,
@@ -98,10 +101,11 @@ export class Queue extends EventEmitter {
           // What the bot says along the way becomes a message now; what it is doing shows under "Pensando".
           onProgress: ({ say, step } = {}) => {
             if (controller.signal.aborted) return;
+            // A step is only an event: the conversation is not written for it.
             if (typeof say === 'string' && say.trim()) { this.db.progressMessage(task.id, say); this.steps.delete(task.id); }
             else if (typeof step === 'string' && step.trim()) this.steps.set(task.id, step.trim().slice(0, 160));
             else return;
-            this.emit('changed', { event: 'task.progress', taskId: task.id });
+            this.emit('changed', { event: 'task.progress', taskId: task.id, botId: task.bot_id, step: this.steps.get(task.id) || null });
           },
           // Only a local process can be found again (and stopped) after a crash.
           onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
@@ -124,6 +128,12 @@ export class Queue extends EventEmitter {
     // Other bots, or the other lane, may have work too.
     this.schedule();
     await current.done;
+  }
+  /** The bot with the part of its chat the prompt needs: the message alone in a resumed session, else the latest ones. */
+  chat(bot, messageId) {
+    if (bot.codexSessionId) return { ...bot, messages: [this.db.message(messageId)].filter(Boolean) };
+    const page = this.db.page({ botId: bot.id, limit: PROMPT_WINDOW });
+    return { ...bot, messages: page.messages, earlier: page.more };
   }
   /** The computer went away: its running turn ends as interrupted (never replayed), waiting turns keep waiting. */
   lost(lane = 'pc') { for (const current of this.running.values()) if (current.lane === lane) current.controller.abort('node_lost'); this.schedule(); }

@@ -167,11 +167,11 @@ test('taking over blocks the bot; handing back after a request for help continue
   assert.equal(f.app.state().browser.help[f.bot.id].reason, 'Entre no SIGAA com seu usuário e senha');
   await f.app.rpc('browser.control', { botId: f.bot.id, who: 'person' });
   await assert.rejects(run.call('browser_read'), /assumiu o navegador/);
-  const before = f.app.db.bot(f.bot.id).messages.length;
+  const before = f.app.db.messages(f.bot.id).length;
   assert.deepEqual(await f.app.rpc('browser.control', { botId: f.bot.id, who: 'bot' }), { control: 'bot', continued: true });
   assert.equal(f.app.state().browser.help[f.bot.id], undefined);
-  const message = f.app.db.bot(f.bot.id).messages.find(item => /Navegador devolvido/.test(item.text));
-  assert.ok(message && f.app.db.bot(f.bot.id).messages.length > before);
+  const message = f.app.db.messages(f.bot.id).find(item => /Navegador devolvido/.test(item.text));
+  assert.ok(message && f.app.db.messages(f.bot.id).length > before);
   assert.match(message.text, /Entre no SIGAA/);
   // Handing back without a pending request does not start a turn.
   await f.app.rpc('browser.control', { botId: f.bot.id, who: 'person' });

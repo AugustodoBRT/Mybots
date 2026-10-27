@@ -13,6 +13,7 @@ Tudo fica em `.build-tools/` (fora do Git). O login do Codex no emulador é sepa
 - `node post-notification.mjs Gmail "título" "texto"` simula uma notificação chegando ao supervisor.
 - `node send-file.mjs <botId> <arquivo> "mensagem"` manda um anexo como o botão ＋ do app e espera a resposta.
 - `screen.sh <arquivo.png>` tira print da tela.
+- `node seed-long.mjs [5000] [3000]` cria o bot "Histórico longo" com milhares de mensagens e a "Sala longa" com milhares mais (Markdown, tabelas, código, anexos), direto no banco do emulador, para medir abrir e rolar conversas longas.
 
 Cuidados aprendidos:
 - O Termux do emulador usa DNS 8.8.8.8, que a rede do emulador não alcança: `printf "nameserver 10.0.2.3\n" > $PREFIX/etc/resolv.conf`.

@@ -3,7 +3,6 @@ import { now, uuid } from './database.mjs';
 import { routineArguments, describeTrigger, matchesNotification, nextRun, validTimeZone } from '../mobile/routine-text.js';
 import { DEVICE_NOTICE } from './device.mjs';
 
-const ACTIVE = ['queued', 'running', 'waiting_approval'];
 export const LIMITS = { perBot: 20, runsPerDay: 48, eventCooldownMs: 5 * 60000, eventsPerRun: 20, skipNoticeMs: 3600000 };
 
 const clip = (value, max) => value.length > max ? value.slice(0, max - 1) + '…' : value;
@@ -109,7 +108,7 @@ export class Routines {
     if (!started) throw new Error(this.db.get('SELECT last_result FROM routines WHERE id=?', id).last_result || 'Não consegui executar a rotina agora.');
     return { started: true };
   }
-  busy(botId) { return this.db.tasks().some(task => task.bot_id === botId && ACTIVE.includes(task.state)); }
+  busy(botId) { return this.db.activeTasks(botId).length > 0; }
   /** When the next routine is due (ISO), so the phone can wake the supervisor for it with the screen off. */
   nextDue() {
     const times = this.all().filter(item => item.enabled).map(item => item.trigger.type !== 'notification' ? item.nextRunAt
@@ -189,7 +188,7 @@ export class Routines {
     const row = this.db.get('SELECT * FROM routines WHERE id=?', run.routine_id);
     if (!row) return;
     const routine = this.row(row); const bot = this.db.bot(task.bot_id);
-    const reply = task.state === 'done' ? bot.messages.filter(message => message.role === 'assistant').at(-1)?.text || '' : '';
+    const reply = task.state === 'done' ? this.db.latest(bot.id, 'assistant')?.text || '' : '';
     const result = task.state === 'done' ? clip(reply.replace(/\s+/g, ' '), 200) : task.error || 'A execução não terminou.';
     this.db.run('UPDATE routines SET last_result=? WHERE id=?', result, routine.id);
     this.changed('activity.new');

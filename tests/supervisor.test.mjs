@@ -83,7 +83,8 @@ test('two clients see the same persistent task; reconnecting never loses or dupl
   finish({ text: 'abacaxi', codexSessionId: randomUUID(), ...selection });
   await until(() => f.app.db.task(result.taskId).state === 'done');
   const state = await second.call('state.get');
-  assert.deepEqual(state.bots[0].messages.map(message => message.text), ['Lembre abacaxi','abacaxi']);
+  assert.equal(state.bots[0].messages, undefined); assert.equal(state.bots[0].messageCount, 2); assert.equal(state.bots[0].lastMessage.text, 'abacaxi');
+  assert.deepEqual((await second.call('chat.page', { botId: bot.id })).messages.map(message => message.text), ['Lembre abacaxi','abacaxi']);
   await second.call('chat.send', { botId: bot.id, requestId, text: 'Lembre abacaxi' });
   assert.equal(f.app.db.tasks().length, 1);
   await assert.rejects(second.call('chat.send', { botId: bot.id, requestId, text: 'Mensagem diferente' }), /outra mensagem/);
@@ -96,7 +97,7 @@ test('queue is persistent and startup marks uncertain running work as failed wit
   queue.recover();
   assert.equal(db.task(task.id).state, 'failed');
   assert.match(db.task(task.id).error, /supervisor foi interrompido/);
-  assert.equal(db.bot(bot.id).messages[0].status, 'error');
+  assert.equal(db.messages(bot.id)[0].status, 'error');
   assert.equal(db.tasks().length, 1); db.close();
 });
 
@@ -128,7 +129,7 @@ test('cancel stops a real Codex subprocess and records cancellation only after e
   await f.client.call('task.cancel', { taskId });
   assert.equal(f.app.db.task(taskId).state, 'cancelled');
   assert.throws(() => process.kill(pid, 0), /ESRCH/);
-  assert.equal((await f.client.call('chat.history', { botId: bot.id })).length, 1);
+  assert.equal((await f.client.call('chat.page', { botId: bot.id })).messages.length, 1);
 });
 
 test('orphan process is killed only when its recorded identity matches', async t => {
@@ -157,13 +158,14 @@ test('cancel queued work, delete and restore preserve IDs and protect active wor
   finish({ text: 'Oi', codexSessionId: randomUUID(), ...selection }); await until(() => f.app.db.task(first.taskId).state === 'done');
   const updated = await f.client.call('bot.update', { botId: a.id, name: 'Lua nova', instructions: 'Seja direta.' });
   assert.equal(updated.name, 'Lua nova'); assert.equal(updated.codexSessionId, undefined);
-  assert.equal(updated.messages.length, 3);
+  assert.equal(f.app.db.messages(a.id).length, 3);
   const backup = await f.client.call('backup.create');
   const snapshot = await f.client.call('backup.read', { name: backup.name });
   await f.client.call('bot.delete', { botId: a.id });
   assert.equal((await f.client.call('bots.list')).length, 1);
   await f.client.call('backup.restore', { snapshot });
-  assert.equal((await f.client.call('bots.list')).find(bot => bot.id === a.id).messages.length, 3);
+  assert.equal((await f.client.call('bots.list')).find(bot => bot.id === a.id).messageCount, 3);
+  assert.equal((await f.client.call('chat.page', { botId: a.id })).messages.length, 3);
   await assert.rejects(f.client.call('backup.read', { name: '../token' }), /Backup inválido/);
   await assert.rejects(f.client.call('approval.respond', { approved: true }), /Nenhuma ação/);
 });
@@ -218,7 +220,7 @@ if(args[0]==='app-server') {
   restarted = await createSupervisor({ directory: path, port: 0, codex });
   assert.equal(restarted.db.task(taskId).state, 'failed');
   assert.equal(restarted.db.bot(bot.id).codexSessionId, session);
-  assert.equal(restarted.db.bot(bot.id).messages[0].id, restarted.db.task(taskId).message_id);
+  assert.equal(restarted.db.messages(bot.id)[0].id, restarted.db.task(taskId).message_id);
   assert.match(restarted.db.task(taskId).error, /supervisor foi interrompido/);
 });
 

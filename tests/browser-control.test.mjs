@@ -110,6 +110,15 @@ test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for 
     await s.page.locator('iframe').evaluate(el => el.remove());
     await s.checkChallenge(); assert.equal(events.at(-1).captcha.solved,true);
   }
+  // reCAPTCHA keeps its large image challenge laid out but hidden; the checkbox below the fold is the one to show.
+  await s.page.setViewportSize({ width: 360, height: 640 });
+  await s.page.setContent('<div style="visibility:hidden;position:absolute;top:0"><iframe style="width:400px;height:580px" src="https://www.google.com/recaptcha/api2/bframe"></iframe></div><div style="height:1500px"></div><iframe style="width:304px;height:78px;border:0" src="https://www.google.com/recaptcha/api2/anchor"></iframe><div style="height:800px"></div>', { waitUntil:'domcontentloaded' });
+  assert.equal((await s.page.evaluate(captchaState)).rect.height, 78);
+  assert.equal(await s.page.evaluate(() => scrollY), 0);
+  const shown = await s.page.evaluate(captchaState, { reveal: true });
+  assert.ok(shown.rect.y > 0 && shown.rect.y + shown.rect.height < 640);
+  await s.page.evaluate(() => scrollTo(0, 0)); await s.page.evaluate(captchaState, { reveal: true });
+  assert.equal(await s.page.evaluate(() => scrollY), 0);
   await s.page.setContent('<iframe src="https://google.com.evil.test/recaptcha/test"></iframe>');
   assert.equal((await s.page.evaluate(captchaState)).present,false);
 });

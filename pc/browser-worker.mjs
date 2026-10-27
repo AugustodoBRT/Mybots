@@ -194,7 +194,7 @@ export class BrowserSession {
     if (!this.page || this.checkingChallenge) return;
     this.checkingChallenge = true;
     try {
-      const state = await this.page.evaluate(captchaState);
+      const state = await this.page.evaluate(captchaState, { reveal: Boolean(this.viewOptions?.interactive) });
       for (const frame of this.page.frames()) if (frame !== this.page.mainFrame()) { const child = await frame.evaluate(captchaState).catch(() => null); if (child?.solved) state.solved = true; }
       const captcha = { ...state, solved: state.solved || !!this.challengeSeen && !state.present, width: this.viewportSize().width, height: this.viewportSize().height, autoReturn: this.autoReturn };
       if (state.present) this.challengeSeen = true;

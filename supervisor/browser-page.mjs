@@ -66,11 +66,15 @@ export function markPage(elements) {
 }
 
 // Only challenge geometry and a boolean leave the page. Response tokens never leave the browser.
-export function captchaState() {
+export function captchaState({ reveal = false } = {}) {
+  // Hidden widgets (reCAPTCHA keeps its image challenge laid out but invisible) do not count; a visible one below the fold does.
   const challenges = [...document.querySelectorAll('iframe')].filter(el => {
     try { const u = new URL(el.src, location.href), h = u.hostname; return h === 'challenges.cloudflare.com' || (h === 'google.com' || h.endsWith('.google.com')) && u.pathname.includes('/recaptcha/') || h === 'hcaptcha.com' || h.endsWith('.hcaptcha.com'); } catch { return false; }
-  }).map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth).sort((a,b) => b.width * b.height - a.width * a.height);
-  const r = challenges[0];
+  }).filter(el => (el.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) ?? true) && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0)
+    .sort((a, b) => { const x = a.getBoundingClientRect(), y = b.getBoundingClientRect(); return y.width * y.height - x.width * x.height; });
+  // Once per page, while the person drives, the challenge is brought to the middle of the screen.
+  if (reveal && challenges[0] && !window.__mybotsChallengeShown) { window.__mybotsChallengeShown = true; challenges[0].scrollIntoView({ block: 'center', inline: 'center' }); }
+  const r = challenges[0]?.getBoundingClientRect();
   const solved = [...document.querySelectorAll('[name="g-recaptcha-response"],[name="h-captcha-response"],[name="cf-turnstile-response"],#g-recaptcha-response,#h-captcha-response')].some(el => !!el.value?.trim());
   return { present: !!r, solved, rect: r ? { x:r.x,y:r.y,width:r.width,height:r.height } : null };
 }

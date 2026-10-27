@@ -57,9 +57,13 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [captcha, setCaptcha] = useState(null); const challengeZoom = useRef(null); const returning = useRef(false);
   const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
-  // A Chrome that reopened starts as a desktop again, so the phone's page size goes back with its first frame.
-  const [reopened, setReopened] = useState(0); const wasClosed = useRef(false);
-  useEffect(() => { if (assumed) { returning.current = false; challengeZoom.current = null; } if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport, reopened]);
+  useEffect(() => { if (assumed) { returning.current = false; challengeZoom.current = null; } if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
+  // A Chrome that reopened starts as a desktop again: a frame shaped unlike the phone's page brings the phone's size back.
+  const resized = useRef(0);
+  useEffect(() => {
+    if (!assumed || desktop || !viewport || !frame?.width || (frame.width > frame.height) === (viewport.cssWidth > viewport.cssHeight) || Date.now() - resized.current < 3000) return;
+    resized.current = Date.now(); send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() });
+  }, [assumed, desktop, viewport, frame?.width, frame?.height]);
   const [address, setAddress] = useState(null); const keyboard = useRef(null); const webInput = useRef({ before: '', text: '', key: null, secret: false }); const typeTimer = useRef(null);
   const webType = text => { webInput.current.text = text; clearTimeout(typeTimer.current); typeTimer.current = setTimeout(async () => { const input = webInput.current, next = input.text; if (!input.key || next === input.before) return; const edit = { ...textEdit(input.before, next), secret: input.secret }; input.before = next; try { send(await protectEdit(input.key, edit)); } catch { setProblem('Não consegui proteger a digitação.'); } }, 30); };
   useEffect(() => () => clearTimeout(typeTimer.current), []);
@@ -89,9 +93,9 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       if (data.inputKey) webInput.current.key = data.inputKey;
       if (data.focus && !BotFrameView) { webInput.current.secret = data.focus.secret; if (data.focus.active) { webInput.current.before = ''; webInput.current.text = ''; keyboard.current?.clear(); keyboard.current?.focus(); } else keyboard.current?.blur(); }
       if (typeof data.desktop === 'boolean') setDesktop(data.desktop);
-      if (data.closed) { setState('closed'); wasClosed.current = true; if (!BotFrameView) keyboard.current?.blur(); }
+      if (data.closed) { setState('closed'); if (!BotFrameView) keyboard.current?.blur(); }
       else if (data.error) setProblem(data.error);
-      else if (data.image || data.width) { if (wasClosed.current || data.seq === 1) { wasClosed.current = false; setReopened(count => count + 1); } setFrame(data); setState('live'); setProblem(''); }
+      else if (data.image || data.width) { setFrame(data); setState('live'); setProblem(''); }
     };
     browserFrames.add(listener);
     const watch = () => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });

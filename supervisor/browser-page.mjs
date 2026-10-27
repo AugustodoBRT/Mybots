@@ -64,3 +64,13 @@ export function markPage(elements) {
   }
   document.documentElement.append(layer);
 }
+
+// Only challenge geometry and a boolean leave the page. Response tokens never leave the browser.
+export function captchaState() {
+  const challenges = [...document.querySelectorAll('iframe')].filter(el => {
+    try { const u = new URL(el.src, location.href), h = u.hostname; return h === 'challenges.cloudflare.com' || (h === 'google.com' || h.endsWith('.google.com')) && u.pathname.includes('/recaptcha/') || h === 'hcaptcha.com' || h.endsWith('.hcaptcha.com'); } catch { return false; }
+  }).map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth).sort((a,b) => b.width * b.height - a.width * a.height);
+  const r = challenges[0];
+  const solved = [...document.querySelectorAll('[name="g-recaptcha-response"],[name="h-captcha-response"],[name="cf-turnstile-response"],#g-recaptcha-response,#h-captcha-response')].some(el => !!el.value?.trim());
+  return { present: !!r, solved, rect: r ? { x:r.x,y:r.y,width:r.width,height:r.height } : null };
+}

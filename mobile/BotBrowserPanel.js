@@ -13,7 +13,7 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
     <Text style={styles.helpTitle}>{bot.name} precisa de você</Text>
     <Text style={styles.helpBody}>{help.reason}</Text>
     <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, faça isso na página ao vivo do Chrome do bot e depois toque em “Devolver ao bot”. Senhas e códigos digitados aqui não vão para a IA.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
-    <Pressable accessibilityRole="button" onPress={onOpen} style={styles.helpButton}><Icon name="globe" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>Abrir navegador e assumir</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={onOpen} style={styles.helpButton}><Icon name="globe" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>Toque para resolver</Text></Pressable>
   </View>;
 }
 
@@ -54,6 +54,7 @@ function LiveImages({ frame }) {
  */
 function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
+  const [captcha, setCaptcha] = useState(null); const challengeZoom = useRef(null); const returning = useRef(false);
   const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
   useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
@@ -68,10 +69,19 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   live.current = { assumed, frame, desktop };
   const send = input => { if (!BotFrameView && input.type === 'keyboard') { keyboard.current?.focus(); return; } if (BotFrameView) setNativeInput(JSON.stringify({ ...input, nonce: ++nonce.current })); else call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message)); };
   useEffect(() => { setDrag({ x: 0, y: 0 }); }, [frame?.seq]);
+  const challenge = data => {
+    if (!data) return; setCaptcha(data);
+    if (data.rect && assumed) {
+      const r = data.rect, signature = JSON.stringify(r);
+      if (challengeZoom.current !== signature) { challengeZoom.current = signature; const { width, height } = size.current; const scale = Math.max(1, Math.min(3, .85 * Math.min(data.width / r.width, data.height / r.height))); setZoom(zoomAt({ scale:1,translateX:0,translateY:0,rotation:0 }, { x:(r.x+r.width/2)/data.width*width,y:(r.y+r.height/2)/data.height*height }, scale,width,height)); }
+    }
+    if (data.solved && data.autoReturn && live.current.assumed && !returning.current) { returning.current = true; control('bot'); }
+  };
   useEffect(() => {
     setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      if (data.captcha) challenge(data.captcha);
       if (typeof data.loading === 'boolean') setLoading(data.loading);
       if (typeof data.slow === 'boolean') setSlow(data.slow);
       if (data.inputKey) webInput.current.key = data.inputKey;
@@ -144,7 +154,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
       {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
@@ -157,6 +167,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
       {!BotFrameView ? <TextInput ref={keyboard} style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} onChangeText={webType} autoCapitalize="none" onSubmitEditing={() => send({ type:'key',key:'Enter' })} blurOnSubmit={false} /> : null}
+      {captcha?.present || captcha?.solved ? <View style={styles.keys}><Text style={styles.hint}>{captcha.solved ? 'Desafio resolvido · Devolver ao bot' : 'Resolva o desafio na página'}</Text><Pressable accessibilityRole="switch" accessibilityState={{ checked: !!captcha.autoReturn }} onPress={() => send({ type:'captcha',autoReturn:!captcha.autoReturn })}><Text style={styles.hint}>{captcha.autoReturn ? '☑' : '☐'} Devolver sozinho depois de resolver</Text></Pressable></View> : null}
       <View style={styles.keys}>
         <Pressable accessibilityRole="button" onPress={() => send({ type: 'keyboard' })} style={styles.key}><Text style={styles.keyText}>Teclado</Text></Pressable>
         {[['Enter','Enter'],['Tab','Tab'],['Esc','Escape']].map(([label,key]) => <Pressable key={key} accessibilityRole="button" onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}

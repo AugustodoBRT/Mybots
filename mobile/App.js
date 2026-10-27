@@ -1821,7 +1821,7 @@ function AppMain() {
   // Tapping a bot notification opens that bot's conversation, whether MyBots was closed or in the background.
   useEffect(() => {
     if (!termuxAvailable) return undefined;
-    const open = id => { if (id) { setSelected(id); setRoomId(null); setProfileId(null); setCreateVisible(false); setMaintenanceVisible(false); setActivityVisible(false); setFileSheet(null); setDraft(''); } };
+    const open = id => { if (id) { setSelected(id); setRoomId(null); setProfileId(null); setCreateVisible(false); setMaintenanceVisible(false); setActivityVisible(false); setFileSheet(null); setDraft(''); supervisor.current?.call('state.get').then(state => { if (/captcha|desafio/i.test(state.browser?.help?.[id]?.reason || '')) return supervisor.current.call('browser.control', { botId:id,who:'person' }).then(loadSupervisorState); }).catch(() => {}); } };
     const check = () => { Promise.resolve(takeLaunchBot()).then(open).catch(() => {}); };
     check();
     const subscription = onOpenBot(event => open(event?.botId));

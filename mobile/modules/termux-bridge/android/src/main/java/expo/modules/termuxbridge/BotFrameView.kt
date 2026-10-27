@@ -169,7 +169,12 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
         val value = runCatching { JSONObject(text) }.getOrNull() ?: return
-        main.post { if (epoch == generation) { if (value.has("loading")) metadata["loading"] = value.optBoolean("loading")
+        main.post { if (epoch == generation) { value.optJSONObject("captcha")?.let { c ->
+            val data = mutableMapOf<String, Any>("present" to c.optBoolean("present"), "solved" to c.optBoolean("solved"), "autoReturn" to c.optBoolean("autoReturn"), "width" to c.optDouble("width"), "height" to c.optDouble("height"))
+            c.optJSONObject("rect")?.let { r -> data["rect"] = mapOf("x" to r.optDouble("x"), "y" to r.optDouble("y"), "width" to r.optDouble("width"), "height" to r.optDouble("height")) }
+            metadata["captcha"] = data
+          }
+          if (value.has("loading")) metadata["loading"] = value.optBoolean("loading")
           if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
           value.optJSONObject("focus")?.let { focus(it) }
           if (value.has("inputAck")) { inputBusy = false; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }

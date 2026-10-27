@@ -22,7 +22,8 @@ export function safeUrl(value) {
 
 /** A tap, scroll, key, text or address the person sends to a bot's Chrome on the computer, cleaned field by field. */
 export function personInput(input) {
-  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab', 'viewport', 'touch', 'encrypted'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab', 'viewport', 'touch', 'encrypted', 'captcha'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (input.type === 'captcha') { if (typeof input.autoReturn !== 'boolean') throw new Error('Opção inválida.'); return { type:'captcha', autoReturn:input.autoReturn }; }
   if (input.type === 'encrypted') {
     if (!['key','iv','tag','data'].every(k => typeof input[k] === 'string' && /^[A-Za-z0-9+/=]+$/.test(input[k]) && input[k].length <= 12000) || input.key.length !== 344 || input.iv.length !== 16 || input.tag.length !== 24) throw new Error('Entrada protegida inválida.');
     return { type: 'encrypted', key: input.key, iv: input.iv, tag: input.tag, data: input.data };

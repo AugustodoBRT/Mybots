@@ -194,7 +194,7 @@ test('worker honors the viewer dimensions, watching/takeover quality and immedia
 
 test('animated real Chrome produces resized JPEG with increasing seq and masks password fields', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-v54-animation-'));
-  const session = new BrowserSession(directory); const frames = []; session.frame = frame => frames.push(frame);
+  const session = new BrowserSession(directory); const frames = []; session.frame = frame => { if (frame.image) frames.push(frame); };
   t.after(async () => { await session.close(); await rm(directory, { recursive: true, force: true }); });
   await session.start();
   await session.page.setContent('<style>@keyframes move {to {transform:translateX(600px)}} .box {width:120px;height:120px;background:#08a;animation:move 0.5s infinite alternate linear}</style><div class="box"></div><input type="password" value="segredo-de-teste">');

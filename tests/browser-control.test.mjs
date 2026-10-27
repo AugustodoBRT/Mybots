@@ -79,3 +79,21 @@ test('focus binding carries only type and rectangle; accents and IME corrections
   await s.view(false);
   await assert.rejects(s.input({ type:'encrypted', key:'bad',iv:'bad',tag:'bad',data:'bad' }), /protegido/);
 });
+
+test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for filled tokens or disappearance', real, async t => {
+  const { captchaState } = await import('../supervisor/browser-page.mjs');
+  const s = await session(t), events = []; s.frame = f => events.push(f);
+  for (const url of ['https://challenges.cloudflare.com/turnstile/test','https://www.google.com/recaptcha/api2/anchor','https://newassets.hcaptcha.com/captcha/test']) {
+    await s.page.setContent(`<iframe style="width:300px;height:200px" src="${url}"></iframe><textarea name="g-recaptcha-response"></textarea>`, { waitUntil:'domcontentloaded' });
+    const state = await s.page.evaluate(captchaState); assert.equal(state.present,true); assert.equal(state.solved,false); assert.equal(state.rect.width,304);
+    await s.checkChallenge();
+    await s.page.locator('textarea').evaluate(el => { el.value = 'token-that-must-stay-in-the-page'; });
+    await s.checkChallenge(); assert.equal(events.at(-1).captcha.solved,true);
+    assert.ok(!JSON.stringify(events).includes('token-that-must-stay-in-the-page'));
+    await s.page.locator('textarea').evaluate(el => { el.value = ''; });
+    await s.page.locator('iframe').evaluate(el => el.remove());
+    await s.checkChallenge(); assert.equal(events.at(-1).captcha.solved,true);
+  }
+  await s.page.setContent('<iframe src="https://google.com.evil.test/recaptcha/test"></iframe>');
+  assert.equal((await s.page.evaluate(captchaState)).present,false);
+});

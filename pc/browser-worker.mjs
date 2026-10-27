@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-core';
 import { generateKeyPairSync, randomBytes, privateDecrypt, createDecipheriv } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { readPage, inspectPoint, markPage } from '../supervisor/browser-page.mjs';
+import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/browser-page.mjs';
 import { viewSize } from '../supervisor/browser-frame.mjs';
 import { safeUrl } from '../supervisor/browser.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
@@ -38,6 +38,7 @@ export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
   constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
     try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
+    this.autoReturn = this.siteViews.__autoReturn === true;
   }
   start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
   async launch() {
@@ -66,8 +67,8 @@ export class BrowserSession {
       if (this.mode === 'mine') {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
-      page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) this.emitFrame({ loading: true }); });
-      page.on('domcontentloaded', () => { this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
+      page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) (this.cdp || this.device) && this.emitFrame({ loading: true }); });
+      page.on('domcontentloaded', () => { if (this.cdp || this.device) this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
@@ -149,6 +150,8 @@ export class BrowserSession {
       const cdp = this.cdp; this.cdp = null; clearTimeout(this.frameTimer); this.pendingFrame = null;
       await cdp.send('Page.stopScreencast').catch(() => {}); await cdp.detach().catch(() => {});
     }
+    if (on && !this.pageTimer) this.pageTimer = setInterval(() => this.checkChallenge().catch(() => {}), 500);
+    if (!on) { clearInterval(this.pageTimer); this.pageTimer = null; }
     if (on) for (const frame of this.page.frames()) await frame.evaluate(() => {
       if (document.querySelector('style[data-mybots-live-mask]')) return;
       const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { color:transparent!important; text-shadow:none!important; caret-color:transparent!important; }'; document.documentElement.append(style);
@@ -186,6 +189,18 @@ export class BrowserSession {
     };
     const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
     if (delay) this.frameTimer = setTimeout(flush, delay); else flush();
+  }
+  async checkChallenge() {
+    if (!this.page || this.checkingChallenge) return;
+    this.checkingChallenge = true;
+    try {
+      const state = await this.page.evaluate(captchaState);
+      for (const frame of this.page.frames()) if (frame !== this.page.mainFrame()) { const child = await frame.evaluate(captchaState).catch(() => null); if (child?.solved) state.solved = true; }
+      const captcha = { ...state, solved: state.solved || !!this.challengeSeen && !state.present, width: this.viewportSize().width, height: this.viewportSize().height, autoReturn: this.autoReturn };
+      if (state.present) this.challengeSeen = true;
+      const signature = JSON.stringify(captcha);
+      if (signature !== this.lastChallenge) { this.lastChallenge = signature; this.emitFrame({ captcha }); }
+    } finally { this.checkingChallenge = false; }
   }
   redact(value) {
     if (typeof value === 'string') { for (const secret of this.secrets) value = value.split(secret).join('[senha protegida]'); return value; }
@@ -271,7 +286,7 @@ export class BrowserSession {
     await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });
     this.emitFrame({ desktop: this.desktop, viewport: metrics, inputKey: this.inputKeys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64') });
-    await this.page.evaluate(() => window.__mybotsFocus?.()).catch(() => {});
+    await this.page.evaluate(() => window.__mybotsFocus?.()).catch(() => {}); this.lastChallenge = null; await this.checkChallenge();
   }
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
@@ -279,6 +294,7 @@ export class BrowserSession {
     const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
+    if (args.type === 'captcha') { this.autoReturn = args.autoReturn; this.siteViews.__autoReturn = args.autoReturn; mkdirSync(this.profile, { recursive:true,mode:0o700 }); writeFileSync(join(this.profile, 'site-views.json'), JSON.stringify(this.siteViews), { mode:0o600 }); await this.checkChallenge(); return { sent:true }; }
     if (args.type === 'encrypted') return this.protectedEdit(args);
     if (args.type === 'touch') {
       const cdp = this.devices.get(this.page)?.cdp || this.cdp; if (!cdp || this.desktop) throw new Error('Ative o modo celular.');
@@ -434,7 +450,7 @@ export class BrowserSession {
     throw new Error('Comando do navegador inválido.');
   }
   async close() {
-    this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.pendingFrame = null;
+    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.pendingFrame = null;
     if (this.mode === 'mine') {
       if (this.onDisconnect) this.browser?.off('disconnected', this.onDisconnect);
       if (this.cdp) await this.view(false).catch(() => {});

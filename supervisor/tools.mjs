@@ -481,6 +481,7 @@ export class Tools {
       let result;
       if (tool === 'browser.ask_user') {
         this.browser.requestHelp(run.botId, args.reason);
+        if (/captcha|desafio/i.test(args.reason)) Promise.resolve(this.notify({ title: 'Toque para resolver', body: args.reason }, { id: 'mybots-captcha-' + run.botId, botId: run.botId, botName: bot.name })).catch(() => {});
         result = { requested: true, message: 'A pessoa vai ver o cartão com o seu pedido e o botão para abrir o navegador. Termine agora a resposta explicando o que ela precisa fazer. Quando ela tocar em “Devolver ao bot”, você recebe uma nova mensagem para continuar.' };
       } else if (tool === 'browser.act') {
         const target = await command(run.botId, 'inspect', args);

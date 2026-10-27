@@ -67,3 +67,5 @@ export const runTermux = (operation, payload = {}) => {
   if (!native) throw new Error('A conexão com o Termux exige instalar o APK próprio do MyBots. No Expo Go, use o modo computador.');
   return native.runCodex(operation, payload);
 };
+
+export const browserPresentation = on => native?.browserPresentation(on);

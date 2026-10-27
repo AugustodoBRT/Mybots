@@ -1,7 +1,7 @@
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions, PixelRatio, Image, PanResponder, TextInput } from 'react-native';
-import { BotBrowserView, BotFrameView, browserAction, browserInfo } from './termux';
+import { View, Text, Pressable, StyleSheet, Dimensions, PixelRatio, Image, PanResponder, TextInput, Modal } from 'react-native';
+import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation } from './termux';
 import { C, F, Icon } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
@@ -13,6 +13,13 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
     <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, faça isso na página ao vivo do Chrome do bot e depois toque em “Devolver ao bot”. Senhas e códigos digitados aqui não vão para a IA.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.helpButton}><Icon name="globe" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>Abrir navegador e assumir</Text></Pressable>
   </View>;
+}
+
+// The same takeover surface hosts the remote Chrome and the phone's own WebView.
+function BrowserSurface({ assumed, control, children }) {
+  useEffect(() => { browserPresentation(assumed); return () => browserPresentation(false); }, [assumed]);
+  if (!assumed) return <>{children}</>;
+  return <Modal visible presentationStyle="fullScreen" supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']} onRequestClose={() => control('bot')}><View style={styles.fullscreen}>{children}</View></Modal>;
 }
 
 // Frames of the bots' Chrome on the computer, from the supervisor's 'browser.frame' events (see App.js).
@@ -87,7 +94,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const typeText = () => { if (!text) return; send({ type: 'text', text }); setText(''); };
   const go = () => { if (address?.trim()) send({ type: 'open', url: address.trim() }); setAddress(null); };
   const shown = frame?.url && frame.url !== 'about:blank' ? frame.url.replace(/^https?:\/\//, '') : '';
-  return <View style={styles.panel}>
+  return <BrowserSurface assumed={assumed} control={control}><View style={[styles.panel, assumed && styles.fullPanel]}>
     <View style={styles.bar}>
       <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.mint : C.muted} /></View>
       {assumed && address !== null ? <TextInput autoFocus style={[styles.address, { flex: 1 }]} value={address} onChangeText={setAddress} onSubmitEditing={go} onBlur={() => setAddress(null)} selectTextOnFocus placeholder="Endereço do site" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" />
@@ -101,7 +108,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
     </View>
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
-    <View style={[styles.live, { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
+    <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height) }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
       {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={StyleSheet.absoluteFill} onMetadata={event => { const data = event.nativeEvent; if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
@@ -124,7 +131,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
-  </View>;
+  </View></BrowserSurface>;
 }
 
 /**
@@ -155,7 +162,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     {!assumed ? <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.hint}>Fechar painel</Text></Pressable> : null}
   </View>;
   if (!BotBrowserView) return null;
-  return <View style={styles.panel}>
+  return <BrowserSurface assumed={assumed} control={control}><View style={[styles.panel, assumed && styles.fullPanel]}>
     <View style={styles.bar}>
       <View style={styles.lock}><Icon name="globe" size={16} color={assumed ? C.mint : C.muted} /></View>
       <View style={{ flex: 1 }}>
@@ -167,7 +174,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
         <Pressable accessibilityRole="button" accessibilityLabel="Recarregar página" hitSlop={6} onPress={() => act('reload')} style={styles.tool}><Icon name="refresh" size={17} color={C.text2} /></Pressable>
       </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
     </View>
-    <View style={[styles.frame, assumed && styles.frameAssumed]}>
+    <View style={[styles.frame, assumed && styles.fullFrame, assumed && styles.frameAssumed]}>
       <BotBrowserView botId={bot.id} interactive={assumed} style={StyleSheet.absoluteFill} onPage={event => setPage(event.nativeEvent)} />
       {!assumed ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
@@ -177,16 +184,19 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
-  </View>;
+  </View></BrowserSurface>;
 }
 
 const styles = StyleSheet.create({
+  fullscreen: { flex: 1, backgroundColor: C.surface },
+  fullPanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0 },
+  fullFrame: { flex: 1, aspectRatio: undefined },
   panel: { marginHorizontal: 12, marginTop: 10, marginBottom: 6, padding: 10, borderRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, gap: 9 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   lock: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },
   title: { color: C.text, fontFamily: F.b, fontSize: 13.5 }, url: { color: C.muted, fontFamily: F.m, fontSize: 11.5, marginTop: 1 },
   tool: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line },
-  frame: { height: Math.round(Dimensions.get('window').height * 0.42), borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
+  frame: { aspectRatio: 0.625, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
   frameAssumed: { borderColor: C.mint },
   live: { width: '100%', borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: C.surface2 },

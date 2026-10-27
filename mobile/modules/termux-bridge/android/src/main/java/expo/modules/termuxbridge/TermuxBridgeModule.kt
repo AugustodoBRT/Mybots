@@ -178,6 +178,11 @@ class TermuxBridgeModule : Module() {
       Events("onMetadata")
       Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
     }
+    Function("browserPresentation") { on: Boolean ->
+      appContext.currentActivity?.let { activity ->
+        activity.requestedOrientation = if (on) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+      }
+    }
     AsyncFunction("browserInfo") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       BotBrowser.start(context.applicationContext)

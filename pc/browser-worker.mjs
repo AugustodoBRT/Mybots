@@ -154,7 +154,7 @@ export class BrowserSession {
     if (!on) { clearInterval(this.pageTimer); this.pageTimer = null; }
     if (on) for (const frame of this.page.frames()) await frame.evaluate(() => {
       if (document.querySelector('style[data-mybots-live-mask]')) return;
-      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { color:transparent!important; text-shadow:none!important; caret-color:transparent!important; }'; document.documentElement.append(style);
+      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { -webkit-text-security:disc!important; text-shadow:none!important; }'; document.documentElement.append(style);
     }).catch(() => {});
     const quality = (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
     if (on && !this.cdp) {
@@ -203,7 +203,8 @@ export class BrowserSession {
     } finally { this.checkingChallenge = false; }
   }
   redact(value) {
-    if (typeof value === 'string') { for (const secret of this.secrets) value = value.split(secret).join('[senha protegida]'); return value; }
+    // Fragments shorter than 4 characters would replace ordinary letters all over URLs, titles and reads.
+    if (typeof value === 'string') { for (const secret of this.secrets) if (secret.length >= 4) value = value.split(secret).join('[senha protegida]'); return value; }
     if (Array.isArray(value)) return value.map(item => this.redact(item));
     if (value && typeof value === 'object' && !Buffer.isBuffer(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, ['image','inputKey'].includes(key) ? item : this.redact(item)]));
     return value;
@@ -242,17 +243,26 @@ export class BrowserSession {
       const bytes = Buffer.concat([decipher.update(Buffer.from(args.data, 'base64')), decipher.final()]); key.fill(0);
       const edit = JSON.parse(bytes.toString('utf8')); bytes.fill(0);
       if (!Number.isInteger(edit.delete) || edit.delete < 0 || edit.delete > 2000 || typeof edit.text !== 'string' || edit.text.length > 2000) throw new Error();
-      const sensitive = await this.page.evaluate(() => { let el = document.activeElement; while (el?.tagName === 'IFRAME') { try { el = el.contentDocument.activeElement; } catch { return true; } } return el?.type === 'password' || el?.autocomplete === 'one-time-code'; });
-      // Retain every private fragment before touching the page; even a page that echoes it cannot leak it through reads.
-      if (edit.text && (sensitive || this.focus?.secret || edit.secret)) this.secrets.add(edit.text);
+      const sensitive = await this.sensitiveFocus() || this.focus?.secret || edit.secret;
+      // A pasted chunk is retained before touching the page; typed letters are covered by the field's whole value below.
+      if (sensitive && edit.text.length >= 4) this.secrets.add(edit.text);
       for (let i = 0; i < edit.delete; i++) await this.page.keyboard.press('Backspace');
       if (edit.text) await this.page.keyboard.insertText(edit.text);
-      if (sensitive || this.focus?.secret) for (const frame of this.page.frames()) {
-        const value = await frame.evaluate(() => { const el = document.activeElement; return ['INPUT','TEXTAREA'].includes(el?.tagName) ? el.value : ''; }).catch(() => '');
-        if (value) this.secrets.add(value);
-      }
+      if (sensitive) await this.rememberField();
       return { sent: true };
     } catch { throw new Error('Não consegui digitar no campo protegido.'); }
+  }
+  sensitiveFocus() {
+    return this.page.evaluate(() => { let el = document.activeElement; while (el?.tagName === 'IFRAME') { try { el = el.contentDocument.activeElement; } catch { return true; } } return el?.type === 'password' || el?.autocomplete === 'one-time-code'; });
+  }
+  /** The private field's current value replaces the one kept while it was being typed ("S", "Se"… never pile up). */
+  async rememberField() {
+    for (const frame of this.page.frames()) {
+      const value = await frame.evaluate(() => { const el = document.activeElement; return ['INPUT','TEXTAREA'].includes(el?.tagName) ? el.value : ''; }).catch(() => '');
+      if (!value) continue;
+      if (this.typedSecret && (value.startsWith(this.typedSecret) || this.typedSecret.startsWith(value))) this.secrets.delete(this.typedSecret);
+      this.secrets.add(value); this.typedSecret = value;
+    }
   }
   async deviceView(args) {
     if (!this.page) return;
@@ -304,7 +314,7 @@ export class BrowserSession {
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
     if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));
     else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
-    else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) { if (args.text) this.secrets.add(args.text); await this.page.keyboard.insertText(args.text); }
+    else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) { const sensitive = await this.sensitiveFocus(); await this.page.keyboard.insertText(args.text); if (sensitive) await this.rememberField(); }
     else if (args.type === 'key' && KEYS.includes(args.key)) await this.page.keyboard.press(args.key);
     else if (args.type === 'open' && typeof args.url === 'string' && args.url.length <= 2000) await this.page.goto(await allowedUrl(/^[a-z]+:\/\//i.test(args.url.trim()) ? args.url.trim() : 'https://' + args.url.trim()), { waitUntil: 'commit' });
     else if (args.type === 'back') await this.page.goBack({ waitUntil: 'commit' }).catch(() => {});

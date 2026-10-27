@@ -31,6 +31,7 @@ test('real touch dispatch reaches the page and preserves start/move/end', real, 
   await s.page.setContent('<meta name="viewport" content="width=device-width"><script>window.touches=[]; for(const k of ["touchstart","touchmove","touchend"]) document.addEventListener(k,e=>touches.push(e.type));</script>');
   await s.input({ type: 'viewport', width: 360, height: 640, deviceScaleFactor: 2 });
   for (const phase of ['touchStart','touchMove','touchEnd']) await s.input({ type: 'touch', phase, points: phase === 'touchEnd' ? [] : [{ x: .5, y: phase === 'touchMove' ? .4 : .5, id: 0 }] });
+  await s.page.waitForFunction(() => touches.length === 3);
   assert.deepEqual(await s.page.evaluate(() => touches), ['touchstart','touchmove','touchend']);
 });
 
@@ -79,6 +80,20 @@ test('focus binding carries only type and rectangle; accents and IME corrections
   assert.ok(!JSON.stringify({ response, read, events:events.map(({ image, ...f }) => f) }).includes(secret));
   await s.view(false);
   await assert.rejects(s.input({ type:'encrypted', key:'bad',iv:'bad',tag:'bad',data:'bad' }), /protegido/);
+});
+
+test('a password typed letter by letter is protected whole, and ordinary letters elsewhere stay readable', real, async t => {
+  const s = await session(t);
+  await s.page.setContent('<title>Entrar no site</title><meta name="viewport" content="width=device-width"><input type="password" id="pw"><p id="echo">Bem-vinde de novo</p>');
+  await s.input({ type: 'viewport', width: 360, height: 640, deviceScaleFactor: 2 });
+  await s.page.locator('#pw').focus();
+  for (const letter of 'Segredo9') await s.input(await encrypted(s, { delete: 0, text: letter }));
+  assert.equal(await s.page.locator('#pw').inputValue(), 'Segredo9');
+  await s.page.evaluate(() => { document.querySelector('#echo').textContent += ' · Segredo9'; });
+  const read = await s.command('read');
+  assert.match(read.title, /^Entrar no site$/); assert.match(read.text, /Bem-vinde de novo/);
+  assert.ok(!read.text.includes('Segredo9') && read.text.includes('[senha protegida]'));
+  assert.deepEqual([...s.secrets].filter(secret => secret.startsWith('S')), ['Segredo9']);
 });
 
 test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for filled tokens or disappearance', real, async t => {

@@ -58,7 +58,7 @@ test('Chrome: hover, scroll, drag, find, same-origin frames, marks, popup tabs a
   await s.command('tabs', { action: 'new', url: 'https://example.com' });
   for (let i = 0; i < 100 && !frames.some(f => f.url === 'https://example.com/'); i++) await new Promise(r => setTimeout(r, 20));
   assert.ok(frames.some(f => f.url === 'https://example.com/'));
-  assert.equal(frames.at(-1).tabs.length, 3);
+  assert.equal(frames.filter(f => f.image).at(-1).tabs.length, 3);
   await s.command('tabs', { action: 'new' }); await s.command('tabs', { action: 'new' });
   await assert.rejects(s.command('tabs', { action: 'new' }), /5 abas/);
   await s.command('tabs', { action: 'close', tab: 5 });

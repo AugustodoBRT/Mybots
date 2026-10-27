@@ -61,10 +61,10 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           ws.views ||= new Map();
           const on = Boolean(params.on);
-          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } })), () => ws.bufferedAmount > 1_000_000));
+          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } })), () => ws.bufferedAmount > 1_000_000, () => browser.pressure?.(params.botId, ws.views.get(params.botId), ws.bufferedAmount > 250_000)));
           const sink = ws.views.get(params.botId);
           if (!on) ws.views.delete(params.botId);
-          if (sink) await browser.watch(params.botId, sink, on);
+          if (sink) await browser.watch(params.botId, sink, on, undefined, params);
           reply(id, { result: { watching: on, online: true } });
         }
         // Dictation in this window: recorded and transcribed on this computer (see dictation.mjs).
@@ -118,9 +118,9 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
 }
 
 /** Sends the newest frame when the connection has room; frames in between are skipped, never queued. */
-export function paced(send, busy) {
+export function paced(send, busy, pressure = () => {}) {
   let latest = null, timer = null;
-  const flush = () => { timer = null; if (!latest) return; if (busy()) { timer = setTimeout(flush, 150); timer.unref?.(); return; } const frame = latest; latest = null; send(frame); };
+  const flush = () => { timer = null; if (!latest) return; pressure(); if (busy()) { timer = setTimeout(flush, 150); timer.unref?.(); return; } const frame = latest; latest = null; send(frame); };
   return frame => { latest = frame; if (!timer) flush(); };
 }
 

@@ -1,7 +1,7 @@
 import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
-import { decodeFrame, frameMetadata } from './browser-frame.mjs';
+import { decodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
 import { discover } from './discovery.mjs';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
@@ -48,7 +48,7 @@ export class Link {
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
     this.commands = new Map();
     // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
-    this.watching = new Set(); this.controls = {}; this.onFrame = () => {};
+    this.watching = new Set(); this.viewOptions = new Map(); this.controls = {}; this.onFrame = () => {};
   }
   saved() { try { return JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='link.computer'")?.value || 'null'); } catch { return null; } }
   save(value) { this.db.run("INSERT INTO metadata VALUES('link.computer',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(value)); }
@@ -177,7 +177,7 @@ export class Link {
         // The computer's addresses change with the network; the ones it reports are tried first next time.
         if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
         this.attempt = 0; this.set('online');
-        for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, browserMode: browserMode(this.db.bot(botId)) });
+        for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
@@ -227,9 +227,10 @@ export class Link {
   /** Supervisor events, for the window on the computer to refresh. */
   event(event, data) { if (DESKTOP_EVENTS.includes(event) && this.socket?.readyState === 1 && this.state === 'online') this.socket.send(JSON.stringify({ type: 'event', event, data })); }
   /** Starts or stops the live view of a bot's Chrome on the computer. */
-  view(botId, on) {
+  view(botId, on, options = {}) {
+    if (on) this.viewOptions.set(botId, { ...viewSize(options), congested: Boolean(options.congested) }); else this.viewOptions.delete(botId);
     if (on) this.watching.add(botId); else this.watching.delete(botId);
-    this.post({ type: 'browser_view', botId, on: Boolean(on), browserMode: browserMode(this.db.bot(botId)) });
+    this.post({ type: 'browser_view', botId, on: Boolean(on), ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
   }
   /** Who controls each bot's browser: the computer takes the person's taps only for a browser taken over here. */
   control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) }); }

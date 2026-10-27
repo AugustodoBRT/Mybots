@@ -27,7 +27,7 @@ import { Browser, personInput } from './browser.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
-import { encodeFrame, frameMetadata } from './browser-frame.mjs';
+import { encodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
 import { Link } from './link.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
@@ -129,11 +129,19 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
     const watchBrowsers = () => {
       if (closed) return;
-      const wanted = new Set([...(sockets?.clients || []), ...(frameSockets?.clients || [])].flatMap(socket => [...(socket.views || [])]));
-      for (const botId of wanted) if (!link.watching.has(botId)) link.view(botId, true);
+      const viewers = [...(sockets?.clients || []), ...(frameSockets?.clients || [])];
+      const wanted = new Set(viewers.flatMap(socket => [...(socket.views || [])]));
+      for (const botId of wanted) {
+        const sizes = viewers.filter(socket => socket.views?.has(botId)).map(socket => socket.viewOptions?.get(botId)).filter(Boolean);
+        const options = sizes.length ? { maxWidth: Math.max(...sizes.map(size => size.maxWidth)), maxHeight: Math.max(...sizes.map(size => size.maxHeight)) } : viewSize();
+        options.congested = viewers.some(socket => socket.views?.has(botId) && socket.bufferedAmount > 250_000);
+        const before = link.viewOptions.get(botId);
+        if (!link.watching.has(botId) || before?.maxWidth !== options.maxWidth || before?.maxHeight !== options.maxHeight || before?.congested !== options.congested) link.view(botId, true, options);
+      }
       for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
     };
     link.onFrame = frame => {
+      watchBrowsers();
       let text;
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && !socket.nativeViews?.has(frame.botId) && socket.bufferedAmount < 1_500_000) {
         text ||= JSON.stringify({ event: 'browser.frame', data: { ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } }); socket.send(text);
@@ -370,7 +378,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const bot = db.requireBot(params.botId);
           if (params.on && browserMode(bot) === 'mine' && (bot.access === 'basic' || tools.policy(bot.id, 'browser') !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.');
           if (!socket) throw new Error('Abra o navegador do bot no app.');
-          socket.views ||= new Set(); socket.nativeViews ||= new Set();
+          socket.views ||= new Set(); socket.nativeViews ||= new Set(); socket.viewOptions ||= new Map();
+          if (params.on) socket.viewOptions.set(bot.id, viewSize(params)); else socket.viewOptions.delete(bot.id);
           if (params.on && params.native) socket.nativeViews.add(bot.id); else socket.nativeViews.delete(bot.id);
           if (params.on) socket.views.add(bot.id); else socket.views.delete(bot.id);
           watchBrowsers();
@@ -588,7 +597,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           ws.views = new Set([bot.id]); ws.previous = {}; ws.alive = true;
           ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); ws.on('message', () => ws.close(1008));
           ws.on('close', () => { ws.views.clear(); watchBrowsers(); });
-          const watching = link.watching.has(bot.id); watchBrowsers(); if (watching) link.view(bot.id, true);
+          const watching = link.watching.has(bot.id); watchBrowsers(); if (watching) link.view(bot.id, true, link.viewOptions.get(bot.id));
         }); return;
       }
       if (request.url !== '/' || (origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))) { socket.destroy(); return; }

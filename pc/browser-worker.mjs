@@ -2,6 +2,7 @@ import { chromium } from 'playwright-core';
 import { generateKeyPairSync, randomBytes, privateDecrypt, createDecipheriv } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { readPage, inspectPoint, markPage } from '../supervisor/browser-page.mjs';
+import { viewSize } from '../supervisor/browser-frame.mjs';
 import { safeUrl } from '../supervisor/browser.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -128,29 +129,58 @@ export class BrowserSession {
       }, true);
     });
   }
-  /**
-   * The live view: Chrome's screencast, about 8 frames a second at most and only when the page changes. Each frame
-   * goes to `this.frame` (the node relays it to MyBots); acknowledging late is what paces Chrome.
-   */
-  async view(on) {
+  // Keep view changes in order, including navigation, resizing and congestion updates.
+  view(on, options) {
+    const work = (this.viewing || Promise.resolve()).catch(() => {}).then(() => this.setView(on, options));
+    this.viewing = work; return work;
+  }
+  async setView(on, options) {
     await this.start();
-    if (on && !this.cdp) {
-      const cdp = this.cdp = await this.context.newCDPSession(this.page);
-      cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
-        setTimeout(() => cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {}), 120);
-        if (this.cdp === cdp) this.frame?.({ image: Buffer.from(data, 'base64'), seq: ++this.seq, width: Math.round(metadata.deviceWidth), height: Math.round(metadata.deviceHeight), url: this.page?.url() || '', tabs: this.tabList() });
-      });
-      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
-    } else if (on) {
-      // Another viewer joined: the screencast only sends changes, so it gets the current page as one frame.
-      const { width, height } = this.viewportSize();
-      const { data } = await this.cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
-      this.frame?.({ image: Buffer.from(data, 'base64'), seq: ++this.seq, width, height, url: this.page.url(), tabs: this.tabList() });
-    } else if (!on && this.cdp) {
-      const cdp = this.cdp; this.cdp = null;
+    const wanted = { ...this.viewOptions, ...options }; Object.assign(wanted, viewSize(wanted));
+    wanted.interactive = Boolean(wanted.interactive); wanted.congested = Boolean(wanted.congested);
+    const changed = !this.viewOptions || ['maxWidth','maxHeight','interactive','congested'].some(key => wanted[key] !== this.viewOptions[key]);
+    this.viewOptions = wanted;
+    if ((!on || changed) && this.cdp) {
+      const cdp = this.cdp; this.cdp = null; clearTimeout(this.frameTimer); this.pendingFrame = null;
       await cdp.send('Page.stopScreencast').catch(() => {}); await cdp.detach().catch(() => {});
     }
+    if (on) for (const frame of this.page.frames()) await frame.evaluate(() => {
+      if (document.querySelector('style[data-mybots-live-mask]')) return;
+      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password] { color:transparent!important; text-shadow:none!important; caret-color:transparent!important; }'; document.documentElement.append(style);
+    }).catch(() => {});
+    const quality = (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
+    if (on && !this.cdp) {
+      const cdp = this.cdp = await this.context.newCDPSession(this.page);
+      this.lastFrameAt = 0;
+      cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+        const ack = () => cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+        if (wanted.interactive) ack(); else setTimeout(ack, 200);
+        if (this.cdp !== cdp) return;
+        const scale = Math.min(1, wanted.maxWidth / metadata.deviceWidth, wanted.maxHeight / metadata.deviceHeight);
+        this.queueFrame(cdp, { image: Buffer.from(data, 'base64'), width: Math.max(1, Math.round(metadata.deviceWidth * scale)), height: Math.max(1, Math.round(metadata.deviceHeight * scale)) });
+      });
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality, maxWidth: wanted.maxWidth, maxHeight: wanted.maxHeight });
+    } else if (on) {
+      // A new viewer gets the current page even when it has stopped changing.
+      const { width, height } = this.viewportSize(), cdp = this.cdp;
+      const scale = Math.min(1, wanted.maxWidth / width, wanted.maxHeight / height);
+      const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality, clip: { x: 0, y: 0, width, height, scale } });
+      if (this.cdp === cdp) this.queueFrame(cdp, { image: Buffer.from(data, 'base64'), width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) });
+    }
     return { watching: Boolean(this.cdp), ...await this.info() };
+  }
+  queueFrame(cdp, frame) {
+    this.pendingFrame = frame;
+    if (this.frameTimer) return;
+    const flush = () => {
+      this.frameTimer = null;
+      if (this.cdp !== cdp || !this.pendingFrame) return;
+      const next = this.pendingFrame; this.pendingFrame = null; this.lastFrameAt = Date.now();
+      if (Date.now() - (this.lastInfoAt || 0) >= 500) { this.lastInfoAt = Date.now(); this.info().catch(() => {}); }
+      this.frame?.({ ...next, seq: ++this.seq, url: this.page?.url() || '', title: this.tabTitles?.get(this.page) || '', tabs: this.tabList() });
+    };
+    const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
+    if (delay) this.frameTimer = setTimeout(flush, delay); else flush();
   }
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
@@ -312,7 +342,7 @@ export class BrowserSession {
     throw new Error('Comando do navegador inválido.');
   }
   async close() {
-    this.login = null; this.closing = true;
+    this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.pendingFrame = null;
     if (this.mode === 'mine') {
       if (this.onDisconnect) this.browser?.off('disconnected', this.onDisconnect);
       if (this.cdp) await this.view(false).catch(() => {});
@@ -342,7 +372,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
       if (op === 'close') { await sessions.get(botId)?.close(); sessions.delete(botId); if (id) process.send?.({ id, result: { closed: true } }); return; }
       if (op === 'view' && !args?.on && !sessions.get(botId)?.cdp) { process.send?.({ id, result: { watching: false } }); return; }
       const session = sessionFor(botId);
-      const result = op === 'view' ? await session.view(Boolean(args?.on)) : op === 'input' ? await session.input(args) : await session.command(op, args);
+      const result = op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
       process.send?.({ id, result });
     } catch (error) {
       process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });

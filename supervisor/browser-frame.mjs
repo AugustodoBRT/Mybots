@@ -37,3 +37,8 @@ export function decodeFrame(bytes, previous = {}) {
   frame.image = bytes.subarray(at); return frame;
 }
 export const frameMetadata = ({ image, ...metadata }) => metadata;
+
+export function viewSize({ maxWidth, maxHeight } = {}) {
+  const size = (value, fallback, max) => Number.isFinite(value) && value > 0 ? Math.max(1, Math.min(max, Math.round(value))) : fallback;
+  return { maxWidth: size(maxWidth, 1280, 2560), maxHeight: size(maxHeight, 800, 1600) };
+}

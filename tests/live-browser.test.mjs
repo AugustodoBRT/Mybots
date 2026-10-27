@@ -45,11 +45,11 @@ test('live view: frames reach only the app watching that bot; taps need Assumir;
 
   const watcher = await client(`ws://127.0.0.1:${app.port}`, app.token); const idle = await client(`ws://127.0.0.1:${app.port}`, app.token);
   sockets.push(watcher.ws, idle.ws);
-  assert.deepEqual(await watcher.call('browser.view', { botId: bot.id, on: true }), { watching: true, online: true });
+  assert.deepEqual(await watcher.call('browser.view', { botId: bot.id, on: true, maxWidth: 640, maxHeight: 400 }), { watching: true, online: true });
   await until(() => watcher.frames.length);
   assert.deepEqual(watcher.frames[0], { botId: bot.id, image: 'aW1n', seq: 1, width: 1280, height: 800, url: 'https://example.com/' });
   assert.equal(idle.frames.length, 0);
-  assert.ok(ops.some(item => item.botId === bot.id && item.op === 'view' && item.args.on));
+  assert.ok(ops.some(item => item.botId === bot.id && item.op === 'view' && item.args.on && item.args.maxWidth === 640 && item.args.maxHeight === 400 && !item.args.interactive));
 
   // Before "Assumir", the page is only watched; the computer refuses taps even if the phone's check were skipped.
   await assert.rejects(watcher.call('browser.input', { botId: bot.id, input: { type: 'tap', x: 0.5, y: 0.5 } }), /Assumir/);
@@ -57,6 +57,7 @@ test('live view: frames reach only the app watching that bot; taps need Assumir;
   await until(() => watcher.frames.some(frame => /Assumir/.test(frame.error || '')));
   assert.ok(!ops.some(item => item.op === 'input'));
   await watcher.call('browser.control', { botId: bot.id, who: 'person' });
+  await until(() => ops.some(item => item.op === 'view' && item.args.interactive));
   await watcher.call('browser.input', { botId: bot.id, input: { type: 'tap', x: 0.25, y: 0.75, extra: 'ignorado' } });
   await until(() => ops.some(item => item.op === 'input'));
   assert.deepEqual(ops.find(item => item.op === 'input'), { botId: bot.id, op: 'input', args: { type: 'tap', x: 0.25, y: 0.75, dx: 0, dy: 0, text: '', key: '', url: '' } });
@@ -90,7 +91,7 @@ test('real Chrome without a window: screencast frames, scroll, keys, typing; loc
   assert.ok(first.image.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), 'quadro JPEG');
   assert.equal(first.width, 1280); assert.equal(first.height, 800);
   // A second viewer gets the current page at once.
-  const before = frames.length; await session.view(true); assert.ok(frames.length >= before + 1);
+  const before = frames.length; await session.view(true); await until(() => frames.length >= before + 1);
   for (const input of [{ type: 'scroll', x: 0.5, y: 0.5, dx: 0, dy: 300 }, { type: 'key', key: 'Tab' }, { type: 'text', text: 'abc' }, { type: 'tap', x: 0.5, y: 0.5 }]) await session.input(input);
   await assert.rejects(session.input({ type: 'key', key: 'Control+W' }), /inválida/);
   await assert.rejects(session.input({ type: 'open', url: 'http://127.0.0.1:3219/' }), /celular|endereço/i);
@@ -167,4 +168,48 @@ test('/frames authenticates the app token and relays binary JPEG only for the se
   first.ws.close(); await until(() => first.ws.readyState === 3);
   await rpc.call('browser.view', { botId: a.id, on: false }); await until(() => !app.link.watching.has(a.id));
   assert.ok(app.link.watching.has(b.id));
+});
+
+test('worker honors the viewer dimensions, watching/takeover quality and immediate interactive ACK', async () => {
+  const { EventEmitter } = await import('node:events');
+  const sent = []; const cdp = new EventEmitter(); cdp.detach = async () => {};
+  cdp.send = async (method, args) => { sent.push({ method, args }); return { data: Buffer.from([255,216,255,217]).toString('base64') }; };
+  const session = new BrowserSession('/unused'); session.start = async () => {}; session.context = { newCDPSession: async () => cdp }; session.page = { frames: () => [{ evaluate: async () => {} }], url: () => 'about:blank' }; session.info = async () => ({}); session.frame = () => {};
+  await session.view(true, { maxWidth: 321, maxHeight: 201 });
+  assert.deepEqual(sent.find(item => item.method === 'Page.startScreencast').args, { format: 'jpeg', quality: 55, maxWidth: 321, maxHeight: 201 });
+  await session.view(true, { interactive: true });
+  assert.equal(sent.filter(item => item.method === 'Page.startScreencast').at(-1).args.quality, 70);
+  cdp.emit('Page.screencastFrame', { data: '/9j/2Q==', metadata: { deviceWidth: 1280, deviceHeight: 800 }, sessionId: 7 });
+  assert.ok(sent.some(item => item.method === 'Page.screencastFrameAck' && item.args.sessionId === 7));
+  await session.view(true, { congested: true });
+  assert.equal(sent.filter(item => item.method === 'Page.startScreencast').at(-1).args.quality, 50);
+  await session.view(false);
+});
+
+test('animated real Chrome produces resized JPEG with increasing seq and masks password fields', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-v54-animation-'));
+  const session = new BrowserSession(directory); const frames = []; session.frame = frame => frames.push(frame);
+  t.after(async () => { await session.close(); await rm(directory, { recursive: true, force: true }); });
+  await session.start();
+  await session.page.setContent('<style>@keyframes move {to {transform:translateX(600px)}} .box {width:120px;height:120px;background:#08a;animation:move 0.5s infinite alternate linear}</style><div class="box"></div><input type="password" value="segredo-de-teste">');
+  await session.view(true, { maxWidth: 480, maxHeight: 300, interactive: true });
+  await until(() => frames.length >= 8);
+  const jpeg = frames[0].image; let dimensions;
+  for (let at = 2; at + 9 < jpeg.length;) { const marker = jpeg[at + 1], length = jpeg.readUInt16BE(at + 2); if ([0xc0, 0xc1, 0xc2].includes(marker)) { dimensions = { width: jpeg.readUInt16BE(at + 7), height: jpeg.readUInt16BE(at + 5) }; break; } if (length < 2) break; at += 2 + length; }
+  assert.deepEqual(dimensions, { width: 480, height: 300 });
+  assert.ok(frames.every(frame => frame.width <= 480 && frame.height <= 300));
+  for (let n = 1; n < frames.length; n++) assert.ok(frames[n].seq > frames[n - 1].seq);
+  assert.ok(frames.every(frame => frame.image.subarray(0, 3).equals(Buffer.from([255,216,255]))));
+  assert.equal(await session.page.locator('input').evaluate(el => getComputedStyle(el).color), 'rgba(0, 0, 0, 0)');
+});
+
+test('paced lowers quality at moderate pressure before discarding binary frames at high pressure', async () => {
+  const { paced } = await import('../pc/ui.mjs'); const events = [];
+  let bufferedAmount = 300_000;
+  const sink = paced(frame => events.push(['sent', frame[0]]), () => bufferedAmount > 1_000_000, () => events.push(['quality', bufferedAmount > 250_000 ? 35 : 55]));
+  sink(Buffer.from([1])); assert.deepEqual(events, [['quality', 35], ['sent', 1]]);
+  bufferedAmount = 2_000_000; sink(Buffer.from([2])); sink(Buffer.from([3]));
+  assert.equal(events.filter(([kind]) => kind === 'sent').length, 1);
+  bufferedAmount = 0; await until(() => events.some(([kind, value]) => kind === 'sent' && value === 3));
+  assert.equal(events.filter(([kind]) => kind === 'sent').length, 2);
 });

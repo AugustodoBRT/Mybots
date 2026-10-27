@@ -18,7 +18,7 @@ import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
-import { encodeFrame, frameMetadata } from '../supervisor/browser-frame.mjs';
+import { encodeFrame, frameMetadata, viewSize } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
 export const DEFAULT_PORT = 3230;
@@ -133,20 +133,35 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
+  const viewOptions = new Map();
   const views = new Map(), browserModes = new Map(); let assumed = new Set();
   const configureBrowser = bot => { const mode = browserMode(bot); browserModes.set(bot.id, mode); browser.configure?.(bot.id, mode); };
   browser.onFrame = (botId, frame) => { for (const sink of views.get(botId) || []) sink(frame); };
-  const watch = async (botId, sink, on, mode) => {
+  const updateView = async (botId, force = false) => {
+    const sinks = [...(views.get(botId) || [])];
+    const sizes = sinks.map(sink => sink.options || viewSize());
+    const options = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId), congested: sinks.some(sink => sink.congested || sink.remoteCongested) };
+    const previous = viewOptions.get(botId);
+    if (!force && previous && Object.keys(options).every(key => previous[key] === options[key])) return;
+    viewOptions.set(botId, options);
+    try { await browser.command(botId, 'view', options); }
+    catch (error) { for (const sink of sinks) sink({ error: error.message }); }
+  };
+  const pressure = (botId, sink, congested) => {
+    if (!sink || sink.congested === congested) return;
+    sink.congested = congested; updateView(botId).catch(() => {});
+  };
+  const watch = async (botId, sink, on, mode, options) => {
     if (on) {
       if (mode) configureBrowser({ id: botId, browserMode: mode });
       else { const state = await bridge.call('state.get', {}); const bot = state.bots?.find(bot => bot.id === botId); if (!bot) throw new Error('Bot não encontrado.'); if (browserMode(bot) === 'mine' && (bot.access === 'basic' || state.grants?.[botId]?.find(grant => grant.name === 'browser')?.state !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); configureBrowser(bot); }
     }
-    const sinks = views.get(botId) || new Set(); const before = sinks.size;
+    if (options) sink.remoteCongested = Boolean(options.congested);
+    sink.options = viewSize(options || sink.options);
+    const sinks = views.get(botId) || new Set();
     if (on) sinks.add(sink); else sinks.delete(sink);
     if (sinks.size) views.set(botId, sinks); else views.delete(botId);
-    if (Boolean(before) === Boolean(sinks.size) && !on) return;
-    try { await browser.command(botId, 'view', { on: sinks.size > 0 }); }
-    catch (error) { if (on) sink({ error: error.message }); }
+    await updateView(botId, on);
   };
   const personInput = async (botId, input) => {
     if (!assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
@@ -172,7 +187,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, pressure, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -236,14 +251,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
             if (!frame.image) { send({ type: 'browser_frame', botId: message.botId, ...frame }); return; }
             if (ws.readyState !== 1) return;
             const value = { botId: message.botId, ...frame }; ws.send(encodeFrame(value, previous)); previous = frameMetadata(value);
-          }, () => ws.readyState === 1 && ws.bufferedAmount > 1_000_000));
+          }, () => ws.readyState === 1 && ws.bufferedAmount > 1_000_000, () => pressure(message.botId, ws.views.get(message.botId), ws.bufferedAmount > 250_000)));
         }
         const sink = ws.views.get(message.botId);
         if (!message.on) ws.views.delete(message.botId);
-        if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own').catch(() => {});
+        if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own', message).catch(() => {});
         return;
       }
-      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); return; }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).catch(error => send({ type: 'browser_frame', botId: message.botId, error: error.message }));
         return;
@@ -303,8 +318,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       // The phone went away: its turns end there (it marks them interrupted) and must not keep running here.
       for (const run of runs.values()) run.controller.abort('phone_lost');
       for (const done of waiting.values()) done({ status: 502, headers: {}, body: '' });
-      for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
       assumed = new Set();
+      for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
       proxy?.then(http => http.close(), () => {});
       if (ws.phone) { log(`${ws.phone.name} desconectado.`); bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); }
     });

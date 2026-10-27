@@ -122,7 +122,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
 export function paced(send, busy, pressure = () => {}) {
   let latest = null, timer = null;
   const flush = () => { timer = null; if (!latest) return; pressure(); if (busy()) { timer = setTimeout(flush, 150); timer.unref?.(); return; } const frame = latest; latest = null; send(frame); };
-  return frame => { latest = frame; if (!timer) flush(); };
+  return frame => { if (!Buffer.isBuffer(frame) && !frame.image) { send(frame); return; } latest = frame; if (!timer) flush(); };
 }
 
 /** Requests to the phone over the link, matched by id. */

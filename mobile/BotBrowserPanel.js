@@ -54,6 +54,7 @@ function LiveImages({ frame }) {
  */
 function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
+  const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
   useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
   const [address, setAddress] = useState(null); const keyboard = useRef(null); const webInput = useRef({ before: '', text: '', key: null, secret: false }); const typeTimer = useRef(null);
@@ -71,6 +72,8 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      if (typeof data.loading === 'boolean') setLoading(data.loading);
+      if (typeof data.slow === 'boolean') setSlow(data.slow);
       if (data.inputKey) webInput.current.key = data.inputKey;
       if (data.focus && !BotFrameView) { webInput.current.secret = data.focus.secret; if (data.focus.active) { webInput.current.before = ''; webInput.current.text = ''; keyboard.current?.clear(); keyboard.current?.focus(); } else keyboard.current?.blur(); }
       if (typeof data.desktop === 'boolean') setDesktop(data.desktop);
@@ -91,6 +94,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onPanResponderGrant: event => {
+      setCircle({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }); clearTimeout(circleTimer.current); circleTimer.current = setTimeout(() => setCircle(null), 350);
       const p = point(event); touch.current = { ...p, at: 0, dx: 0, dy: 0 };
       if (Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }, view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
       if (!live.current.desktop) send({ type: 'touch', phase: 'touchStart', points: [p] });
@@ -140,8 +144,11 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
+      {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
+      {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
+      {slow ? <View pointerEvents="none" style={styles.closed}><Text style={styles.watchingText}>Conexão lenta</Text></View> : null}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>

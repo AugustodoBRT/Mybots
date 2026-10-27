@@ -66,7 +66,8 @@ export class BrowserSession {
       if (this.mode === 'mine') {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
-      page.on('domcontentloaded', () => { if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
+      page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) this.emitFrame({ loading: true }); });
+      page.on('domcontentloaded', () => { this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {

@@ -63,6 +63,8 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   private val metadata = mutableMapOf<String, Any>()
   private val emit = Runnable { emitQueued = false; lastEmit = SystemClock.uptimeMillis(); onMetadata(metadata.toMap()) }
 
+  private var awaitingFrame = 0L
+  private val slowInput = Runnable { if (awaitingFrame != 0L) { metadata["slow"] = true; onMetadata(metadata.toMap()) } }
   private var inputKey: java.security.PublicKey? = null
   private var lastText = ""
   private var secret = false
@@ -121,6 +123,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
     val ws = socket ?: return
     if (inputBusy || inputs.isEmpty()) return
     inputBusy = true
+    if (awaitingFrame == 0L) { awaitingFrame = SystemClock.uptimeMillis(); main.postDelayed(slowInput, 500) }
     ws.send(JSONObject().put("type", "input").put("seq", ++inputSeq).put("input", inputs.removeFirst()).toString())
   }
 
@@ -166,7 +169,8 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
         val value = runCatching { JSONObject(text) }.getOrNull() ?: return
-        main.post { if (epoch == generation) { if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
+        main.post { if (epoch == generation) { if (value.has("loading")) metadata["loading"] = value.optBoolean("loading")
+          if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
           value.optJSONObject("focus")?.let { focus(it) }
           if (value.has("inputAck")) { inputBusy = false; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
       }
@@ -237,6 +241,8 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
         decoding = false
         if (ready != null) {
           spare = bitmap; bitmap = ready; metadata.remove("closed"); metadata.remove("error"); metadata.putAll(page)
+          if (awaitingFrame != 0L) { metadata["latency"] = SystemClock.uptimeMillis() - awaitingFrame; awaitingFrame = 0L; main.removeCallbacks(slowInput) }
+          metadata["slow"] = false
           surface.invalidate(); publish()
         } else spare = reuse
         decode(epoch, id)
@@ -250,7 +256,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   }
 
   private fun disconnect() {
-    main.removeCallbacks(typeBatch); changingEditor = true; editor.setText(""); lastText = ""; editor.clearFocus(); changingEditor = false; inputKey = null; generation++; inputs.clear(); inputBusy = false; inputSeq = 0; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
+    main.removeCallbacks(slowInput); awaitingFrame = 0L; main.removeCallbacks(typeBatch); changingEditor = true; editor.setText(""); lastText = ""; editor.clearFocus(); changingEditor = false; inputKey = null; generation++; inputs.clear(); inputBusy = false; inputSeq = 0; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
     main.removeCallbacks(emit); emitQueued = false
     worker?.shutdownNow(); worker = null
   }

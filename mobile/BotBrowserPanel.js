@@ -43,7 +43,7 @@ function TabIcon({ icon }) {
 /** The tab strip: icon, title, close and "+". Only the person who took over changes tabs; the bot uses browser_tabs. */
 function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
   if (!tabs?.length) return null;
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tabs}>
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
     {tabs.map(tab => <Pressable key={tab.tab} disabled={!enabled || tab.active || !onSwitch} onPress={() => onSwitch(tab.tab)} accessibilityRole="tab" accessibilityState={{ selected: tab.active }} accessibilityLabel={`Aba ${tab.tab}: ${tab.title || 'Nova aba'}`} style={[styles.tabChip, tab.active && styles.tabChipOn]}>
       <TabIcon icon={tab.icon} />
       <Text style={[styles.tabTitle, tab.active && { color: C.text }]} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
@@ -92,7 +92,7 @@ function StepCaption({ action }) {
   return <View pointerEvents="none" style={styles.caption}><Icon name="bots" size={13} color={C.mint} /><Text style={styles.captionText} numberOfLines={1}>{action.caption}</Text></View>;
 }
 
-const formatSize = size => size >= 1048576 ? `${(size / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
+const formatSize = size => size >= 1048576 ? `${(size / 1048576).toFixed(1).replace('.', ',')} MB` : size >= 1024 ? `${Math.round(size / 1024)} KB` : `${size} bytes`;
 const formatTime = at => { const date = new Date(at); return isNaN(date) ? '' : date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
 
 /** Files the bot's browser downloaded: on the phone they are already the bot's files; on the computer they stay there until opened or sent. */
@@ -144,12 +144,17 @@ function StepImage({ step, call, style }) {
 export function BrowserTimeline({ bot, call, working }) {
   const [steps, setSteps] = useState([]); const [open, setOpen] = useState(null); const [expanded, setExpanded] = useState(false);
   useEffect(() => {
-    let live = true; setSteps([]); setOpen(null);
-    call('browser.steps', { botId: bot.id, limit: 40 }).then(result => { if (live) setSteps(result.steps || []); }).catch(() => {});
+    let live = true, timer; setSteps([]); setOpen(null);
+    // Right after the app opens the connection may not be ready yet: try again in a moment.
+    const load = (tries = 0) => call('browser.steps', { botId: bot.id, limit: 40 }).then(result => { if (live) setSteps(result.steps || []); }).catch(() => { if (live && tries < 5) timer = setTimeout(() => load(tries + 1), 2000); });
+    load();
     const listener = (event, data) => { if (event === 'browser.step' && data?.botId === bot.id) setSteps(old => old.some(step => step.id === data.id) ? old : [...old.slice(-79), data]); };
     browserEvents.add(listener);
-    return () => { live = false; browserEvents.delete(listener); };
+    return () => { live = false; clearTimeout(timer); browserEvents.delete(listener); };
   }, [bot.id]);
+  // A step missed while the connection was down shows up when the bot finishes.
+  const was = useRef(working);
+  useEffect(() => { if (was.current && !working) call('browser.steps', { botId: bot.id, limit: 40 }).then(result => setSteps(result.steps || [])).catch(() => {}); was.current = working; }, [working]);
   const last = steps.at(-1);
   const shown = last ? steps.filter(step => step.taskId === last.taskId) : [];
   if (!shown.length) return null;

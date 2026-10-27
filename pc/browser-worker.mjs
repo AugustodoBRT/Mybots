@@ -199,7 +199,7 @@ export class BrowserSession {
     const changed = !this.viewOptions || ['maxWidth','maxHeight','interactive','congested'].some(key => wanted[key] !== this.viewOptions[key]);
     this.viewOptions = wanted;
     if ((!on || changed) && this.cdp) {
-      const cdp = this.cdp; this.cdp = null; clearTimeout(this.frameTimer); this.pendingFrame = null;
+      const cdp = this.cdp; this.cdp = null; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
       await cdp.send('Page.stopScreencast').catch(() => {}); await cdp.detach().catch(() => {});
     }
     if (on && !this.pageTimer) this.pageTimer = setInterval(() => this.checkChallenge().catch(() => {}), 500);
@@ -216,15 +216,29 @@ export class BrowserSession {
         const scale = Math.min(1, wanted.maxWidth / metadata.deviceWidth, wanted.maxHeight / metadata.deviceHeight);
         this.queueFrame(cdp, { image: Buffer.from(data, 'base64'), width: Math.max(1, Math.round(metadata.deviceWidth * scale)), height: Math.max(1, Math.round(metadata.deviceHeight * scale)) });
       });
+      const before = this.seq;
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality, maxWidth: wanted.maxWidth, maxHeight: wanted.maxHeight });
+      // A screencast of a still page may send nothing: then the viewer gets a picture of it, taken apart from the screencast.
+      await sleep(400);
+      if (this.cdp === cdp && this.seq === before && !this.pendingFrame) {
+        try {
+          const shot = await this.context.newCDPSession(this.page);
+          try { const picture = await this.picture(shot, quality); if (this.cdp === cdp && this.seq === before) this.queueFrame(cdp, picture); }
+          finally { await shot.detach().catch(() => {}); }
+        } catch {}
+      }
     } else if (on) {
       // A new viewer gets the current page even when it has stopped changing.
-      const { width, height } = this.viewportSize(), cdp = this.cdp;
-      const scale = Math.min(1, wanted.maxWidth / width, wanted.maxHeight / height);
-      const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality, clip: { x: 0, y: 0, width, height, scale } });
-      if (this.cdp === cdp) this.queueFrame(cdp, { image: Buffer.from(data, 'base64'), width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) });
+      const cdp = this.cdp, picture = await this.picture(cdp, quality);
+      if (this.cdp === cdp) this.queueFrame(cdp, picture);
     }
     return { watching: Boolean(this.cdp), ...await this.info() };
+  }
+  // The page as it is now, at its own size. A scaled clip makes Chrome resize the page for the capture, and with other
+  // sessions changing the tab's size (takeover, another bot) the page could stay at the picture's size.
+  async picture(cdp, quality) {
+    const { width, height } = this.viewportSize(), { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality });
+    return { image: Buffer.from(data, 'base64'), width, height };
   }
   // Pictures of the page (live view, timeline) show password and code fields as dots.
   async maskFields() {
@@ -485,10 +499,10 @@ export class BrowserSession {
     const { expectedTarget, ...publicInput } = input;
     const args = ['inspect', 'login_fill', 'login_cancel', 'upload', 'thumb'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
     if (op === 'thumb') {
-      // The timeline's picture of this moment: small, with password fields as dots.
+      // The timeline's picture of this moment, with password fields as dots.
       await this.maskFields();
-      const { width, height } = this.viewportSize(), scale = Math.min(1, 480 / width), cdp = await this.context.newCDPSession(this.page);
-      try { const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip: { x: 0, y: 0, width, height, scale } }); return { image: data, width: Math.round(width * scale), height: Math.round(height * scale) }; }
+      const cdp = await this.context.newCDPSession(this.page);
+      try { const { image, width, height } = await this.picture(cdp, 40); return { image: image.toString('base64'), width, height }; }
       finally { await cdp.detach().catch(() => {}); }
     }
     if (op === 'open') {
@@ -613,7 +627,7 @@ export class BrowserSession {
     throw new Error('Comando do navegador inválido.');
   }
   async close() {
-    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.pendingFrame = null;
+    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
     if (this.mode === 'mine' || this.mode === 'shared') {
       // Only this bot's tabs close: Meu Chrome and the shared Chrome keep running for the person and the other bots.
       if (this.onDisconnect) (this.mode === 'mine' ? this.browser : this.context)?.off(this.mode === 'mine' ? 'disconnected' : 'close', this.onDisconnect);

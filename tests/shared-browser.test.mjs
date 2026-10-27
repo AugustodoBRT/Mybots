@@ -138,7 +138,9 @@ test('live view: tab strip with back/forward, cursor and caption before a click,
   assert.equal(clicked.download.name, 'nota.txt'); assert.equal(readFileSync(join(downloads, botId, 'nota.txt'), 'utf8'), 'conteúdo');
   assert.ok(frames.some(frame => frame.download?.name === 'nota.txt'));
   const thumb = await s.command('thumb');
-  assert.ok(thumb.width <= 480 && thumb.height > 0); assert.equal(Buffer.from(thumb.image, 'base64').readUInt16BE(0), 0xffd8);
+  assert.deepEqual([thumb.width, thumb.height], [1280, 800]); assert.equal(Buffer.from(thumb.image, 'base64').readUInt16BE(0), 0xffd8);
+  // Taking it never leaves the page at another size.
+  assert.deepEqual(await s.page.evaluate(() => [innerWidth, innerHeight]), [1280, 800]);
   // Tabs and history the person drives after "Assumir".
   await s.command('open', { url: 'https://example.com/#dois' });
   await s.input({ type: 'back' });
@@ -147,4 +149,18 @@ test('live view: tab strip with back/forward, cursor and caption before a click,
   await s.input({ type: 'tab_new' }); await wait(() => frames.some(frame => frame.tabbar?.tabs.length === 2 && frame.tabbar.tabs[1].active));
   await s.input({ type: 'tab_close', tab: 2 }); await wait(() => frames.at(-1)?.tabbar?.tabs.length === 1 || s.tabList().length === 1);
   assert.equal(s.tabList().length, 1);
+});
+
+test('watching again a page that stopped changing shows it: the pacing timer of the old view never blocks the new one', chrome, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-rewatch-')), frames = [];
+  const s = new BrowserSession(directory, { botId: randomUUID() }); s.frame = frame => { if (frame.image) frames.push(frame); };
+  t.after(async () => { await s.close(); await rm(directory, { recursive: true, force: true }); });
+  await s.command('open', { url: 'https://example.com/' });
+  for (let round = 0; round < 3; round++) {
+    const before = frames.length;
+    await s.view(true, { maxWidth: 640, maxHeight: 400 });
+    await wait(() => frames.length > before);
+    // A frame waiting for its turn when the view stops is the case that used to leave the timer set.
+    s.queueFrame(s.cdp, frames.at(-1)); s.queueFrame(s.cdp, frames.at(-1)); assert.ok(s.frameTimer); await s.view(false);
+  }
 });

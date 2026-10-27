@@ -89,7 +89,9 @@ Objetivo: abrir qualquer conversa em menos de 300 ms e não reenviar o mundo int
 
 **Testes novos**: o redutor da loja aplica `message.added`/`updated` na ordem e ignora repetidos; o cache local respeita 40 por conversa e é apagado ao excluir o bot; o snapshot de renderização de `Message` não muda com a memoização.
 
-## v58 — Navegador no estilo OpenBot
+## v58 — Navegador no estilo OpenBot — concluída na v58
+
+Na entrega, a pedido da pessoa, o item 4 virou **navegador compartilhado por padrão** (todos os bots, no PC e no celular), com **Navegador separado** por bot. O perfil nomeado não foi feito.
 
 1. **Barra de abas de verdade**, com favicon, título, fechar e "+". Endereço sempre visível, com voltar e avançar.
 2. **Ver o bot trabalhando**: um cursor do bot no visor (onde ele vai clicar), um realce no elemento do `browser_click`/`browser_type` e uma legenda do passo ("Clicando em ‘Entrar’"). O worker manda o retângulo junto com o comando.

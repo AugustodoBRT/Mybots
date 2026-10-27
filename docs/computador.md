@@ -153,3 +153,23 @@ Para usar Meu Chrome, primeiro libere **Navegador** (não existe em Pouco acesso
 A tela ao vivo, as cinco abas por bot e o cofre funcionam como no Chrome próprio. No Médio, leituras passam; abrir páginas, clicar, preencher, arrastar e outras ações pedem aprovação própria de **Meu Chrome**, com Sempre permitir. Upload continua pedindo sempre. Assumir em qualquer bot desse modo bloqueia novas ações de todos os bots Meu Chrome até devolver. Mudar o modo inicia uma sessão nova da IA e atualiza o painel.
 
 Ao interromper ou encerrar o nó, o MyBots fecha só as abas que criou e desconecta; o Chrome e suas abas continuam abertos. Popups abertos pela página são convertidos em novas abas com endereço conferido antes da navegação. Sites que dependem de uma referência JavaScript à janela de origem podem exigir ajuda da pessoa; o bot deve pedir pelo cartão, sem tentar contornar.
+
+## Navegador compartilhado (v58)
+
+O navegador padrão dos bots agora é o **Navegador compartilhado**: um Chrome do MyBots, separado do seu Chrome pessoal, usado por todos os bots com esse modo, cada um nas **próprias abas**. Entre numa conta uma vez (pelo **Assumir** de qualquer bot) e todos os bots que usam o navegador compartilhado já abrem o site logados, inclusive bots criados depois. Não há perfil para criar nem nada para configurar.
+
+- **Atenção**: qualquer bot com a permissão **Navegador** age logado nessas contas. As aprovações do nível de acesso continuam valendo (no Médio, enviar formulários e entrar com senha salva pedem aprovação; anexar arquivo sempre pede), e senhas e códigos continuam nunca passando pela IA.
+- **Navegador separado** (perfil do bot → Navegador): isola um bot, sem os logins dos outros. **Pouco acesso** usa sempre o navegador separado. Meu Chrome e Claude in Chrome continuam como antes.
+- **O do computador e o do celular são navegadores diferentes**: um login feito no computador não vale para bots que navegam no celular, e vice-versa.
+- **Bots antigos**: quem usava o "Chrome próprio do bot" passou para o compartilhado. Os logins guardados nos perfis antigos (cookies que duram além de fechar o navegador) foram copiados para ele na primeira vez. Sites que só guardavam o login até fechar o navegador, e todos os bots do celular, precisam entrar de novo uma vez. O perfil antigo de cada bot continua em `~/.mybots-pc/browsers/<bot>` e volta a valer se você escolher Navegador separado para ele.
+- **Assumir** um bot trava só aquele bot; os outros continuam trabalhando nas abas deles.
+- O Google ainda costuma recusar login em Chrome automatizado. Para a conta Google, use **Meu Chrome** ou os apps da conta.
+
+### Tela do navegador (v58)
+
+- **Abas** com ícone, título, fechar e **+**; endereço sempre visível, com voltar, avançar e recarregar (mexer exige Assumir).
+- **Ver o bot trabalhando**: antes de clicar ou digitar, aparecem um cursor, o contorno do elemento e uma legenda ("Clicando em ‘Entrar’").
+- **Linha do tempo** na conversa: cada passo do bot com uma miniatura da página; toque para abrir aquele momento e passar para o anterior ou o próximo.
+- **Downloads** (botão ⬇ do painel): o que o navegador baixou, no computador (`~/.mybots-pc/downloads/<bot>`) ou no celular, com **Abrir** e **Enviar ao bot**.
+- **Tela larga** (janela do PC ou tablet): o navegador fica ao lado da conversa.
+

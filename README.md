@@ -37,7 +37,7 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 | 💬 **Conversa de verdade** | Abertura com cache local, histórico virtualizado que mantém o ponto de leitura, fila de mensagens enquanto o bot trabalha, ditado por voz, anexos (texto, imagem, PDF, Word, Excel, PowerPoint), tabelas, gráficos e fórmulas na resposta. |
 | 📤 **Compartilhar com o bot** | De qualquer app, em "Compartilhar → MyBots", ou direto no bot pelo Direct Share do Android. Links, textos e até 5 arquivos chegam ao campo de mensagem para você revisar antes de enviar. |
 | 💻 **PC encontrado automaticamente** | Depois de pareado, o celular procura o PC no mesmo Wi-Fi quando o endereço muda. Para conectar entre redes diferentes, há orientação para usar o Tailscale. |
-| 🌐 **Navegador de cada bot** | No celular, uma WebView isolada por bot; no PC, escolha Chrome próprio, **Meu Chrome** (seus logins, em abas do bot) ou Claude in Chrome (só Claude). A página aparece ao vivo no MyBots, com renderização nativa estável no Android e qualidade adaptada ao visor; Meu Chrome preserva suas outras abas. O bot localiza elementos, usa capturas numeradas, rola e abre menus; no PC, também arrasta e usa até 5 abas. Você toca em **Assumir** e o navegador abre em tela cheia, no tamanho do celular, com toques de verdade, pinça para aproximar e o teclado do celular digitando direto no campo; num CAPTCHA, a tela já aproxima o desafio para você resolver. Depois devolve o controle. Senhas nunca vão ao modelo. |
+| 🌐 **Navegador dos bots** | Por padrão os bots compartilham o navegador de cada aparelho (um login feito por um bot vale para os outros, cada um nas próprias abas); dá para isolar um bot com **Navegador separado**. No PC também há **Meu Chrome** (seus logins, em abas do bot) e Claude in Chrome (só Claude). Barra de abas, cursor e legenda do que o bot está fazendo, linha do tempo com miniaturas, lista de downloads e navegador ao lado da conversa em tela larga. A página aparece ao vivo no MyBots, com renderização nativa estável no Android e qualidade adaptada ao visor; Meu Chrome preserva suas outras abas. O bot localiza elementos, usa capturas numeradas, rola e abre menus; no PC, também arrasta e usa até 5 abas. Você toca em **Assumir** e o navegador abre em tela cheia, no tamanho do celular, com toques de verdade, pinça para aproximar e o teclado do celular digitando direto no campo; num CAPTCHA, a tela já aproxima o desafio para você resolver. Depois devolve o controle. Senhas nunca vão ao modelo. |
 | 📄 **Arquivos de ida e volta** | O bot baixa anexos de sites (com o login daquele navegador), lê e devolve PDF, Word ou planilha prontos, com **Abrir**, **Compartilhar** e **Salvar em Downloads**. Também entrega um arquivo num site, como um trabalho no SIGAA, sempre com a sua aprovação. |
 | ⏰ **Rotinas e pendências** | Por horário ou quando chega uma notificação ("e-mail do SIGAA"). Prazos viram pendências sem duplicar, e o aviso de véspera chega como notificação do MyBots. |
 | 🌙 **Funciona com a tela apagada** | Serviço em primeiro plano, alarmes exatos que atravessam o Doze e reinício automático do supervisor quando o Android o mata. |
@@ -58,7 +58,7 @@ flowchart LR
       Sup["Supervisor<br/>Node + SQLite"]
       AI["Codex CLI<br/>ou Claude Code"]
     end
-    Web["Navegador do bot<br/>(WebView por perfil)"]
+    Web["Navegador dos bots<br/>(WebView compartilhada)"]
   end
   App <-- "WebSocket autenticado<br/>127.0.0.1" --> Sup
   Sup -- "ferramentas MCP" --> AI

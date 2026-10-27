@@ -87,6 +87,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
     {side ? null : panel}
     <View style={side ? styles.chatSplit : { flex: 1 }}>
+    <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
     <View style={styles.messagesWrap}>
     <FlatList ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
@@ -134,6 +135,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
         onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
     </KeyboardAvoidingView>
+    </View>
     {side ? <View style={styles.chatSide}>{panel}</View> : null}
     </View>
   </View>;

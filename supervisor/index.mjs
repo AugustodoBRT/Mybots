@@ -600,14 +600,20 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           ws.views = new Set([bot.id]); ws.previous = {}; ws.alive = true;
           ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); let entering = false, lastSeq = 0;
           ws.on('message', async (raw, binary) => {
+            let input;
             try {
-              if (binary || entering || !equal(request.headers.authorization, 'Bearer ' + token) || browser.control.get(bot.id) !== 'person') throw new Error();
+              if (binary || entering || !equal(request.headers.authorization, 'Bearer ' + token)) throw new Error();
               const message = JSON.parse(raw);
               if (message.type !== 'input' || !Number.isSafeInteger(message.seq) || message.seq <= lastSeq) throw new Error();
-              const input = personInput(message.input); lastSeq = message.seq; entering = true;
+              input = personInput(message.input); lastSeq = message.seq;
+            } catch { ws.close(1008, 'Entrada recusada.'); return; }
+            // A late touch after "Devolver ao bot" or a computer that dropped is answered, not a reason to drop the live view.
+            entering = true;
+            try {
+              if (browser.control.get(bot.id) !== 'person') throw new Error('Assuma o navegador para mexer na página.');
               await link.userInput(bot.id, input);
               if (ws.readyState === 1) ws.send(JSON.stringify({ inputAck: lastSeq }));
-            } catch { ws.close(1008, 'Entrada recusada.'); }
+            } catch (error) { if (ws.readyState === 1) ws.send(JSON.stringify({ inputAck: lastSeq, error: error.message || 'O computador não recebeu o toque.' })); }
             finally { entering = false; }
           });
           ws.on('close', () => { ws.views.clear(); watchBrowsers(); });

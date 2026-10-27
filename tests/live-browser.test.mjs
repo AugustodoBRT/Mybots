@@ -176,6 +176,26 @@ test('/frames authenticates the app token and relays binary JPEG only for the se
   assert.ok(app.link.watching.has(b.id));
 });
 
+test('/frames answers an input the computer cannot take with an error and keeps the live view; protocol abuse still closes it', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-frame-input-'));
+  const app = await createSupervisor({ directory, port: 0, codex }); const sockets = [];
+  t.after(async () => { sockets.forEach(ws => ws.terminate()); await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await app.rpc('bot.create', { name: 'A', ...selection });
+  const ws = new WebSocket(`ws://127.0.0.1:${app.port}/frames?bot=${bot.id}`, { headers: { Authorization: `Bearer ${app.token}` } }); sockets.push(ws);
+  const replies = []; ws.on('message', (data, binary) => { if (!binary) replies.push(JSON.parse(data)); });
+  await new Promise(resolve => ws.once('open', resolve));
+  const tap = seq => ws.send(JSON.stringify({ type: 'input', seq, input: { type: 'touch', phase: 'touchEnd', points: [] } }));
+  // Not taken over yet (a late touch after "Devolver ao bot"): answered, still open.
+  tap(1); await until(() => replies.length === 1);
+  assert.equal(replies[0].inputAck, 1); assert.match(replies[0].error, /Assuma/);
+  // Taken over, but the computer is offline.
+  await app.rpc('browser.control', { botId: bot.id, who: 'person' });
+  tap(2); await until(() => replies.length === 2);
+  assert.equal(replies[1].inputAck, 2); assert.ok(replies[1].error); assert.equal(ws.readyState, 1);
+  // A repeated sequence number is abuse: the socket closes.
+  tap(2); await until(() => ws.readyState === 3);
+});
+
 test('worker honors the viewer dimensions, watching/takeover quality and immediate interactive ACK', async () => {
   const { EventEmitter } = await import('node:events');
   const sent = []; const cdp = new EventEmitter(); cdp.detach = async () => {};
@@ -206,7 +226,7 @@ test('animated real Chrome produces resized JPEG with increasing seq and masks p
   assert.ok(frames.every(frame => frame.width <= 480 && frame.height <= 300));
   for (let n = 1; n < frames.length; n++) assert.ok(frames[n].seq > frames[n - 1].seq);
   assert.ok(frames.every(frame => frame.image.subarray(0, 3).equals(Buffer.from([255,216,255]))));
-  assert.equal(await session.page.locator('input').evaluate(el => getComputedStyle(el).color), 'rgba(0, 0, 0, 0)');
+  assert.equal(await session.page.locator('input').evaluate(el => getComputedStyle(el).webkitTextSecurity), 'disc');
 });
 
 test('paced lowers quality at moderate pressure before discarding binary frames at high pressure', async () => {

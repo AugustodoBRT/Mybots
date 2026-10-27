@@ -780,3 +780,33 @@ Somente a seção v54 do `PLANO-V54.md`. O trabalho anterior de rolagem da conve
 APK ARM64 offline: `dist/apk/mybots-v54.apk` e `.sha256`, versionCode 54 / 0.32.0. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
 
 SHA-256 do APK final (39.672.051 bytes): `6bdae273e2b3339969c36ecab82005fe9652e145c2281b34f3b246a7b65a5563`. Release pública [v54](https://github.com/AugustodoBRT/Mybots/releases/tag/v54), marcada como a mais recente, com APK e `.sha256`. O digest do arquivo publicado confere com o APK local; tag apontando para o código final `b9fe550`. **PC atualizado nesta mesma entrega, depois da Release**: `scripts/build-desktop.sh` regenerou a interface, compilou/instalou a janela e reiniciou o serviço real em 27/10/2026 às **10:16:00 (Brasília)**. Binário instalado idêntico ao compilado; `mybots-pc.service` **active/running**, PID 965152, e `http://127.0.0.1:3232/health` respondeu `{"ok":true,"phone":true}`. Nó isolado e emulador encerrados; gravações e registros preservados em `.build-tools/emulator-state/v54/`.
+
+
+## 27/10/2026 — v55 (0.33.0): controle de verdade pelo celular
+
+Seção v55 do `PLANO-V54.md`. Começou com a correção de oscilação do screencast achada na revisão da v54 (`25af13e`) e seguiu os passos a–h em commits próprios (`0c6918c` a `7e9ff99`). O teste no emulador encontrou defeitos que foram corrigidos antes da entrega:
+
+- **Senha embaralhava o resto** (`c65948d`): cada pedaço digitado no modo secreto virava segredo, e letras soltas eram trocadas por `[senha protegida]` em endereço, título e leituras. Agora vale o valor inteiro do campo, trechos com menos de 4 caracteres nunca são trocados e a senha aparece como bolinhas.
+- **Tela congelava com o PC fora** (`539429e`): uma entrada que o PC não recebia fechava o `/frames` com 1008 e a view nativa nunca reconectava. Agora a confirmação traz o erro e a conexão segue; só abuso de protocolo fecha.
+- **Chrome reaberto voltava como computador** (`9ea309f`, `9fae4cc`): um quadro com formato diferente do visor faz o app reenviar o tamanho do celular; o teclado fecha quando o Chrome fecha.
+- **Zoom do CAPTCHA no lugar errado** (`a2ad95c`): o detector escolhia o desafio de imagens invisível do reCAPTCHA e descartava a caixinha abaixo da dobra. Agora só conta o visível, e a caixinha é trazida ao meio da tela uma vez por página.
+- **Desafio de imagens fora da tela** (`f14e158`): no tamanho de celular, o reCAPTCHA abre o desafio ao lado da caixinha. A aba fica no tamanho de computador só enquanto ele está aberto, sem virar preferência do site. Sair da página deixa de contar como "resolvido".
+- **Turnstile não detectado** (`bb3ec28`): a página de bloqueio do Cloudflare esconde o desafio em shadow DOM fechado; a lista de frames do Chrome o encontra.
+- **Acabamentos** (`8570671`): a imagem mantém a proporção (faixas em vez de esticar), o desafio é enquadrado acima da barra flutuante e pode encolher para mostrar o botão de confirmar, "Conexão lenta" mede a confirmação do toque (um toque que não muda a página não gera quadro) e, enquanto a pessoa controla, o navegador fica sempre na tela e o globo o reabre.
+
+### Testes e emulador
+
+- **187/187 testes passaram** (eram 177 na v54), incluindo Chrome real. Novos: senha letra por letra, entrada recusada sem derrubar `/frames`, caixinha abaixo da dobra com desafio invisível, troca temporária para computador, Turnstile em shadow fechado e "sair não é resolver", além dos testes da v55 do GPT (coordenadas, toques, foco, teclado cifrado, detector, histerese).
+- Emulador Android 16 com nó de PC **isolado** (`.build-tools/emulator-state/v55/node.mjs`, portas 3231/3233/3235):
+  - Login em `the-internet.herokuapp.com/login` pela tela cheia no modo celular: teclado abrindo sozinho, "café" com acento pelo menu do teclado, senha letra por letra com bolinhas, Enter entrou na área segura e o endereço continuou legível. A senha não aparece em nenhum log do nó.
+  - reCAPTCHA demo: caixinha centralizada e aproximada, toque abriu o desafio de imagens, que apareceu inteiro acima da barra; marcar imagens e VERIFY funcionaram em várias rodadas. O Google segue pedindo rodadas para Chrome automatizado, como esperado.
+  - Turnstile real (timeanddate.com): detectado após a correção; o Cloudflare recusa o Chrome sem janela e recarrega, limite conhecido (usar **Meu Chrome**).
+  - Reinício do Chrome com a tela cheia aberta: tamanho de celular reaplicado e teclado fechado; toque com o PC fora mostrou erro e a tela voltou sozinha.
+  - Rede EDGE do emulador por 40 s: nenhuma troca repetida de configuração do screencast (a histerese segurou).
+  - Modo **Só no celular**: WebView em tela cheia com Teclado/Zoom, e a página não encolhe com o teclado aberto. Sem página carregada, porque o Codex do emulador não respondeu e esse modo não tem barra de endereço.
+- Gravações e prints em `.build-tools/emulator-state/v55/`: `login-senha-corrigida.mp4`, `recaptcha-desafio-imagens.mp4`, `recaptcha-toque-desafio.mp4`, `rede-lenta.mp4` e os `*.png` da sessão.
+- Limites: não testado no POCO físico. A troca celular/computador levou 40–60 ms no Chrome em teste isolado, mas uma vez ~17 s no emulador (não reproduzido depois). Tecla Esc de teclado físico fechou a tela cheia sem devolver numa ocasião; o globo agora sempre a reabre.
+
+### Entrega
+
+APK ARM64 offline: `dist/apk/mybots-v55.apk` e `.sha256`, versionCode 55 / 0.33.0, 39.686.619 bytes. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `41cda48b7d4c76e793b0fa16c076b0d32182ad4b7b3c743d54317b39919a83b2`.

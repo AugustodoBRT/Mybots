@@ -49,7 +49,7 @@ Objetivo: a tela do Chrome do PC fica estável no celular, mesmo com CAPTCHA ani
 
 **Testes novos**: `paced` com quadros binários e descarte do intermediário; o relay entrega só a quem olha o bot e recusa token errado no `/frames`; o worker respeita `maxWidth` pedido; o teste real de Chrome (`skip` sem Chrome) gera quadros de uma página animada e confere a sequência crescente de `seq`.
 
-## v55 — Controle de verdade pelo celular
+## v55 — Controle de verdade pelo celular — concluída na v55
 
 Objetivo: resolver um CAPTCHA, fazer login ou preencher um formulário pelo celular com a mesma facilidade de um navegador do próprio celular.
 

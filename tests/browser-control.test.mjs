@@ -119,6 +119,11 @@ test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for 
   assert.ok(shown.rect.y > 0 && shown.rect.y + shown.rect.height < 640);
   await s.page.evaluate(() => scrollTo(0, 0)); await s.page.evaluate(captchaState, { reveal: true });
   assert.equal(await s.page.evaluate(() => scrollY), 0);
+  // Cloudflare's interstitial hides Turnstile in a closed shadow root.
+  await s.page.setContent('<div id="host" style="margin-top:200px"></div><script>document.getElementById("host").attachShadow({ mode: "closed" }).innerHTML = `<iframe style="width:300px;height:65px;border:0" src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/test"></iframe>`;</script>', { waitUntil:'domcontentloaded' });
+  assert.equal((await s.page.evaluate(captchaState)).present, false);
+  for (let i = 0; i < 50 && !events.at(-1)?.captcha?.present; i++) { await s.checkChallenge(); await new Promise(r => setTimeout(r, 50)); }
+  assert.equal(events.at(-1).captcha.present, true); assert.equal(events.at(-1).captcha.rect.width, 300);
   // Leaving the page is not solving it.
   await s.page.setContent('<iframe style="width:300px;height:200px" src="https://www.google.com/recaptcha/api2/anchor"></iframe>', { waitUntil:'domcontentloaded' });
   await s.checkChallenge(); assert.equal(events.at(-1).captcha.present, true);

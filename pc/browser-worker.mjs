@@ -31,6 +31,11 @@ export async function connectMine(endpoint) {
   catch (error) { throw new Error(/403|denied|rejected|forbidden|1008|socket hang up|closed before the connection was established/i.test(error.message) ? 'Você recusou a conexão no Chrome.' : CHROME_SETUP); }
 }
 
+// The same vendors as captchaState (which runs inside the page and cannot share code).
+function challengeFrame(value) {
+  try { const url = new URL(value), host = url.hostname; return host === 'challenges.cloudflare.com' || (host === 'google.com' || host.endsWith('.google.com')) && url.pathname.includes('/recaptcha/') || host === 'hcaptcha.com' || host.endsWith('.hcaptcha.com'); } catch { return false; }
+}
+
 // Keys the person may press on the page from the MyBots app.
 const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Shift+Tab', 'Space'];
 
@@ -195,6 +200,14 @@ export class BrowserSession {
     this.checkingChallenge = true;
     try {
       const state = await this.page.evaluate(captchaState, { reveal: Boolean(this.viewOptions?.interactive) });
+      // Cloudflare's interstitial keeps Turnstile in a closed shadow root, out of the page's reach: Chrome's frame list still has it.
+      if (!state.present) for (const frame of this.page.frames()) {
+        if (frame === this.page.mainFrame() || !challengeFrame(frame.url())) continue;
+        const element = await frame.frameElement().catch(() => null);
+        if (this.viewOptions?.interactive && this.revealedChallenge !== this.page.url()) { this.revealedChallenge = this.page.url(); await element?.scrollIntoViewIfNeeded().catch(() => {}); }
+        const box = await element?.boundingBox().catch(() => null);
+        if (box?.width > 0 && box.height > 0) { state.present = true; state.rect = { x: box.x, y: box.y, width: box.width, height: box.height }; break; }
+      }
       // reCAPTCHA opens its image challenge beside the checkbox, out of a phone-wide page: the tab turns desktop
       // while it is open (not saved as the site's choice) and back to the phone when it closes.
       const r = state.rect, area = r ? r.width * r.height : 0, origin = new URL(this.page.url()).origin;

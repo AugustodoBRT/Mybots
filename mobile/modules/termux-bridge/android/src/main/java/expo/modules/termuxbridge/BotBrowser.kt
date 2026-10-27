@@ -701,7 +701,12 @@ class BotBrowserView(context: Context, appContext: AppContext) : ExpoView(contex
     set(value) { field = value; bot?.let { BotBrowser.setCapture(it, value) } }
   // Set before botId by the panel: whether this bot uses its own profile ("Navegador separado").
   var separate = false
-    set(value) { field = value; bot?.let { BotBrowser.useProfile(it, value) } }
+    set(value) {
+      if (field == value) return
+      field = value
+      // Props may arrive after botId: the panel moves to the WebView of the right profile.
+      bot?.let { BotBrowser.useProfile(it, value); if (isAttachedToWindow) { BotBrowser.detach(context, it, this, listener); BotBrowser.attach(context, it, this, listener) } }
+    }
   private val listener: (Map<String, Any>) -> Unit = { onPage(it) }
 
   fun show(botId: String?) {

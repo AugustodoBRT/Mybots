@@ -182,6 +182,7 @@ export const styles = StyleSheet.create({
   limitRow: { marginTop: 10 },
   roomHint: { color: C.muted, fontFamily: F.m, fontSize: 13, lineHeight: 19, marginBottom: 6 },
   messagesWrap: { flex: 1 },
+  chatSplit: { flex: 1, flexDirection: 'row' }, chatSide: { flex: 1.15, minWidth: 420 },
   toEnd: { position: 'absolute', right: 16, bottom: 12, width: 42, height: 42, borderRadius: 21, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, alignItems: 'center', justifyContent: 'center', elevation: 4 },
   earlier: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, marginBottom: 10 },
   earlierText: { color: C.mint, fontFamily: F.m, fontSize: 13 },

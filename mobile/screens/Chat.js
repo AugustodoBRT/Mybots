@@ -9,7 +9,7 @@ import { desktop } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
-import BotBrowserPanel, { BrowserHelpCard } from '../BotBrowserPanel';
+import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 
@@ -46,6 +46,9 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
     onIncoming();
   }, [incoming]);
   useEffect(() => { if (assumed) setBrowserOpen(true); }, [assumed]);
+  // Tablets and the computer's window: the browser sits beside the conversation instead of above it.
+  const [width, setWidth] = useState(0);
+  const showBrowser = browsing && (browserOpen || assumed), side = showBrowser && width >= 820;
   // While the bot works, new messages still go out and wait their turn (phone mode).
   const typing = phone ? sending || saving : busy;
   const canSend = !typing && (draft.trim() || files.length) && selection?.model;
@@ -64,7 +67,8 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
   const asleep = offline(data, bot.id);
   const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
-  return <View style={styles.chatScreen}>
+  const panel = showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
+  return <View style={styles.chatScreen} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
@@ -81,7 +85,8 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
-    {browsing && (browserOpen || assumed) ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
+    {side ? null : panel}
+    <View style={side ? styles.chatSplit : { flex: 1 }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
     <View style={styles.messagesWrap}>
     <FlatList ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
@@ -99,6 +104,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
+      {browserCall ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />
         <View style={styles.thinkingCard}>
@@ -128,6 +134,8 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
         onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
     </KeyboardAvoidingView>
+    {side ? <View style={styles.chatSide}>{panel}</View> : null}
+    </View>
   </View>;
 }
 

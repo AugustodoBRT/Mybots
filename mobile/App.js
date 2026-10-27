@@ -11,7 +11,7 @@ import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationC
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
-import { browserFrames } from './BotBrowserPanel';
+import { browserFrames, browserEvents } from './BotBrowserPanel';
 import { createTermuxBackup } from './backup';
 import { RoomScreen } from './screens/Room';
 import { ChatScreen } from './screens/Chat';
@@ -214,6 +214,8 @@ function AppMain() {
       }
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
+      // The browser's timeline and downloads go to the open conversation's panels.
+      if (event === 'browser.step' || event === 'browser.download') { for (const listener of browserEvents) listener(event, data); return; }
       if (phoneMode.current === 'phone' && typeof data?.seq === 'number') {
         const result = appStore.event(event, data, openChat.current);
         if (result.duplicate) return;

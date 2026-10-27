@@ -2,7 +2,7 @@ import { textEdit, protectEdit } from './browser-input';
 import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar } from 'react-native';
+import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator } from 'react-native';
 import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput } from './termux';
 import { C, F, Icon } from './theme';
 
@@ -17,15 +17,169 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
   </View>;
 }
 
-// The same takeover surface hosts the remote Chrome and the phone's own WebView.
-function BrowserSurface({ assumed, control, children }) {
-  useEffect(() => { browserPresentation(assumed); return () => browserPresentation(false); }, [assumed]);
-  if (!assumed) return <>{children}</>;
+// The same takeover surface hosts the remote Chrome and the phone's own WebView. Beside the conversation (wide screens)
+// it stays in place instead of covering the screen.
+function BrowserSurface({ assumed, control, inline, children }) {
+  useEffect(() => { browserPresentation(assumed && !inline); return () => browserPresentation(false); }, [assumed, inline]);
+  if (!assumed || inline) return <>{children}</>;
   return <Modal visible presentationStyle="fullScreen" supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']} onRequestClose={() => control('bot')}><View style={styles.fullscreen}>{children}</View></Modal>;
 }
 
 // Frames of the bots' Chrome on the computer, from the supervisor's 'browser.frame' events (see App.js).
 export const browserFrames = new Set();
+// The supervisor's 'browser.step' (timeline) and 'browser.download' events, for the open conversation (see App.js).
+export const browserEvents = new Set();
+
+const hostOf = url => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
+// Which browser a bot uses, in words: the shared one is the same for every bot of that device.
+export const browserName = bot => browserMode(bot) === 'mine' ? 'Meu Chrome' : browserMode(bot) === 'separate' ? `Navegador de ${bot.name}` : `Navegador compartilhado`;
+
+function TabIcon({ icon }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [icon]);
+  return icon && !failed ? <Image source={{ uri: icon }} style={styles.favicon} onError={() => setFailed(true)} fadeDuration={0} /> : <Icon name="globe" size={13} color={C.muted} />;
+}
+
+/** The tab strip: icon, title, close and "+". Only the person who took over changes tabs; the bot uses browser_tabs. */
+function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
+  if (!tabs?.length) return null;
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.tabs}>
+    {tabs.map(tab => <Pressable key={tab.tab} disabled={!enabled || tab.active || !onSwitch} onPress={() => onSwitch(tab.tab)} accessibilityRole="tab" accessibilityState={{ selected: tab.active }} accessibilityLabel={`Aba ${tab.tab}: ${tab.title || 'Nova aba'}`} style={[styles.tabChip, tab.active && styles.tabChipOn]}>
+      <TabIcon icon={tab.icon} />
+      <Text style={[styles.tabTitle, tab.active && { color: C.text }]} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
+      {onClose && enabled ? <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel={`Fechar aba ${tab.tab}`} onPress={() => onClose(tab.tab)}><Icon name="close" size={12} color={C.muted} /></Pressable> : null}
+    </Pressable>)}
+    {onNew && enabled && tabs.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Nova aba" onPress={onNew} style={styles.tabNew}><Icon name="plus" size={14} color={C.text2} /></Pressable> : null}
+  </ScrollView>;
+}
+
+/** Back, forward, reload and the address, always visible; they act only after "Assumir". */
+function AddressRow({ url, enabled, back, forward, onBack, onForward, onReload, onOpen, placeholder }) {
+  const [editing, setEditing] = useState(null);
+  const shown = url && url !== 'about:blank' ? url.replace(/^https?:\/\//, '') : '';
+  const go = () => { if (editing?.trim()) onOpen(editing.trim()); setEditing(null); };
+  const button = (icon, label, onPress, on) => <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !on }} disabled={!on} hitSlop={4} onPress={onPress} style={[styles.nav, !on && { opacity: 0.35 }]}><Icon name={icon} size={16} color={C.text2} /></Pressable>;
+  return <View style={styles.addressRow}>
+    {button('back', 'Voltar página', onBack, enabled && back !== false)}
+    <View style={{ transform: [{ scaleX: -1 }] }}>{button('back', 'Avançar página', onForward, enabled && !!forward && !!onForward)}</View>
+    {button('refresh', 'Recarregar página', onReload, enabled)}
+    {editing !== null ? <TextInput autoFocus style={styles.addressInput} value={editing} onChangeText={setEditing} onSubmitEditing={go} onBlur={() => setEditing(null)} selectTextOnFocus placeholder="Endereço do site" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" />
+      : <Pressable style={styles.addressBox} disabled={!enabled || !onOpen} onPress={() => setEditing(url && url !== 'about:blank' ? url : '')} accessibilityRole={enabled && onOpen ? 'button' : undefined} accessibilityLabel={enabled && onOpen ? 'Digitar endereço' : undefined}>
+        <Text style={styles.addressText} numberOfLines={1}>{shown || placeholder}</Text>
+      </Pressable>}
+  </View>;
+}
+
+// Where the bot is about to act: shown for a moment, by the time it arrived (the computer's clock may differ).
+function useBotAction() {
+  const [action, setAction] = useState(null); const last = useRef(0); const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const show = value => { if (!value?.at || value.at === last.current) return; last.current = value.at; setAction(value); clearTimeout(timer.current); timer.current = setTimeout(() => setAction(null), 2500); };
+  return [action, show];
+}
+// Coordinates are the page's CSS pixels; the layer has the size of the shown page, so percentages land right at any zoom.
+function BotCursor({ action, color }) {
+  if (!action?.width || !action?.height) return null;
+  const pct = (value, size) => `${Math.max(0, Math.min(100, value / size * 100))}%`;
+  const r = action.rect || null, p = action.point || null;
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    {r && r.width ? <View style={[styles.highlight, { left: pct(r.x, action.width), top: pct(r.y, action.height), width: pct(r.width, action.width), height: pct(r.height, action.height), borderColor: color, backgroundColor: color + '26' }]} /> : null}
+    {p ? <View style={[styles.cursor, { left: pct(p.x, action.width), top: pct(p.y, action.height), borderColor: color }]}><View style={[styles.cursorDot, { backgroundColor: color }]} /></View> : null}
+  </View>;
+}
+function StepCaption({ action }) {
+  if (!action?.caption) return null;
+  return <View pointerEvents="none" style={styles.caption}><Icon name="bots" size={13} color={C.mint} /><Text style={styles.captionText} numberOfLines={1}>{action.caption}</Text></View>;
+}
+
+const formatSize = size => size >= 1048576 ? `${(size / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
+const formatTime = at => { const date = new Date(at); return isNaN(date) ? '' : date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+
+/** Files the bot's browser downloaded: on the phone they are already the bot's files; on the computer they stay there until opened or sent. */
+export function BrowserDownloads({ bot, call, onFile, onClose }) {
+  const [list, setList] = useState(null); const [busy, setBusy] = useState(null); const [note, setNote] = useState('');
+  const load = () => call('browser.downloads', { botId: bot.id }).then(setList).catch(e => setList({ files: [], pcError: e.message }));
+  useEffect(() => { load(); const listener = (event, data) => { if (event === 'browser.download' && data?.botId === bot.id) load(); }; browserEvents.add(listener); return () => browserEvents.delete(listener); }, [bot.id]);
+  const act = async (file, send) => {
+    setBusy(file.id + (send ? ':send' : '')); setNote('');
+    try {
+      if (send) { await call('browser.download.send', { botId: bot.id, id: file.id }); setNote(`“${file.name}” foi enviado a ${bot.name}.`); }
+      else { const saved = await call('browser.download.open', { botId: bot.id, id: file.id }); onClose(); onFile?.(saved); }
+    } catch (e) { setNote(e.message); } finally { setBusy(null); }
+  };
+  return <Modal visible transparent animationType="slide" onRequestClose={onClose}><View style={styles.sheetBack}><View style={styles.sheet}>
+    <View style={styles.sheetHead}><Icon name="download" size={18} color={C.mint} /><Text style={styles.sheetTitle}>Downloads do navegador</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Fechar downloads" hitSlop={8} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable></View>
+    <Text style={styles.hint}>Arquivos que o navegador de {bot.name} baixou. Os do celular já são arquivos do bot; os do computador ficam em ~/.mybots-pc/downloads até você abrir ou enviar.</Text>
+    {list === null ? <ActivityIndicator color={C.mint} style={{ marginVertical: 18 }} /> : null}
+    {list && !list.files.length ? <Text style={[styles.hint, { marginVertical: 14 }]}>Nenhum download ainda.</Text> : null}
+    {list?.pcError ? <Text style={styles.error}>{list.pcError}</Text> : null}
+    {note ? <Text style={[styles.hint, { color: C.text2 }]}>{note}</Text> : null}
+    <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8 }}>{(list?.files || []).map(file => <View key={file.id} style={styles.download}>
+      <Icon name="file" size={18} color={C.text2} />
+      <View style={{ flex: 1 }}><Text style={styles.title} numberOfLines={1}>{file.name}</Text><Text style={styles.url}>{formatSize(file.size)} · {file.where === 'pc' ? 'no computador' : 'no celular'} · {formatTime(file.at)}</Text></View>
+      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, false)} style={styles.key}>{busy === file.id ? <ActivityIndicator color={C.mint} size="small" /> : <Text style={styles.keyText}>Abrir</Text>}</Pressable>
+      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, true)} style={styles.key}>{busy === file.id + ':send' ? <ActivityIndicator color={C.mint} size="small" /> : <Text style={styles.keyText}>Enviar ao bot</Text>}</Pressable>
+    </View>)}</ScrollView>
+  </View></View></Modal>;
+}
+
+// Pictures of the timeline, fetched once per step.
+const stepImages = new Map();
+function StepImage({ step, call, style }) {
+  const [image, setImage] = useState(stepImages.get(step.id) || null);
+  useEffect(() => {
+    if (image || !step.image) return;
+    let live = true;
+    call('browser.stepImage', { id: step.id }).then(result => { if (stepImages.size > 200) stepImages.delete(stepImages.keys().next().value); stepImages.set(step.id, result.image); if (live) setImage(result.image); }).catch(() => {});
+    return () => { live = false; };
+  }, [step.id]);
+  return image ? <Image source={{ uri: 'data:image/jpeg;base64,' + image }} style={style} resizeMode="cover" fadeDuration={0} /> : <View style={[style, styles.empty]}><Icon name="globe" size={18} color={C.faint || C.muted} /></View>;
+}
+
+/**
+ * The browser's timeline in the conversation: each step of the bot's latest browser work with a picture of the page
+ * right after it. Tapping one opens that moment.
+ */
+export function BrowserTimeline({ bot, call, working }) {
+  const [steps, setSteps] = useState([]); const [open, setOpen] = useState(null); const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    let live = true; setSteps([]); setOpen(null);
+    call('browser.steps', { botId: bot.id, limit: 40 }).then(result => { if (live) setSteps(result.steps || []); }).catch(() => {});
+    const listener = (event, data) => { if (event === 'browser.step' && data?.botId === bot.id) setSteps(old => old.some(step => step.id === data.id) ? old : [...old.slice(-79), data]); };
+    browserEvents.add(listener);
+    return () => { live = false; browserEvents.delete(listener); };
+  }, [bot.id]);
+  const last = steps.at(-1);
+  const shown = last ? steps.filter(step => step.taskId === last.taskId) : [];
+  if (!shown.length) return null;
+  const show = working || expanded;
+  const index = open ? shown.findIndex(step => step.id === open) : -1, current = shown[index];
+  return <View style={styles.timeline}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: show }} onPress={() => setExpanded(value => !value)} style={styles.timelineHead}>
+      <Icon name="globe" size={14} color={C.sky} /><Text style={styles.timelineTitle}>LINHA DO TEMPO DO NAVEGADOR</Text>
+      <Text style={styles.hint}>{shown.length} {shown.length === 1 ? 'passo' : 'passos'}</Text>
+      {working ? null : <View style={{ transform: [{ rotate: show ? '180deg' : '0deg' }] }}><Icon name="down" size={13} color={C.muted} /></View>}
+    </Pressable>
+    {show ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 8 }} ref={ref => { if (ref && working) setTimeout(() => ref.scrollToEnd?.({ animated: false }), 0); }}>
+      {shown.map((step, n) => <Pressable key={step.id} accessibilityRole="button" accessibilityLabel={`Passo ${n + 1}: ${step.caption}`} onPress={() => setOpen(step.id)} style={styles.step}>
+        <StepImage step={step} call={call} style={styles.stepImage} />
+        <Text style={styles.stepText} numberOfLines={2}>{step.caption}</Text>
+      </Pressable>)}
+    </ScrollView> : null}
+    {current ? <Modal visible transparent animationType="fade" onRequestClose={() => setOpen(null)}><View style={styles.viewerBack}><View style={styles.viewer}>
+      <View style={styles.sheetHead}><Text style={[styles.sheetTitle, { flex: 1 }]} numberOfLines={2}>{current.caption}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Fechar" hitSlop={8} onPress={() => setOpen(null)} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable></View>
+      <StepImage key={current.id} step={current} call={call} style={[styles.viewerImage, { aspectRatio: current.width && current.height ? current.width / current.height : 1.6 }]} />
+      <Text style={styles.url} numberOfLines={2}>{current.title ? current.title + ' · ' : ''}{current.url.replace(/^https?:\/\//, '')}</Text>
+      <Text style={styles.hint}>Passo {index + 1} de {shown.length} · {formatTime(current.at)}</Text>
+      <View style={styles.keys}>
+        <Pressable accessibilityRole="button" disabled={index <= 0} onPress={() => setOpen(shown[index - 1].id)} style={[styles.key, index <= 0 && { opacity: 0.4 }]}><Text style={styles.keyText}>‹ Anterior</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={index >= shown.length - 1} onPress={() => setOpen(shown[index + 1].id)} style={[styles.key, index >= shown.length - 1 && { opacity: 0.4 }]}><Text style={styles.keyText}>Próximo ›</Text></Pressable>
+      </View>
+    </View></View></Modal> : null}
+  </View>;
+}
 
 // Keep the displayed bitmap until the other Image has finished decoding; retain only the newest waiting frame.
 function LiveImages({ frame }) {
@@ -52,7 +206,10 @@ function LiveImages({ frame }) {
  * The bot's own Chrome on the computer, live inside MyBots: frames come from the computer; after "Assumir" a tap
  * clicks there, a drag scrolls, and the text box types into the page. Points go as fractions of the frame.
  */
-function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
+function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side, onFile, color }) {
+  const [tabbar, setTabbar] = useState(null); const [action, showAction] = useBotAction(); const [downloads, setDownloads] = useState(false); const [notice, setNotice] = useState(null); const seen = useRef(null);
+  // The native view repeats its last metadata: a download is announced once.
+  const extras = data => { if (data.tabbar?.tabs) setTabbar(data.tabbar); if (data.action) showAction(data.action); if (data.download?.name && data.download.at !== seen.current) { seen.current = data.download.at; setNotice(data.download); } };
   const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
   const [captcha, setCaptcha] = useState(null); const challengeZoom = useRef(null); const returning = useRef(false);
   const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
@@ -90,6 +247,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      extras(data);
       if (data.captcha) challenge(data.captcha);
       if (typeof data.loading === 'boolean') setLoading(data.loading);
       if (typeof data.slow === 'boolean') setSlow(data.slow);
@@ -146,36 +304,38 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     },
     onPanResponderTerminate: () => { touch.current = null; send({ type: 'touch', phase: 'touchCancel', points: [] }); setDrag({ x: 0, y: 0 }); }
   })).current;
-  const go = () => { if (address?.trim()) send({ type: 'open', url: address.trim() }); setAddress(null); };
-  const shown = frame?.url && frame.url !== 'about:blank' ? frame.url.replace(/^https?:\/\//, '') : '';
-  return <BrowserSurface assumed={assumed} control={control}><View style={[styles.panel, assumed && styles.fullPanel]}>
+  const tabs = tabbar?.tabs || frame?.tabs || [];
+  return <BrowserSurface assumed={assumed} control={control} inline={side}><View style={[styles.panel, (assumed || side) && styles.fullPanel, side && styles.sidePanel]}>
     <View style={styles.bar}>
       <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.mint : C.muted} /></View>
-      {assumed && address !== null ? <TextInput autoFocus style={[styles.address, { flex: 1 }]} value={address} onChangeText={setAddress} onSubmitEditing={go} onBlur={() => setAddress(null)} selectTextOnFocus placeholder="Endereço do site" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" returnKeyType="go" />
-        : <Pressable style={{ flex: 1 }} disabled={!assumed} onPress={() => setAddress(frame?.url && frame.url !== 'about:blank' ? frame.url : '')} accessibilityRole={assumed ? 'button' : undefined} accessibilityLabel={assumed ? 'Digitar endereço' : undefined}>
-          <Text style={styles.title} numberOfLines={1}>{browserMode(bot) === 'mine' ? 'Meu Chrome' : `Chrome de ${bot.name}`} · computador</Text>
-          <Text style={styles.url} numberOfLines={1}>{shown || (state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Toque aqui para digitar um endereço.' : 'Ainda não abriu nenhuma página.')}</Text>
-        </Pressable>}
-      {assumed ? <>
-        <Pressable accessibilityRole="button" accessibilityLabel="Voltar página" hitSlop={6} onPress={() => send({ type: 'back' })} style={styles.tool}><Icon name="back" size={18} color={C.text2} /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Recarregar página" hitSlop={6} onPress={() => send({ type: 'reload' })} style={styles.tool}><Icon name="refresh" size={17} color={C.text2} /></Pressable>
-      </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.title} numberOfLines={1}>{browserName(bot)} · computador</Text>
+        <Text style={styles.url} numberOfLines={1}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Você está no controle. O bot espera.' : browserMode(bot) === 'shared' ? 'Logins do navegador do computador, valem para os bots dele.' : 'Ao vivo do computador.'}</Text>
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Downloads do navegador" hitSlop={6} onPress={() => { setDownloads(true); setNotice(null); }} style={[styles.tool, notice && styles.toolOn]}><Icon name="download" size={17} color={notice ? C.mint : C.text2} /></Pressable>
+      {!assumed && !side ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable> : null}
     </View>
-    {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
-    <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
+    <TabStrip tabs={tabs} enabled={assumed} onSwitch={tab => send({ type: 'tab', tab })} onClose={tab => send({ type: 'tab_close', tab })} onNew={() => send({ type: 'tab_new' })} />
+    <AddressRow url={frame?.url} enabled={assumed} back={tabbar ? tabbar.back : true} forward={tabbar?.forward} onBack={() => send({ type: 'back' })} onForward={() => send({ type: 'forward' })} onReload={() => send({ type: 'reload' })} onOpen={url => send({ type: 'open', url })}
+      placeholder={state === 'closed' ? 'Fechado' : assumed ? 'Toque aqui para digitar um endereço.' : 'Ainda não abriu nenhuma página.'} />
+    {notice ? <Pressable accessibilityRole="button" onPress={() => { setDownloads(true); setNotice(null); }} style={styles.notice}><Icon name="download" size={14} color={C.mint} /><Text style={[styles.hint, { flex: 1, color: C.text2 }]} numberOfLines={1}>{notice.name} baixado · ver downloads</Text></Pressable> : null}
+    {downloads ? <BrowserDownloads bot={bot} call={call} onFile={onFile} onClose={() => setDownloads(false)} /> : null}
+    <View style={[styles.live, assumed || side ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; area.current = layout; setAreaSize({ width: layout.width, height: layout.height }); const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
       {/* The page keeps its proportions: a desktop page on a standing phone gets bands instead of being stretched. */}
       <View pointerEvents="none" style={fitted(frame, areaSize)} onLayout={event => { size.current = event.nativeEvent.layout; }}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
-        : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; extras(data); if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
+        : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o navegador do bot no computador…'}</Text></View>}
+        {frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]}><BotCursor action={action} color={color || C.mint} /></View> : null}
       </View>
+      <StepCaption action={action} />
       {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
       {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
       {slow ? <View pointerEvents="none" style={styles.closed}><Text style={styles.watchingText}>Conexão lenta</Text></View> : null}
-      {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
+      {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Navegador fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
-    {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
+    {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o navegador de novo</Text></Pressable> : null}
     {assumed ? <View style={styles.floatingControls} onLayout={event => { bar.current = event.nativeEvent.layout; }}>
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
@@ -204,11 +364,12 @@ function fitted(frame, room) {
   return { position: 'absolute', left: (width - frame.width * k) / 2, top: (height - frame.height * k) / 2, width: frame.width * k, height: frame.height * k, backgroundColor: '#FFFFFF' };
 }
 
-export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc }) {
+export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc, side, onFile, color }) {
   const [page, setPage] = useState(browser?.pages?.[bot.id] || null);
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [action, showAction] = useBotAction(); const [downloads, setDownloads] = useState(false);
   const assumed = browser?.control?.[bot.id] === 'person';
   const chrome = browserMode(bot) === 'claude' && (pc || browser?.pages?.[bot.id]?.engine === 'claude-chrome');
   const onPc = pc || browser?.pages?.[bot.id]?.where === 'pc';
@@ -218,36 +379,40 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     try { await onControl(who); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const act = action => browserAction(bot.id, action).catch(() => {});
-  if (onPc && !chrome && call) return <PcBrowserLive bot={bot} call={call} assumed={assumed} busy={busy} error={error} control={control} onClose={onClose} />;
-  if (onPc) return <View style={styles.panel}>
-    <Text style={styles.title}>{chrome ? 'Chrome principal · Claude' : `Chrome de ${bot.name} no computador`}</Text>
+  if (onPc && !chrome && call) return <PcBrowserLive bot={bot} call={call} assumed={assumed} busy={busy} error={error} control={control} onClose={onClose} side={side} onFile={onFile} color={color} />;
+  if (onPc) return <View style={[styles.panel, side && styles.sidePanel]}>
+    <Text style={styles.title}>{chrome ? 'Chrome principal · Claude' : `${browserName(bot)} no computador`}</Text>
     <Text style={styles.url}>{browser.pages[bot.id].url}</Text>
-    <Text style={styles.hint}>{chrome ? 'Este bot usa seu Chrome principal (Claude in Chrome), com os seus logins. Essa janela fica no computador: para login, CAPTCHA ou código, toque em Assumir, use o Chrome no PC e depois devolva ao bot.' : 'A página está aberta no PC, no perfil deste bot.'}</Text>
+    <Text style={styles.hint}>{chrome ? 'Este bot usa seu Chrome principal (Claude in Chrome), com os seus logins. Essa janela fica no computador: para login, CAPTCHA ou código, toque em Assumir, use o Chrome no PC e depois devolva ao bot.' : 'A página está aberta no navegador do bot no PC.'}</Text>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={styles.control}><Text style={styles.controlText}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text></Pressable>
-    {!assumed ? <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.hint}>Fechar painel</Text></Pressable> : null}
+    {!assumed && !side ? <Pressable accessibilityRole="button" onPress={onClose}><Text style={styles.hint}>Fechar painel</Text></Pressable> : null}
   </View>;
   if (!BotBrowserView) return null;
-  return <BrowserSurface assumed={assumed} control={control}><View style={[styles.panel, assumed && styles.fullPanel]}>
+  const shared = browserMode(bot) !== 'separate';
+  return <BrowserSurface assumed={assumed} control={control} inline={side}><View style={[styles.panel, (assumed || side) && styles.fullPanel, side && styles.sidePanel]}>
     <View style={styles.bar}>
-      <View style={styles.lock}><Icon name="globe" size={16} color={assumed ? C.mint : C.muted} /></View>
+      <View style={styles.lock}><Icon name="phone" size={16} color={assumed ? C.mint : C.muted} /></View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.title} numberOfLines={1}>{page?.loading ? 'Carregando… ' : ''}{page?.title || (page?.url ? '' : `Navegador de ${bot.name}`)}</Text>
-        <Text style={styles.url} numberOfLines={1}>{page?.url && page.url !== 'about:blank' ? page.url.replace(/^https?:\/\//, '') : 'Ainda não abriu nenhuma página.'}</Text>
+        <Text style={styles.title} numberOfLines={1}>{shared ? 'Navegador compartilhado' : `Navegador de ${bot.name}`} · celular</Text>
+        <Text style={styles.url} numberOfLines={1}>{assumed ? 'Você está no controle. O bot espera.' : page?.loading ? 'Carregando…' : shared ? 'Logins do navegador do celular, valem para os bots dele.' : 'Só deste bot.'}</Text>
       </View>
-      {assumed ? <>
-        <Pressable accessibilityRole="button" accessibilityLabel="Voltar página" hitSlop={6} onPress={() => act('back')} style={styles.tool}><Icon name="back" size={18} color={C.text2} /></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Recarregar página" hitSlop={6} onPress={() => act('reload')} style={styles.tool}><Icon name="refresh" size={17} color={C.text2} /></Pressable>
-      </> : <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable>}
+      <Pressable accessibilityRole="button" accessibilityLabel="Downloads do navegador" hitSlop={6} onPress={() => setDownloads(true)} style={styles.tool}><Icon name="download" size={17} color={C.text2} /></Pressable>
+      {!assumed && !side ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable> : null}
     </View>
-    <View style={[styles.frame, assumed && styles.fullFrame, assumed && styles.frameAssumed]}>
-      <BotBrowserView botId={bot.id} interactive={assumed} style={StyleSheet.absoluteFill} onPage={event => setPage(event.nativeEvent)} />
+    {page?.url && page.url !== 'about:blank' ? <TabStrip tabs={[{ tab: 1, title: page.title, url: page.url, icon: page.icon, active: true }]} enabled={false} /> : null}
+    <AddressRow url={page?.url} enabled={assumed} back={page?.back} forward={page?.forward} onBack={() => act('back')} onForward={() => act('forward')} onReload={() => act('reload')} placeholder="Ainda não abriu nenhuma página." />
+    {downloads ? <BrowserDownloads bot={bot} call={call} onFile={onFile} onClose={() => setDownloads(false)} /> : null}
+    <View style={[styles.frame, (assumed || side) && styles.fullFrame, assumed && styles.frameAssumed]}>
+      <BotBrowserView botId={bot.id} separate={!shared} interactive={assumed} style={StyleSheet.absoluteFill} onPage={event => { setPage(event.nativeEvent); if (event.nativeEvent.action) showAction(event.nativeEvent.action); }} />
+      <BotCursor action={action} color={color || C.mint} />
+      <StepCaption action={action} />
       {!assumed ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
     {assumed ? <View style={styles.keys}><Pressable onPress={() => act('keyboard')} accessibilityRole="button" style={styles.key}><Text style={styles.keyText}>Teclado</Text></Pressable><Pressable onPress={() => act('zoom')} accessibilityRole="button" style={styles.key}><Text style={styles.keyText}>Zoom +</Text></Pressable><Pressable onPress={() => act('zoomOut')} accessibilityRole="button" style={styles.key}><Text style={styles.keyText}>Zoom −</Text></Pressable></View> : null}
     {error ? <Text style={styles.error}>{error}</Text> : null}
-    {assumed ? <Text style={styles.hint}>Você está usando o navegador; o bot espera. Login do Google não funciona aqui: para Gmail, Agenda e Drive use os apps da conta.</Text> : null}
-    {info && !info.isolated ? <Text style={styles.hint}>Este celular não separa os navegadores dos bots: quando outro bot usar o navegador, os logins deste são apagados. Atualize o “Android System WebView”.</Text> : null}
+    {assumed ? <Text style={styles.hint}>Você está usando o navegador do celular; o bot espera. {shared ? 'Um login feito aqui vale para os bots que navegam no celular, não para o computador. ' : ''}Login do Google não funciona aqui: para Gmail, Agenda e Drive use os apps da conta.</Text> : null}
+    {info && !info.isolated ? <Text style={styles.hint}>Este celular não tem perfis de navegador (Android System WebView antigo): quando um bot com Navegador separado navega, os logins do navegador compartilhado são apagados. Atualize o “Android System WebView”.</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
@@ -259,6 +424,34 @@ const styles = StyleSheet.create({
   floatingControls: { position:'absolute',bottom:74,left:14,right:14,padding:10,borderRadius:18,gap:6,backgroundColor:C.surface+'F0',borderWidth:1,borderColor:C.line2 },
   fullPanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0 },
   fullFrame: { flex: 1, aspectRatio: undefined, backgroundColor: C.surface2 },
+  sidePanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0, borderWidth: 0, borderLeftWidth: 1 },
+  tabs: { gap: 6, paddingRight: 4 },
+  tabChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 190, minHeight: 32, paddingHorizontal: 10, borderRadius: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, opacity: 0.75 },
+  tabChipOn: { borderColor: C.line2, opacity: 1 }, tabTitle: { flexShrink: 1, color: C.text2, fontFamily: F.m, fontSize: 12 },
+  tabNew: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  favicon: { width: 14, height: 14, borderRadius: 3 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nav: { width: 32, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  addressBox: { flex: 1, minHeight: 34, justifyContent: 'center', borderRadius: 11, paddingHorizontal: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  addressText: { color: C.text2, fontFamily: F.m, fontSize: 12.5 },
+  addressInput: { flex: 1, minHeight: 34, borderRadius: 11, paddingHorizontal: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.mint, color: C.text, fontFamily: F.m, fontSize: 13 },
+  highlight: { position: 'absolute', borderWidth: 2, borderRadius: 4 },
+  cursor: { position: 'absolute', width: 22, height: 22, marginLeft: -11, marginTop: -11, borderRadius: 11, borderWidth: 2, backgroundColor: '#FFFFFFCC', alignItems: 'center', justifyContent: 'center' },
+  cursorDot: { width: 8, height: 8, borderRadius: 4 },
+  caption: { position: 'absolute', left: 8, top: 8, right: 8, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#090B10E6' },
+  captionText: { flexShrink: 1, color: C.text, fontFamily: F.b, fontSize: 12 },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.mint + '66' },
+  sheetBack: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000AA' },
+  sheet: { padding: 16, paddingBottom: 26, gap: 10, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, width: '100%', maxWidth: 720, alignSelf: 'center' },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 9 }, sheetTitle: { flex: 1, color: C.text, fontFamily: F.x, fontSize: 16 },
+  download: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  timeline: { padding: 12, gap: 9, borderRadius: 20, borderWidth: 1, borderColor: C.sky + '44', backgroundColor: C.surface },
+  timelineHead: { flexDirection: 'row', alignItems: 'center', gap: 7 }, timelineTitle: { flex: 1, color: C.sky, fontFamily: F.x, fontSize: 10, letterSpacing: 1.2 },
+  step: { width: 128, gap: 5 }, stepImage: { width: 128, height: 80, borderRadius: 10, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  stepText: { color: C.text2, fontFamily: F.m, fontSize: 11, lineHeight: 15 },
+  viewerBack: { flex: 1, justifyContent: 'center', padding: 14, backgroundColor: '#000000CC' },
+  viewer: { padding: 14, gap: 10, borderRadius: 22, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, width: '100%', maxWidth: 900, alignSelf: 'center' },
+  viewerImage: { width: '100%', borderRadius: 12, backgroundColor: C.surface2 },
   panel: { marginHorizontal: 12, marginTop: 10, marginBottom: 6, padding: 10, borderRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, gap: 9 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   lock: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },

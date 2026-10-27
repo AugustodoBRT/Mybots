@@ -120,15 +120,17 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
                 {toggle(accountApps.length > 0, on => act(() => onApps(on ? ['ChatGPT'] : [])), 'Apps da conta do Codex')}
               </View>
             </View></> : null}
-          {phone && bot?.home && bot.home !== 'phone' ? <>
-            <Text style={s.label}>NAVEGADOR NO COMPUTADOR</Text>
+          {phone && bot ? <>
+            <Text style={s.label}>NAVEGADOR</Text>
             {[
-              ['own', 'Chrome próprio do bot', 'Perfil separado, visto ao vivo no MyBots. O Google pode recusar login neste navegador.'],
-              ['mine', 'Meu Chrome', 'Usa seus logins do Chrome, inclusive o Google, em abas próprias do bot. Suas outras abas são preservadas. No Médio, ações pedem aprovação.'],
-              ...(bot.provider === 'claude' ? [['claude', 'Claude in Chrome', 'Integração oficial do Claude, com extensão no seu Chrome e logins compartilhados.']] : [])
-            ].map(([mode, title, detail]) => radio(browserMode(bot) === mode, title, detail, () => act(() => onBrowserMode(mode)), { disabled: saving || active || mode !== 'own' && (bot.access === 'basic' || grants.find(item => item.name === 'browser')?.state !== 'allow') }))}
+              ['shared', 'Navegador compartilhado', 'O padrão. Um navegador para todos os bots, com abas próprias de cada um: um login feito por um bot (ou por você, ao assumir) vale para os outros. Os bots agem logados nessas contas.'],
+              ['separate', 'Navegador separado', 'Só deste bot, sem os logins dos outros. Use para isolar um bot.'],
+              ...(bot.home !== 'phone' ? [['mine', 'Meu Chrome', 'Usa seus logins do Chrome, inclusive o Google, em abas próprias do bot. Suas outras abas são preservadas. No Médio, ações pedem aprovação.']] : []),
+              ...(bot.home !== 'phone' && bot.provider === 'claude' ? [['claude', 'Claude in Chrome', 'Integração oficial do Claude, com extensão no seu Chrome e logins compartilhados.']] : [])
+            ].map(([mode, title, detail]) => radio(browserMode(bot) === mode, title, detail, () => act(() => onBrowserMode(mode)), { disabled: saving || active || mode !== 'separate' && bot.access === 'basic' || ['mine', 'claude'].includes(mode) && grants.find(item => item.name === 'browser')?.state !== 'allow' }))}
+            {['shared', 'separate'].includes(browserMode(bot)) ? <Text style={s.hint}>{bot.home === 'phone' ? 'Este bot navega no celular.' : bot.home === 'pc' ? 'Este bot navega no computador.' : 'Este bot navega no aparelho onde estiver respondendo.'} O navegador do computador e o do celular são diferentes: um login feito no computador não vale no celular, e vice-versa. Entre uma vez em cada um, se precisar dos dois.{bot.access === 'basic' ? ' Em Pouco acesso o navegador é sempre separado.' : ''}</Text> : null}
             {browserMode(bot) === 'mine' ? <Text style={s.hint}>No computador, abra o Chrome que você já usa. Entre em chrome://inspect/#remote-debugging e ligue a depuração remota uma vez. Quando o bot conectar, confirme a solicitação no Chrome. Ele usa só as abas que criou; nunca fecha seu Chrome. Para parar, desligue a depuração nessa mesma tela.</Text> : null}
-            {grants.find(item => item.name === 'browser')?.state !== 'allow' ? <Text style={s.hint}>Libere Navegador em Ajustes finos para usar seus logins do Chrome.</Text> : null}
+            {bot.home !== 'phone' && grants.find(item => item.name === 'browser')?.state !== 'allow' ? <Text style={s.hint}>Libere Navegador em Ajustes finos para usar seus logins do Chrome.</Text> : null}
           </> : null}
           {phone && bot && bot.home && bot.home !== 'phone' && grants.find(item => item.name === 'computer')?.state !== 'deny' ? <>
             <Text style={s.label}>PASTAS NO COMPUTADOR</Text>

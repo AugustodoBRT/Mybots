@@ -838,3 +838,5 @@ Seção v56 do `PLANO-V54.md`. Antes, cada passo do bot fazia o app pedir o esta
 ### Entrega
 
 APK ARM64 offline: `dist/apk/mybots-v56.apk` e `.sha256`, versionCode 56 / 0.34.0, 39.699.683 bytes. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `0821dd7b38707b77631f91f5d02369d9eea83ee3dd31a35c1236054ba434e401`.
+
+Release pública [v56](https://github.com/AugustodoBRT/Mybots/releases/tag/v56), marcada como a mais recente, com o APK e o `.sha256` (o arquivo baixado da Release confere), tag no commit `4095f42`. PC atualizado com `scripts/build-desktop.sh`: interface regenerada, janela compilada e instalada, serviço `mybots-pc` reiniciado às 12:34:39, `active`, `/health` respondeu `{"ok":true,"phone":true}` e o celular reconectou às 12:34:41. A janela nova usa `chat.page`: as conversas dela só abrem depois que o celular estiver na v56. Nó isolado e emulador encerrados.

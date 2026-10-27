@@ -33,3 +33,17 @@ test('real touch dispatch reaches the page and preserves start/move/end', real, 
   for (const phase of ['touchStart','touchMove','touchEnd']) await s.input({ type: 'touch', phase, points: phase === 'touchEnd' ? [] : [{ x: .5, y: phase === 'touchMove' ? .4 : .5, id: 0 }] });
   assert.deepEqual(await s.page.evaluate(() => touches), ['touchstart','touchmove','touchend']);
 });
+
+test('coordinates undo zoom, pan and quarter-turn rotation and clamp outside touches', async () => {
+  const { framePoint, zoomAt } = await import('../mobile/browser-coordinates.js');
+  for (const rotation of [0,90,180,270]) for (const scale of [1,2,4]) {
+    const width = 360, height = 640, translateX = 17, translateY = -29, px = 90, py = 240, a = rotation * Math.PI / 180;
+    const x = width / 2 + translateX + scale * ((px - width / 2) * Math.cos(a) - (py - height / 2) * Math.sin(a));
+    const y = height / 2 + translateY + scale * ((px - width / 2) * Math.sin(a) + (py - height / 2) * Math.cos(a));
+    const actual = framePoint({ x,y,width,height,translateX,translateY,scale,rotation });
+    assert.ok(Math.abs(actual.x - .25) < 1e-10); assert.ok(Math.abs(actual.y - .375) < 1e-10);
+  }
+  const view = zoomAt({ scale: 1, translateX: 0, translateY: 0 }, { x: 90,y: 160 }, 3,360,640);
+  assert.deepEqual(framePoint({ x:90,y:160,width:360,height:640,...view }), { x:.25,y:.25 });
+  assert.deepEqual(framePoint({ x:-100,y:900,width:360,height:640 }), { x:0,y:1 });
+});

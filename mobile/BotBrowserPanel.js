@@ -1,3 +1,4 @@
+import { framePoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, PixelRatio, Image, PanResponder, TextInput, Modal } from 'react-native';
@@ -56,6 +57,8 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
   const [text, setText] = useState(''); const [secret, setSecret] = useState(false); const [address, setAddress] = useState(null);
   const [nativeInput, setNativeInput] = useState(null); const nonce = useRef(0);
+  const [zoom, setZoom] = useState({ scale: 1, translateX: 0, translateY: 0, rotation: 0 });
+  const zoomRef = useRef(zoom); zoomRef.current = zoom; const lastTap = useRef(0);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
   live.current = { assumed, frame, desktop };
@@ -78,16 +81,27 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   useEffect(() => { if (viewport) call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).catch(e => setProblem(e.message)); }, [viewport, bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport })).catch(e => setProblem(e.message)); };
   const touch = useRef(null);
-  const point = event => ({ id: 0, x: Math.max(0, Math.min(1, event.nativeEvent.locationX / size.current.width)), y: Math.max(0, Math.min(1, event.nativeEvent.locationY / size.current.height)) });
+  const point = event => ({ id: 0, ...framePoint({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY, ...size.current, ...zoomRef.current }) });
   const responder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onPanResponderGrant: event => {
       const p = point(event); touch.current = { ...p, at: 0, dx: 0, dy: 0 };
+      if (Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }, view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
       if (!live.current.desktop) send({ type: 'touch', phase: 'touchStart', points: [p] });
     },
     onPanResponderMove: (event, gesture) => {
       const start = touch.current; if (!start) return;
+      const fingers = event.nativeEvent.touches;
+      if (fingers.length >= 2) {
+        if (!start.zooming) { start.zooming = true; send({ type: 'touch', phase: 'touchCancel', points: [] }); }
+        const distance = Math.hypot(fingers[0].pageX - fingers[1].pageX, fingers[0].pageY - fingers[1].pageY);
+        const center = { x: (fingers[0].locationX + fingers[1].locationX) / 2, y: (fingers[0].locationY + fingers[1].locationY) / 2 };
+        if (!start.pinch) start.pinch = { distance, zoom: zoomRef.current, center };
+        setZoom({ ...zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height), translateX: zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height).translateX + center.x - start.pinch.center.x, translateY: zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height).translateY + center.y - start.pinch.center.y });
+        return;
+      }
+      if (start.zooming) return;
       setDrag({ x: gesture.dx - start.dx, y: gesture.dy - start.dy });
       if (Date.now() - start.at < 50) return;
       start.at = Date.now();
@@ -96,7 +110,8 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       start.dx = gesture.dx; start.dy = gesture.dy;
     },
     onPanResponderRelease: (event, gesture) => {
-      const start = touch.current; touch.current = null; if (!start) return;
+      const start = touch.current; touch.current = null; if (!start || start.zooming) return;
+      if (Math.abs(gesture.dx) + Math.abs(gesture.dy) < 10) lastTap.current = Date.now();
       if (!live.current.desktop) send({ type: 'touch', phase: 'touchEnd', points: [] });
       else if (Math.abs(gesture.dx) + Math.abs(gesture.dy) < 10) send({ type: 'tap', x: start.x, y: start.y });
     },
@@ -121,13 +136,14 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: drag.x }, { translateY: drag.y }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
     {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
     {assumed ? <>
+      <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
       <View style={styles.typeRow}>
         <TextInput style={[styles.address, { flex: 1 }]} value={text} onChangeText={setText} onSubmitEditing={typeText} secureTextEntry={secret} blurOnSubmit={false}

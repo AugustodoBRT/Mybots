@@ -810,3 +810,5 @@ Seção v55 do `PLANO-V54.md`. Começou com a correção de oscilação do scree
 ### Entrega
 
 APK ARM64 offline: `dist/apk/mybots-v55.apk` e `.sha256`, versionCode 55 / 0.33.0, 39.686.619 bytes. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `41cda48b7d4c76e793b0fa16c076b0d32182ad4b7b3c743d54317b39919a83b2`.
+
+Release pública [v55](https://github.com/AugustodoBRT/Mybots/releases/tag/v55), marcada como a mais recente, com o APK e o `.sha256` (o `.sha256` baixado da Release confere). PC atualizado com `scripts/build-desktop.sh`: interface regenerada, janela instalada e serviço `mybots-pc` reiniciado às 11:48:56, `active`.

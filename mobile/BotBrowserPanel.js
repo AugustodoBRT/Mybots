@@ -1,9 +1,9 @@
 import { textEdit, protectEdit } from './browser-input';
-import { framePoint, zoomAt } from './browser-coordinates';
+import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions, PixelRatio, Image, PanResponder, TextInput, Modal } from 'react-native';
-import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation } from './termux';
+import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar } from 'react-native';
+import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput } from './termux';
 import { C, F, Icon } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
@@ -57,25 +57,25 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [captcha, setCaptcha] = useState(null); const challengeZoom = useRef(null); const returning = useRef(false);
   const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
-  useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
+  useEffect(() => { if (assumed) { returning.current = false; challengeZoom.current = null; } if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
   const [address, setAddress] = useState(null); const keyboard = useRef(null); const webInput = useRef({ before: '', text: '', key: null, secret: false }); const typeTimer = useRef(null);
   const webType = text => { webInput.current.text = text; clearTimeout(typeTimer.current); typeTimer.current = setTimeout(async () => { const input = webInput.current, next = input.text; if (!input.key || next === input.before) return; const edit = { ...textEdit(input.before, next), secret: input.secret }; input.before = next; try { send(await protectEdit(input.key, edit)); } catch { setProblem('Não consegui proteger a digitação.'); } }, 30); };
   useEffect(() => () => clearTimeout(typeTimer.current), []);
-  const [nativeInput, setNativeInput] = useState(null); const nonce = useRef(0);
+  const nonce = useRef(0);
   const [zoom, setZoom] = useState({ scale: 1, translateX: 0, translateY: 0, rotation: 0 });
   const zoomRef = useRef(zoom); zoomRef.current = zoom; const lastTap = useRef(0);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
-  live.current = { assumed, frame, desktop };
-  const send = input => { if (!BotFrameView && input.type === 'keyboard') { keyboard.current?.focus(); return; } if (BotFrameView) setNativeInput(JSON.stringify({ ...input, nonce: ++nonce.current })); else call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message)); };
+  live.current = { assumed, frame, desktop, botId: bot.id, call, control };
+  const send = input => { if (!BotFrameView && input.type === 'keyboard') { keyboard.current?.focus(); return; } if (BotFrameView) browserInput(live.current.botId, JSON.stringify({ ...input, nonce: ++nonce.current })); else live.current.call('browser.input', { botId: live.current.botId, input }).catch(e => setProblem(e.message)); };
   useEffect(() => { setDrag({ x: 0, y: 0 }); }, [frame?.seq]);
   const challenge = data => {
     if (!data) return; setCaptcha(data);
-    if (data.rect && assumed) {
+    if (data.rect && live.current.assumed) {
       const r = data.rect, signature = JSON.stringify(r);
-      if (challengeZoom.current !== signature) { challengeZoom.current = signature; const { width, height } = size.current; const scale = Math.max(1, Math.min(3, .85 * Math.min(data.width / r.width, data.height / r.height))); setZoom(zoomAt({ scale:1,translateX:0,translateY:0,rotation:0 }, { x:(r.x+r.width/2)/data.width*width,y:(r.y+r.height/2)/data.height*height }, scale,width,height)); }
+      if (challengeZoom.current !== signature) { challengeZoom.current = signature; const { width, height } = size.current; const scale = Math.max(1, Math.min(3, .85 * Math.min(data.width / r.width, data.height / r.height))); setZoom({ scale,rotation:0,translateX:-( (r.x+r.width/2)/data.width*width-width/2 )*scale,translateY:-( (r.y+r.height/2)/data.height*height-height/2 )*scale }); }
     }
-    if (data.solved && data.autoReturn && live.current.assumed && !returning.current) { returning.current = true; control('bot'); }
+    if (data.solved && data.autoReturn && live.current.assumed && !returning.current) { returning.current = true; live.current.control('bot'); }
   };
   useEffect(() => {
     setFrame(null); setState('connecting');
@@ -99,7 +99,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   useEffect(() => { if (viewport) call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).catch(e => setProblem(e.message)); }, [viewport, bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport })).catch(e => setProblem(e.message)); };
   const touch = useRef(null);
-  const point = event => ({ id: 0, ...framePoint({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY, ...size.current, ...zoomRef.current }) });
+  const point = event => touchPoint(event.nativeEvent, size.current, zoomRef.current);
   const responder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
@@ -154,7 +154,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
       {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
@@ -163,7 +163,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
     {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
-    {assumed ? <>
+    {assumed ? <View style={styles.floatingControls}>
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
       {!BotFrameView ? <TextInput ref={keyboard} style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} onChangeText={webType} autoCapitalize="none" onSubmitEditing={() => send({ type:'key',key:'Enter' })} blurOnSubmit={false} /> : null}
@@ -172,8 +172,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
         <Pressable accessibilityRole="button" onPress={() => send({ type: 'keyboard' })} style={styles.key}><Text style={styles.keyText}>Teclado</Text></Pressable>
         {[['Enter','Enter'],['Tab','Tab'],['Esc','Escape']].map(([label,key]) => <Pressable key={key} accessibilityRole="button" onPress={() => send({ type: 'key', key })} style={styles.key}><Text style={styles.keyText}>{label}</Text></Pressable>)}
       </View>
-      <Text style={styles.hint}>{browserMode(bot) === 'mine' ? 'Meu Chrome usa seus logins. Toque para clicar e arraste para rolar. Todos os bots que usam Meu Chrome esperam até você devolver.' : 'Toque na página para clicar e arraste para rolar. O bot espera até você devolver. O Google não aceita login neste Chrome; para Gmail, Agenda e Drive use os apps da conta.'}</Text>
-    </> : null}
+    </View> : null}
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
@@ -236,7 +235,8 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
 }
 
 const styles = StyleSheet.create({
-  fullscreen: { flex: 1, backgroundColor: C.surface },
+  fullscreen: { flex: 1, backgroundColor: C.surface, paddingTop: StatusBar.currentHeight || 24, paddingBottom: 12 },
+  floatingControls: { position:'absolute',bottom:74,left:14,right:14,padding:10,borderRadius:18,gap:6,backgroundColor:C.surface+'F0',borderWidth:1,borderColor:C.line2 },
   fullPanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0 },
   fullFrame: { flex: 1, aspectRatio: undefined },
   panel: { marginHorizontal: 12, marginTop: 10, marginBottom: 6, padding: 10, borderRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, gap: 9 },

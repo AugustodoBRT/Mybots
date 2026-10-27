@@ -8,3 +8,6 @@ export function zoomAt(view, point, scale, width, height) {
   scale = Math.max(1, Math.min(5, scale)); const ratio = scale / view.scale;
   return { ...view, scale, translateX: point.x - width / 2 - (point.x - width / 2 - view.translateX) * ratio, translateY: point.y - height / 2 - (point.y - height / 2 - view.translateY) * ratio };
 }
+export function touchPoint(event, layout, transform) {
+  return { id: 0, ...framePoint({ ...layout, ...transform, x: event.locationX, y: event.locationY }) };
+}

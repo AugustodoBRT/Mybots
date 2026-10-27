@@ -41,6 +41,10 @@ import java.util.concurrent.ExecutorService
 
 /** JPEG bytes stay in native code. Only the newest waiting frame is decoded, behind the displayed bitmap. */
 class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+  companion object {
+    private val views = mutableMapOf<String, BotFrameView>()
+    fun send(botId: String, value: String) { Handler(Looper.getMainLooper()).post { views[botId]?.input(value) } }
+  }
   override val shouldUseAndroidLayout = true
   private val onMetadata by EventDispatcher()
   private val main = Handler(Looper.getMainLooper())
@@ -126,7 +130,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
     command.remove("nonce")
     if (command.optString("type") == "viewport") lastViewport = JSONObject(command.toString())
     if (command.optString("type") == "keyboard") { editor.requestFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT); return }
-    if (command.optString("type") == "key") sendText()
+    if (command.optString("type") == "key" || command.optString("phase") == "touchStart") sendText()
     if (command.optString("type") == "touch" && command.optString("phase") == "touchMove") inputs.removeAll { it.optString("phase") == "touchMove" }
     if (inputs.size >= 16) { inputs.clear(); metadata["error"] = "Conexão lenta. Tente novamente."; publish(); return }
     inputs.add(command); flushInput()
@@ -157,9 +161,9 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
 
   fun show(id: String?) {
     if (bot == id) return
-    disconnect(); bot = id?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+    bot?.let { if (views[it] === this) views.remove(it) }; disconnect(); bot = id?.takeIf { runCatching { UUID.fromString(it) }.isSuccess }
     bitmap = null; spare = null; metadata.clear(); received.clear(); surface.invalidate()
-    connect()
+    if (isAttachedToWindow) bot?.let { views[it] = this }; connect()
   }
 
   private fun connect() {
@@ -277,6 +281,6 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
     main.removeCallbacks(emit); emitQueued = false
     worker?.shutdownNow(); worker = null
   }
-  override fun onAttachedToWindow() { super.onAttachedToWindow(); connect() }
-  override fun onDetachedFromWindow() { disconnect(); super.onDetachedFromWindow() }
+  override fun onAttachedToWindow() { super.onAttachedToWindow(); bot?.let { views[it] = this }; connect() }
+  override fun onDetachedFromWindow() { bot?.let { if (views[it] === this) views.remove(it) }; disconnect(); super.onDetachedFromWindow() }
 }

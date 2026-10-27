@@ -69,3 +69,5 @@ export const runTermux = (operation, payload = {}) => {
 };
 
 export const browserPresentation = on => native?.browserPresentation(on);
+
+export const browserInput = (botId, input) => native?.browserInput(botId, input);

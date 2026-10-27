@@ -35,7 +35,8 @@ test('real touch dispatch reaches the page and preserves start/move/end', real, 
 });
 
 test('coordinates undo zoom, pan and quarter-turn rotation and clamp outside touches', async () => {
-  const { framePoint, zoomAt } = await import('../mobile/browser-coordinates.js');
+  const { framePoint, zoomAt, touchPoint } = await import('../mobile/browser-coordinates.js');
+  assert.deepEqual(touchPoint({ locationX:180,locationY:320 }, { x:10,y:53,width:360,height:640 }, { scale:1 }), { id:0,x:.5,y:.5 });
   for (const rotation of [0,90,180,270]) for (const scale of [1,2,4]) {
     const width = 360, height = 640, translateX = 17, translateY = -29, px = 90, py = 240, a = rotation * Math.PI / 180;
     const x = width / 2 + translateX + scale * ((px - width / 2) * Math.cos(a) - (py - height / 2) * Math.sin(a));
@@ -96,4 +97,19 @@ test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for 
   }
   await s.page.setContent('<iframe src="https://google.com.evil.test/recaptcha/test"></iframe>');
   assert.equal((await s.page.evaluate(captchaState)).present,false);
+});
+
+test('live input validates gestures and encrypted envelopes without echoing payloads', async () => {
+  const { personInput } = await import('../supervisor/browser.mjs');
+  for (const input of [
+    { type:'touch',phase:'unknown',points:[] },
+    { type:'touch',phase:'touchStart',points:[{x:2,y:.5,id:0}] },
+    { type:'touch',phase:'touchEnd',points:[{x:.5,y:.5,id:0}] },
+    { type:'encrypted',key:'senha-que-nao-pode-sair',iv:'a',tag:'b',data:'c' },
+    { type:'viewport',width:Infinity,height:640,deviceScaleFactor:2 }
+  ]) assert.throws(() => personInput(input), error => !error.message.includes('senha-que-nao-pode-sair'));
+  assert.deepEqual(personInput({ type:'touch',phase:'touchStart',points:[{x:.2,y:.3,id:0,secret:'omitido'}] }), { type:'touch',phase:'touchStart',points:[{x:.2,y:.3,id:0}] });
+  const { textEdit } = await import('../mobile/browser-input.js');
+  assert.deepEqual(textEdit('acao','ação'), { delete:3,text:'ção' });
+  assert.deepEqual(textEdit('Olá 😀','Olá 😃'), { delete:1,text:'😃' });
 });

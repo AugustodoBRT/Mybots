@@ -179,6 +179,7 @@ class TermuxBridgeModule : Module() {
       Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
       Prop("input") { view: BotFrameView, value: String? -> view.input(value) }
     }
+    Function("browserInput") { botId: String, value: String -> BotFrameView.send(botId, value) }
     Function("browserPresentation") { on: Boolean ->
       appContext.currentActivity?.let { activity ->
         activity.requestedOrientation = if (on) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

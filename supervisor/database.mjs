@@ -34,7 +34,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 9) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 10) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -124,7 +124,31 @@ export class Database {
         this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'read.' + row.id, String(row.last));
       this.db.exec('PRAGMA user_version=9;');
     });
+    // The browser's timeline (each step of a bot with a small picture of the page) and the downloads of the phone's browser.
+    if (version < 10) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS browser_steps (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, task_id TEXT, caption TEXT NOT NULL, url TEXT NOT NULL, title TEXT NOT NULL, image BLOB, width INTEGER, height INTEGER, created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS browser_steps_bot ON browser_steps(bot_id);
+        CREATE TABLE IF NOT EXISTS browser_downloads (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, place TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, mime TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS browser_downloads_bot ON browser_downloads(bot_id);
+        PRAGMA user_version=10;`);
+    });
   }
+  /** One step of a bot in its browser, kept with a small picture; only the latest 120 of each bot stay. */
+  addBrowserStep(botId, taskId, { caption, url = '', title = '', image = null, width = null, height = null }) {
+    const step = { id: randomUUID(), botId, taskId: taskId || null, caption: String(caption).slice(0, 120), url: String(url).slice(0, 500), title: String(title).slice(0, 200), width, height, at: now() };
+    this.transaction(() => {
+      this.run('INSERT INTO browser_steps VALUES(?,?,?,?,?,?,?,?,?,?)', step.id, botId, step.taskId, step.caption, step.url, step.title, image, width, height, step.at);
+      this.run('DELETE FROM browser_steps WHERE bot_id=? AND rowid <= (SELECT rowid FROM browser_steps WHERE bot_id=? ORDER BY rowid DESC LIMIT 1 OFFSET 120)', botId, botId);
+    });
+    return { ...step, image: Boolean(image) };
+  }
+  /** The latest steps of a bot, oldest first; `before` (a step id) pages back. */
+  browserSteps(botId, { before, limit = 40 } = {}) {
+    const cursor = before ? this.get('SELECT rowid FROM browser_steps WHERE id=? AND bot_id=?', before, botId)?.rowid : null;
+    const rows = this.all(`SELECT id,bot_id,task_id,caption,url,title,width,height,created_at,image IS NOT NULL AS has_image FROM browser_steps WHERE bot_id=?${cursor ? ' AND rowid<?' : ''} ORDER BY rowid DESC LIMIT ?`, botId, ...(cursor ? [cursor] : []), Math.max(1, Math.min(120, Number(limit) || 40)));
+    return rows.reverse().map(row => ({ id: row.id, botId: row.bot_id, taskId: row.task_id, caption: row.caption, url: row.url, title: row.title, width: row.width, height: row.height, at: row.created_at, image: Boolean(row.has_image) }));
+  }
+  browserStepImage(id) { const row = this.get('SELECT bot_id,image FROM browser_steps WHERE id=?', id); return row?.image ? { botId: row.bot_id, image: Buffer.from(row.image).toString('base64') } : null; }
   /** Changes are told to the listener (the supervisor's broadcast) only after their transaction commits. */
   listen(listener) { this.listener = listener; }
   notify(event, data) {
@@ -241,7 +265,7 @@ export class Database {
     const row = this.get('SELECT body FROM bots WHERE id=?', id);
     if (!row) return null;
     const bot = JSON.parse(row.body);
-    bot.browserMode = browserMode(bot); delete bot.mainChrome; delete bot.messages;
+    bot.browserMode = browserMode(bot); if (bot.access === 'basic' && bot.browserMode === 'shared') bot.browserMode = 'separate'; delete bot.mainChrome; delete bot.messages;
     const session = this.get('SELECT session_id FROM codex_sessions WHERE bot_id=?', id);
     if (session) bot.codexSessionId = session.session_id;
     return bot;
@@ -417,7 +441,7 @@ export class Database {
       (data.instructions !== undefined && (typeof data.instructions !== 'string' || data.instructions.length > 2000)) ||
       !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
     const stamp = now();
-    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
+    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
     this.transaction(() => { this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
     return bot;
   }
@@ -426,9 +450,11 @@ export class Database {
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
     for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode']) if (changes[field] !== undefined) updated[field] = changes[field];
-    if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'own';
-    if (changes.provider === 'codex' && changes.browserMode === undefined && updated.browserMode === 'claude') updated.browserMode = 'own';
-    if (updated.access === 'basic') updated.browserMode = 'own';
+    if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'shared';
+    if (changes.provider === 'codex' && changes.browserMode === undefined && updated.browserMode === 'claude') updated.browserMode = 'shared';
+    updated.browserMode = browserMode(updated);
+    // "Pouco acesso" never acts logged in to the person's accounts: its browser is separate.
+    if (updated.access === 'basic') updated.browserMode = 'separate';
     validateProfile(updated);
     if (typeof updated.name !== 'string' || !updated.name.trim() || updated.name.trim().length > 40 || typeof updated.instructions !== 'string' || updated.instructions.length > 2000 || !['green','blue','purple','orange'].includes(updated.color)) throw new Error('Informe nome, personalidade e cor válidos.');
     updated.name = updated.name.trim(); updated.instructions = updated.instructions.trim();
@@ -448,7 +474,7 @@ export class Database {
     if (this.activeTasks(id).length) throw new Error('Aguarde a tarefa antes de apagar o bot.');
     this.backup();
     const next = deleteLocalBot({ bots: [this.fullBot(id)] }, id).bots[0];
-    this.transaction(() => { this.putBot(next); this.replaceMessages(id, []); this.record('bot_deleted', 'Bot apagado.', id); });
+    this.transaction(() => { this.putBot(next); this.replaceMessages(id, []); this.run('DELETE FROM browser_steps WHERE bot_id=?', id); this.run('DELETE FROM browser_downloads WHERE bot_id=?', id); this.record('bot_deleted', 'Bot apagado.', id); });
   }
   task(id) { return this.get('SELECT * FROM tasks WHERE id=?', id); }
   tasks(limit = -1) { return this.all('SELECT * FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?', limit); }

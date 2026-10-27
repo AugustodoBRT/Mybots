@@ -51,7 +51,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Each bot's own browser: a WebView per bot with its own profile (cookies, storage, logins), kept in the app
+ * Each bot's browser: a WebView per bot, kept in the app. By default the bots share one WebView profile ("shared"),
+ * so a login made by one bot serves the others; a bot with "Navegador separado" has its own profile. Kept in the app
  * process so the supervisor can drive it with the app closed (the keep-alive service keeps the process alive).
  * Commands arrive by long-polling /device/browser; the chat's "Navegador do bot" panel shows the same WebView live.
  */
@@ -74,7 +75,13 @@ internal object BotBrowser {
     val nonce: String = java.util.UUID.randomUUID().toString()
     var used = System.currentTimeMillis()
     val listeners = mutableSetOf<(Map<String, Any>) -> Unit>()
+    var profile = "shared"
+    @Volatile var icon: String? = null
+    @Volatile var action: Map<String, Any>? = null
   }
+  // Which profile each bot uses, from the supervisor's commands and the chat's panel.
+  private val profiles = ConcurrentHashMap<String, String>()
+  fun useProfile(botId: String, separate: Boolean) { profiles[botId] = if (separate) "separate" else "shared" }
 
   // Main thread only.
   private val tabs = LinkedHashMap<String, Tab>()
@@ -184,7 +191,7 @@ internal object BotBrowser {
   }
 
   fun cookies(botId: String, url: String): String? = try {
-    if (isolated) ProfileStore.getInstance().getProfile(profileName(botId))?.cookieManager?.getCookie(url) else CookieManager.getInstance().getCookie(url)
+    if (isolated) ProfileStore.getInstance().getProfile(tabs[botId]?.profile ?: profileName(botId))?.cookieManager?.getCookie(url) else CookieManager.getInstance().getCookie(url)
   } catch (_: Exception) { null }
 
   private fun failed(botId: String) {
@@ -208,6 +215,7 @@ internal object BotBrowser {
     val botId = command.getString("botId")
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")
     val args = command.optJSONObject("args") ?: JSONObject()
+    if (command.has("profile")) useProfile(botId, command.optString("profile") == "separate")
     if (command.getString("op") == "pcLogin") return PasswordVault.forComputer(context, botId, args)
     if (command.getString("op") in listOf("act", "inspect") && args.has("action")) {
       val scale = onMain { val web = tab(context, botId).web; val width = web.width.coerceAtLeast(1); val height = web.height.coerceAtLeast(1); minOf(1f, 720f / width, 800f / height) * web.scale }
@@ -225,6 +233,8 @@ internal object BotBrowser {
         if (file == null) failed(botId)
         page(context, botId).also { result -> file?.let { result.put("download", it) } }
       }
+      // The timeline's picture of this moment, small.
+      "thumb" -> onMain(15_000) { screenshot(context, botId, 480f, 60) }
       "read" -> js(context, botId, READ_JS).also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
       "inspect" -> if (args.has("action")) js(context, botId, "JSON.stringify(($POINT_JS)($args))") else js(context, botId, "($INSPECT_JS)($id)")
       "tabs" -> throw IllegalStateException("Disponível só quando o bot responde pelo computador.")
@@ -249,6 +259,7 @@ internal object BotBrowser {
       }
       "click" -> {
         val before = DeviceFiles.downloadSerial()
+        showAction(context, botId, id, "Clicando")
         onMain { tabs[botId]?.failure = null }; js(context, botId, "($CLICK_JS)($id)"); waitLoaded(botId, 12_000)
         val file = awaitDownload(botId, before)
         if (file == null) failed(botId)
@@ -256,6 +267,7 @@ internal object BotBrowser {
       }
       "type" -> {
         val input = JSONObject().put("id", id).put("text", args.optString("text")).put("submit", args.optBoolean("submit"))
+        showAction(context, botId, id, "Digitando")
         js(context, botId, "($TYPE_JS)($input)")
         if (args.optBoolean("submit")) waitLoaded(botId, 15_000)
         page(context, botId)
@@ -310,16 +322,16 @@ internal object BotBrowser {
     }
   }
 
-  private fun screenshot(context: Context, botId: String): JSONObject {
+  private fun screenshot(context: Context, botId: String, maxWidth: Float = 720f, quality: Int = 70): JSONObject {
     val tab = tab(context, botId)
     val web = tab.web
     layoutDetached(context, web)
     val bitmap = Bitmap.createBitmap(web.width.coerceAtLeast(1), web.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     web.draw(Canvas(bitmap))
-    val scale = minOf(1f, 720f / bitmap.width, 800f / bitmap.height)
+    val scale = minOf(1f, maxWidth / bitmap.width, 800f / bitmap.height)
     val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
     val out = ByteArrayOutputStream()
-    scaled.compress(Bitmap.CompressFormat.JPEG, 70, out)
+    scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
     return JSONObject().put("url", web.url ?: "").put("title", web.title ?: "").put("width", scaled.width).put("height", scaled.height).put("image", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
   }
 
@@ -332,21 +344,40 @@ internal object BotBrowser {
     web.layout(0, 0, width, height)
   }
 
-  private fun profileName(botId: String) = "bot-$botId"
+  private fun profileName(botId: String) = if (profiles[botId] == "separate") "bot-$botId" else "shared"
+
+  /** Where the bot is about to act, for the person watching: the element's outline, a cursor and a caption. */
+  private fun showAction(context: Context, botId: String, id: Int, verb: String) {
+    if (onMain { tabs[botId]?.listeners?.isEmpty() } != false) return
+    val box = runCatching { js(context, botId, "(() => { const el = document.querySelector('[data-mybots-id=\"$id\"]'); if (!el) return JSON.stringify({}); const r = el.getBoundingClientRect(); return JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height, vw: innerWidth, vh: innerHeight, label: String(el.getAttribute('aria-label') || (el.labels && el.labels[0] && el.labels[0].textContent) || el.placeholder || el.textContent || el.name || '').replace(/\\s+/g, ' ').trim().slice(0, 40) }); })()") }.getOrNull() ?: return
+    if (!box.has("vw")) return
+    val label = box.optString("label")
+    val action = mapOf<String, Any>("caption" to (if (label.isEmpty()) verb else "$verb em ‘$label’"), "rect" to mapOf("x" to box.optDouble("x"), "y" to box.optDouble("y"), "width" to box.optDouble("width"), "height" to box.optDouble("height")),
+      "width" to box.optDouble("vw"), "height" to box.optDouble("vh"), "at" to System.currentTimeMillis().toDouble())
+    onMain { tabs[botId]?.let { it.action = action; emit(it) } }
+    // A moment for the eye to follow before the page changes.
+    Thread.sleep(350)
+  }
 
   private fun flushCookies(botId: String) {
-    try { if (isolated) ProfileStore.getInstance().getProfile(profileName(botId))?.cookieManager?.flush() else CookieManager.getInstance().flush() } catch (_: Exception) {}
+    try { if (isolated) ProfileStore.getInstance().getProfile(tabs[botId]?.profile ?: profileName(botId))?.cookieManager?.flush() else CookieManager.getInstance().flush() } catch (_: Exception) {}
   }
 
   private fun emit(tab: Tab) {
-    val state = mapOf<String, Any>("url" to (tab.web.url ?: ""), "title" to (tab.web.title ?: ""), "loading" to tab.loading, "isolated" to isolated)
+    val state = mutableMapOf<String, Any>("url" to (tab.web.url ?: ""), "title" to (tab.web.title ?: ""), "loading" to tab.loading, "isolated" to isolated, "shared" to (tab.profile == "shared"),
+      "back" to tab.web.canGoBack(), "forward" to tab.web.canGoForward())
+    tab.icon?.let { state["icon"] = it }; tab.action?.let { state["action"] = it }
     tab.listeners.toList().forEach { it(state) }
   }
 
   @SuppressLint("SetJavaScriptEnabled")
   fun tab(context: Context, botId: String): Tab {
-    tabs[botId]?.let { it.used = System.currentTimeMillis(); return it }
-    if (!isolated && sharedOwner != null && sharedOwner != botId) {
+    val profile = profileName(botId)
+    // A bot that switched between the shared and its own browser gets a new WebView in the other profile.
+    tabs[botId]?.let { if (it.profile == profile) { it.used = System.currentTimeMillis(); return it } else close(botId) }
+    // Without WebView profiles, the bots of the shared browser use the app's one profile; a separate bot must never get their logins.
+    val owner = if (profile == "shared") "shared" else botId
+    if (!isolated && sharedOwner != null && sharedOwner != owner) {
       // No profiles on this phone: one bot's logins must never reach another bot.
       tabs.values.toList().forEach { close(it.botId) }
       CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush(); WebStorage.getInstance().deleteAllData()
@@ -354,9 +385,9 @@ internal object BotBrowser {
     if (tabs.size >= MAX_TABS) tabs.values.filter { it.web.parent == null }.minByOrNull { it.used }?.let { close(it.botId) }
     val wrapper = MutableContextWrapper(context.applicationContext)
     val web = WebView(wrapper)
-    if (isolated) { ProfileStore.getInstance().getOrCreateProfile(profileName(botId)); WebViewCompat.setProfile(web, profileName(botId)) }
-    else sharedOwner = botId
-    val tab = Tab(botId, web, wrapper)
+    if (isolated) { ProfileStore.getInstance().getOrCreateProfile(profile); WebViewCompat.setProfile(web, profile) }
+    else sharedOwner = owner
+    val tab = Tab(botId, web, wrapper).also { it.profile = profile }
     web.settings.apply {
       javaScriptEnabled = true; domStorageEnabled = true
       allowFileAccess = false; allowContentAccess = false
@@ -391,7 +422,7 @@ internal object BotBrowser {
         if (host == null || leaf == null || !onlyUnknownIssuer) { refuse(); return }
         Thread { val trusted = IncompleteChain.trusted(leaf, host); main.post { if (trusted) handler.proceed() else refuse() } }.start()
       }
-      override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { tab.loading = true; emit(tab) }
+      override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { tab.loading = true; tab.icon = null; emit(tab) }
       override fun onPageFinished(view: WebView, url: String?) { tab.loading = false; flushCookies(botId); emit(tab); if (tab.capture) view.evaluateJavascript(captureScript(tab), null) }
     }
     // Downloads go to the bot's files; uploads only through browser_upload (approved file, no picker); no camera, microphone or location.
@@ -399,6 +430,11 @@ internal object BotBrowser {
     web.webChromeClient = object : WebChromeClient() {
       override fun onProgressChanged(view: WebView, newProgress: Int) { tab.progress = newProgress }
       override fun onReceivedTitle(view: WebView, title: String?) { emit(tab) }
+      override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
+        if (icon == null) return
+        val out = ByteArrayOutputStream(); Bitmap.createScaledBitmap(icon, 32, 32, true).compress(Bitmap.CompressFormat.PNG, 100, out)
+        tab.icon = "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP); emit(tab)
+      }
       override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean { tab.dialog = "Aviso da página: ${message.orEmpty().take(300)}"; result.confirm(); return true }
       override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult): Boolean { tab.dialog = "A página pediu confirmação e o MyBots respondeu Cancelar: ${message.orEmpty().take(300)}"; result.cancel(); return true }
       override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
@@ -457,6 +493,7 @@ internal object BotBrowser {
     val web = tab(context, botId).web
     when (action) {
       "back" -> if (web.canGoBack()) web.goBack() else return false
+      "forward" -> if (web.canGoForward()) web.goForward() else return false
       "reload" -> web.reload()
       "keyboard" -> { web.requestFocus(); (context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
       "zoom" -> web.zoomIn()
@@ -509,14 +546,15 @@ internal object BotBrowser {
 }""".trimIndent()
   private val READ_JS = "JSON.stringify(($READ_PAGE)({}))"
   private val POINT_JS = """function inspectPoint(args) {
-  let doc = document, el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x, args.y);
+  let doc = document, el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x, args.y), dx = 0, dy = 0;
   while (el?.tagName === 'IFRAME') {
-    try { const r = el.getBoundingClientRect(); doc = el.contentDocument; if (!doc) break; el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x - r.x, args.y - r.y); } catch { break; }
+    try { const r = el.getBoundingClientRect(); doc = el.contentDocument; if (!doc) break; dx += r.x; dy += r.y; el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x - dx, args.y - dy); } catch { break; }
   }
   el = el?.closest('button,a,input,textarea,select,[role=button],[contenteditable=true]') || el;
+  const box = el?.getBoundingClientRect?.(), rect = box && box.width > 0 ? { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height } : null;
   const label = String(el?.getAttribute('aria-label') || el?.textContent || el?.name || '').replace(/\s+/g, ' ').slice(0, 200);
   const write = !!el && (el.type === 'submit' || el.type === 'image' || !!el.form || el.tagName === 'A' && /comprar|pagar|pagamento|checkout|buy|purchase|pay/i.test(label + ' ' + el.getAttribute('href')));
-  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href };
+  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href, rect };
 }""".trimIndent()
   private val MARK_JS = """function markPage(elements) {
   document.querySelector('[data-mybots-marks]')?.remove();
@@ -661,12 +699,16 @@ class BotBrowserView(context: Context, appContext: AppContext) : ExpoView(contex
   private var pageHeight = 0
   var interactive = false
     set(value) { field = value; bot?.let { BotBrowser.setCapture(it, value) } }
+  // Set before botId by the panel: whether this bot uses its own profile ("Navegador separado").
+  var separate = false
+    set(value) { field = value; bot?.let { BotBrowser.useProfile(it, value) } }
   private val listener: (Map<String, Any>) -> Unit = { onPage(it) }
 
   fun show(botId: String?) {
     if (botId == bot) return
     bot?.let { BotBrowser.setCapture(it, false); BotBrowser.detach(context, it, this, listener) }
     bot = botId?.takeIf { it.isNotEmpty() }
+    bot?.let { BotBrowser.useProfile(it, separate) }
     if (isAttachedToWindow) bot?.let { BotBrowser.attach(context, it, this, listener); BotBrowser.setCapture(it, interactive) }
   }
 

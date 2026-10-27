@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
 import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode } from './tool-policy.mjs';
-import { BROWSER_NOTICE } from './browser.mjs';
+import { BROWSER_NOTICE, stepCaption } from './browser.mjs';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
 import { create as createFile } from './creator.mjs';
@@ -478,13 +478,13 @@ export class Tools {
         const write = this.gate(bot, 'browser', { writeKey: 'browser/mine/write', legacyAsk: true });
         if (write.ask && !await this.ask(run, 'browser/mine/write', { summary: `Meu Chrome · ${label}\n${JSON.stringify(args).slice(0, 1500)}` }, hash, null, write.always)) throw new Error(refused);
       }
-      let result;
+      let result, target = null;
       if (tool === 'browser.ask_user') {
         this.browser.requestHelp(run.botId, args.reason);
         if (/captcha|desafio/i.test(args.reason)) Promise.resolve(this.notify({ title: 'Toque para resolver', body: args.reason }, { id: 'mybots-captcha-' + run.botId, botId: run.botId, botName: bot.name })).catch(() => {});
         result = { requested: true, message: 'A pessoa vai ver o cartão com o seu pedido e o botão para abrir o navegador. Termine agora a resposta explicando o que ela precisa fazer. Quando ela tocar em “Devolver ao bot”, você recebe uma nova mensagem para continuar.' };
       } else if (tool === 'browser.act') {
-        const target = await command(run.botId, 'inspect', args);
+        target = await command(run.botId, 'inspect', args);
         const writeAction = args.action === 'drag' || ['click','double_click','right_click'].includes(args.action) && target.kind === 'submit' || args.action === 'key' && (args.key === 'Enter' && target.kind === 'submit' || ['Space','Backspace','Delete'].includes(args.key));
         if (writeAction && !mine) {
           const write = this.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: bot.autonomy !== 'local' });
@@ -492,7 +492,7 @@ export class Tools {
         }
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'act', { ...args, expectedTarget: target }) };
       } else if (tool === 'browser.click' || tool === 'browser.type') {
-        const target = await command(run.botId, 'inspect', { id: args.id });
+        target = await command(run.botId, 'inspect', { id: args.id });
         if (tool === 'browser.type' && target.kind === 'password') throw new Error('Campos de senha só a pessoa preenche. Use browser_ask_user para pedir que ela entre.');
         if (!mine && (tool === 'browser.click' ? target.kind === 'submit' : args.submit)) {
           const write = this.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: bot.autonomy !== 'local' });
@@ -523,10 +523,22 @@ export class Tools {
         if (typeof shot.image !== 'string' || shot.image.length > 4_000_000) throw new Error('Não consegui capturar a tela do navegador.');
         result = { mcpContent: [{ type: 'text', text: `${IMAGE_HINT}\n${BROWSER_NOTICE}\n${shot.title || ''} · ${shot.url || ''} · ${shot.width} × ${shot.height}` }, { type: 'image', data: shot.image, mimeType: 'image/jpeg' }] };
       } else result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, tool.slice(8), args) };
+      if (tool !== 'browser.ask_user') await this.browserStep(run, tool, args, result, target, command);
+      if (result?.download && !result.download.error) this.changed('browser.download', { botId: run.botId });
       this.db.record('tool_done', label + ': concluído.', run.botId, run.taskId); this.changed('activity.new'); return result;
     } catch (error) {
       this.db.record('tool_denied', `${label}: ${error.message}`.slice(0, 300), run.botId, run.taskId); this.changed('activity.new'); throw error;
     }
+  }
+  /** The browser's timeline: the step in words and a small picture of the page right after it. A missing picture never fails the step. */
+  async browserStep(run, tool, args, result, target, command) {
+    const page = this.browser.pages.get(run.botId) || {};
+    const step = { caption: stepCaption(tool.slice(8), args, target), url: typeof result?.url === 'string' ? result.url : page.url || '', title: typeof result?.title === 'string' ? result.title : page.title || '' };
+    try {
+      const thumb = await Promise.race([command(run.botId, 'thumb'), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 6000))]);
+      if (typeof thumb?.image === 'string' && thumb.image.length < 400_000) Object.assign(step, { image: Buffer.from(thumb.image, 'base64'), width: thumb.width, height: thumb.height });
+    } catch {}
+    try { this.changed('browser.step', this.db.addBrowserStep(run.botId, run.taskId, step)); } catch {}
   }
   async performApp(run, tool, app, args, hash) {
     const grant = 'mcp:' + app.server.id; const label = `${app.server.name}: ${app.tool.name}`;

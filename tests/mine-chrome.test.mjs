@@ -31,7 +31,7 @@ async function chrome(t) {
 test('Meu Chrome: endpoint is loopback only, malformed files refused; modes validate and legacy profiles migrate on read', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-modes-')); const db = new Database(join(directory, 'db'));
   t.after(async () => { db.close(); await rm(directory, { recursive: true, force: true }); });
-  assert.equal(browserMode({}), 'own'); assert.equal(browserMode({ provider: 'claude', mainChrome: true }), 'claude');
+  assert.equal(browserMode({}), 'shared'); assert.equal(browserMode({ browserMode: 'own' }), 'shared'); assert.equal(browserMode({ provider: 'claude', mainChrome: true }), 'claude');
   assert.throws(() => validateProfile({ browserMode: 'other' }));
   assert.throws(() => validateProfile({ browserMode: 'claude', provider: 'codex' }));
   assert.throws(() => validateProfile({ browserMode: 'mine', access: 'basic' }));
@@ -105,7 +105,7 @@ test('Meu Chrome shared worker: two bots have distinct tabs and frames; stopping
   assert.match((await pc.command(a, 'read', {})).url, /#a$/); assert.match((await pc.command(b, 'read', {})).url, /#b$/);
   await pc.command(a, 'view', { on: true }); await pc.command(b, 'view', { on: true });
   for (let n = 0; n < 100 && !frames.some(f => f.botId === b && f.image); n++) await new Promise(r => setTimeout(r, 20));
-  assert.ok(frames.some(f => f.botId === a && f.url.endsWith('#a'))); assert.ok(frames.some(f => f.botId === b && f.url.endsWith('#b')));
+  assert.ok(frames.some(f => f.botId === a && f.url?.endsWith('#a'))); assert.ok(frames.some(f => f.botId === b && f.url?.endsWith('#b')));
   assert.ok(frames.every(f => !f.url || f.url !== c.personal.url()));
   pc.stop(a); assert.match((await pc.command(b, 'read', {})).url, /#b$/);
   await pc.close(); assert.equal(c.child.exitCode, null); assert.equal(c.child.signalCode, null); assert.equal(c.personal.isClosed(), false);

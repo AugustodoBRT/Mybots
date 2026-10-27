@@ -171,6 +171,7 @@ class TermuxBridgeModule : Module() {
     // Each bot's browser (etapa B): the live panel, its state and the controls the person uses after "Assumir".
     View(BotBrowserView::class) {
       Events("onPage")
+      Prop("separate") { view: BotBrowserView, value: Boolean -> view.separate = value }
       Prop("botId") { view: BotBrowserView, id: String? -> view.show(id) }
       Prop("interactive") { view: BotBrowserView, value: Boolean -> view.interactive = value }
     }

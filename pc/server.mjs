@@ -123,6 +123,21 @@ async function localStatus() {
   return { connections, models };
 }
 
+const FILE_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', json: 'application/json', html: 'text/html', zip: 'application/zip', mp3: 'audio/mpeg', mp4: 'video/mp4', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+/** The files a bot's browser downloaded here (~/.mybots-pc/downloads/<bot>): listed, read (to open or send to the bot) and removed for the phone. */
+export function browserFiles(root, botId, op, name) {
+  if (!/^[0-9a-f-]{36}$/i.test(botId || '')) throw new Error('Bot inválido.');
+  const folder = join(root, botId);
+  const list = () => { try { return readdirSync(folder, { withFileTypes: true }).filter(item => item.isFile()).map(item => { const stat = statSync(join(folder, item.name)); return { name: item.name, size: stat.size, at: stat.mtime.toISOString(), where: 'pc' }; }).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100); } catch { return []; } };
+  if (op === 'list') return { files: list() };
+  const file = typeof name === 'string' && list().find(item => item.name === name);
+  if (!file) throw new Error('Arquivo não encontrado nos downloads do computador.');
+  if (op === 'delete') { unlinkSync(join(folder, file.name)); return { deleted: true }; }
+  if (op !== 'get') throw new Error('Pedido inválido.');
+  if (file.size > 20 * 1024 * 1024) throw new Error('Arquivos de até 20 MB podem ir ao celular.');
+  return { ...file, mime: FILE_TYPES[file.name.split('.').pop().toLowerCase()] || 'application/octet-stream', data: readFileSync(join(folder, file.name)).toString('base64') };
+}
+
 /**
  * The MyBots node on the computer. It waits for the paired phone, which connects to it (the phone never listens on
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
@@ -258,10 +273,15 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         }
         const sink = ws.views.get(message.botId);
         if (!message.on) ws.views.delete(message.botId);
-        if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own', message).catch(() => {});
+        if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'shared', message).catch(() => {});
         return;
       }
-      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
+      if (message.type === 'browser_files' && typeof message.rid === 'string') {
+        try { send({ type: 'pc_result', rid: message.rid, result: browserFiles(browser.downloads || join(directory, 'downloads'), message.botId, message.op, message.name) }); }
+        catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','shared','separate','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).then(() => { if (message.rid) send({ type: 'pc_result', rid: message.rid, result: { sent: true } }); }, () => message.rid ? send({ type: 'pc_result', rid: message.rid, error: 'Entrada recusada.' }) : send({ type: 'browser_frame', botId: message.botId, error: 'Toque em Assumir antes de usar a página.' }));
         return;
@@ -275,7 +295,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
           const mainChrome = browserMode(run.bot) === 'claude';
           const chrome = mainChrome && message.op === 'chrome.begin';
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|thumb)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           // Only the screen and the mouse have one pilot at a time; each bot's browser is its own, so they run side by side.
           if (isDesktop) { if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.'); owner = run; }
@@ -312,7 +332,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         send({ type: 'failed', id: message.id, error: controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
       } finally {
         runs.delete(message.id); controls.delete(run); if (owner === run) owner = null;
-        if (!controller.signal.aborted && (browser.workers?.has(run.bot.id) || browserMode(run.bot) === 'mine' && browser.workers?.has('mine'))) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
+        if (!controller.signal.aborted && (browser.running ? browser.running(run.bot.id) : browser.workers?.has(run.bot.id))) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
         controller.abort('finished');
       }
     });

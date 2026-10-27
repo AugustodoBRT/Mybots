@@ -38,7 +38,7 @@ async function setup(t) {
   };
   const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], execute, status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }),
     desktop: { indicate: async () => { visible++; return async () => { visible--; }; }, command: async (op, args, signal) => { signal.throwIfAborted(); actions.push({ op, args }); return op === 'desktop.screenshot' ? { image: 'aW1hZ2U=' } : { done: true }; } },
-    browser: { command: async (botId, op, args) => { actions.push({ botId, op, args }); return op === 'inspect' ? { kind: 'submit', label: 'Enviar', url: 'https://example.com' } : { url: 'https://example.com', title: 'Exemplo' }; }, stop: () => { stopped++; }, close: () => {} } });
+    browser: { command: async (botId, op, args) => { actions.push({ botId, op, args }); return op === 'inspect' ? { kind: 'submit', label: 'Enviar', url: 'https://example.com' } : op === 'thumb' ? { image: '/9j/2wBD', width: 480, height: 300 } : { url: 'https://example.com', title: 'Exemplo' }; }, stop: () => { stopped++; }, close: () => {} } });
   t.after(async () => { await app.close(); await node.close(); await rm(directory, { recursive: true, force: true }); });
   await app.rpc('computer.pair', { link: node.pairing().link }); await until(() => app.state().computer.state === 'online');
   const bot = await app.rpc('bot.create', { name: 'Tela', home: 'pc', access: 'full', ...selection });
@@ -93,8 +93,23 @@ test('PC browser uses the same browser tools and phone approval for submitting, 
   const id = await f.start([['browser_open', { url: 'https://example.com' }], ['browser_click', { id: 1 }]]);
   const card = await f.approve(true, true); assert.match(card.title, /Enviar um formulário/);
   await f.finish(id);
-  assert.deepEqual(f.actions.map(a => a.op), ['open','inspect','click']); assert.ok(f.actions.every(a => a.botId === f.bot.id));
+  assert.deepEqual(f.actions.map(a => a.op), ['open','thumb','inspect','click','thumb']); assert.ok(f.actions.every(a => a.botId === f.bot.id));
   assert.equal(f.app.tools.browser.pages.get(f.bot.id).where, 'pc');
+  // The timeline: each step in words with its picture, for the phone and the computer's window.
+  const { steps } = await f.app.rpc('browser.steps', { botId: f.bot.id });
+  assert.deepEqual(steps.map(step => step.caption), ['Abrindo example.com', 'Clicando em ‘Enviar’']);
+  assert.ok(steps.every(step => step.image && step.url === 'https://example.com'));
+  assert.equal((await f.app.rpc('browser.stepImage', { id: steps[1].id })).image, '/9j/2wBD');
+  // A file downloaded by the bot's Chrome on the computer is listed, opened once on the phone and sent to the bot.
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  mkdirSync(join(f.directory, 'pc', 'downloads', f.bot.id), { recursive: true }); writeFileSync(join(f.directory, 'pc', 'downloads', f.bot.id, 'boleto.pdf'), '%PDF-1.4');
+  const listed = await f.app.rpc('browser.downloads', { botId: f.bot.id });
+  assert.deepEqual(listed.files.map(file => [file.id, file.where, file.size]), [['pc:boleto.pdf', 'pc', 8]]);
+  const opened = await f.app.rpc('browser.download.open', { botId: f.bot.id, id: 'pc:boleto.pdf' });
+  assert.equal(opened.mime, 'application/pdf'); assert.deepEqual(await f.app.rpc('browser.download.open', { botId: f.bot.id, id: 'pc:boleto.pdf' }), opened);
+  const sent = await f.app.rpc('browser.download.send', { botId: f.bot.id, id: 'pc:boleto.pdf' });
+  assert.equal(f.app.db.message(sent.messageId).attachments[0].id, opened.id);
+  await assert.rejects(f.app.rpc('browser.download.open', { botId: f.bot.id, id: 'pc:../x' }), /não encontrado/);
 });
 
 test('desktop executables get argv without shell; malformed commands refused; cancelled keys are released; custom PC home hidden', async () => {
@@ -216,7 +231,7 @@ test('Meu Chrome: Médio approves all mutations with its own key; reads pass; ta
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
   id = await f.start([['browser_click', { id: 1 }]]); await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
-  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'own');
+  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'separate');
   await assert.rejects(f.app.rpc('bot.update', { botId: f.bot.id, browserMode: 'mine' }), /Libere Navegador|Pouco acesso/);
 });
 

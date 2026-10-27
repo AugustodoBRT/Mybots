@@ -41,14 +41,15 @@ export function readPage({ query = '', limit = 5 } = {}) {
 }
 
 export function inspectPoint(args) {
-  let doc = document, el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x, args.y);
+  let doc = document, el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x, args.y), dx = 0, dy = 0;
   while (el?.tagName === 'IFRAME') {
-    try { const r = el.getBoundingClientRect(); doc = el.contentDocument; if (!doc) break; el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x - r.x, args.y - r.y); } catch { break; }
+    try { const r = el.getBoundingClientRect(); doc = el.contentDocument; if (!doc) break; dx += r.x; dy += r.y; el = args.action === 'key' ? doc.activeElement : doc.elementFromPoint(args.x - dx, args.y - dy); } catch { break; }
   }
   el = el?.closest('button,a,input,textarea,select,[role=button],[contenteditable=true]') || el;
+  const box = el?.getBoundingClientRect?.(), rect = box && box.width > 0 ? { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height } : null;
   const label = String(el?.getAttribute('aria-label') || el?.textContent || el?.name || '').replace(/\s+/g, ' ').slice(0, 200);
   const write = !!el && (el.type === 'submit' || el.type === 'image' || !!el.form || el.tagName === 'A' && /comprar|pagar|pagamento|checkout|buy|purchase|pay/i.test(label + ' ' + el.getAttribute('href')));
-  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href };
+  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href, rect };
 }
 
 export function markPage(elements) {

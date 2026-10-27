@@ -191,6 +191,8 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
             metadata["captcha"] = data
           }
           if (value.has("loading")) metadata["loading"] = value.optBoolean("loading")
+          // The tab strip, where the bot is about to act and a finished download go to the panel as they are.
+          for (key in listOf("tabbar", "action", "download")) value.optJSONObject(key)?.let { metadata[key] = plain(it) }
           if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
           value.optJSONObject("focus")?.let { focus(it) }
           if (value.has("inputAck")) {
@@ -276,6 +278,13 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
         decode(epoch, id)
       }
     }
+  }
+
+  private fun plain(value: Any?): Any = when (value) {
+    is JSONObject -> value.keys().asSequence().associateWith { plain(value.opt(it)) }
+    is org.json.JSONArray -> (0 until value.length()).map { plain(value.opt(it)) }
+    null, JSONObject.NULL -> ""
+    else -> value
   }
 
   private fun publish() {

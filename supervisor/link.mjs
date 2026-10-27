@@ -14,9 +14,10 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // backups, connectors with passwords, pairing or the phone's own hardware.
 export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
-  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control'];
+  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
+  'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
-const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset'];
+const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
@@ -245,6 +246,16 @@ export class Link {
       const done = message => { clearTimeout(timer); this.commands.delete(rid); message.error ? reject(new Error('Não consegui enviar a entrada ao navegador.')) : resolve({ sent: true }); };
       this.commands.set(rid, done);
       if (!this.post({ type: 'browser_input', rid, botId, input })) done({ error: 'offline' });
+    });
+  }
+  /** The downloads of a bot's browser on the computer: list, get (bytes) or delete. */
+  files(botId, op, name) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou para responder.' }), 60000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'browser_files', rid, botId, op, ...(name ? { name } : {}) })) done({ error: 'offline' });
     });
   }
   post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }

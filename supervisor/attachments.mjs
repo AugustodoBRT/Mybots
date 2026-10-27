@@ -3,10 +3,9 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
 import { officeText } from './documents.mjs';
+import { BLOCKED } from './browser.mjs';
 
 export const LIMITS = { files: 5, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20, pdfImagePages: 4 };
-// Executables never enter a bot's files, whatever the page or the model says.
-const BLOCKED = /\.(apk|apks|xapk|aab|exe|msi|bat|cmd|com|scr|ps1|vbs|sh|jar|dex|so|bin|elf|run)$/i;
 const IMAGES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const TEXT = /^(text\/|application\/(json|xml|csv|javascript|x-yaml|yaml|x-sh|sql)|.*\+xml$|.*\+json$)/;
 const TEXT_NAMES = /\.(txt|md|csv|tsv|json|xml|ya?ml|html?|js|mjs|ts|py|java|kt|c|cpp|h|sh|sql|log|ini|toml)$/i;

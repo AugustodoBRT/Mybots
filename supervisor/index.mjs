@@ -173,8 +173,29 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       try { return { selection: selectionFor(catalog(), bot) }; } catch (error) { return { error: error.message }; }
     };
     const attachments = new Attachments(db); tools.attachments = attachments; rooms.attachments = attachments;
+    const browserDownloads = async botId => {
+      const phone = db.all("SELECT * FROM browser_downloads WHERE bot_id=? AND place='phone' ORDER BY created_at DESC LIMIT 100", botId)
+        .filter(row => db.get('SELECT 1 FROM attachments WHERE id=?', row.attachment_id)).map(row => ({ id: row.id, name: row.name, size: row.size, mime: row.mime, at: row.created_at, where: 'phone' }));
+      let pc = [], pcError = null;
+      if (link.status().state === 'online') try { pc = ((await link.files(botId, 'list')).files || []).map(file => ({ id: 'pc:' + file.name, name: file.name, size: file.size, at: file.at, where: 'pc' })); } catch (error) { pcError = error.message; }
+      else if (db.requireBot(botId).home !== 'phone') pcError = 'O computador está desconectado: os downloads de lá aparecem quando ele voltar.';
+      return { files: [...phone, ...pc].sort((a, b) => String(b.at).localeCompare(String(a.at))), pcError };
+    };
+    // A download as one of the bot's files (to open or send): a computer's file comes to the phone once.
+    const downloadFile = async (botId, id) => {
+      if (typeof id !== 'string' || id.length > 200) throw new Error('Download inválido.');
+      const kept = id.startsWith('pc:') ? db.get("SELECT * FROM browser_downloads WHERE bot_id=? AND place='pc' AND name=?", botId, id.slice(3)) : db.get("SELECT * FROM browser_downloads WHERE bot_id=? AND id=?", botId, id);
+      const saved = kept?.attachment_id && db.get('SELECT id,name,mime,size FROM attachments WHERE id=? AND bot_id=?', kept.attachment_id, botId);
+      if (saved) return { id: saved.id, name: saved.name, mime: saved.mime, size: saved.size };
+      if (!id.startsWith('pc:')) throw new Error('Arquivo não encontrado.');
+      const file = await link.files(botId, 'get', id.slice(3));
+      const stored = attachments.store(botId, { name: file.name, mime: file.mime || 'application/octet-stream', bytes: Buffer.from(file.data || '', 'base64') });
+      db.run('DELETE FROM browser_downloads WHERE bot_id=? AND place=? AND name=?', botId, 'pc', file.name);
+      db.run('INSERT INTO browser_downloads VALUES(?,?,?,?,?,?,?,?)', randomUUID(), botId, 'pc', file.name, stored.size, stored.mime, stored.id, now());
+      return stored;
+    };
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
-    browser = new Browser({ changed: broadcast }); tools.browser = browser;
+    browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;
     attachments.pdf = args => browser.device('pdfRead', args);
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock }); tools.routines = routines;
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
@@ -407,6 +428,23 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'app.refresh': return apps.refresh(params.id);
         case 'app.configure': return apps.configure(params.id, params);
         case 'app.remove': { const result = apps.remove(params.id); broadcast('activity.new'); return result; }
+        // The browser's timeline: each step with a small picture, and the picture of one step.
+        case 'browser.steps': db.requireBot(params.botId); return { steps: db.browserSteps(params.botId, { before: uuid(params.before) ? params.before : undefined, limit: params.limit }) };
+        case 'browser.stepImage': { if (!uuid(params.id)) throw new Error('Passo inválido.'); const step = db.browserStepImage(params.id); if (!step) throw new Error('Imagem não encontrada.'); db.requireBot(step.botId); return { image: step.image }; }
+        // Downloads of a bot's browser: on the phone they are already the bot's files; on the computer they stay
+        // there until the person opens one or sends it to the bot.
+        case 'browser.downloads': db.requireBot(params.botId); return browserDownloads(params.botId);
+        case 'browser.download.open': { db.requireBot(params.botId); return downloadFile(params.botId, params.id); }
+        case 'browser.download.send': {
+          const bot = db.requireBot(params.botId); await refresh();
+          const selection = selectionFor(catalog(), bot);
+          const status = statusFor({ ...bot, ...selection });
+          if (!status?.loggedIn) throw new Error(status?.message || 'Esta IA não está conectada neste aparelho.');
+          const file = await downloadFile(bot.id, params.id);
+          const task = db.enqueue(bot.id, randomUUID(), `Este é o arquivo “${file.name}”, baixado no navegador.`, selection, { attachments: [file] });
+          broadcast('task.progress', { taskId: task.id }); queue.schedule();
+          return { taskId: task.id, messageId: task.message_id, file };
+        }
         // The live view of a bot's Chrome on the computer, sent only to the app connections watching it.
         case 'browser.view': {
           const bot = db.requireBot(params.botId);
@@ -576,6 +614,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const bytes = Buffer.from(typeof body.data === 'string' ? body.data : '', 'base64');
           if (!name || !bytes.length || bytes.length > 20 * 1024 * 1024) { fail(400, 'Arquivo vazio, sem nome ou maior que 20 MB.'); return; }
           const file = attachments.store(bot.id, { name, mime, bytes });
+          db.run('INSERT INTO browser_downloads VALUES(?,?,?,?,?,?,?,?)', randomUUID(), bot.id, 'phone', file.name, file.size, file.mime, file.id, now());
+          broadcast('browser.download', { botId: bot.id });
           db.record('file_downloaded', `Arquivo baixado pelo navegador: ${name}${typeof body.source === 'string' ? ` (${body.source.slice(0, 100)})` : ''}.`, bot.id);
           broadcast('activity.new');
           response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(file));

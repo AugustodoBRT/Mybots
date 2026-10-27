@@ -3,10 +3,10 @@ import { generateKeyPairSync, randomBytes, privateDecrypt, createDecipheriv } fr
 import { lookup } from 'node:dns/promises';
 import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/browser-page.mjs';
 import { viewSize } from '../supervisor/browser-frame.mjs';
-import { safeUrl } from '../supervisor/browser.mjs';
+import { safeUrl, stepCaption, BLOCKED } from '../supervisor/browser.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
+import { join, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
@@ -31,6 +31,61 @@ export async function connectMine(endpoint) {
   catch (error) { throw new Error(/403|denied|rejected|forbidden|1008|socket hang up|closed before the connection was established/i.test(error.message) ? 'Você recusou a conexão no Chrome.' : CHROME_SETUP); }
 }
 
+export const IMPORTED = 'mybots-imported-to-shared';
+const downloadsRoot = () => process.env.MYBOTS_DOWNLOADS || join(homedir(), '.mybots-pc', 'downloads'), MAX_DOWNLOAD = 100 * 1024 * 1024;
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A tab's icon, fetched once per address: the page's own <link rel=icon> or /favicon.ico, small raster images only.
+const ICONS = new Map();
+function iconData(type, body) {
+  // Most .ico files carry a PNG inside; Android shows PNG everywhere.
+  if (/icon/.test(type) && body.length > 6 && body.readUInt16LE(0) === 0 && body.readUInt16LE(2) === 1) {
+    for (let n = 0; n < Math.min(body.readUInt16LE(4), 16); n++) {
+      const entry = 6 + n * 16; if (entry + 16 > body.length) break;
+      const size = body.readUInt32LE(entry + 8), offset = body.readUInt32LE(entry + 12);
+      if (offset + size <= body.length && body.readUInt32BE(offset) === 0x89504e47) return 'data:image/png;base64,' + body.subarray(offset, offset + size).toString('base64');
+    }
+  }
+  return `data:${type};base64,${body.toString('base64')}`;
+}
+/** A download's name inside the bot's folder: no paths, no executables, never overwriting another file. */
+export function downloadName(value, folder) {
+  let name = String(value || 'arquivo').replace(/[\u0000-\u001f/\\]/g, '_').replace(/^\.+/, '').trim().slice(0, 120) || 'arquivo';
+  if (BLOCKED.test(name)) throw new Error('Arquivos executáveis são bloqueados.');
+  const ext = extname(name), base = name.slice(0, name.length - ext.length);
+  for (let n = 2; existsSync(join(folder, name)); n++) name = `${base} (${n})${ext}`;
+  return name;
+}
+async function checkRoute(route) {
+  try { await allowedUrl(route.request().url()); await route.continue(); } catch { await route.abort().catch(() => {}); }
+}
+// A Chrome of MyBots (a separate bot's or the shared one): no window, no saved passwords, every address checked.
+export async function launchContext(profile, headless = true) {
+  const path = join(profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
+  let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
+  prefs.credentials_enable_service = false;
+  prefs.profile = { ...prefs.profile, password_manager_enabled: false };
+  writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
+  const context = await chromium.launchPersistentContext(profile, {
+    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: { width: 1280, height: 800 },
+    acceptDownloads: true, serviceWorkers: 'block', permissions: [],
+    args: [...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+  });
+  await context.clearPermissions();
+  await context.route('**/*', checkRoute);
+  return context;
+}
+/** Copies the cookies (the logins) of a bot's pre-v58 Chrome into the shared one, once; the old profile is kept. */
+export async function importLogins(context, profile) {
+  if (existsSync(join(profile, IMPORTED)) || !existsSync(join(profile, 'Default'))) return 0;
+  const old = await launchContext(profile);
+  try {
+    const cookies = await old.cookies();
+    if (cookies.length) await context.addCookies(cookies);
+    writeFileSync(join(profile, IMPORTED), new Date().toISOString(), { mode: 0o600 });
+    return cookies.length;
+  } finally { await old.close().catch(() => {}); }
+}
+
 // The same vendors as captchaState (which runs inside the page and cannot share code).
 function challengeFrame(value) {
   try { const url = new URL(value), host = url.hostname; return host === 'challenges.cloudflare.com' || (host === 'google.com' || host.endsWith('.google.com')) && url.pathname.includes('/recaptcha/') || host === 'hcaptcha.com' || host.endsWith('.hcaptcha.com'); } catch { return false; }
@@ -41,7 +96,7 @@ const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'Arrow
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
+  constructor(profile, { headless = true, mode = 'own', connect, botId = basename(profile) } = {}) { this.profile = profile; this.mode = mode; this.botId = botId; this.downloadSerial = 0; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
     try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
     this.autoReturn = this.siteViews.__autoReturn === true;
   }
@@ -51,20 +106,8 @@ export class BrowserSession {
       this.browser = await (this.connect ? this.connect() : connectMine(chromeEndpoint(this.profile)));
       this.context = this.browser.contexts()[0];
       if (!this.context) throw new Error(CHROME_SETUP);
-    } else {
-    const path = join(this.profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
-    let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
-    prefs.credentials_enable_service = false;
-    prefs.profile = { ...prefs.profile, password_manager_enabled: false };
-    writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
-    this.context = await chromium.launchPersistentContext(this.profile, {
-      executablePath: '/usr/bin/google-chrome-stable', headless: this.headless, viewport: { width: 1280, height: 800 },
-      acceptDownloads: false, serviceWorkers: 'block', permissions: [],
-      args: [...(this.headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
-    });
-    await this.context.clearPermissions();
-    await this.context.route('**/*', route => this.route(route));
-    }
+    } else if (this.mode === 'shared') this.context = await this.connect();
+    else this.context = await launchContext(this.profile, this.headless);
     this.pages = []; this.metrics = new Map(); this.tabError = null; this.closing = false;
     const add = page => {
       if (this.pages.length >= 5) { this.tabError = 'Até 5 abas por bot. Feche uma aba antes de abrir outra.'; this.closePage(page).catch(() => {}); return; }
@@ -72,9 +115,13 @@ export class BrowserSession {
       if (this.mode === 'mine') {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
+      // In the shared Chrome a popup belongs to the bot whose page opened it (the context's route checks its address).
+      if (this.mode === 'shared') page.on('popup', add);
+      if (this.mode !== 'mine') page.on('download', download => this.saveDownload(download));
       page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) (this.cdp || this.device) && this.emitFrame({ loading: true }); });
       page.on('domcontentloaded', () => { if (this.cdp || this.device) this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
+      page.on('framenavigated', frame => { if (frame === page.mainFrame()) this.tabBar().catch(() => {}); });
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
         this.metrics.get(page)?.detach().catch(() => {}); this.metrics.delete(page);
@@ -83,7 +130,7 @@ export class BrowserSession {
       });
     };
     this.addPage = add;
-    if (this.mode === 'mine') {
+    if (this.mode === 'mine' || this.mode === 'shared') {
       this.page = await this.newPage();
     } else {
       this.context.pages().forEach(add);
@@ -92,17 +139,17 @@ export class BrowserSession {
     }
     await Promise.all(this.pages.map(page => this.observe(page)));
     const closed = () => { this.context = null; this.page = null; this.login = null; this.cdp = null; this.starting = null; this.emitFrame({ closed: true }); };
-    if (this.mode === 'mine') { this.onDisconnect = closed; this.browser.on('disconnected', closed); } else this.context.on('close', closed);
+    this.onDisconnect = closed;
+    if (this.mode === 'mine') this.browser.on('disconnected', closed); else this.context.on('close', closed);
   }
-  async route(route) {
-    try { await allowedUrl(route.request().url()); await route.continue(); } catch { await route.abort().catch(() => {}); }
-  }
+  route(route) { return checkRoute(route); }
   async newPage(url) {
     if (this.closing) throw new Error('O navegador do bot foi interrompido.');
     if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
     const safe = url ? await allowedUrl(url) : null;
     const page = await this.context.newPage();
     if (this.closing) { await this.closePage(page); throw new Error('O navegador do bot foi interrompido.'); }
+    if (this.mode === 'shared') this.addPage(page);
     if (this.mode === 'mine') {
       this.addPage(page); await page.route('**/*', route => this.route(route));
       const metrics = await this.context.newCDPSession(page); this.metrics.set(page, metrics);
@@ -157,10 +204,7 @@ export class BrowserSession {
     }
     if (on && !this.pageTimer) this.pageTimer = setInterval(() => this.checkChallenge().catch(() => {}), 500);
     if (!on) { clearInterval(this.pageTimer); this.pageTimer = null; }
-    if (on) for (const frame of this.page.frames()) await frame.evaluate(() => {
-      if (document.querySelector('style[data-mybots-live-mask]')) return;
-      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { -webkit-text-security:disc!important; text-shadow:none!important; }'; document.documentElement.append(style);
-    }).catch(() => {});
+    if (on) await this.maskFields();
     const quality = (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
     if (on && !this.cdp) {
       const cdp = this.cdp = await this.context.newCDPSession(this.page);
@@ -182,6 +226,44 @@ export class BrowserSession {
     }
     return { watching: Boolean(this.cdp), ...await this.info() };
   }
+  // Pictures of the page (live view, timeline) show password and code fields as dots.
+  async maskFields() {
+    for (const frame of this.page.frames()) await frame.evaluate(() => {
+      if (document.querySelector('style[data-mybots-live-mask]')) return;
+      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { -webkit-text-security:disc!important; text-shadow:none!important; }'; document.documentElement.append(style);
+    }).catch(() => {});
+  }
+  /** Where the bot is about to act, for the person watching: a cursor, the element's outline and a caption. */
+  async showAction(op, args, target, rect, point) {
+    if (!this.cdp && !this.device) return;
+    const { width, height } = this.viewportSize();
+    this.emitFrame({ action: { caption: stepCaption(op, args, target), rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null, point: point || (rect ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : null), width, height, at: Date.now() } });
+    // A moment for the eye to follow the cursor before the page changes.
+    await sleep(350);
+  }
+  saveDownload(download) {
+    this.downloadSerial++;
+    this.downloading = (async () => {
+      const folder = join(downloadsRoot(), this.botId); mkdirSync(folder, { recursive: true, mode: 0o700 });
+      let name;
+      try { name = downloadName(download.suggestedFilename(), folder); } catch (error) { await download.cancel().catch(() => {}); throw error; }
+      await download.saveAs(join(folder, name));
+      const size = statSync(join(folder, name)).size;
+      if (size > MAX_DOWNLOAD) { unlinkSync(join(folder, name)); throw new Error('O arquivo passa de 100 MB.'); }
+      const file = { name, size, at: new Date().toISOString(), where: 'pc' };
+      this.emitFrame({ download: file }); return file;
+    })().catch(error => ({ error: /executáveis|100 MB/.test(error.message) ? error.message : 'O download falhou.' }));
+    return this.downloading;
+  }
+  // A download starts a moment after the click; when one starts, wait for it (up to 90 s) and report the saved file.
+  async awaitDownload(before) {
+    for (let start = Date.now(); this.downloadSerial === before && Date.now() - start < 1500;) await sleep(100);
+    if (this.downloadSerial === before) return null;
+    let timer;
+    const late = new Promise(resolve => { timer = setTimeout(() => resolve({ error: 'O download ainda não terminou.' }), 90000); timer.unref(); });
+    try { return await Promise.race([this.downloading, late]); } finally { clearTimeout(timer); }
+  }
+  withDownload(result, file) { return file ? { ...result, download: file, ...(file.error ? {} : { next: 'O arquivo foi salvo nos downloads deste bot no computador. A pessoa pode abri-lo ou enviá-lo a você pela lista de downloads do navegador.' }) } : result; }
   queueFrame(cdp, frame) {
     this.pendingFrame = frame;
     if (this.frameTimer) return;
@@ -332,6 +414,9 @@ export class BrowserSession {
     }
     if (args.type === 'viewport') { await this.deviceView(args); return { sent: true }; }
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
+    if (args.type === 'tab_close') return this.perform('tabs', { action: 'close', tab: args.tab });
+    if (args.type === 'tab_new') { if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.'); await this.activate(await this.newPage()); return { sent: true }; }
+    if (args.type === 'forward') { await this.page.goForward({ waitUntil: 'commit' }).catch(() => {}); return { sent: true }; }
     if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));
     else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
     else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) { const sensitive = await this.sensitiveFocus(); await this.page.keyboard.insertText(args.text); if (sensitive) await this.rememberField(); }
@@ -351,7 +436,34 @@ export class BrowserSession {
   }
   async info() {
     if (this.pages) this.tabTitles = new Map(await Promise.all(this.pages.map(async page => [page, (await page.title().catch(() => '')).slice(0, 100)])));
+    this.tabBar().catch(() => {});
     return { url: this.page.url(), title: (await this.page.title()).slice(0, 200), where: 'pc', tabs: this.tabList() }; }
+  /** The tab strip of the live view: icon, title and address of each tab, and whether back and forward go anywhere. */
+  async tabBar() {
+    if (!this.pages || !(this.cdp || this.device)) return;
+    const page = this.page, cdp = this.history?.page === page && !page.isClosed() ? this.history.cdp : null;
+    if (!cdp) { await this.history?.cdp.detach().catch(() => {}); this.history = { page, cdp: await this.context.newCDPSession(page) }; return this.tabBar(); }
+    const { currentIndex, entries } = await cdp.send('Page.getNavigationHistory');
+    const tabs = await Promise.all(this.pages.map(async (tab, n) => ({ tab: n + 1, title: this.tabTitles?.get(tab) || '', url: tab.url().slice(0, 500), active: tab === page, icon: await this.icon(tab) })));
+    const bar = { tabs, back: currentIndex > 0, forward: currentIndex < entries.length - 1 }, signature = JSON.stringify(bar);
+    if (signature !== this.lastBar) { this.lastBar = signature; this.emitFrame({ tabbar: bar }); }
+  }
+  async icon(page) {
+    const href = await page.evaluate(() => { const link = [...document.querySelectorAll('link[rel~="icon"],link[rel="shortcut icon"]')].find(item => item.href && !/svg/i.test(item.type + item.href)); return link?.href || (/^https?:/.test(location.protocol) ? location.origin + '/favicon.ico' : ''); }).catch(() => '');
+    if (!href || href.length > 2000) return '';
+    if (ICONS.size > 300) ICONS.clear();
+    if (!ICONS.has(href)) {
+      ICONS.set(href, '');
+      (async () => {
+        if (/^data:image\/(png|jpeg|gif|webp|x-icon)/.test(href)) { if (href.length < 22000) ICONS.set(href, href); return; }
+        // Checked like any page address, and no redirects: an icon can never reach this computer's own services.
+        const response = await this.context.request.get(await allowedUrl(href), { timeout: 5000, maxRedirects: 0 });
+        const type = (response.headers()['content-type'] || '').split(';')[0].trim().toLowerCase(), body = await response.body();
+        if (response.ok() && /^image\/(png|jpeg|gif|webp|x-icon|vnd\.microsoft\.icon)$/.test(type) && body.length < 16000) { ICONS.set(href, iconData(type, body)); this.lastBar = null; this.tabBar().catch(() => {}); }
+      })().catch(() => {});
+    }
+    return ICONS.get(href);
+  }
   target(id) {
     const selector = `[data-mybots-id="${id}"]`;
     return (this.elementFrames?.get(id) || this.page).locator(selector);
@@ -359,7 +471,7 @@ export class BrowserSession {
   async inspect(id) {
     const target = this.target(id);
     if (await target.count() !== 1) throw new Error('Elemento não encontrado. Use browser_read de novo.');
-    return target.evaluate(el => ({ kind: el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' ? 'submit' : 'field', label: (el.getAttribute('aria-label') || el.textContent || el.name || '').slice(0, 200), url: location.href }));
+    return target.evaluate(el => ({ kind: el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' ? 'submit' : 'field', label: (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.placeholder || el.textContent || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 200), url: location.href }));
   }
   async command(op, input = {}) {
     const result = await this.perform(op, input);
@@ -371,8 +483,21 @@ export class BrowserSession {
     if (op === 'login_cancel') { this.login = null; return { cancelled: true }; }
     await this.start();
     const { expectedTarget, ...publicInput } = input;
-    const args = ['inspect', 'login_fill', 'login_cancel', 'upload'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
-    if (op === 'open') { await this.page.goto(await allowedUrl(args.url), { waitUntil: 'domcontentloaded' }); return this.info(); }
+    const args = ['inspect', 'login_fill', 'login_cancel', 'upload', 'thumb'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
+    if (op === 'thumb') {
+      // The timeline's picture of this moment: small, with password fields as dots.
+      await this.maskFields();
+      const { width, height } = this.viewportSize(), scale = Math.min(1, 480 / width), cdp = await this.context.newCDPSession(this.page);
+      try { const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip: { x: 0, y: 0, width, height, scale } }); return { image: data, width: Math.round(width * scale), height: Math.round(height * scale) }; }
+      finally { await cdp.detach().catch(() => {}); }
+    }
+    if (op === 'open') {
+      const safe = await allowedUrl(args.url), before = this.downloadSerial;
+      await this.showAction('open', args);
+      // A link straight to a file starts a download instead of a page.
+      try { await this.page.goto(safe, { waitUntil: 'domcontentloaded' }); } catch (error) { if (!/Download is starting/i.test(error.message)) throw error; }
+      return this.withDownload(await this.info(), await this.awaitDownload(before));
+    }
     if (op === 'read' || op === 'find') {
       const content = await this.page.evaluate(readPage, op === 'find' ? args : {});
       this.elementFrames = new Map();
@@ -402,20 +527,28 @@ export class BrowserSession {
     if (op === 'act') {
       const target = await this.page.evaluate(inspectPoint, args);
       if (expectedTarget && ['kind','label','url'].some(key => target[key] !== expectedTarget[key])) throw new Error('O alvo mudou. Leia a página e tente de novo.');
-      const mouse = this.page.mouse;
+      const mouse = this.page.mouse, before = this.downloadSerial;
+      await this.showAction('act', args, target, target.rect, ['key','scroll'].includes(args.action) ? null : { x: args.x, y: args.y });
       if (args.action === 'key') await this.page.keyboard.press(args.key);
       else if (args.action === 'hover') await mouse.move(args.x, args.y);
       else if (args.action === 'scroll') { await mouse.move(args.x, args.y); await mouse.wheel(args.dx, args.dy); }
       else if (args.action === 'drag') { await mouse.move(args.x, args.y); await mouse.down(); try { await mouse.move(args.toX, args.toY, { steps: 10 }); } finally { await mouse.up(); } }
       else if (args.action === 'double_click') await mouse.dblclick(args.x, args.y);
       else await mouse.click(args.x, args.y, { button: args.action === 'right_click' ? 'right' : 'left' });
-      return { ...await this.info(), target };
+      const { rect, ...shown } = target;
+      return this.withDownload({ ...await this.info(), target: shown }, await this.awaitDownload(before));
     }
     if (op === 'inspect') return args.action ? this.page.evaluate(inspectPoint, args) : this.inspect(args.id);
-    if (op === 'click') { await this.inspect(args.id); await this.target(args.id).click({ noWaitAfter: true }); return this.info(); }
+    if (op === 'click') {
+      const inspected = await this.inspect(args.id), before = this.downloadSerial;
+      await this.showAction('click', args, inspected, await this.target(args.id).boundingBox().catch(() => null));
+      await this.target(args.id).click({ noWaitAfter: true });
+      return this.withDownload(await this.info(), await this.awaitDownload(before));
+    }
     if (op === 'type') {
       const target = this.target(args.id); const inspected = await this.inspect(args.id);
       if (inspected.kind === 'password') throw new Error('Senhas só por browser_login ou pela pessoa no Chrome.');
+      await this.showAction('type', args, inspected, await target.boundingBox().catch(() => null));
       if (await target.evaluate(el => el.tagName === 'SELECT')) await target.selectOption({ label: args.text });
       else await target.fill(args.text);
       if (args.submit) await target.press('Enter', { noWaitAfter: true });
@@ -481,30 +614,47 @@ export class BrowserSession {
   }
   async close() {
     clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.pendingFrame = null;
-    if (this.mode === 'mine') {
-      if (this.onDisconnect) this.browser?.off('disconnected', this.onDisconnect);
+    if (this.mode === 'mine' || this.mode === 'shared') {
+      // Only this bot's tabs close: Meu Chrome and the shared Chrome keep running for the person and the other bots.
+      if (this.onDisconnect) (this.mode === 'mine' ? this.browser : this.context)?.off(this.mode === 'mine' ? 'disconnected' : 'close', this.onDisconnect);
       if (this.cdp) await this.view(false).catch(() => {});
       await Promise.all((this.pages || []).map(page => this.closePage(page).catch(() => {})));
       this.pages = []; this.page = null; this.context = null; this.starting = null;
-      if (!this.connect) await this.browser?.close();
+      if (this.mode === 'mine' && !this.connect) await this.browser?.close();
       this.emitFrame({ closed: true });
     } else await this.context?.close();
   }
 }
 
 if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const mine = process.argv[3] === 'mine', sessions = new Map(), secrets = new Set(); let connection;
+  const kind = process.argv[3], mine = kind === 'mine', shared = kind === 'shared', sessions = new Map(), secrets = new Set(); let connection, sharedContext;
   const connect = () => connection ||= connectMine(process.argv[4]).then(browser => { browser.on('disconnected', () => { connection = null; }); return browser; }).catch(error => { connection = null; throw error; });
+  // The shared Chrome (the default): one profile for every bot that uses it, so a login made by one serves all of them.
+  // Old logins are copied in before any bot's page opens.
+  const imports = [];
+  const open = () => sharedContext ||= launchContext(join(process.argv[2], 'chrome')).then(async context => {
+    context.on('close', () => { sharedContext = null; });
+    for (let n = 0; n < imports.length; n++) await imports[n](context).catch(() => {});
+    return context;
+  }).catch(error => { sharedContext = null; throw error; });
   const sessionFor = botId => {
     if (!sessions.has(botId)) {
-      const session = new BrowserSession(mine ? join(process.argv[2], botId) : process.argv[2], { mode: mine ? 'mine' : 'own', ...(mine ? { connect } : {}) });
-      if (mine) session.secrets = secrets;
+      const session = mine ? new BrowserSession(join(process.argv[2], botId), { mode: 'mine', connect, botId })
+        : shared ? new BrowserSession(join(process.argv[2], 'bots', botId), { mode: 'shared', connect: open, botId })
+        : new BrowserSession(process.argv[2], { mode: 'own', botId });
+      if (mine || shared) session.secrets = secrets;
       session.frame = frame => process.send?.({ frame, botId }); sessions.set(botId, session);
     }
     return sessions.get(botId);
   };
   const commands = new Map(); const people = new Map();
   const handle = async ({ id, botId = basename(process.argv[2]), op, args }) => {
+    if (op === 'import') {
+      if (!shared || typeof args?.profile !== 'string') return;
+      const copy = context => importLogins(context, args.profile);
+      imports.push(copy); if (sharedContext) await sharedContext.then(copy).catch(() => {});
+      return;
+    }
     if (!/^[0-9a-f-]{36}$/i.test(botId || '')) return;
     try {
       if (op === 'close') { await sessions.get(botId)?.close(); sessions.delete(botId); if (id) process.send?.({ id, result: { closed: true } }); return; }
@@ -513,14 +663,14 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
       const result = op === 'device' ? await session.deviceView(args) || { restored: true } : op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
       process.send?.({ id, result });
     } catch (error) {
-      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
+      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou|executáveis/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
     }
   };
   process.on('message', message => {
     if (message.op === 'view' || message.op === 'input' || message.op === 'close' || message.op === 'device') { const pending = (people.get(message.botId) || Promise.resolve()).then(() => handle(message)); people.set(message.botId, pending); }
-    // One bot's commands keep their order; bots that share this browser (Meu Chrome) do not wait for each other.
+    // One bot's commands keep their order; bots that share this browser do not wait for each other.
     else { const key = message.botId || ''; commands.set(key, (commands.get(key) || Promise.resolve()).then(() => handle(message))); }
   });
-  const close = async () => { await Promise.all([...sessions.values()].map(session => session.close().catch(() => {}))); if (connection) await connection.then(browser => browser.close()).catch(() => {}); process.exit(); };
+  const close = async () => { await Promise.all([...sessions.values()].map(session => session.close().catch(() => {}))); if (connection) await connection.then(browser => browser.close()).catch(() => {}); if (sharedContext) await sharedContext.then(context => context.close()).catch(() => {}); process.exit(); };
   process.on('disconnect', close); process.on('SIGTERM', close);
 }

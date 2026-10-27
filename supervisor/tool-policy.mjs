@@ -36,7 +36,7 @@ export const TOOL_DEFINITIONS = [
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   // The team: bots making bots, opening rooms, adding and removing members. No approval cards; one switch turns it all off.
   { name: 'team', label: 'Equipe de bots', description: 'Criar outros bots, abrir salas, pôr e tirar bots delas, sair sozinho e chamar os outros para trabalhar (@Nome), tudo sem perguntar. Um bot nunca cria outro com mais acesso do que o próprio. Desligado em Pouco acesso, a menos que você ligue.', defaultAllowed: true },
-  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador próprio do bot (dentro do MyBots), lê, clica e preenche. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
+  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
 ];
 export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
 export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room'];
@@ -56,8 +56,9 @@ export function validFolders(list) {
   return list.every(path => typeof path === 'string' && /^(~|\/)[^\u0000-\u001f]{0,300}$/.test(path) && !/(^|\/)\.\.(\/|$)/.test(path) && !SENSITIVE.test(path) && !['/', '~', '~/'].includes(path.trim()));
 }
 export { browserMode } from '../mobile/local.js';
+import { BROWSER_MODES } from '../mobile/local.js';
 export function validateProfile(data) {
-  if (data.browserMode !== undefined && !['own','mine','claude'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');
+  if (data.browserMode !== undefined && ![...BROWSER_MODES, 'own'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');
   if (data.browserMode === 'claude' && data.provider !== 'claude') throw new Error('Claude in Chrome só está disponível para bots Claude.');
   if (data.browserMode === 'mine' && data.access === 'basic') throw new Error('Meu Chrome exige Navegador e não está disponível em Pouco acesso.');
   if (data.mainChrome !== undefined && typeof data.mainChrome !== 'boolean') throw new Error('Escolha se o bot usa o seu Chrome principal.');

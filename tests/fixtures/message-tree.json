@@ -1,0 +1,362 @@
+[
+  {
+    "type": "View",
+    "props": {
+      "style": "messageRow",
+      "children": [
+        {
+          "type": "Avatar",
+          "props": {
+            "bot": {
+              "id": "a",
+              "name": "A",
+              "color": "green"
+            },
+            "size": 30,
+            "animated": false,
+            "tile": false
+          }
+        },
+        {
+          "type": "View",
+          "props": {
+            "style": [
+              "messageBubble",
+              "assistantBubble"
+            ],
+            "children": [
+              {
+                "type": "View",
+                "props": {
+                  "style": "messageMeta",
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageSpeaker",
+                        "children": "A"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageTime",
+                        "children": [
+                          "12:00",
+                          "",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              null,
+              {
+                "type": "RichText",
+                "props": {
+                  "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+                  "textStyle": "messageText"
+                }
+              },
+              false
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "type": "View",
+    "props": {
+      "style": [
+        "messageRow",
+        "userMessageRow"
+      ],
+      "children": {
+        "type": "View",
+        "props": {
+          "style": [
+            "messageBubble",
+            "userBubble"
+          ],
+          "children": [
+            null,
+            {
+              "type": "Text",
+              "props": {
+                "selectable": true,
+                "style": "messageText",
+                "children": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+              }
+            },
+            {
+              "type": "Text",
+              "props": {
+                "style": "userTime",
+                "children": "12:00"
+              }
+            },
+            false
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "View",
+    "props": {
+      "style": "routineRow",
+      "children": [
+        {
+          "type": "Pressable",
+          "props": {
+            "accessibilityRole": "button",
+            "accessibilityLabel": "Rotina Lembrete",
+            "style": "routineChip",
+            "children": [
+              {
+                "type": "View",
+                "props": {
+                  "style": "routineChipHead",
+                  "children": [
+                    {
+                      "type": "Icon",
+                      "props": {
+                        "name": "bolt",
+                        "size": 14,
+                        "color": "sky"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "routineChipText",
+                        "numberOfLines": 1,
+                        "children": [
+                          "Rotina · ",
+                          "Lembrete",
+                          " · ",
+                          "12:00"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "Icon",
+                      "props": {
+                        "name": "down",
+                        "size": 14,
+                        "color": "faint"
+                      }
+                    }
+                  ]
+                }
+              },
+              false
+            ]
+          }
+        },
+        false
+      ]
+    }
+  },
+  {
+    "type": "View",
+    "props": {
+      "style": "messageRow",
+      "children": [
+        {
+          "type": "Avatar",
+          "props": {
+            "bot": {
+              "id": "a",
+              "name": "A",
+              "color": "green"
+            },
+            "size": 30,
+            "animated": false,
+            "tile": false
+          }
+        },
+        {
+          "type": "View",
+          "props": {
+            "style": [
+              "messageBubble",
+              "assistantBubble"
+            ],
+            "children": [
+              {
+                "type": "View",
+                "props": {
+                  "style": "messageMeta",
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageSpeaker",
+                        "children": "A"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageTime",
+                        "children": [
+                          "12:00",
+                          "",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              null,
+              {
+                "type": "RichText",
+                "props": {
+                  "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+                  "textStyle": "messageText"
+                }
+              },
+              {
+                "type": "View",
+                "props": {
+                  "style": "messageError",
+                  "children": [
+                    {
+                      "type": "Icon",
+                      "props": {
+                        "name": "alert",
+                        "size": 16,
+                        "color": "red"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageErrorText",
+                        "children": "Sem rede"
+                      }
+                    },
+                    {
+                      "type": "Pressable",
+                      "props": {
+                        "accessibilityRole": "button",
+                        "style": "retryButton",
+                        "children": [
+                          {
+                            "type": "Icon",
+                            "props": {
+                              "name": "refresh",
+                              "size": 14,
+                              "color": "text"
+                            }
+                          },
+                          {
+                            "type": "Text",
+                            "props": {
+                              "style": "retryText",
+                              "children": "Tentar de novo"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "type": "View",
+    "props": {
+      "style": "messageRow",
+      "children": [
+        {
+          "type": "Avatar",
+          "props": {
+            "bot": {
+              "id": "a",
+              "name": "A",
+              "color": "green"
+            },
+            "size": 30,
+            "animated": false,
+            "tile": false
+          }
+        },
+        {
+          "type": "View",
+          "props": {
+            "style": [
+              "messageBubble",
+              "assistantBubble"
+            ],
+            "children": [
+              {
+                "type": "View",
+                "props": {
+                  "style": "messageMeta",
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageSpeaker",
+                        "children": "A"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {
+                        "style": "messageTime",
+                        "children": [
+                          "12:00",
+                          " · Modelo · Baixo",
+                          " · 10 tokens"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "View",
+                "props": {
+                  "style": "messageFiles",
+                  "children": [
+                    {
+                      "type": "FileCard",
+                      "props": {
+                        "file": {
+                          "id": "f",
+                          "name": "relatório.pdf",
+                          "mime": "application/pdf",
+                          "size": 1000
+                        },
+                        "busy": false
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "RichText",
+                "props": {
+                  "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+                  "textStyle": "messageText"
+                }
+              },
+              false
+            ]
+          }
+        }
+      ]
+    }
+  }
+]

@@ -1,14 +1,15 @@
-import { useAppState } from './state/store';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { appStore, selectShell } from './state/store';
+import { useStore } from './state/useStore';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PasswordsPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PasswordsPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { desktop, column } from './desktop';
-import { emptyLocalStore, createId, mergeBotLists, validateBackup } from './local';
-import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, publishShareTargets, passwordOfferAnswer, readDeviceInfo } from './termux';
+import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
+import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
-import { addPage, inSequence, applyMessage, applyToLists, applyBot, applyStep } from './chat-events';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames } from './BotBrowserPanel';
 import { createTermuxBackup } from './backup';
@@ -41,15 +42,18 @@ async function api(path, data, token, apiUrl) {
 
 export default function App() {
   const [fonts] = useFonts({ PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold });
-  return fonts ? <AppMain /> : <View style={styles.app} />;
+  return fonts ? <KeyboardProvider><AppMain /></KeyboardProvider> : <View style={styles.app} />;
 }
 
 function AppMain() {
-  const { data, setData, chats, setChats } = useAppState();
+  const data = useStore(selectShell);
+  const { setData, setChats } = appStore;
   const [apiToken, setApiToken] = useState('');
   const [apiBase, setApiBase] = useState(DEFAULT_API_URL);
   const [mode, setMode] = useState(desktop ? 'phone' : 'computer');
   const [localCache, setLocalCache] = useState(emptyLocalStore());
+  const localCacheRef = useRef(localCache);
+  useEffect(() => { localCacheRef.current = localCache; }, [localCache]);
   const [selected, setSelected] = useState(null);
   // The open room, and the create/edit sheet (null closed, {} new, {room} editing).
   const [roomId, setRoomId] = useState(null);
@@ -96,12 +100,27 @@ function AppMain() {
   const eventRefresh = useRef(null);
   // The supervisor's state has no messages: the open conversations are loaded by page (chat.page) and kept up to date
   // by the message events. `seq` is the number of the last applied event; a gap reloads the state and these pages.
-  const chatsRef = useRef(chats); chatsRef.current = chats;
+  const chatsRef = { get current() { return appStore.getSnapshot().chats; } };
   const lastSeq = useRef(null);
+  const loadingPages = useRef(new Map());
   const openChat = useRef(null);
   // Skills, memories and permissions of the bot whose profile is open (bot.profile).
   const [profile, setProfile] = useState(null);
   const phoneConnecting = useRef(null);
+  const resyncing = useRef(null);
+  useEffect(() => {
+    let timer; let writing = Promise.resolve();
+    const persist = () => {
+      const { data, chats } = appStore.getSnapshot();
+      if (phoneMode.current !== 'phone' || !data?.supervisorConnected || desktop) return;
+      const cache = conversationCache(localCacheRef.current, data, chats);
+      localCacheRef.current = cache;
+      writing = writing.catch(() => {}).then(() => writeLocalStore(cache)).catch(() => setLoadError('Não consegui atualizar a cópia local. Os dados continuam salvos no supervisor.'));
+    };
+    const stop = appStore.subscribe(() => { clearTimeout(timer); timer = setTimeout(persist, 200); });
+    return () => { stop(); clearTimeout(timer); persist(); };
+  }, []);
+
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -138,14 +157,11 @@ function AppMain() {
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
     lastSeq.current = typeof next.seq === 'number' ? next.seq : null;
+    appStore.sequence(lastSeq.current);
     // The conversation on screen is being read: its new messages are not unseen.
     const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
     setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
-    // The saved copy keeps the latest loaded messages of each conversation (the supervisor has them all).
-    const cache = { schema: 1, mode: 'phone', supervisorMigrated: true, bots: [...next.bots, ...(next.deletedBots || [])].map(bot => ({ ...bot, messages: (chatsRef.current[bot.id]?.messages || []).filter(message => ['user', 'assistant'].includes(message.role)).slice(-40) })) };
-    setLocalCache(cache);
-    try { await writeLocalStore(cache); }
-    catch { setLoadError('Não consegui atualizar a cópia local. Os dados continuam salvos no supervisor.'); }
+
     return next;
   }, []);
   // Every (re)connection hands the supervisor the secrets key and, once per release, the connector bundle.
@@ -165,19 +181,29 @@ function AppMain() {
   }, []);
   // A page of a conversation: the latest (replacing what was loaded) or the one before the oldest loaded.
   const loadChat = useCallback(async (target, older = false) => {
-    const key = target.botId || target.roomId; const before = older ? chatsRef.current[key]?.before : undefined;
+    const key = target.botId || target.roomId;
+    const pending = loadingPages.current.get(key);
+    if (pending) { if (!older && pending.older) { await pending.work; return loadChat(target); } return pending.work; }
+    const before = older ? chatsRef.current[key]?.before : undefined;
     if (older && !before) return;
+    const work = (async () => {
     const page = await supervisor.current.call('chat.page', { ...target, ...(before ? { before } : {}) });
-    setChats(old => addPage(old, key, page, older));
+    appStore.page(key, page, older);
     if (!older) setData(old => old ? { ...old, bots: old.bots?.map(bot => bot.id === key ? { ...bot, unread: 0 } : bot), rooms: old.rooms?.map(room => room.id === key ? { ...room, unread: 0 } : room) } : old);
+    })().finally(() => loadingPages.current.delete(key));
+    loadingPages.current.set(key, { work, older }); return work;
   }, []);
   // After a missed event or a reconnection: the state again, and the latest page of each loaded conversation.
-  const resync = useCallback(async () => {
+  const resync = useCallback(() => {
+    if (resyncing.current) return resyncing.current;
+    resyncing.current = (async () => {
     const next = await loadSupervisorState();
     const known = [...(next.bots || []).map(bot => bot.id), ...(next.rooms || []).map(room => room.id)];
     const loaded = Object.keys(chatsRef.current);
     setChats(old => Object.fromEntries(Object.entries(old).filter(([key]) => known.includes(key))));
     for (const key of loaded.filter(key => known.includes(key))) await loadChat((next.rooms || []).some(room => room.id === key) ? { roomId: key } : { botId: key }).catch(() => {});
+    })().finally(() => { resyncing.current = null; });
+    return resyncing.current;
   }, []);
   if (!supervisor.current) supervisor.current = Object.assign(new SupervisorClient({
     onEvent: (event, data) => {
@@ -189,13 +215,12 @@ function AppMain() {
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
       if (phoneMode.current === 'phone' && typeof data?.seq === 'number') {
-        const continues = inSequence(lastSeq.current, data.seq); lastSeq.current = data.seq;
-        if (!continues) { clearTimeout(eventRefresh.current); resync().catch(error => setLoadError(error.message)); return; }
-        // Messages, steps and bot changes are applied as they come, without asking for the whole state.
-        if (event === 'message.added' || event === 'message.updated') { setChats(old => applyMessage(old, event, data)); setData(old => applyToLists(old, event, data, openChat.current)); return; }
-        if (event === 'bot.updated') { setData(old => applyBot(old, data)); return; }
+        const result = appStore.event(event, data, openChat.current);
+        if (result.duplicate) return;
+        if (result.gap) { clearTimeout(eventRefresh.current); resync().catch(error => setLoadError(error.message)); return; }
+        if (['message.added', 'message.updated', 'bot.updated'].includes(event)) return;
         if (event === 'chat.reset') { const key = data.botId || data.roomId; if (chatsRef.current[key]) loadChat(data.botId ? { botId: key } : { roomId: key }).catch(() => {}); return; }
-        if (event === 'task.progress' && 'step' in data) { setData(old => applyStep(old, data)); return; }
+        if (event === 'task.progress' && 'step' in data) return;
       }
       clearTimeout(eventRefresh.current);
       eventRefresh.current = setTimeout(() => { if (phoneMode.current === 'phone') loadSupervisorState().catch(error => setLoadError(error.message)); }, 150);
@@ -226,7 +251,8 @@ function AppMain() {
       }
       const store = { ...emptyLocalStore(), ...(saved || {}), mode: 'phone', bots: saved?.bots || [] };
       setLocalCache(store);
-      setData(current => ({ ...(current || {}), bots: store.bots.filter(bot => !bot.deletedAt), active: activePhoneBots(store), models: current?.models || [],
+      setChats(current => ({ ...cachedConversations(store), ...current }));
+      setData(current => ({ ...(current || {}), bots: store.bots.filter(bot => !bot.deletedAt), rooms: store.rooms || [], active: activePhoneBots(store), models: current?.models || [],
         supervisorConnected: false, connection: { available: false, loggedIn: false, message: 'Conectando ao supervisor no Termux…' }, device: 'Supervisor no Termux' }));
       const existing = await readPairing();
       if (existing) {
@@ -567,23 +593,19 @@ function AppMain() {
     const target = data.bots.find(item => item.id === share.botId);
     if (target) pickShare(target); else setShare({ ...share, botId: null });
   }, [share, data?.bots]);
-  // Each bot as a Direct Share target in Android's share sheet, most recently used first.
-  const shareTargets = (data?.bots || []).slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ id, name, color, avatar }) => ({ id, name, color: color || 'green', avatar: avatar || '' }));
-  const shareKey = JSON.stringify(shareTargets);
-  useEffect(() => { if (termuxAvailable && data?.bots) publishShareTargets(shareTargets)?.catch(() => {}); }, [shareKey]);
-
   // The computer's wide window shows the list, the open conversation and today side by side.
   const wide = Boolean(desktop) && windowWidth >= 900;
-  const roomView = data && room ? <RoomScreen room={{ ...room, messages: chats[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chats[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
           onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
-  const chatView = data && bot && !room ? <ChatScreen bot={mode === 'phone' ? { ...bot, messages: chats[bot.id]?.messages || [] } : bot} data={data}
-          more={mode === 'phone' && Boolean(chats[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
+  const chatView = data && bot && !room ? <ChatScreen bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
+          more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
   return <View style={[styles.app, desktop && !wide && column]}>
+    <ShareTargets />
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>

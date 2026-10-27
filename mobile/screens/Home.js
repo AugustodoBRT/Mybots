@@ -1,10 +1,12 @@
+import { useStore } from '../state/useStore';
+import { selectHome } from '../state/store';
 import { offline, Avatar, IconButton, greeting, Notice, UpdateCard, TodayStrip, ApprovalCard, RoomCard, BotCard, PrimaryButton, NavBar } from '../components/shared';
 import { View, ScrollView, Text, Pressable } from 'react-native';
 import { styles } from '../styles';
 import { desktop } from '../desktop';
 import { Icon, C } from '../theme';
 
-export function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
+function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
@@ -45,4 +47,9 @@ export function HomeScreen({ data, error, onRetry, onLogs, onCreate, onOpen, onC
   </ScrollView>
   <NavBar mode={mode} onActivity={onActivity} onMaintenance={onMaintenance} onConnection={onConnection} onMode={onMode} attention={Boolean(data?.approvals?.length)} />
   </View>;
+}
+
+export function HomeScreen(props) {
+  const data = useStore(selectHome);
+  return <HomeView {...props} data={data} />;
 }

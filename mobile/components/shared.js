@@ -1,10 +1,12 @@
+import { useStore } from '../state/useStore';
+import { selectHome, selectBots, selectShareTargets } from '../state/store';
 import { C, Icon } from '../theme';
 import BotAvatar from '../BotAvatar';
 import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet } from 'react-native';
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop } from '../desktop';
@@ -72,16 +74,10 @@ export function PrimaryButton({ title, onPress, disabled, compact = false, style
 }
 
 export function useStickyScroll() {
-  const scroll = useRef(null); const bottom = useRef(true); const [away, setAway] = useState(false);
-  const onScroll = event => {
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-    const near = contentOffset.y + layoutMeasurement.height >= contentSize.height - 120;
-    bottom.current = near; setAway(old => old === !near ? old : !near);
-  };
-  const onContentSizeChange = () => { if (bottom.current) scroll.current?.scrollToEnd({ animated: false }); };
-  const toEnd = () => { bottom.current = true; setAway(false); scroll.current?.scrollToEnd({ animated: true }); };
-  // The screens set maintainVisibleContentPosition: with older pages to load, the anchor is the first message, after the button.
-  return { scroll, toEnd, away, props: { onScroll, onContentSizeChange, scrollEventThrottle: 100 } };
+  const scroll = useRef(null); const [away, setAway] = useState(false);
+  const onScroll = useCallback(event => { const next = event.nativeEvent.contentOffset.y > 120; setAway(old => old === next ? old : next); }, []);
+  const toEnd = useCallback(() => { setAway(false); scroll.current?.scrollToOffset({ offset: 0, animated: true }); }, []);
+  return { scroll, toEnd, away, props: { onScroll, scrollEventThrottle: 100 } };
 }
 
 export function ToEndButton({ onPress }) {
@@ -342,7 +338,8 @@ export function SideRow({ selected, onPress, label, face, title, time, line, ton
   </Pressable>;
 }
 
-export function DesktopShell({ data, error, selected, roomId, onOpen, onRoom, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onRespond, approvalBusy, onComplete, onConnection, call, children }) {
+export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, onRoom, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onRespond, approvalBusy, onComplete, onConnection, call, children }) {
+  const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
@@ -951,7 +948,8 @@ export function shareText(share) {
   return subject && !text.includes(subject) ? `${subject}\n${text}`.trim() : text;
 }
 
-export function ShareSheet({ share, bots, phone, onPick, onClose }) {
+export function ShareSheet({ share, bots: ignored, phone, onPick, onClose }) {
+  const bots = useStore(selectBots);
   const text = shareText(share); const files = share?.files || [];
   const ordered = [...bots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const parts = [text ? (/^https?:\/\/\S+$/.test((share?.text || '').trim()) ? 'um link' : 'um texto') : '', files.length ? `${files.length} ${files.length > 1 ? 'arquivos' : 'arquivo'}` : ''].filter(Boolean);
@@ -1094,4 +1092,15 @@ export function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
       </ScrollView>
     </View></View>
   </Modal>;
+}
+
+export function useLiveCallback(handler) {
+  const latest = useRef(handler); latest.current = handler;
+  return useCallback((...args) => latest.current(...args), []);
+}
+
+export function ShareTargets() {
+  const targets = useStore(selectShareTargets); const key = JSON.stringify(targets);
+  useEffect(() => { if (termuxAvailable) publishShareTargets(targets)?.catch(() => {}); }, [key]);
+  return null;
 }

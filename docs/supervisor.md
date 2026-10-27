@@ -54,6 +54,12 @@ Eventos atuais: `task.progress`, `task.done`, `activity.new`, `connection.change
 - Eventos com conteúdo e número crescente em `data.seq`: `message.added { botId | roomId, message }`, `message.updated { botId, message }`, `bot.updated { botId, bot }`, `task.progress { taskId, botId, step }` (o passo atual; sem `step` é mudança de estado da tarefa) e `chat.reset { botId | roomId }` (restauração, mesclagem ou exclusão reescreveram a conversa). O app aplica esses eventos sem pedir o estado; se o número não for o seguinte (reconexão, conexão atrasada demais), pede `state.get` e recarrega as conversas abertas. Os demais eventos (`activity.new`, `task.done`, `connection.changed`) continuam pedindo o estado, que agora é pequeno.
 - Banco: mensagens só são acrescentadas (`appendMessage`, uma inserção) ou alteradas uma a uma (`updateMessage`); `putBot` grava só o perfil. A migração 9 tirou as mensagens das salas do JSON da sala para `room_messages` (sem o limite de 1000). Os passos do bot não regravam nada: só a mensagem de progresso visível é gravada, uma vez. Backups continuam com todas as mensagens.
 
+### Loja e renderização do app (v57)
+
+`mobile/state/store.js` aplica as funções puras de `chat-events.js` e mantém referências das fatias que não mudaram. As telas assinam essas fatias com `useSyncExternalStore`: navegação, início, cada chat e cada sala. Um passo do bot A não atualiza a assinatura do chat B nem a lista inicial. Eventos repetidos são ignorados; uma lacuna faz resync, compartilhado entre pedidos concorrentes.
+
+Chat e sala usam `FlatList` invertida (15 itens iniciais, janela 7), cursor no topo e âncora de leitura. `Message` é memoizado e o Markdown tem cache limitado por id e texto; mudanças de mesmo tamanho, metadados, anexos e erros continuam aparecendo. O cache local de bots e salas traz até 40 mensagens por conversa na abertura, antes de atualizar a página, e é limpo na exclusão. O teclado anima na thread de interface com o controlador nativo; a lista só ajusta o espaço ao terminar a animação.
+
 O app reconecta com espera progressiva (1 a 30 segundos), atualiza o estado ao voltar ao primeiro plano e não reenvia pedidos automaticamente. Se o supervisor morreu, o pareamento pode iniciá-lo novamente. O painel passa a mostrar desconexão enquanto isso.
 
 ## Heartbeat e limites

@@ -13,5 +13,5 @@ const requestId = randomUUID();
 await client.call('chat.send', { botId, requestId, text, attachments: [{ name: basename(path), mime: MIME[path.split('.').pop().toLowerCase()] || 'application/octet-stream', data: readFileSync(path).toString('base64') }] });
 let task;
 for (let i = 0; i < 150; i++) { task = (await client.call('tasks.list')).find(item => item.id === requestId); if (['done', 'failed'].includes(task?.state)) break; await new Promise(r => setTimeout(r, 4000)); }
-const last = (await client.call('chat.history', { botId })).at(-1);
+const last = (await client.call('chat.page', { botId })).messages.at(-1);
 process.stdout.write(`[${task?.state}]\n${last.text || last.error}\n`, () => { client.close(); process.exit(); });

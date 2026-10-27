@@ -840,3 +840,39 @@ Seção v56 do `PLANO-V54.md`. Antes, cada passo do bot fazia o app pedir o esta
 APK ARM64 offline: `dist/apk/mybots-v56.apk` e `.sha256`, versionCode 56 / 0.34.0, 39.699.683 bytes. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `0821dd7b38707b77631f91f5d02369d9eea83ee3dd31a35c1236054ba434e401`.
 
 Release pública [v56](https://github.com/AugustodoBRT/Mybots/releases/tag/v56), marcada como a mais recente, com o APK e o `.sha256` (o arquivo baixado da Release confere), tag no commit `4095f42`. PC atualizado com `scripts/build-desktop.sh`: interface regenerada, janela compilada e instalada, serviço `mybots-pc` reiniciado às 12:34:39, `active`, `/health` respondeu `{"ok":true,"phone":true}` e o celular reconectou às 12:34:41. A janela nova usa `chat.page`: as conversas dela só abrem depois que o celular estiver na v56. Nó isolado e emulador encerrados.
+
+## 27/10/2026 — v57 (0.35.0): conversas rápidas, parte 2 (app)
+
+Seção v57 do `PLANO-V54.md`. A separação veio primeiro, **sozinha no commit `46b3152`**: `screens/Chat.js`, `screens/Room.js`, `screens/Home.js`, `components/Message.js`, `state/store.js`, estilos e componentes compartilhados. Antes desse commit, os 193 testes passaram e início, chat, sala, perfil e Ajustes foram abertos no APK x86_64 do emulador, sem referência solta.
+
+- A loja agora aplica os redutores da v56 e preserva as referências das fatias que não mudaram. Navegação, início, compartilhamento do Android, chat e sala assinam seus próprios dados com `useSyncExternalStore`. Um passo de A não notifica a assinatura do chat B nem a do início. Repetidos são ignorados, lacunas fazem resync e pedidos de resync/página concorrentes são agrupados; um resync aguarda a página antiga em andamento antes de buscar a atual.
+- Chat e sala usam `FlatList` invertida, 15 itens iniciais, janela 7 e lotes de até 4 mensagens durante a rolagem, sem `scrollToEnd`. A página antiga chega ao rolar até o topo, com botão de reserva e âncora de leitura. O botão de descer continua aparecendo quando a pessoa está lendo acima.
+- `Message` memoizado por id, status e tamanho, conferindo também o texto (correções de mesmo tamanho), metadados, arquivos e estado do botão de tentar novamente. Retornos de chamada estáveis evitam redesenhar as mensagens ao digitar. Markdown e trechos inline têm cache por id/texto, limitado a 240 mensagens; anexos continuam sendo buscados apenas ao tocar no arquivo.
+- Cache persistente de até 40 mensagens por bot **e sala**, hidratado antes da conexão. A página atual substitui a prévia sem esvaziá-la. A exclusão limpa as mensagens na loja e no arquivo local; tombstones ficam sem mensagens. Corrigidos também `ask.sh` e `send-file.mjs`, que ainda chamavam o `chat.history` retirado na v56.
+- Teclado com `react-native-keyboard-controller` 1.21.9, Reanimated 4.5.1 e Worklets 0.10.1 (Expo SDK 57). A animação usa transformação na thread de interface e ajusta o espaço da lista ao terminar; o cabeçalho permanece fixo. As novas dependências Gradle foram preparadas uma vez e os APKs seguintes compilaram offline.
+
+### Testes e emulador
+
+- **201/201 testes passaram**, zero falhas, cancelamentos ou skips. Os oito novos verificam ordem/repetição/lacuna, páginas e referências preservadas, isolamento de assinaturas, cache de bots/salas e exclusão, correções de mesmo tamanho/metadados/anexos, snapshot da árvore nativa de `Message` anterior à memoização, escopos das telas, compartilhamento por recência e compatibilidade do histórico do modo antigo no PC.
+- Nó **isolado da v57**, identidade e projetos em `.build-tools/emulator-state/v57/isolated-node/`, portas 3231/3233/3235. O serviço real do PC não foi usado nos testes. Três bots com **Codex real gpt-6-luna**, no PC isolado, abriram e leram example.com e aguardaram por um texto deliberadamente inexistente. Os três tiveram tarefas `running` simultaneamente e responderam; os timeouts do `browser_wait` eram esperados.
+- Chat com **5000** e sala com **3000** mensagens, gerados pelo `seed-long.mjs` na v56 e com as contagens conferidas novamente. Comparação por quadros no mesmo emulador Android 16, 1080×2400, modo gráfico por software, sem Gradle compilando:
+
+| Desde o primeiro quadro com o cabeçalho da conversa até as mensagens recentes completas | v56 | v57 |
+|---|---:|---:|
+| Chat de 5000, sem prévia carregada | ~270 ms | **114 ms** |
+| Sala de 3000, sem prévia carregada | ~400 ms | **150 ms** |
+| Chat e sala com cache | — | **já completos no primeiro quadro da tela** |
+
+Essa é a referência usada na medição da v56; não é o tempo entre encostar o dedo e o primeiro quadro. A gravação final não mostra o topo antes de ir ao fim. As primeiras medições da v57 foram 138/133 ms. `opening-metrics.json`, os vídeos e as folhas de quadros guardam as medidas finais.
+
+- Rolagem passou da primeira página: mensagens anteriores a 4960 no chat e a 2960 na sala, sem perder o botão de voltar ao fim. Com três bots trabalhando, nenhum crash, ANR ou travamento da conversa. **O modo gráfico por software não atingiu zero quadros atrasados**: a primeira rodada registrou 27/628 (4,30%) no chat e 79/752 (10,51%) na sala. Reduzir o lote de montagem de 8 para 4 baixou os resultados a **13/817 (1,59%) no chat** e **31/789 (3,93%) na sala**, com percentil 95 de **38/34 ms** (antes 42/44 ms). Esses números ficam registrados, sem confundir ausência de travamento com 60 fps constantes.
+- A tentativa complementar com GPU do PC (NVIDIA, emulador com `-gpu host`, inclusive sem Vulkan) falhou no driver gráfico antes de produzir uma medição confiável. Os resultados por software foram mantidos; não foi alegada validação no POCO físico.
+- Cache do arquivo Android inspecionado: 40 mensagens do chat e 40 da sala. Bot descartável respondeu “Cache v57 confirmado.”; após excluí-lo, o arquivo tinha o tombstone com `messages: []`. Com o supervisor suspenso brevemente por sinal, um chat e a sala longa ainda abriram com as mensagens da prévia; ao retomá-lo, a conexão atualizou por cima. Teclado, ditado presente, estado vazio, início, chat, duas salas, perfil e Ajustes conferidos.
+- Defeitos encontrados e corrigidos antes da entrega: Direct Share ainda ordenava pelos timestamps retirados da fatia de navegação (agora tem assinatura própria); `ListEmptyComponent` com Fragment não recebia a inversão do React Native (agora usa View e não mostra estado vazio enquanto há histórico a carregar); salas do cache também entram no estado inicial, antes da conexão. O mapa de fontes do APK foi comparado com os arquivos para conferir a revisão instalada.
+- Provas e scripts de medição em `.build-tools/emulator-state/v57/`: `abrir-*-final.mp4`, `abrir-*-final-quadros.png`, `chat-carga-final.mp4`, `sala-carga.mp4`, `load-events.jsonl`, `load-samples.jsonl`, `load-results.json`, `gfxinfo-*-carga.txt`, `cache-deletion-check.json`, telas e logs de build/testes. As primeiras tentativas de navegação que não atingiram a sala não foram usadas como medidas dela.
+
+### Entrega
+
+APK ARM64 offline: `dist/apk/mybots-v57.apk` e `.sha256`, **versionCode 57 / 0.35.0**, 43.941.050 bytes. Só contém ABI ARM64. Certificado conferido: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256: `210f48aa9815aa9df7f83e0fb81c783fbdd2742673b6941cad2bd76ae4f15d5f`. As permissões do manifesto são idênticas às da v56. Build final offline passou; os fontes do mapa do APK correspondem aos arquivos finais.
+
+A interface web final também foi gerada e aberta pelo nó isolado: início, chat de 5000, sala de 3000, perfil e Ajustes, com as mensagens recentes presentes e nenhum erro de JavaScript (`pc-check.json` e capturas).

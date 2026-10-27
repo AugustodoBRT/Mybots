@@ -23,7 +23,7 @@ scripts/build-desktop.sh       # gera a interface e o app, instala no menu e no 
 
 A janela mostra o mesmo MyBots do celular (bots, conversas, salas, aprovações, atividade, perfis), ao vivo. Fechar a janela só a esconde na bandeja; os bots continuam online pelo serviço `mybots-pc`. Arquivos dos bots vão para `~/Downloads`. Backup, e-mail por senha de app, senhas de sites e o pareamento continuam só no celular. O navegador do bot abre no Chrome do PC quando ele responde por lá. Sem instalar o serviço, `node pc/node.mjs` roda o nó no terminal. Logs do serviço: `journalctl --user -u mybots-pc -f`. Remover o início automático: `node pc/node.mjs uninstall`.
 
-Desde a v56 a janela recebe as mensagens novas pelo próprio evento, sem recarregar tudo, e abre cada conversa com as últimas 40 mensagens; "Ver mensagens anteriores" traz as de antes, 40 por vez, também nas salas.
+Desde a v57, as conversas usam uma lista virtualizada que já abre no fim. Role para cima para carregar mensagens anteriores, 40 por vez, também nas salas. Mensagens novas mantêm o ponto de leitura; o botão de descer volta às mais recentes. Um passo de outro bot não redesenha a conversa que você está lendo. No celular, as últimas 40 mensagens carregadas de cada conversa também ficam em cache para abrir imediatamente e atualizar por cima. A janela do PC continua recebendo páginas e mensagens pelo celular pareado.
 
 Os dados do nó ficam em `~/.mybots-pc/` (diretório 700): identidade, certificado TLS, celulares pareados (com o segredo de cada um) e as pastas de trabalho dos bots.
 

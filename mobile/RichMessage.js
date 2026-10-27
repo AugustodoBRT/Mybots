@@ -1,3 +1,4 @@
+import { messageMarkdown } from './message-cache';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
 import Svg, { Rect, Line, Polyline, Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -8,17 +9,17 @@ import { C, F, Icon } from './theme';
 const COLORS = [C.sky, C.peach, C.mint, '#F58AB0', C.lilac, '#62CFD9'];
 const number = value => Number.isInteger(value) ? String(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
-function Inline({ text, style }) {
-  return <Text selectable style={style}>{parseInline(text).map((run, index) => <Text key={index}
+function Inline({ text, style, cache }) {
+  return <Text selectable style={style}>{(cache ? cache.runs(text) : parseInline(text)).map((run, index) => <Text key={index}
     style={[run.bold && s.bold, run.italic && s.italic, run.code && s.code, run.href && s.link]}
     onPress={run.href ? () => Linking.openURL(run.href).catch(() => {}) : undefined}>{run.text}</Text>)}</Text>;
 }
 
-function Table({ header, rows }) {
+function Table({ header, rows, cache }) {
   return <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={s.tableScroll}>
     <View style={s.table}>
       {[header, ...rows].map((row, r) => <View key={r} style={[s.row, r === 0 && s.headRow, r > 0 && r % 2 === 0 && s.stripe]}>
-        {row.map((cell, c) => <View key={c} style={[s.cell, c === row.length - 1 && { borderRightWidth: 0 }]}><Inline text={cell} style={[s.cellText, r === 0 && s.bold]} /></View>)}
+        {row.map((cell, c) => <View key={c} style={[s.cell, c === row.length - 1 && { borderRightWidth: 0 }]}><Inline cache={cache} text={cell} style={[s.cellText, r === 0 && s.bold]} /></View>)}
       </View>)}
     </View>
   </ScrollView>;
@@ -74,17 +75,18 @@ export function Chart({ spec }) {
   </View>;
 }
 
-export function RichText({ text, textStyle }) {
-  return <View style={s.rich}>{parseBlocks(text).map((block, index) => {
-    if (block.type === 'heading') return <Inline key={index} text={block.text} style={[textStyle, s.heading, block.level === 1 && s.h1]} />;
-    if (block.type === 'paragraph') return <Inline key={index} text={block.text} style={textStyle} />;
+export function RichText({ id, text, textStyle }) {
+  const cache = messageMarkdown(id, text);
+  return <View style={s.rich}>{cache.blocks.map((block, index) => {
+    if (block.type === 'heading') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.heading, block.level === 1 && s.h1]} />;
+    if (block.type === 'paragraph') return <Inline cache={cache} key={index} text={block.text} style={textStyle} />;
     // One Text per item: a flex row inside an auto-width bubble shrinks the words to a narrow column.
     if (block.type === 'list') return <View key={index} style={{ gap: 3 }}>{block.items.map((item, i) => <Text key={i} selectable style={textStyle}>
-      <Text style={s.marker}>{block.ordered ? `${block.start + i}.` : '•'}  </Text><Inline text={item} /></Text>)}</View>;
-    if (block.type === 'table') return <Table key={index} header={block.header} rows={block.rows} />;
+      <Text style={s.marker}>{block.ordered ? `${block.start + i}.` : '•'}  </Text><Inline cache={cache} text={item} /></Text>)}</View>;
+    if (block.type === 'table') return <Table cache={cache} key={index} header={block.header} rows={block.rows} />;
     if (block.type === 'chart') return <Chart key={index} spec={block.spec} />;
     if (block.type === 'code') return <Text key={index} selectable style={s.codeBlock}>{block.text}</Text>;
-    if (block.type === 'quote') return <Inline key={index} text={block.text} style={[textStyle, s.quote]} />;
+    if (block.type === 'quote') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.quote]} />;
     return <View key={index} style={s.rule} />;
   })}</View>;
 }

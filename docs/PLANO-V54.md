@@ -77,7 +77,7 @@ Objetivo: abrir qualquer conversa em menos de 300 ms e não reenviar o mundo int
 
 **Testes novos**: orçamento de tamanho (com 5 bots × 5000 mensagens e 3 salas × 3000, `state.get` fica abaixo de 50 KB e responde em menos de 50 ms); `chat.page` pagina sem repetir nem pular; a migração 9 move as mensagens das salas e mantém a ordem; a sequência de eventos detecta lacunas; gravar a mensagem 5000 custa o mesmo que a 10.
 
-## v57 — Conversas rápidas, parte 2 (app)
+## v57 — Conversas rápidas, parte 2 (app) — concluída na v57
 
 1. **Dividir `mobile/App.js`**: `screens/Chat.js`, `screens/Room.js`, `screens/Home.js`, `state/store.js`, `components/Message.js`. O comportamento fica igual, e esta é a primeira etapa, sozinha num commit.
 2. **Loja com fatias** (`useSyncExternalStore`, sem biblioteca nova): cada tela assina só o que usa. Um passo do bot A não renderiza de novo o chat B nem a lista de bots inteira.

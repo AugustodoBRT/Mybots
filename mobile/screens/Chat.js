@@ -1,15 +1,22 @@
-import { useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useMemo } from 'react';
+import { useStore } from '../state/useStore';
+import { selectConversation } from '../state/store';
+import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
 import { useState, useEffect } from 'react';
 import { termuxAvailable, pickFile } from '../termux';
 import { desktop } from '../desktop';
-import { KeyboardAvoidingView, Platform, View, Pressable, Text, ScrollView } from 'react-native';
+import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
 import BotBrowserPanel, { BrowserHelpCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 
-export function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+  const retryMessage = useLiveCallback(onRetry);
+  const openFile = useLiveCallback(onFile);
+  const messages = useMemo(() => [...bot.messages].reverse(), [bot.messages]);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -57,7 +64,7 @@ export function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending,
   const asleep = offline(data, bot.id);
   const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
-  return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+  return <View style={styles.chatScreen}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
@@ -75,14 +82,21 @@ export function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending,
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
     {browsing && (browserOpen || assumed) ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
     <View style={styles.messagesWrap}>
-    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: more ? 1 : 0 }}>
-      {more ? <EarlierButton onPress={onEarlier} /> : null}
-      {!bot.messages.length && !bot.messageCount && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
+    <FlatList ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
+      inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
+      {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
+      onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
+      ListFooterComponent={more ? <EarlierButton onPress={onEarlier} /> : null}
+      ListEmptyComponent={<View>
+      {!bot.messageCount && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
       </View>}
-      {bot.messages.map(message => <Message key={message.id} message={message} bot={bot} models={data.models || []} busy={busy} onRetry={onRetry} onFile={mode === 'phone' ? onFile : () => {}} fileBusy={fileBusy} />)}
+      </View>}
+      renderItem={({ item }) => <Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} />}
+      ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
@@ -100,7 +114,7 @@ export function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending,
           {mode === 'phone' ? <Pressable accessibilityRole="button" onPress={onCancel} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable> : null}
         </View>
       </View>}
-    </ScrollView>
+      </View>} />
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     <View style={styles.composerArea}>
@@ -113,5 +127,14 @@ export function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending,
         placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
         onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
-  </KeyboardAvoidingView>;
+    </KeyboardAvoidingView>
+  </View>;
 }
+
+export function ChatScreen(props) {
+  const selector = useMemo(() => selectConversation(props.bot.id), [props.bot.id]);
+  const slice = useStore(selector);
+  return slice?.bot ? <ChatView key={props.bot.id} {...props} {...slice} /> : null;
+}
+
+const messageKey = message => message.id;

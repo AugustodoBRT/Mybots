@@ -7,4 +7,4 @@ for i in $(seq 1 60); do
   state=$(node rpc.mjs tasks.list | node -pe "(JSON.parse(require('fs').readFileSync(0)).find(t=>t.id==='$request')||{}).state")
   [ "$state" = done ] || [ "$state" = failed ] && break; sleep 4
 done
-echo "[$state]"; node rpc.mjs chat.history "{\"botId\":\"$bot\"}" | node -e 'const m=JSON.parse(require("fs").readFileSync(0)).at(-1);console.log(m.text||m.error)'
+echo "[$state]"; node rpc.mjs chat.page "{\"botId\":\"$bot\"}" | node -e 'const m=JSON.parse(require("fs").readFileSync(0)).messages.at(-1);console.log(m.text||m.error)'

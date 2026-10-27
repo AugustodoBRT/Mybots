@@ -139,3 +139,20 @@ export function validateBackup(value) {
   }
   return value;
 }
+
+// A warm start is a preview of the latest page, never a second history or a migration source.
+export function conversationCache(previous, data, chats) {
+  const recent = (item, kind) => {
+    if (item.deletedAt) return { ...item, messages: [] };
+    const saved = previous?.[kind]?.find(old => old.id === item.id);
+    return { ...item, messages: (chats[item.id]?.messages || saved?.messages || []).slice(-40) };
+  };
+  return { schema: 1, mode: 'phone', supervisorMigrated: true,
+    bots: [...(data.bots || []), ...(data.deletedBots || [])].map(bot => recent(bot, 'bots')),
+    rooms: (data.rooms || []).filter(room => !room.deletedAt).map(room => recent(room, 'rooms')) };
+}
+
+export function cachedConversations(store) {
+  return Object.fromEntries([...(store?.bots || []), ...(store?.rooms || [])].filter(item => !item.deletedAt && item.messages?.length)
+    .map(item => [item.id, { messages: item.messages.slice(-40), before: null, more: false }]));
+}

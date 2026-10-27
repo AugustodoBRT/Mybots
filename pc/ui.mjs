@@ -61,8 +61,9 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           ws.views ||= new Map();
           const on = Boolean(params.on);
-          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } })), () => ws.bufferedAmount > 1_000_000, () => browser.pressure?.(params.botId, ws.views.get(params.botId), ws.bufferedAmount > 250_000)));
+          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } })), () => ws.bufferedAmount > 1_000_000));
           const sink = ws.views.get(params.botId);
+          if (sink) sink.bufferedAmount = () => ws.bufferedAmount;
           if (!on) ws.views.delete(params.botId);
           if (sink) await browser.watch(params.botId, sink, on, undefined, params);
           reply(id, { result: { watching: on, online: true } });

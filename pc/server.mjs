@@ -18,7 +18,7 @@ import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
-import { encodeFrame, frameMetadata, viewSize } from '../supervisor/browser-frame.mjs';
+import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
 export const DEFAULT_PORT = 3230;
@@ -133,23 +133,22 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
-  const viewOptions = new Map();
+  const viewOptions = new Map(), viewGovernor = new ViewGovernor(); let viewTimer;
   const views = new Map(), browserModes = new Map(); let assumed = new Set();
   const configureBrowser = bot => { const mode = browserMode(bot); browserModes.set(bot.id, mode); browser.configure?.(bot.id, mode); };
   browser.onFrame = (botId, frame) => { for (const sink of views.get(botId) || []) sink(frame); };
   const updateView = async (botId, force = false) => {
     const sinks = [...(views.get(botId) || [])];
     const sizes = sinks.map(sink => sink.options || viewSize());
-    const options = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId), congested: sinks.some(sink => sink.congested || sink.remoteCongested) };
+    const wanted = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId), congested: sinks.some(sink => sink.remoteCongested) };
+    const bytes = Math.max(0, ...sinks.map(sink => sink.bufferedAmount?.() || 0), wanted.congested ? 300_000 : 0);
+    const options = viewGovernor.next(botId, wanted, bytes);
+    if (!options) { if (force && viewOptions.has(botId)) await browser.command(botId, 'view', viewOptions.get(botId)); return; }
     const previous = viewOptions.get(botId);
     if (!force && previous && Object.keys(options).every(key => previous[key] === options[key])) return;
     viewOptions.set(botId, options);
     try { await browser.command(botId, 'view', options); }
     catch (error) { for (const sink of sinks) sink({ error: error.message }); }
-  };
-  const pressure = (botId, sink, congested) => {
-    if (!sink || sink.congested === congested) return;
-    sink.congested = congested; updateView(botId).catch(() => {});
   };
   const watch = async (botId, sink, on, mode, options) => {
     if (on) {
@@ -161,6 +160,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     const sinks = views.get(botId) || new Set();
     if (on) sinks.add(sink); else sinks.delete(sink);
     if (sinks.size) views.set(botId, sinks); else views.delete(botId);
+    if (views.size && !viewTimer) viewTimer = setInterval(() => { for (const id of views.keys()) updateView(id).catch(() => {}); }, 500);
+    if (!views.size && viewTimer) { clearInterval(viewTimer); viewTimer = null; }
     await updateView(botId, on);
   };
   const personInput = async (botId, input) => {
@@ -187,7 +188,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, pressure, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -251,7 +252,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
             if (!frame.image) { send({ type: 'browser_frame', botId: message.botId, ...frame }); return; }
             if (ws.readyState !== 1) return;
             const value = { botId: message.botId, ...frame }; ws.send(encodeFrame(value, previous)); previous = frameMetadata(value);
-          }, () => ws.readyState === 1 && ws.bufferedAmount > 1_000_000, () => pressure(message.botId, ws.views.get(message.botId), ws.bufferedAmount > 250_000)));
+          }, () => ws.readyState === 1 && ws.bufferedAmount > 1_000_000));
+          ws.views.get(message.botId).bufferedAmount = () => ws.bufferedAmount;
         }
         const sink = ws.views.get(message.botId);
         if (!message.on) ws.views.delete(message.botId);
@@ -331,5 +333,5 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
     phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

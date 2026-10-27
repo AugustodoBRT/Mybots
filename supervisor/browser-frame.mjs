@@ -42,3 +42,22 @@ export function viewSize({ maxWidth, maxHeight } = {}) {
   const size = (value, fallback, max) => Number.isFinite(value) && value > 0 ? Math.max(1, Math.min(max, Math.round(value))) : fallback;
   return { maxWidth: size(maxWidth, 1280, 2560), maxHeight: size(maxHeight, 800, 1600) };
 }
+
+// Shared by both hops: sample pressure on a timer, retain the latest desired options until the next window.
+export class ViewGovernor {
+  constructor() { this.bots = new Map(); }
+  next(botId, options, bytes = 0, now = Date.now()) {
+    let state = this.bots.get(botId);
+    if (!state) { state = { congested: false, lowSince: null, at: -Infinity }; this.bots.set(botId, state); }
+    if (bytes > 250_000) { state.congested = true; state.lowSince = null; }
+    else if (bytes < 50_000 && state.congested) {
+      state.lowSince ??= now;
+      if (now - state.lowSince >= 2000) { state.congested = false; state.lowSince = null; }
+    } else state.lowSince = null;
+    const wanted = { ...options, congested: state.congested };
+    if (!wanted.on) { this.bots.delete(botId); return wanted; }
+    if (state.sent && Object.keys(wanted).every(key => wanted[key] === state.sent[key])) return null;
+    if (now - state.at < 3000) return null;
+    state.at = now; state.sent = wanted; return wanted;
+  }
+}

@@ -219,3 +219,23 @@ test('paced lowers quality at moderate pressure before discarding binary frames 
   bufferedAmount = 0; await until(() => events.some(([kind, value]) => kind === 'sent' && value === 3));
   assert.equal(events.filter(([kind]) => kind === 'sent').length, 2);
 });
+
+test('both hops limit view changes during ten simulated seconds of oscillating pressure and recover only after two quiet seconds', async () => {
+  const { ViewGovernor } = await import('../supervisor/browser-frame.mjs');
+  for (const hop of ['supervisor', 'pc']) {
+    const governor = new ViewGovernor(), changes = [];
+    const options = { on: true, maxWidth: 360, maxHeight: 640, interactive: true };
+    for (let now = 0; now < 10000; now += 16) {
+      const next = governor.next(hop, { ...options, maxWidth: 360 + Math.floor(now / 1000) }, now % 32 ? 200_000 : 300_000, now);
+      if (next) changes.push({ now, next });
+    }
+    assert.ok(changes.length <= 4, hop);
+    assert.ok(changes.every(item => item.next.congested));
+    assert.equal(governor.next(hop, options, 0, 11000), null);
+    const still = governor.next(hop, options, 0, 12500); assert.equal(still?.congested, true);
+    assert.equal(governor.next(hop, options, 100_000, 12900), null);
+    governor.next(hop, options, 0, 13000);
+    assert.equal(governor.next(hop, options, 0, 14999), null);
+    const recovered = governor.next(hop, options, 0, 15500); assert.equal(recovered.congested, false);
+  }
+});

@@ -27,7 +27,7 @@ import { Browser, personInput } from './browser.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
-import { encodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
+import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-frame.mjs';
 import { Link } from './link.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
@@ -127,6 +127,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
+    const viewGovernor = new ViewGovernor(); let viewTimer;
     const watchBrowsers = refresh => {
       if (closed) return;
       const viewers = [...(sockets?.clients || []), ...(frameSockets?.clients || [])];
@@ -134,14 +135,16 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       for (const botId of wanted) {
         const sizes = viewers.filter(socket => socket.views?.has(botId)).map(socket => socket.viewOptions?.get(botId)).filter(Boolean);
         const options = sizes.length ? { maxWidth: Math.max(...sizes.map(size => size.maxWidth)), maxHeight: Math.max(...sizes.map(size => size.maxHeight)) } : viewSize();
-        options.congested = viewers.some(socket => socket.views?.has(botId) && socket.bufferedAmount > 250_000);
-        const before = link.viewOptions.get(botId);
-        if (botId === refresh || !link.watching.has(botId) || before?.maxWidth !== options.maxWidth || before?.maxHeight !== options.maxHeight || before?.congested !== options.congested) link.view(botId, true, options);
+        const bytes = Math.max(0, ...viewers.filter(socket => socket.views?.has(botId)).map(socket => socket.bufferedAmount));
+        const next = viewGovernor.next(botId, { on: true, ...options }, bytes);
+        if (next) link.view(botId, true, next);
+        else if (botId === refresh) link.view(botId, true, link.viewOptions.get(botId));
       }
-      for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
+      for (const botId of [...link.watching]) if (!wanted.has(botId)) { viewGovernor.next(botId, { on: false }); link.view(botId, false); }
+      if (wanted.size && !viewTimer) viewTimer = setInterval(() => watchBrowsers(), 500);
+      if (!wanted.size && viewTimer) { clearInterval(viewTimer); viewTimer = null; }
     };
     link.onFrame = frame => {
-      watchBrowsers();
       let text;
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && !socket.nativeViews?.has(frame.botId) && socket.bufferedAmount < 1_500_000) {
         text ||= JSON.stringify({ event: 'browser.frame', data: { ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } }); socket.send(text);
@@ -636,7 +639,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
     api = { db, queue, tools, routines, items, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();

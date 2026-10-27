@@ -35,7 +35,7 @@ const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'Arrow
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; }
+  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; }
   start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
   async launch() {
     if (this.mode === 'mine') {
@@ -138,14 +138,14 @@ export class BrowserSession {
       const cdp = this.cdp = await this.context.newCDPSession(this.page);
       cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
         setTimeout(() => cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {}), 120);
-        if (this.cdp === cdp) this.frame?.({ image: data, width: Math.round(metadata.deviceWidth), height: Math.round(metadata.deviceHeight), url: this.page?.url() || '', tabs: this.tabList() });
+        if (this.cdp === cdp) this.frame?.({ image: Buffer.from(data, 'base64'), seq: ++this.seq, width: Math.round(metadata.deviceWidth), height: Math.round(metadata.deviceHeight), url: this.page?.url() || '', tabs: this.tabList() });
       });
       await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1280, maxHeight: 800 });
     } else if (on) {
       // Another viewer joined: the screencast only sends changes, so it gets the current page as one frame.
       const { width, height } = this.viewportSize();
       const { data } = await this.cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
-      this.frame?.({ image: data, width, height, url: this.page.url(), tabs: this.tabList() });
+      this.frame?.({ image: Buffer.from(data, 'base64'), seq: ++this.seq, width, height, url: this.page.url(), tabs: this.tabList() });
     } else if (!on && this.cdp) {
       const cdp = this.cdp; this.cdp = null;
       await cdp.send('Page.stopScreencast').catch(() => {}); await cdp.detach().catch(() => {});

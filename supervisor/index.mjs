@@ -132,7 +132,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       for (const botId of [...link.watching]) if (!wanted.has(botId)) link.view(botId, false);
     };
     link.onFrame = frame => {
-      const text = JSON.stringify({ event: 'browser.frame', data: frame });
+      const text = JSON.stringify({ event: 'browser.frame', data: { ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } });
       for (const socket of sockets?.clients || []) if (socket.authenticated && socket.readyState === 1 && socket.views?.has(frame.botId) && socket.bufferedAmount < 1_500_000) socket.send(text);
     };
     // Whether a bot's IA is logged in where its next turn runs: the computer reports its own; while it is off,

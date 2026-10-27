@@ -18,6 +18,7 @@ import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
+import { encodeFrame, frameMetadata } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
 export const DEFAULT_PORT = 3230;
@@ -229,7 +230,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       if (message.type === 'event') { ui.broadcast(message.event, message.data); return; }
       if (message.type === 'browser_view' && typeof message.botId === 'string') {
         ws.views ||= new Map();
-        if (message.on && !ws.views.has(message.botId)) ws.views.set(message.botId, paced(frame => send({ type: 'browser_frame', botId: message.botId, ...frame }), () => ws.bufferedAmount > 1_000_000));
+        if (message.on && !ws.views.has(message.botId)) {
+          let previous = {};
+          ws.views.set(message.botId, paced(frame => {
+            if (!frame.image) { send({ type: 'browser_frame', botId: message.botId, ...frame }); return; }
+            if (ws.readyState !== 1) return;
+            const value = { botId: message.botId, ...frame }; ws.send(encodeFrame(value, previous)); previous = frameMetadata(value);
+          }, () => ws.readyState === 1 && ws.bufferedAmount > 1_000_000));
+        }
         const sink = ws.views.get(message.botId);
         if (!message.on) ws.views.delete(message.botId);
         if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own').catch(() => {});

@@ -1,6 +1,7 @@
 import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { decodeFrame, frameMetadata } from './browser-frame.mjs';
 import { discover } from './discovery.mjs';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
@@ -160,12 +161,14 @@ export class Link {
   /** Connects again right away (the app came to the foreground or the network changed). */
   kick() { if (!this.socket && !this.connecting && !this.closed) { clearTimeout(this.timer); this.attempt = 0; this.connect(this.state === 'offline'); } }
   attach(ws, pairing = null) {
+    const frames = new Map();
     this.socket = ws; let leave = null, refusal = ''; ws.alive = true;
     const send = value => { if (ws.readyState === 1) ws.send(JSON.stringify(value)); };
     ws.on('error', () => {});
     ws.on('pong', () => { ws.alive = true; });
     const ping = setInterval(() => { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } }, 20000);
-    ws.on('message', async raw => {
+    ws.on('message', async (raw, binary) => {
+      if (binary) { try { const decoded = decodeFrame(raw); const frame = { ...frames.get(decoded.botId), ...decoded }; frames.set(frame.botId, frameMetadata(frame)); this.onFrame(frame); } catch { ws.close(1008); } return; }
       let message; try { message = JSON.parse(raw); } catch { ws.terminate(); return; }
       if (message.type === 'refused') { refusal = message.error || 'O computador recusou a conexão.'; pairing?.reject(new Error(refusal)); pairing = null; ws.close(); return; }
       if (message.type === 'paired' && pairing && typeof message.secret === 'string') { pairing.resolve(message.secret); pairing = null; return; }

@@ -32,7 +32,7 @@ test('live view: frames reach only the app watching that bot; taps need Assumir;
   const ops = [];
   const browser = { command: async (botId, op, args) => {
     ops.push({ botId, op, args });
-    if (op === 'view' && args.on) setTimeout(() => browser.onFrame(botId, { image: 'aW1n', width: 1280, height: 800, url: 'https://example.com/' }), 5);
+    if (op === 'view' && args.on) setTimeout(() => browser.onFrame(botId, { image: Buffer.from('img'), seq: 1, width: 1280, height: 800, url: 'https://example.com/' }), 5);
     return { url: 'https://example.com/' };
   }, stop: () => {}, close: () => {} };
   const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], browser,
@@ -47,7 +47,7 @@ test('live view: frames reach only the app watching that bot; taps need Assumir;
   sockets.push(watcher.ws, idle.ws);
   assert.deepEqual(await watcher.call('browser.view', { botId: bot.id, on: true }), { watching: true, online: true });
   await until(() => watcher.frames.length);
-  assert.deepEqual(watcher.frames[0], { botId: bot.id, image: 'aW1n', width: 1280, height: 800, url: 'https://example.com/' });
+  assert.deepEqual(watcher.frames[0], { botId: bot.id, image: 'aW1n', seq: 1, width: 1280, height: 800, url: 'https://example.com/' });
   assert.equal(idle.frames.length, 0);
   assert.ok(ops.some(item => item.botId === bot.id && item.op === 'view' && item.args.on));
 
@@ -87,7 +87,7 @@ test('real Chrome without a window: screencast frames, scroll, keys, typing; loc
   assert.equal(view.watching, true);
   await until(() => frames.some(frame => frame.image));
   const first = frames.find(frame => frame.image);
-  assert.ok(Buffer.from(first.image, 'base64').subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), 'quadro JPEG');
+  assert.ok(first.image.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])), 'quadro JPEG');
   assert.equal(first.width, 1280); assert.equal(first.height, 800);
   // A second viewer gets the current page at once.
   const before = frames.length; await session.view(true); assert.ok(frames.length >= before + 1);
@@ -123,4 +123,25 @@ test('Claude bots use their own Chrome unless the person picks the main Chrome',
   const bot = await app.rpc('bot.create', { name: 'Claude', home: 'pc', ...selection });
   const updated = await app.rpc('bot.update', { botId: bot.id, mainChrome: true });
   assert.equal(updated.browserMode, 'own'); assert.equal(app.db.requireBot(bot.id).browserMode, 'own');
+});
+
+test('binary frames retain JPEG bytes and send URL/tabs only when changed; malformed headers are refused', async () => {
+  const { encodeFrame, decodeFrame, frameMetadata } = await import('../supervisor/browser-frame.mjs');
+  const frame = { botId: '00000000-0000-4000-8000-000000000001', width: 640, height: 400, seq: 1, image: Buffer.from([255,216,255,217]), url: 'https://example.com/á', title: 'Página', tabs: [{ tab: 1, active: true, title: 'Página' }] };
+  const first = encodeFrame(frame); assert.deepEqual(decodeFrame(first), frame);
+  const next = { ...frame, seq: 2 }; const delta = encodeFrame(next, frameMetadata(frame));
+  assert.equal(delta.length, 34 + frame.image.length); assert.equal(decodeFrame(delta).url, undefined);
+  assert.deepEqual(decodeFrame(delta, frameMetadata(frame)), next);
+  assert.throws(() => decodeFrame(first.subarray(0, 33)), /inválido/);
+  const broken = Buffer.from(first); broken.writeUInt16BE(65000, 28); assert.throws(() => decodeFrame(broken), /inválido/);
+});
+
+test('paced binary frames discard intermediate frames while bufferedAmount is high', async () => {
+  const { paced } = await import('../pc/ui.mjs');
+  let bufferedAmount = 2_000_000; const sent = [];
+  const sink = paced(bytes => sent.push(bytes), () => bufferedAmount > 1_000_000);
+  const frames = [Buffer.from([1]), Buffer.from([2]), Buffer.from([3])];
+  frames.forEach(sink); assert.equal(sent.length, 0);
+  bufferedAmount = 0; await until(() => sent.length);
+  assert.deepEqual(sent, [frames[2]]);
 });

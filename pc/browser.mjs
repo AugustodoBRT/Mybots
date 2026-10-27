@@ -27,7 +27,7 @@ export class PcBrowser {
     const profile = join(this.directory, 'browsers', mine ? 'mine' : botId);
     mkdirSync(profile, { recursive: true, mode: 0o700 });
     const env = Object.fromEntries(['PATH', 'HOME', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : 'own', ...(endpoint ? [endpoint] : [])], { env, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true });
+    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true });
     const worker = { child, pending: new Map(), botIds: new Set([botId]), mine, endpoint }; this.workers.set(key, worker);
     const end = () => {
       if (this.workers.get(key) === worker) this.workers.delete(key);

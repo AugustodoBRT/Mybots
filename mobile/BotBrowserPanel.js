@@ -18,6 +18,25 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
 // Frames of the bots' Chrome on the computer, from the supervisor's 'browser.frame' events (see App.js).
 export const browserFrames = new Set();
 
+// Keep the displayed bitmap until the other Image has finished decoding; retain only the newest waiting frame.
+function LiveImages({ frame }) {
+  const [layers, setLayers] = useState([null, null]); const [front, setFront] = useState(0);
+  const buffer = useRef({ front: 0, loading: null, latest: null });
+  const load = () => {
+    const state = buffer.current; if (state.loading !== null || !state.latest) return;
+    const next = 1 - state.front, image = state.latest; state.latest = null; state.loading = next;
+    setLayers(current => current.map((value, index) => index === next ? image : value));
+  };
+  useEffect(() => { if (frame?.image) { buffer.current.latest = frame.image; load(); } }, [frame?.image]);
+  const ready = (index, ok) => {
+    const state = buffer.current; if (state.loading !== index) return;
+    state.loading = null;
+    if (ok) { state.front = index; setFront(index); }
+    load();
+  };
+  return layers.map((image, index) => image ? <Image key={index} source={{ uri: 'data:image/jpeg;base64,' + image }} style={[StyleSheet.absoluteFill, { zIndex: index === front ? 1 : 0 }]} resizeMode="stretch" fadeDuration={0} onLoad={() => ready(index, true)} onError={() => ready(index, false)} /> : null);
+}
+
 /**
  * The bot's own Chrome on the computer, live inside MyBots: frames come from the computer; after "Assumir" a tap
  * clicks there, a drag scrolls, and the text box types into the page. Points go as fractions of the frame.
@@ -80,7 +99,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { size.current = event.nativeEvent.layout; }} {...responder.panHandlers}>
-      {frame ? <Image source={{ uri: 'data:image/jpeg;base64,' + frame.image }} style={StyleSheet.absoluteFill} resizeMode="stretch" fadeDuration={0} />
+      {frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}

@@ -131,3 +131,19 @@ test('bots called together with @ (by the person or by another bot) work at the 
   assert.equal(most, 2);
   release.splice(0).forEach(resolve => resolve()); await f.idle();
 });
+
+test('a long room opens fast: the state carries only the latest messages and room.history brings the earlier ones', async t => {
+  const f = await setup(t);
+  const [a, b] = [await f.make('Um'), await f.make('Dois')];
+  const room = await f.app.rpc('room.create', { name: 'Longa', botIds: [a.id, b.id] });
+  const stamp = new Date().toISOString();
+  const messages = Array.from({ length: 150 }, (_, index) => ({ id: randomUUID(), role: 'user', text: `Mensagem ${index}`, status: 'complete', createdAt: stamp }));
+  f.app.db.putRoom({ ...f.app.db.room(room.id), messages, updatedAt: stamp });
+  const shown = (await f.app.rpc('state.get')).rooms.find(item => item.id === room.id);
+  assert.equal(shown.messages.length, 60); assert.equal(shown.earlier, 90); assert.equal(shown.messages.at(-1).text, 'Mensagem 149');
+  const more = await f.app.rpc('room.history', { roomId: room.id, limit: 120 });
+  assert.equal(more.messages.length, 120); assert.equal(more.earlier, 30); assert.equal(more.messages[0].text, 'Mensagem 30');
+  assert.equal((await f.app.rpc('room.history', { roomId: room.id, limit: 500 })).earlier, 0);
+  // The stored history is whole.
+  assert.equal(f.app.db.room(room.id).messages.length, 150);
+});

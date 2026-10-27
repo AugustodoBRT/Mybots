@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, BackHandler, AppState, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   Linking, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions
@@ -93,6 +93,26 @@ function PrimaryButton({ title, onPress, disabled, compact = false, style, icon,
     {icon ? <Icon name={icon} size={compact ? 17 : 19} color={ghost ? C.text : C.mintInk} stroke={2.2} /> : null}
     <Text style={[styles.primaryButtonText, compact && styles.compactButtonText, ghost && styles.ghostButtonText]}>{title}</Text>
   </Pressable>;
+}
+
+/**
+ * Keeps the view where the person is reading: new messages pull the screen down only while it is already at the
+ * bottom; otherwise it stays put and a button offers the way down.
+ */
+function useStickyScroll() {
+  const scroll = useRef(null); const bottom = useRef(true); const [away, setAway] = useState(false);
+  const onScroll = event => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    const near = contentOffset.y + layoutMeasurement.height >= contentSize.height - 120;
+    bottom.current = near; setAway(old => old === !near ? old : !near);
+  };
+  const onContentSizeChange = () => { if (bottom.current) scroll.current?.scrollToEnd({ animated: false }); };
+  const toEnd = () => { bottom.current = true; setAway(false); scroll.current?.scrollToEnd({ animated: true }); };
+  return { scroll, toEnd, away, props: { onScroll, onContentSizeChange, scrollEventThrottle: 100, maintainVisibleContentPosition: { minIndexForVisible: 0 } } };
+}
+
+function ToEndButton({ onPress }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel="Ir para as mensagens mais novas" onPress={onPress} style={({ pressed }) => [styles.toEnd, pressed && styles.pressed]}><Icon name="down" size={20} color={C.mint} stroke={2.2} /></Pressable>;
 }
 
 function IconButton({ icon, label, onPress, active, disabled, tint = C.text2, size = 42 }) {
@@ -1141,7 +1161,7 @@ function Composer({ value, setValue, onSend, canSend, placeholder, editable = tr
 }
 
 function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer }) {
-  const scroll = useRef(null);
+  const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
   const selection = bot.model ? bot : data.defaultSelection;
@@ -1205,8 +1225,8 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
     {browsing && browserOpen ? <BotBrowserPanel bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
-    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
-      onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
+    <View style={styles.messagesWrap}>
+    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps}>
       {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
@@ -1230,13 +1250,15 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
         </View>
       </View>}
     </ScrollView>
+    {away ? <ToEndButton onPress={toEnd} /> : null}
+    </View>
     <View style={styles.composerArea}>
       {error ? <Text style={styles.composerError}>Confira a conexão antes de enviar.</Text> : null}
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
       <Composer value={draft} setValue={setDraft} editable={!typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
-        onSend={async () => { if (await onSend(draft, files)) setFiles([]); }} accessibilityLabel="Sua mensagem"
+        onSend={async () => { if (await onSend(draft, files)) { setFiles([]); toEnd(); } }} accessibilityLabel="Sua mensagem"
         placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
         onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
@@ -1295,16 +1317,29 @@ function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
 }
 
 function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call }) {
-  const scroll = useRef(null); const input = useRef(null);
+  const { scroll, toEnd, away, props: scrollProps } = useStickyScroll(); const input = useRef(null);
   const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState(''); const [files, setFiles] = useState([]);
   const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
   const byId = Object.fromEntries(members.map(bot => [bot.id, bot]));
+  // The state only carries the latest messages; older ones are fetched on demand and joined to the live ones.
+  const [extra, setExtra] = useState(null); const [loadingEarlier, setLoadingEarlier] = useState(false);
+  useEffect(() => { setExtra(null); }, [room.id]);
+  const shown = useMemo(() => {
+    if (!extra) return room.messages;
+    const fresh = new Map(room.messages.map(message => [message.id, message])); const seen = new Set(extra.messages.map(message => message.id));
+    return [...extra.messages.map(message => fresh.get(message.id) || message), ...room.messages.filter(message => !seen.has(message.id))];
+  }, [room.messages, extra]);
+  const earlier = extra ? extra.earlier : room.earlier || 0;
+  const loadEarlier = async () => {
+    setLoadingEarlier(true); setError('');
+    try { setExtra(await call('room.history', { roomId: room.id, limit: shown.length + 120 })); } catch (e) { setError(nativeMessage(e)); } finally { setLoadingEarlier(false); }
+  };
   const working = members.filter(bot => room.active?.includes(bot.id));
   const approvals = (data.approvals || []).filter(item => room.activeTasks?.includes(item.taskId));
   const named = members.filter(bot => new RegExp(`@${bot.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu').test(draft));
   const send = async text => {
     if ((!text.trim() && !files.length) || sending) return; setSending(true); setError('');
-    try { await onSend(text, files); setDraft(''); setFiles([]); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
+    try { await onSend(text, files); setDraft(''); setFiles([]); toEnd(); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
   };
   // Files go to the room like to a private chat (phone mode): every bot in it can read them.
   const attach = async () => {
@@ -1316,7 +1351,7 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
     } catch (e) { setError(nativeMessage(e)); }
   };
   const mention = bot => { setDraft(old => (old.trim() ? old.replace(/\s*$/, ' ') : '') + `@${bot.name} `); input.current?.focus(); };
-  const retry = message => { const asked = room.messages.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); };
+  const retry = message => { const asked = shown.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); };
   return <KeyboardAvoidingView style={styles.chatScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar" onPress={onBack} size={40} /> : null}
@@ -1328,11 +1363,13 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
       </View>
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
     </View>
-    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
-      {!room.messages.length ? <View style={styles.chatEmpty}><RoomFaces bots={members} size={72} />
+    <View style={styles.messagesWrap}>
+    <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps}>
+      {earlier > 0 ? <Pressable accessibilityRole="button" disabled={loadingEarlier} onPress={loadEarlier} style={({ pressed }) => [styles.earlier, pressed && styles.pressed]}><Text style={styles.earlierText}>{loadingEarlier ? 'Carregando…' : `Ver mensagens anteriores (${earlier})`}</Text></Pressable> : null}
+      {!shown.length ? <View style={styles.chatEmpty}><RoomFaces bots={members} size={72} />
         <Text style={styles.chatEmptyTitle}>{room.name}</Text>
         <Text style={styles.chatEmptyText}>Escreva para todos ou chame alguém com @. Os bots também podem se chamar entre si.</Text></View> : null}
-      {room.messages.map(message => message.role === 'system' ? <Text key={message.id} style={styles.roomGone}>{message.text}</Text> : message.role === 'user' || byId[message.botId]
+      {shown.map(message => message.role === 'system' ? <Text key={message.id} style={styles.roomGone}>{message.text}</Text> : message.role === 'user' || byId[message.botId]
         ? <Message key={message.id} message={message} bot={byId[message.botId] || members[0]} models={data.models || []} busy={sending} onRetry={() => retry(message)} onFile={onFile} fileBusy={fileBusy} />
         : <Text key={message.id} style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>)}
       {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
@@ -1342,6 +1379,8 @@ function RoomScreen({ room, data, onBack, onSend, onEdit, onCancel, onRespond, a
           <Pressable accessibilityRole="button" onPress={() => onCancel(bot.id)} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable></View>
       </View>)}
     </ScrollView>
+    {away ? <ToEndButton onPress={toEnd} /> : null}
+    </View>
     <View style={styles.composerArea}>
       {error ? <Text style={styles.composerError}>{error}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mentionBar} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
@@ -2175,6 +2214,10 @@ const styles = StyleSheet.create({
   updateBar: { height: 6, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 12, marginBottom: 2 },
   limitRow: { marginTop: 10 },
   roomHint: { color: C.muted, fontFamily: F.m, fontSize: 13, lineHeight: 19, marginBottom: 6 },
+  messagesWrap: { flex: 1 },
+  toEnd: { position: 'absolute', right: 16, bottom: 12, width: 42, height: 42, borderRadius: 21, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, alignItems: 'center', justifyContent: 'center', elevation: 4 },
+  earlier: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, marginBottom: 10 },
+  earlierText: { color: C.mint, fontFamily: F.m, fontSize: 13 },
   roomGone: { color: C.faint, fontFamily: F.m, fontSize: 12, textAlign: 'center', marginVertical: 6 },
   mentionBar: { flexGrow: 0, marginBottom: 8 },
   mentionChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4, paddingRight: 11, paddingVertical: 4, borderRadius: 16, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2 },

@@ -31,6 +31,8 @@ import { Link } from './link.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
+// Messages of each room sent with every state update; older ones come by room.history.
+const ROOM_WINDOW = 60;
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
   codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, execute, heartbeatMs = 60000, notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
@@ -262,7 +264,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     queue.rememberServers = rememberServers;
     const state = () => ({ ...db.snapshot(), usage: db.usage(), person: db.person(),
-      rooms: rooms.list().map(room => ({ ...room, active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
+      // Only the latest messages travel with every update; `earlier` says how many are left (room.history brings them).
+      rooms: rooms.list().map(room => ({ ...room, messages: room.messages.slice(-ROOM_WINDOW), earlier: Math.max(0, room.messages.length - ROOM_WINDOW), active: [...new Set(rooms.active(room.id).map(task => task.bot_id))], activeTasks: rooms.active(room.id).map(task => task.id) })),
       skills: tools.skills?.all() || [],
       presence: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
       accountApps: Object.fromEntries(db.bots().filter(bot => !bot.deletedAt).map(bot => [bot.id, tools.accountApps(bot.id)])), accountServers: knownServers() || [], bots: db.bots().filter(bot => !bot.deletedAt), deletedBots: db.bots().filter(bot => bot.deletedAt),
@@ -318,6 +321,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'approval.respond': return tools.respond(params.approvalId, params.approved, params.actionHash, params.always ?? false);
         // "Consultar agora" in Atividade → Uso: Codex reads its windows directly; Claude needs one tiny reply.
         case 'room.create': return rooms.create(params);
+        case 'room.history': { const room = db.requireRoom(params.roomId); const limit = Number.isInteger(params.limit) ? Math.min(Math.max(params.limit, 1), 500) : 120; return { messages: room.messages.slice(-limit), earlier: Math.max(0, room.messages.length - limit) }; }
         case 'room.update': return rooms.update(params.roomId, params);
         case 'room.delete': rooms.remove(params.roomId); return { deleted: true };
         case 'room.send': { await refresh(); return rooms.send(params.roomId, params.requestId, params.text, roomSelection, params.attachments); }

@@ -60,6 +60,12 @@ test('Meu Chrome real: only bot tabs are read/routed/closed, popups become check
   await s.start();
   assert.deepEqual(await c.personal.evaluate(() => [innerWidth, innerHeight]), personalSize);
   assert.deepEqual(await s.page.evaluate(() => [innerWidth, innerHeight]), [1280, 800]);
+  await s.page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1">');
+  await s.input({ type: 'viewport', width: 390, height: 720, deviceScaleFactor: 3 });
+  assert.equal(await s.page.evaluate(() => innerWidth), 390);
+  assert.deepEqual(await c.personal.evaluate(() => [innerWidth, innerHeight]), personalSize);
+  await s.deviceView({ restore: true });
+  assert.deepEqual(await s.page.evaluate(() => [innerWidth,innerHeight,devicePixelRatio]), [1280,800,1]);
   assert.notEqual(s.page, c.personal); assert.equal((await s.command('tabs', { action: 'list' })).tabs.length, 1);
   await c.browser.contexts()[0].addCookies([{ name: 'mybots_test', value: 'conta_de_teste', domain: 'example.com', path: '/' }]);
   await s.page.goto('https://example.com');

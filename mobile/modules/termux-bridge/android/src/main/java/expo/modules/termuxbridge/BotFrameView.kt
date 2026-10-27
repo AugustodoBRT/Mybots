@@ -81,7 +81,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
         val value = runCatching { JSONObject(text) }.getOrNull() ?: return
-        main.post { if (epoch == generation) { if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
+        main.post { if (epoch == generation) { if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
       }
       override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) { retry(epoch, response?.code == 401 || response?.code == 403) }
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { retry(epoch, code == 1008) }

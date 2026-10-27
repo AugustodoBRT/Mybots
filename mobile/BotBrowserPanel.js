@@ -52,7 +52,8 @@ function LiveImages({ frame }) {
  */
 function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [frame, setFrame] = useState(null); const [state, setState] = useState('connecting'); const [problem, setProblem] = useState('');
-  const [viewport, setViewport] = useState(null);
+  const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
+  useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
   const [text, setText] = useState(''); const [secret, setSecret] = useState(false); const [address, setAddress] = useState(null);
   const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
   live.current = { assumed, frame };
@@ -61,6 +62,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     setFrame(null); setState('connecting');
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      if (typeof data.desktop === 'boolean') setDesktop(data.desktop);
       if (data.closed) setState('closed');
       else if (data.error) setProblem(data.error);
       else if (data.image || data.width) { setFrame(data); setState('live'); setProblem(''); }
@@ -109,14 +111,15 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     </View>
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
-      onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height) }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={StyleSheet.absoluteFill} onMetadata={event => { const data = event.nativeEvent; if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
+      onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={StyleSheet.absoluteFill} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
     {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
     {assumed ? <>
+      <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
       <View style={styles.typeRow}>
         <TextInput style={[styles.address, { flex: 1 }]} value={text} onChangeText={setText} onSubmitEditing={typeText} secureTextEntry={secret} blurOnSubmit={false}
           placeholder={secret ? 'Senha ou código (não vai para a IA)' : 'Digitar no campo tocado'} placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} returnKeyType="send" />

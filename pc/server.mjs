@@ -260,7 +260,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         if (sink) watch(message.botId, sink, Boolean(message.on), message.browserMode || 'own', message).catch(() => {});
         return;
       }
-      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).catch(error => send({ type: 'browser_frame', botId: message.botId, error: error.message }));
         return;

@@ -22,7 +22,11 @@ export function safeUrl(value) {
 
 /** A tap, scroll, key, text or address the person sends to a bot's Chrome on the computer, cleaned field by field. */
 export function personInput(input) {
-  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab', 'viewport'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (input.type === 'viewport') {
+    if (![input.width, input.height, input.deviceScaleFactor].every(Number.isFinite) || input.width < 200 || input.width > 2560 || input.height < 100 || input.height > 2560 || input.deviceScaleFactor < 0.5 || input.deviceScaleFactor > 5 || input.desktop !== undefined && typeof input.desktop !== 'boolean') throw new Error('Tamanho do visor inválido.');
+    return { type: 'viewport', width: Math.round(input.width), height: Math.round(input.height), deviceScaleFactor: input.deviceScaleFactor, ...(input.desktop !== undefined ? { desktop: input.desktop } : {}) };
+  }
   if (input.type === 'tab') { if (!Number.isInteger(input.tab) || input.tab < 1 || input.tab > 5) throw new Error('Aba inválida.'); return { type: 'tab', tab: input.tab }; }
   const number = value => Number.isFinite(value) ? value : 0;
   const text = (value, size) => typeof value === 'string' && value.length <= size ? value : '';

@@ -36,7 +36,9 @@ const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'Arrow
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; }
+  constructor(profile, { headless = true, mode = 'own', connect } = {}) { this.profile = profile; this.mode = mode; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
+    try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
+  }
   start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
   async launch() {
     if (this.mode === 'mine') {
@@ -64,7 +66,7 @@ export class BrowserSession {
       if (this.mode === 'mine') {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
-      page.on('domcontentloaded', () => { if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
+      page.on('domcontentloaded', () => { if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
@@ -182,12 +184,46 @@ export class BrowserSession {
     const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
     if (delay) this.frameTimer = setTimeout(flush, delay); else flush();
   }
+  async deviceView(args) {
+    if (!this.page) return;
+    const page = this.page;
+    let saved = this.devices.get(page);
+    if (!saved && !args.restore) {
+      const cdp = await this.context.newCDPSession(page);
+      const original = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, deviceScaleFactor: devicePixelRatio, mobile: false }));
+      saved = { cdp, original }; this.devices.set(page, saved);
+    }
+    if (args.restore) {
+      this.device = null;
+      for (const [tab, state] of this.devices) {
+        if (!tab.isClosed()) {
+          await state.cdp.send('Emulation.setDeviceMetricsOverride', this.mode === 'mine' ? state.original : { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+          await state.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+        }
+        await state.cdp.detach().catch(() => {});
+      }
+      this.devices.clear(); return;
+    }
+    const origin = new URL(page.url()).origin;
+    if (typeof args.desktop === 'boolean') {
+      this.siteViews[origin] = args.desktop;
+      mkdirSync(this.profile, { recursive: true, mode: 0o700 });
+      writeFileSync(join(this.profile, 'site-views.json'), JSON.stringify(this.siteViews), { mode: 0o600 });
+    }
+    this.device = { width: args.width, height: args.height, deviceScaleFactor: args.deviceScaleFactor };
+    this.desktop = this.siteViews[origin] === true;
+    const metrics = this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
+    await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
+    await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });
+    this.frame?.({ desktop: this.desktop, viewport: metrics });
+  }
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
     await this.start();
     const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
+    if (args.type === 'viewport') { await this.deviceView(args); return { sent: true }; }
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
     if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));
     else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
@@ -199,11 +235,11 @@ export class BrowserSession {
     else throw new Error('Ação inválida.');
     return this.info();
   }
-  viewportSize() { return this.page.viewportSize() || { width: 1280, height: 800 }; }
+  viewportSize() { return this.device ? (this.desktop ? { width: 1280, height: 800 } : this.device) : this.page.viewportSize() || { width: 1280, height: 800 }; }
   tabList() { return (this.pages || []).map((page, n) => ({ tab: n + 1, title: this.tabTitles?.get(page) || page.url().slice(0, 100), active: page === this.page })); }
   async activate(page) {
     const watching = Boolean(this.cdp); if (watching) await this.view(false);
-    this.page = page; this.login = null; this.elementFrames = null; await page.bringToFront();
+    this.page = page; if (this.device) await this.deviceView(this.device); this.login = null; this.elementFrames = null; await page.bringToFront();
     if (watching) await this.view(true);
   }
   async info() {
@@ -359,7 +395,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
   const connect = () => connection ||= connectMine(process.argv[4]).then(browser => { browser.on('disconnected', () => { connection = null; }); return browser; }).catch(error => { connection = null; throw error; });
   const sessionFor = botId => {
     if (!sessions.has(botId)) {
-      const session = new BrowserSession(process.argv[2], { mode: mine ? 'mine' : 'own', ...(mine ? { connect } : {}) });
+      const session = new BrowserSession(mine ? join(process.argv[2], botId) : process.argv[2], { mode: mine ? 'mine' : 'own', ...(mine ? { connect } : {}) });
       if (mine) session.secrets = secrets;
       session.frame = frame => process.send?.({ frame, botId }); sessions.set(botId, session);
     }
@@ -372,14 +408,14 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
       if (op === 'close') { await sessions.get(botId)?.close(); sessions.delete(botId); if (id) process.send?.({ id, result: { closed: true } }); return; }
       if (op === 'view' && !args?.on && !sessions.get(botId)?.cdp) { process.send?.({ id, result: { watching: false } }); return; }
       const session = sessionFor(botId);
-      const result = op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
+      const result = op === 'device' ? await session.deviceView(args) || { restored: true } : op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
       process.send?.({ id, result });
     } catch (error) {
       process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
     }
   };
   process.on('message', message => {
-    if (message.op === 'view' || message.op === 'input' || message.op === 'close') { const pending = (people.get(message.botId) || Promise.resolve()).then(() => handle(message)); people.set(message.botId, pending); }
+    if (message.op === 'view' || message.op === 'input' || message.op === 'close' || message.op === 'device') { const pending = (people.get(message.botId) || Promise.resolve()).then(() => handle(message)); people.set(message.botId, pending); }
     // One bot's commands keep their order; bots that share this browser (Meu Chrome) do not wait for each other.
     else { const key = message.botId || ''; commands.set(key, (commands.get(key) || Promise.resolve()).then(() => handle(message))); }
   });

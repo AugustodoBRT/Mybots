@@ -71,7 +71,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [zoom, setZoom] = useState({ scale: 1, translateX: 0, translateY: 0, rotation: 0 });
   const zoomRef = useRef(zoom); zoomRef.current = zoom; const lastTap = useRef(0);
   const [drag, setDrag] = useState({ x: 0, y: 0 });
-  const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
+  const size = useRef({ width: 1, height: 1 }); const area = useRef(null); const bar = useRef(null); const [areaSize, setAreaSize] = useState(null); const live = useRef({ assumed, frame: null });
   live.current = { assumed, frame, desktop, botId: bot.id, call, control };
   const send = input => { if (!BotFrameView && input.type === 'keyboard') { keyboard.current?.focus(); return; } if (BotFrameView) browserInput(live.current.botId, JSON.stringify({ ...input, nonce: ++nonce.current })); else live.current.call('browser.input', { botId: live.current.botId, input }).catch(e => setProblem(e.message)); };
   useEffect(() => { setDrag({ x: 0, y: 0 }); }, [frame?.seq]);
@@ -79,7 +79,10 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     if (!data) return; setCaptcha(data);
     if (data.rect && live.current.assumed) {
       const r = data.rect, signature = JSON.stringify(r);
-      if (challengeZoom.current !== signature) { challengeZoom.current = signature; const { width, height } = size.current; const scale = Math.max(1, Math.min(3, .85 * Math.min(data.width / r.width, data.height / r.height))); setZoom({ scale,rotation:0,translateX:-( (r.x+r.width/2)/data.width*width-width/2 )*scale,translateY:-( (r.y+r.height/2)/data.height*height-height/2 )*scale }); }
+      if (challengeZoom.current !== signature) { challengeZoom.current = signature; const { width, height } = size.current, k = width / data.width, room = area.current || size.current;
+        // The floating controls cover the bottom of the visor: the challenge is fitted and centered in the part above them.
+        const free = Math.max(120, Math.min(room.height, (bar.current?.y ?? Infinity) - (room.y || 0))), lift = (free - room.height) / 2;
+        const scale = Math.max(.6, Math.min(4, .85 * Math.min(room.width / (r.width * k), free / (r.height * k)))); setZoom({ scale,rotation:0,translateX:-( (r.x+r.width/2)/data.width*width-width/2 )*scale,translateY:-( (r.y+r.height/2)/data.height*height-height/2 )*scale + lift }); }
     }
     if (data.solved && data.autoReturn && live.current.assumed && !returning.current) { returning.current = true; live.current.control('bot'); }
   };
@@ -105,14 +108,15 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   useEffect(() => { if (viewport) call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).catch(e => setProblem(e.message)); }, [viewport, bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport })).catch(e => setProblem(e.message)); };
   const touch = useRef(null);
-  const point = event => touchPoint(event.nativeEvent, size.current, zoomRef.current);
+  const local = at => ({ x: at.locationX - (size.current.x || 0), y: at.locationY - (size.current.y || 0) });
+  const point = event => { const at = local(event.nativeEvent); return touchPoint({ locationX: at.x, locationY: at.y }, size.current, zoomRef.current); };
   const responder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onPanResponderGrant: event => {
       setCircle({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }); clearTimeout(circleTimer.current); circleTimer.current = setTimeout(() => setCircle(null), 350);
       const p = point(event); touch.current = { ...p, at: 0, dx: 0, dy: 0 };
-      if (Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }, view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
+      if (Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, local(event.nativeEvent), view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
       if (!live.current.desktop) send({ type: 'touch', phase: 'touchStart', points: [p] });
     },
     onPanResponderMove: (event, gesture) => {
@@ -121,7 +125,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       if (fingers.length >= 2) {
         if (!start.zooming) { start.zooming = true; send({ type: 'touch', phase: 'touchCancel', points: [] }); }
         const distance = Math.hypot(fingers[0].pageX - fingers[1].pageX, fingers[0].pageY - fingers[1].pageY);
-        const center = { x: (fingers[0].locationX + fingers[1].locationX) / 2, y: (fingers[0].locationY + fingers[1].locationY) / 2 };
+        const a = local(fingers[0]), b = local(fingers[1]), center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         if (!start.pinch) start.pinch = { distance, zoom: zoomRef.current, center };
         setZoom({ ...zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height), translateX: zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height).translateX + center.x - start.pinch.center.x, translateY: zoomAt(start.pinch.zoom, start.pinch.center, start.pinch.zoom.scale * distance / start.pinch.distance, size.current.width, size.current.height).translateY + center.y - start.pinch.center.y });
         return;
@@ -159,9 +163,12 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     </View>
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
-      onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
+      onLayout={event => { const layout = event.nativeEvent.layout; area.current = layout; setAreaSize({ width: layout.width, height: layout.height }); const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
+      {/* The page keeps its proportions: a desktop page on a standing phone gets bands instead of being stretched. */}
+      <View pointerEvents="none" style={fitted(frame, areaSize)} onLayout={event => { size.current = event.nativeEvent.layout; }}>
       {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
+      </View>
       {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
       {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
       {slow ? <View pointerEvents="none" style={styles.closed}><Text style={styles.watchingText}>Conexão lenta</Text></View> : null}
@@ -169,7 +176,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
     {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o Chrome de novo</Text></Pressable> : null}
-    {assumed ? <View style={styles.floatingControls}>
+    {assumed ? <View style={styles.floatingControls} onLayout={event => { bar.current = event.nativeEvent.layout; }}>
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
       {!BotFrameView ? <TextInput ref={keyboard} style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} onChangeText={webType} autoCapitalize="none" onSubmitEditing={() => send({ type:'key',key:'Enter' })} blurOnSubmit={false} /> : null}
@@ -190,6 +197,13 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
  * "Navegador do bot": the bot's own WebView, live. Watching only until the person taps "Assumir"; then the
  * bot's browser commands are refused until "Devolver ao bot".
  */
+function fitted(frame, room) {
+  if (!frame?.width || !room) return StyleSheet.absoluteFill;
+  // The visor's 2-point border is inside its layout size.
+  const width = room.width - 4, height = room.height - 4, k = Math.min(width / frame.width, height / frame.height);
+  return { position: 'absolute', left: (width - frame.width * k) / 2, top: (height - frame.height * k) / 2, width: frame.width * k, height: frame.height * k, backgroundColor: '#FFFFFF' };
+}
+
 export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc }) {
   const [page, setPage] = useState(browser?.pages?.[bot.id] || null);
   const [info, setInfo] = useState(null);
@@ -244,7 +258,7 @@ const styles = StyleSheet.create({
   fullscreen: { flex: 1, backgroundColor: C.surface, paddingTop: StatusBar.currentHeight || 24, paddingBottom: 12 },
   floatingControls: { position:'absolute',bottom:74,left:14,right:14,padding:10,borderRadius:18,gap:6,backgroundColor:C.surface+'F0',borderWidth:1,borderColor:C.line2 },
   fullPanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0 },
-  fullFrame: { flex: 1, aspectRatio: undefined },
+  fullFrame: { flex: 1, aspectRatio: undefined, backgroundColor: C.surface2 },
   panel: { marginHorizontal: 12, marginTop: 10, marginBottom: 6, padding: 10, borderRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, gap: 9 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   lock: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },

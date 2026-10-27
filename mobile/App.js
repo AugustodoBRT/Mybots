@@ -1176,7 +1176,7 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
   const browsing = phone || (desktop && pcBrowser);
   const [files, setFiles] = useState([]); const [composerError, setComposerError] = useState('');
   // The bot's own browser panel; it stays open while the person has taken over.
-  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false); const [browserKey, setBrowserKey] = useState(0);
   const help = data.browser?.help?.[bot.id];
   const assumed = data.browser?.control?.[bot.id] === 'person';
   useEffect(() => { setFiles([]); setComposerError(''); setBrowserOpen(false); }, [bot.id]);
@@ -1219,12 +1219,13 @@ function ChatScreen({ bot, data, error, onLogs, draft, setDraft, sending, saving
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
             <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
-      {browsing ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen} onPress={() => !assumed && setBrowserOpen(value => !value)} size={40} /> : null}
+      {browsing ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
       <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />
     </View>
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
-    {browsing && browserOpen ? <BotBrowserPanel bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
+    {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
+    {browsing && (browserOpen || assumed) ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} /> : null}
     <View style={styles.messagesWrap}>
     <ScrollView ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled" {...scrollProps}>
       {!bot.messages.length && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>

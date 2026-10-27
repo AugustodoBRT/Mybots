@@ -193,7 +193,14 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
           if (value.has("loading")) metadata["loading"] = value.optBoolean("loading")
           if (value.has("inputKey")) inputKey = runCatching { KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(Base64.decode(value.getString("inputKey"), Base64.DEFAULT))) }.getOrNull()
           value.optJSONObject("focus")?.let { focus(it) }
-          if (value.has("inputAck")) { inputBusy = false; if (value.has("error")) { metadata["error"] = value.optString("error"); publish() }; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) { metadata["closed"] = true; focus(JSONObject().put("active", false)) }; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
+          if (value.has("inputAck")) {
+            // Slowness is how long the computer takes to take the input: a tap that changes nothing sends no frame.
+            inputBusy = false
+            if (awaitingFrame != 0L) { metadata["latency"] = SystemClock.uptimeMillis() - awaitingFrame; awaitingFrame = 0L; main.removeCallbacks(slowInput) }
+            if (metadata["slow"] == true) { metadata["slow"] = false; publish() }
+            if (value.has("error")) { metadata["error"] = value.optString("error"); publish() }
+            flushInput(); return@post
+          }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) { metadata["closed"] = true; focus(JSONObject().put("active", false)) }; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
       }
       override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) { retry(epoch, response?.code == 401 || response?.code == 403) }
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { retry(epoch, false) }

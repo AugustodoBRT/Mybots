@@ -50,6 +50,23 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   private val metadata = mutableMapOf<String, Any>()
   private val emit = Runnable { emitQueued = false; lastEmit = SystemClock.uptimeMillis(); onMetadata(metadata.toMap()) }
 
+  private val inputs = java.util.ArrayDeque<JSONObject>()
+  private var inputSeq = 0L
+  private var inputBusy = false
+  fun input(value: String?) {
+    val command = runCatching { JSONObject(value ?: return) }.getOrNull() ?: return
+    command.remove("nonce")
+    if (command.optString("type") == "touch" && command.optString("phase") == "touchMove") inputs.removeAll { it.optString("phase") == "touchMove" }
+    if (inputs.size >= 16) { inputs.clear(); metadata["error"] = "Conexão lenta. Tente novamente."; publish(); return }
+    inputs.add(command); flushInput()
+  }
+  private fun flushInput() {
+    val ws = socket ?: return
+    if (inputBusy || inputs.isEmpty()) return
+    inputBusy = true
+    ws.send(JSONObject().put("type", "input").put("seq", ++inputSeq).put("input", inputs.removeFirst()).toString())
+  }
+
   init {
     // A software layer finishes drawing before its old bitmap is returned to the decoder.
     surface.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
@@ -73,6 +90,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
     worker = worker ?: Executors.newSingleThreadExecutor { task -> Thread(task, "mybots-frame").apply { isDaemon = true } }
     val request = Request.Builder().url("http://127.0.0.1:$port/frames?bot=$id").header("Authorization", "Bearer $token").build()
     socket = OkHttpClientProvider.getOkHttpClient().newWebSocket(request, object : WebSocketListener() {
+      override fun onOpen(webSocket: WebSocket, response: Response) { main.post { if (epoch == generation) flushInput() } }
       override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
         if (bytes.size > 4_020_000) { webSocket.close(1008, "Quadro inválido."); return }
         val data = bytes.toByteArray()
@@ -81,7 +99,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
       }
       override fun onMessage(webSocket: WebSocket, text: String) {
         val value = runCatching { JSONObject(text) }.getOrNull() ?: return
-        main.post { if (epoch == generation) { if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
+        main.post { if (epoch == generation) { if (value.has("inputAck")) { inputBusy = false; flushInput(); return@post }; if (value.has("desktop")) metadata["desktop"] = value.optBoolean("desktop"); if (value.optBoolean("closed")) metadata["closed"] = true; if (value.has("error")) metadata["error"] = value.optString("error"); publish() } }
       }
       override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) { retry(epoch, response?.code == 401 || response?.code == 403) }
       override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { retry(epoch, code == 1008) }
@@ -163,7 +181,7 @@ class BotFrameView(context: Context, appContext: AppContext) : ExpoView(context,
   }
 
   private fun disconnect() {
-    generation++; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
+    generation++; inputs.clear(); inputBusy = false; inputSeq = 0; socket?.cancel(); socket = null; pending = null; decoding = false; spare = null
     main.removeCallbacks(emit); emitQueued = false
     worker?.shutdownNow(); worker = null
   }

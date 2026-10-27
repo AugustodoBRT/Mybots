@@ -55,9 +55,12 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
   useEffect(() => { if (assumed && viewport) send({ type: 'viewport', width: viewport.cssWidth, height: viewport.cssHeight, deviceScaleFactor: PixelRatio.get() }); }, [assumed, viewport]);
   const [text, setText] = useState(''); const [secret, setSecret] = useState(false); const [address, setAddress] = useState(null);
+  const [nativeInput, setNativeInput] = useState(null); const nonce = useRef(0);
+  const [drag, setDrag] = useState({ x: 0, y: 0 });
   const size = useRef({ width: 1, height: 1 }); const live = useRef({ assumed, frame: null });
-  live.current = { assumed, frame };
-  const send = input => call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message));
+  live.current = { assumed, frame, desktop };
+  const send = input => { if (BotFrameView) setNativeInput(JSON.stringify({ ...input, nonce: ++nonce.current })); else call('browser.input', { botId: bot.id, input }).catch(e => setProblem(e.message)); };
+  useEffect(() => { setDrag({ x: 0, y: 0 }); }, [frame?.seq]);
   useEffect(() => {
     setFrame(null); setState('connecting');
     const listener = data => {
@@ -74,24 +77,30 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
   }, [bot.id, browserMode(bot)]);
   useEffect(() => { if (viewport) call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).catch(e => setProblem(e.message)); }, [viewport, bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport })).catch(e => setProblem(e.message)); };
-  // A short touch is a click; a drag scrolls the page under the finger (sent while dragging, a few times a second).
   const touch = useRef(null);
+  const point = event => ({ id: 0, x: Math.max(0, Math.min(1, event.nativeEvent.locationX / size.current.width)), y: Math.max(0, Math.min(1, event.nativeEvent.locationY / size.current.height)) });
   const responder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
-    onPanResponderGrant: event => { const { locationX, locationY } = event.nativeEvent; touch.current = { x: locationX / size.current.width, y: locationY / size.current.height, sentY: 0, sentX: 0, at: 0 }; },
+    onPanResponderGrant: event => {
+      const p = point(event); touch.current = { ...p, at: 0, dx: 0, dy: 0 };
+      if (!live.current.desktop) send({ type: 'touch', phase: 'touchStart', points: [p] });
+    },
     onPanResponderMove: (event, gesture) => {
-      const start = touch.current; if (!start || Date.now() - start.at < 120 || Math.abs(gesture.dy) + Math.abs(gesture.dx) < 10) return;
-      const scale = (live.current.frame?.height || 800) / size.current.height;
-      const dy = -(gesture.dy - start.sentY) * scale, dx = -(gesture.dx - start.sentX) * scale;
-      start.sentY = gesture.dy; start.sentX = gesture.dx; start.at = Date.now(); start.moved = true;
-      send({ type: 'scroll', x: start.x, y: start.y, dx, dy });
+      const start = touch.current; if (!start) return;
+      setDrag({ x: gesture.dx - start.dx, y: gesture.dy - start.dy });
+      if (Date.now() - start.at < 50) return;
+      start.at = Date.now();
+      if (live.current.desktop) { const scale = (live.current.frame?.height || 800) / size.current.height; send({ type: 'scroll', x: start.x, y: start.y, dx: -(gesture.dx - start.dx) * scale, dy: -(gesture.dy - start.dy) * scale }); }
+      else send({ type: 'touch', phase: 'touchMove', points: [point(event)] });
+      start.dx = gesture.dx; start.dy = gesture.dy;
     },
     onPanResponderRelease: (event, gesture) => {
       const start = touch.current; touch.current = null; if (!start) return;
-      if (!start.moved && Math.abs(gesture.dx) + Math.abs(gesture.dy) < 10) send({ type: 'tap', x: Math.max(0, Math.min(1, start.x)), y: Math.max(0, Math.min(1, start.y)) });
-      else if (start.moved) { const scale = (live.current.frame?.height || 800) / size.current.height; send({ type: 'scroll', x: start.x, y: start.y, dx: -(gesture.dx - start.sentX) * scale, dy: -(gesture.dy - start.sentY) * scale }); }
-    }
+      if (!live.current.desktop) send({ type: 'touch', phase: 'touchEnd', points: [] });
+      else if (Math.abs(gesture.dx) + Math.abs(gesture.dy) < 10) send({ type: 'tap', x: start.x, y: start.y });
+    },
+    onPanResponderTerminate: () => { touch.current = null; send({ type: 'touch', phase: 'touchCancel', points: [] }); setDrag({ x: 0, y: 0 }); }
   })).current;
   const typeText = () => { if (!text) return; send({ type: 'text', text }); setText(''); };
   const go = () => { if (address?.trim()) send({ type: 'open', url: address.trim() }); setAddress(null); };
@@ -112,7 +121,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose }) {
     {frame?.tabs?.length > 1 ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, padding: 6 }}>{frame.tabs.map(tab => <Pressable key={tab.tab} disabled={!assumed} accessibilityRole="button" accessibilityState={{ selected: tab.active, disabled: !assumed }} onPress={() => send({ type: 'tab', tab: tab.tab })} style={[styles.tool, { flex: 1, opacity: tab.active ? 1 : 0.6 }]}><Text style={styles.hint} numberOfLines={1}>{tab.tab} · {tab.title || 'Nova aba'}</Text></Pressable>)}</View> : null}
     <View style={[styles.live, assumed ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; size.current = layout; const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={StyleSheet.absoluteFill} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
+      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} input={nativeInput} style={[StyleSheet.absoluteFill, { transform: [{ translateX: drag.x }, { translateY: drag.y }] }]} onMetadata={event => { const data = event.nativeEvent; if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <LiveImages key={bot.id} frame={frame} />
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O Chrome deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o Chrome do bot no computador…'}</Text></View>}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Chrome fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}

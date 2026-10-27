@@ -585,7 +585,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         });
       } else response.writeHead(404).end();
     });
-    frameSockets = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
+    frameSockets = new WebSocketServer({ noServer: true, maxPayload: 16384, perMessageDeflate: false });
     sockets = new WebSocketServer({ noServer: true, maxPayload: 20_000_000, perMessageDeflate: false });
     server.on('upgrade', (request, socket, head) => {
       const origin = request.headers.origin;
@@ -598,7 +598,18 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         if (browserMode(bot) === 'mine' && (bot.access === 'basic' || tools.policy(bot.id, 'browser') !== 'allow')) { refuse('403 Forbidden'); return; }
         frameSockets.handleUpgrade(request, socket, head, ws => {
           ws.views = new Set([bot.id]); ws.previous = {}; ws.alive = true;
-          ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); ws.on('message', () => ws.close(1008));
+          ws.on('error', () => {}); ws.on('pong', () => { ws.alive = true; }); let entering = false, lastSeq = 0;
+          ws.on('message', async (raw, binary) => {
+            try {
+              if (binary || entering || !equal(request.headers.authorization, 'Bearer ' + token) || browser.control.get(bot.id) !== 'person') throw new Error();
+              const message = JSON.parse(raw);
+              if (message.type !== 'input' || !Number.isSafeInteger(message.seq) || message.seq <= lastSeq) throw new Error();
+              const input = personInput(message.input); lastSeq = message.seq; entering = true;
+              await link.userInput(bot.id, input);
+              if (ws.readyState === 1) ws.send(JSON.stringify({ inputAck: lastSeq }));
+            } catch { ws.close(1008, 'Entrada recusada.'); }
+            finally { entering = false; }
+          });
           ws.on('close', () => { ws.views.clear(); watchBrowsers(); });
           watchBrowsers(bot.id);
         }); return;

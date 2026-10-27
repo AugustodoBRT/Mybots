@@ -22,7 +22,11 @@ export function safeUrl(value) {
 
 /** A tap, scroll, key, text or address the person sends to a bot's Chrome on the computer, cleaned field by field. */
 export function personInput(input) {
-  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab', 'viewport'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (!input || typeof input !== 'object' || !['tap', 'scroll', 'text', 'key', 'open', 'back', 'reload', 'tab', 'viewport', 'touch'].includes(input.type)) throw new Error('Ação inválida no navegador.');
+  if (input.type === 'touch') {
+    if (!['touchStart','touchMove','touchEnd','touchCancel'].includes(input.phase) || !Array.isArray(input.points) || input.points.length > 5 || input.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1 || !Number.isInteger(p.id) || p.id < 0 || p.id > 10) || ['touchEnd','touchCancel'].includes(input.phase) && input.points.length) throw new Error('Toque inválido.');
+    return { type: 'touch', phase: input.phase, points: input.points.map(({ x, y, id }) => ({ x, y, id })) };
+  }
   if (input.type === 'viewport') {
     if (![input.width, input.height, input.deviceScaleFactor].every(Number.isFinite) || input.width < 200 || input.width > 2560 || input.height < 100 || input.height > 2560 || input.deviceScaleFactor < 0.5 || input.deviceScaleFactor > 5 || input.desktop !== undefined && typeof input.desktop !== 'boolean') throw new Error('Tamanho do visor inválido.');
     return { type: 'viewport', width: Math.round(input.width), height: Math.round(input.height), deviceScaleFactor: input.deviceScaleFactor, ...(input.desktop !== undefined ? { desktop: input.desktop } : {}) };

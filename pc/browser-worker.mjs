@@ -200,9 +200,8 @@ export class BrowserSession {
           await state.cdp.send('Emulation.setDeviceMetricsOverride', this.mode === 'mine' ? state.original : { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
           await state.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
         }
-        await state.cdp.detach().catch(() => {});
       }
-      this.devices.clear(); return;
+      return;
     }
     const origin = new URL(page.url()).origin;
     if (typeof args.desktop === 'boolean') {
@@ -223,6 +222,10 @@ export class BrowserSession {
     const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
+    if (args.type === 'touch') {
+      const cdp = this.devices.get(this.page)?.cdp || this.cdp; if (!cdp || this.desktop) throw new Error('Ative o modo celular.');
+      await cdp.send('Input.dispatchTouchEvent', { type: args.phase, touchPoints: args.points.map(p => ({ x: p.x * width, y: p.y * height, id: p.id, radiusX: 1, radiusY: 1, force: 1 })) }); return { sent: true };
+    }
     if (args.type === 'viewport') { await this.deviceView(args); return { sent: true }; }
     if (args.type === 'tab') return this.perform('tabs', { action: 'switch', tab: args.tab });
     if (args.type === 'tap') await this.page.mouse.click(at(args.x, width), at(args.y, height));

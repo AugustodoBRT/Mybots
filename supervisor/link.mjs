@@ -238,6 +238,15 @@ export class Link {
   input(botId, input) {
     if (!this.post({ type: 'browser_input', botId, input })) throw new Error('O computador está desconectado.');
   }
+  userInput(botId, input) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'A entrada demorou para chegar ao computador.' }), 10000);
+      const done = message => { clearTimeout(timer); this.commands.delete(rid); message.error ? reject(new Error('Não consegui enviar a entrada ao navegador.')) : resolve({ sent: true }); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'browser_input', rid, botId, input })) done({ error: 'offline' });
+    });
+  }
   post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }
   /** An action already authorized on the phone, only for its currently running turn on this connection. */
   command(run, op, args) {

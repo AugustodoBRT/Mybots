@@ -177,6 +177,7 @@ class TermuxBridgeModule : Module() {
     View(BotFrameView::class) {
       Events("onMetadata")
       Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
+      Prop("input") { view: BotFrameView, value: String? -> view.input(value) }
     }
     Function("browserPresentation") { on: Boolean ->
       appContext.currentActivity?.let { activity ->

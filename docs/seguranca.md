@@ -200,3 +200,48 @@ O CAPTCHA continua sendo resolvido pela pessoa. O worker só localiza o desafio 
 - **Downloads no PC**: `~/.mybots-pc/downloads/<bot>/`, nomes sem caminho, executáveis recusados, até 100 MB. A pessoa abre ou envia ao bot pelo app; só então o arquivo (até 20 MB) vai ao celular como arquivo do bot. O nó só lista, lê ou apaga dentro da pasta do bot pedido.
 - **Linha do tempo**: cada passo guarda legenda, endereço e uma captura (migração 10, `browser_steps`, 120 por bot, apagados com o bot). A captura nunca vai ao modelo; só ao app.
 
+
+## Nível Livre e controle do celular (v59)
+
+**Mudança de decisão**: até a v58 o freio era pedir aprovação ação por ação. O nível **Livre**, acima de Acesso total, troca isso por **limites que o modelo não consegue mudar**. É escolhido por bot, só no app do celular, depois de um aviso na primeira vez.
+
+### O que o nível Livre permite
+
+- **Nada pede aprovação**, exceto o que estiver na lista **"Sempre perguntar"** e os limites duros abaixo. Cada ação continua registrada na **Atividade**, como em todos os níveis.
+- **Controle dos outros apps do celular** pelo serviço de acessibilidade do MyBots (`MyBotsAccess`): `phone_screen` (a tela como lista numerada, com captura opcional), `phone_tap`, `phone_type`, `phone_scroll`, `phone_open_app`, `phone_back`, `phone_fill_code` e `phone_ask_user`. Essas ferramentas só aparecem para bots no Livre; nos outros níveis, a permissão `phone` é sempre negada.
+- **Terminal completo do Termux** quando o bot responde pelo celular: instalar pacotes, rodar scripts, usar o Termux:API (localização, câmera, SMS, com a permissão do Android). Nos outros níveis o celular continua **sem terminal**, como antes. Codex roda com `--sandbox danger-full-access` (o Android continua isolando o Termux dos outros apps); Claude recebe `Bash,Read,Write,Edit,Glob,Grep` e **cada comando** passa pela ferramenta de permissão do MyBots.
+- No computador, um bot Livre tem o mesmo alcance de Acesso total (inclusive a pasta pessoal), com a lista "Sempre perguntar" no lugar das aprovações.
+
+### A lista "Sempre perguntar"
+
+Uma lista só, para todos os bots Livres, editada no perfil (aba Acesso). Itens: comandos perigosos (sudo, apagar pastas inteiras, git push — no PC ou no Termux), instalar habilidades, anexar arquivos em sites, enviar SMS (esses quatro começam ligados), enviar formulários, entrar com senha salva, tocar e digitar em outros apps, abrir apps, preencher códigos, comandos no Termux, comandos no PC, agir nos apps da conta, controlar a tela do PC, mandar notificações e criar rotinas. O cartão do Livre **não tem "Sempre permitir"**: a lista só muda pela tela dela. Um app conectado marcado como "ações sempre pedem aprovação" continua pedindo também no Livre.
+
+**Limite do Codex**: o Codex não deixa o MyBots decidir comando a comando dentro do terminal. Por isso, com **"Comandos no Termux"** na lista, um bot Codex fica **sem terminal** no celular; **"Comandos perigosos"** vale para ele só como instrução. Para o Claude, os dois itens geram cartão de verdade.
+
+### O que continua bloqueado no Livre (limites duros)
+
+- **Senhas, números de cartão e códigos nunca passam pela IA nem pelos logs.** Campos de senha aparecem como `••••` em `phone_screen` e tapados de preto nas capturas; `phone_type` recusa campos de senha. Senhas salvas continuam sendo preenchidas pelo app (`browser_login`).
+- **Códigos de verificação**: quando chega uma notificação ou SMS (pelo app de mensagens) que fala de código, o `MyBotsNotificationListener` esconde o número **antes** de mandar ao supervisor (`[código protegido]`) e guarda o código só na memória do app por 15 minutos. `phone_fill_code` escreve o código direto no campo, dentro do app, e só aceita o código **do remetente que o bot indicou**. Se a mensagem **não cita** o app ou o site do campo (por exemplo, um código do banco num site estranho), aparece um cartão para a pessoa decidir, mesmo no Livre e mesmo com o item fora da lista. Todo código visto vira segredo por 30 minutos: é mascarado em qualquer tela lida pelo bot (inclusive a conversa do SMS e o campo já preenchido), tapado nas capturas e removido de toda resposta que o app manda ao supervisor. O supervisor também mascara códigos nas notificações gravadas e no `sms_search`.
+- **CAPTCHA, biometria e confirmação de pagamento** são sempre da pessoa (`phone_ask_user`, `browser_ask_user`). Nada de anti-detecção ou quebra de CAPTCHA.
+- **Apps que recusam acessibilidade** (bancos, pagamentos): o serviço **não** se declara ferramenta de acessibilidade (`isAccessibilityTool=false`), então apps que se escondem desses serviços continuam escondidos. A tela vem vazia (`refused`) e o bot chama a pessoa.
+- **Telas que são sempre da pessoa**: o próprio MyBots, instaladores de apps, a tela de permissões do Android e telas de Configurações sobre o MyBots (acessibilidade, permissões, desinstalar, forçar parada). Nelas o bot só lê; tocar, digitar e rolar são recusados no app.
+- **Arquivos do supervisor e chaves**: no Termux, caminhos de `~/.mybots`, do supervisor e de chaves (`.ssh` e afins) são recusados antes de qualquer comando do Claude.
+- **O modelo nunca muda o próprio nível nem a lista.** Não há ferramenta para isso; `team_create_bot` recusa `access: free` e um bot Livre cria bots no máximo com Acesso total; a janela do PC não escolhe Livre nem edita a lista (só o app do celular).
+
+### Por que o app confere o nível
+
+No Livre o bot tem um shell no Termux, o mesmo usuário Linux do supervisor. Um comando disfarçado poderia, em tese, mexer nos arquivos do supervisor. Por isso o que mais importa é conferido **pelo app**, fora do alcance do Termux:
+
+- O app guarda **a sua própria cópia** de quais bots estão no Livre e da lista "Sempre perguntar" (preferências privadas do app). O `MyBotsAccess` **só obedece bots que essa cópia lista**.
+- Ao carregar o estado, se o supervisor disser que um bot é Livre sem o app ter escolhido, o app o devolve para Acesso total e avisa a pessoa. Se a lista do supervisor divergir da cópia do app, o app restaura a cópia e avisa.
+- Senhas (Keystore), códigos (memória do app) e o controle dos apps (serviço de acessibilidade) vivem no app, não no Termux.
+
+### Parar, ver e assumir
+
+- Enquanto um bot controla o celular aparecem **uma barra sobre os outros apps** (o que ele está fazendo, Assumir e **Parar**) e **uma notificação fixa** com Parar e Assumir. O app mostra um cartão "Celular ao vivo" na conversa, com a captura depois de cada passo, e a linha do tempo guarda os passos ("No celular: …").
+- **Parar** funciona na hora: o app marca o turno como parado e todo passo nativo em andamento confere isso a cada 50 ms (abrir app, toques, rolagens); depois o supervisor cancela o turno e recusa o que ainda estava na fila. Parar também funciona pelo botão Parar do chat e pela janela do PC.
+- Um bot de cada vez controla o celular. **Assumir** faz o app e o supervisor recusarem comandos até a pessoa tocar em Devolver.
+
+### Ligar o serviço
+
+O serviço de acessibilidade é ligado pela pessoa em Ajustes → Controle do celular. No Android 13 ou mais novo, um APK instalado fora de loja fica bloqueado ("Configuração restrita") até a pessoa tocar em **Permitir configurações restritas** no menu ⋮ das informações do app; o app guia esse passo. Bots fora do Livre não usam o serviço mesmo com ele ligado.

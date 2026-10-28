@@ -100,7 +100,9 @@ Na entrega, a pedido da pessoa, o item 4 virou **navegador compartilhado por pad
 5. **Downloads do navegador** numa lista própria (no PC, `~/.mybots-pc/downloads/<botId>`; no celular, a pasta do bot), com Abrir e Enviar ao bot.
 6. **Tela larga** (tablet e janela do PC): o navegador fica ao lado da conversa (divisão lado a lado), e não por cima.
 
-## v59 — Bot livre, parte 1: autonomia e controle do celular
+## v59 — Bot livre, parte 1: autonomia e controle do celular — concluída na v59
+
+Na entrega: a lista "Sempre perguntar" é uma só para todos os bots Livres; códigos chegam pelas notificações (SMS pelo app de mensagens), no app e no navegador do bot no celular; no Codex, "Comandos no Termux" na lista deixa o bot sem terminal (o Codex não deixa perguntar comando a comando).
 
 Objetivo: o bot consegue fazer praticamente tudo o que a pessoa faz no celular, sem pedir licença a cada passo, dentro de limites que só a pessoa muda.
 

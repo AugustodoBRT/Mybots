@@ -173,3 +173,7 @@ O navegador padrão dos bots agora é o **Navegador compartilhado**: um Chrome d
 - **Downloads** (botão ⬇ do painel): o que o navegador baixou, no computador (`~/.mybots-pc/downloads/<bot>`) ou no celular, com **Abrir** e **Enviar ao bot**.
 - **Tela larga** (janela do PC ou tablet): o navegador fica ao lado da conversa.
 
+
+## Nível Livre (v59)
+
+O nível **Livre** se escolhe só no app do celular (perfil do bot → Acesso), depois de um aviso. No computador, um bot Livre trabalha como no Acesso total, mas sem cartões de aprovação, salvo o que estiver em **Sempre perguntar** (por padrão: comandos perigosos como sudo, apagar pastas inteiras e git push; instalar habilidades; anexar arquivos em sites; enviar SMS). A janela do PC mostra o nível, o cartão "Celular ao vivo" e o botão **Parar** quando um bot está controlando o celular, mas não escolhe Livre nem muda a lista. Um bot Livre que responde pelo PC também controla os apps do celular (as ferramentas `phone_*` rodam no app do celular).

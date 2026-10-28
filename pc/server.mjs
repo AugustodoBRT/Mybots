@@ -345,7 +345,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           wrap,
           tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer: computerFor(message.tools.computer, workspace, undefined, enabledSkills), skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
-          onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
+          onProgress: progress => send({ type: 'progress', id: message.id, ...progress }),
+          onDelta: draft => send({ type: 'progress', id: message.id, draft })
         });
         if (controller.signal.aborted) throw new Error(controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : 'Resposta interrompida.');
         send({ type: 'done', id: message.id, reply });

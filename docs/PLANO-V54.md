@@ -142,7 +142,7 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 
 **Testes novos**: uma oferta acima do teto é bloqueada pelo supervisor; um mandato vencido para a negociação; fechar sem permissão gera o cartão Aceitar/Recusar.
 
-## v62 — Acabamentos que fazem diferença
+## v62 — Acabamentos que fazem diferença — concluída na v62 (0.40.0, versionCode 64)
 
 - **Resposta aparecendo enquanto é escrita** (streaming): Claude `stream-json` com mensagens parciais e Codex por itens, em lotes de ~32 ms.
 - **Busca em todas as conversas** (SQLite FTS5 sobre `messages` e `room_messages`).

@@ -12,12 +12,12 @@ const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.send',
+export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
-const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
+const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
@@ -191,6 +191,7 @@ export class Link {
       const run = this.runs.get(message.id);
       if (!run) return;
       if (message.type === 'session') await run.onSession?.(message.sessionId);
+      else if (message.type === 'progress' && typeof message.draft === 'string') run.onDelta?.(message.draft.slice(0, 20000));
       else if (message.type === 'progress') run.onProgress?.({ say: typeof message.say === 'string' ? message.say : undefined, step: typeof message.step === 'string' ? message.step : undefined });
       else if (message.type === 'done') run.resolve(message.reply);
       else if (message.type === 'failed') run.reject(Object.assign(new Error(message.error || 'O computador não concluiu a resposta.'), message.output ? { output: message.output } : {}, message.codexSessionId ? { codexSessionId: message.codexSessionId } : {}));
@@ -286,11 +287,11 @@ export class Link {
     });
   }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */
-  run(send, bot, prompt, { signal, tools, onSession, onProgress } = {}) {
+  run(send, bot, prompt, { signal, tools, onSession, onProgress, onDelta } = {}) {
     return new Promise((resolve, reject) => {
       const id = randomUUID(); let timer;
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
-      this.runs.set(id, { taskId: tools?.taskId, onSession, onProgress, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
+      this.runs.set(id, { taskId: tools?.taskId, onSession, onProgress, onDelta, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
       send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, phone: Boolean(tools.phone), computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {

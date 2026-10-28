@@ -16,6 +16,7 @@ export const openNotificationAccess = () => native.openNotificationAccess();
 export const flushNotifications = () => native.flushNotifications();
 export const supervisorParts = () => native.supervisorParts();
 export const pickFile = () => native.pickFile();
+export const copyText = async value => { if (native) await native.copyText(String(value)); else await globalThis.navigator?.clipboard?.writeText(String(value)); };
 export const dictate = () => native.dictate();
 export const takeLaunchBot = () => native?.takeLaunchBot();
 export const onOpenBot = listener => native.addListener('onOpenBot', listener);

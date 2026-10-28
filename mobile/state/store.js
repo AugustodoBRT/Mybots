@@ -10,7 +10,7 @@ export function share(previous, next) {
 }
 
 export function createStore() {
-  let state = { data: null, chats: {} }; let seq = null;
+  let state = { data: null, chats: {}, drafts: {} }; let seq = null;
   const listeners = new Set();
   const update = patch => { const next = share(state, { ...state, ...patch }); if (next === state) return; state = next; for (const listener of listeners) listener(); };
   return {
@@ -23,6 +23,12 @@ export function createStore() {
     },
     setChats: value => update({ chats: typeof value === 'function' ? value(state.chats) : value }),
     sequence: value => { seq = value; },
+    // The reply being written, by conversation (a room keeps one per bot); the finished message or an empty text clears it.
+    draft: ({ botId, roomId, text }) => {
+      const key = roomId ? roomId + ':' + botId : botId; if (!key) return;
+      const drafts = { ...state.drafts }; if (text) drafts[key] = text; else delete drafts[key];
+      update({ drafts });
+    },
     page: (key, page, older = false) => update({ chats: addPage(state.chats, key, page, older) }),
     event(event, payload, open) {
       if (typeof payload?.seq === 'number') {
@@ -32,6 +38,8 @@ export function createStore() {
       }
       if (event === 'message.added' || event === 'message.updated') {
         const key = payload.botId || payload.roomId;
+        // The finished message takes the draft's place.
+        if (event === 'message.added' && payload.message?.role === 'assistant') this.draft({ botId: payload.message.botId || payload.botId, roomId: payload.roomId, text: '' });
         const exists = state.chats[key]?.messages.some(message => message.id === payload.message?.id) || [...(state.data?.bots || []), ...(state.data?.rooms || [])].find(item => item.id === key)?.lastMessage?.id === payload.message?.id;
         update({ chats: applyMessage(state.chats, event, payload), data: applyToLists(state.data, exists ? 'message.updated' : event, payload, open) });
       }
@@ -55,20 +63,21 @@ export const selectShell = ({ data }) => data && ({ ...data, seq: undefined,
   rooms: data.rooms?.map(withoutSummary).sort((a, b) => a.id.localeCompare(b.id)), tasks: data.tasks?.map(withoutStep) });
 export const selectHome = ({ data }) => data && ({ ...data, seq: undefined, tasks: data.tasks?.map(withoutStep) });
 
-export const selectConversation = (key, isRoom = false) => ({ data, chats }) => {
+export const selectConversation = (key, isRoom = false) => ({ data, chats, drafts }) => {
   if (!data) return null;
   const room = isRoom ? data.rooms?.find(item => item.id === key) : null;
   const bots = data.bots?.filter(bot => room ? room.botIds.includes(bot.id) : bot.id === key) || [];
   const ids = new Set(bots.map(bot => bot.id));
   const pick = source => Object.fromEntries(Object.entries(source || {}).filter(([id]) => ids.has(id)));
   const chat = chats[key]; const item = room || bots[0];
+  const draftOf = Object.fromEntries(Object.entries(drafts || {}).filter(([id]) => id === key || id.startsWith(key + ':')));
   const context = { models: data.models, defaultSelection: data.defaultSelection, connections: data.connections, connection: data.connection, modelsError: data.modelsError,
     bots, nodes: data.nodes, presence: pick(data.presence), active: data.active?.filter(id => ids.has(id)),
     tasks: data.tasks?.filter(task => isRoom ? room?.activeTasks?.includes(task.id) : task.bot_id === key),
     approvals: data.approvals?.filter(approval => isRoom ? room?.activeTasks?.includes(approval.taskId) : approval.botId === key),
     activity: data.activity?.filter(activity => ids.has(activity.bot_id)),
     browser: Object.fromEntries(['pages', 'help', 'control'].map(name => [name, pick(data.browser?.[name])])) };
-  return { [isRoom ? 'room' : 'bot']: item && { ...item, messages: item.messages || chat?.messages || [] }, data: context, more: Boolean(chat?.more) && !Array.isArray(item?.messages) };
+  return { drafts: draftOf, [isRoom ? 'room' : 'bot']: item && { ...item, messages: item.messages || chat?.messages || [] }, data: context, more: Boolean(chat?.more) && !Array.isArray(item?.messages) };
 };
 
 export const selectBots = ({ data }) => data?.bots || [];

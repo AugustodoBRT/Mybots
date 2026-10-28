@@ -12,9 +12,14 @@ import { C, Icon } from '../theme';
 import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
+import { QueuePanel } from '../components/QueuePanel';
+import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 
-function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const retryMessage = useLiveCallback(onRetry);
+  const [draftTime] = useState(() => new Date().toISOString());
+  const [held, setHeld] = useState(null);
+  const hold = useLiveCallback(message => setHeld(message));
   const openFile = useLiveCallback(onFile);
   const messages = useMemo(() => [...bot.messages].reverse(), [bot.messages]);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
@@ -101,7 +106,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.mint} /></Pressable>)}
       </View>}
       </View>}
-      renderItem={({ item }) => <Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} />}
+      renderItem={({ item }) => <Actionable message={item} onHold={hold}><Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} /></Actionable>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
@@ -115,6 +120,9 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
           <Pressable accessibilityRole="button" onPress={onCancel} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Cancelar</Text></Pressable>
         </View>
       </View> : null}
+      {mode === 'phone' ? <QueuePanel queued={(data.tasks || []).filter(task => task.bot_id === bot.id && task.state === 'queued')} running={(data.tasks || []).some(task => task.bot_id === bot.id && ['running', 'waiting_approval'].includes(task.state))} paused={Boolean(data.pausedQueues?.includes(bot.id))}
+        onPause={paused => onQueuePause(bot.id, paused)} onCancel={onCancelTask} onSteer={text => onSteer(bot.id, text)} /> : null}
+      {drafts?.[bot.id] ? <Message message={{ id: 'draft:' + bot.id, role: 'assistant', text: drafts[bot.id], status: 'complete', createdAt: draftTime }} bot={bot} models={data.models || []} busy onRetry={retryMessage} onFile={openFile} fileBusy={null} /> : null}
       {working && <View style={styles.thinking}><Avatar bot={bot} size={34} state={waiting ? 'waiting' : 'working'} tile={false} />
         <View style={styles.thinkingCard}>
           <View style={styles.botWorking}><Text style={styles.thinkingText}>{waiting ? 'Esperando sua aprovação' : running?.state === 'queued' ? 'Na fila' : 'Pensando'}</Text>{waiting ? null : <Dots color={hue} />}</View>
@@ -136,6 +144,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
         onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
     </View>
     </KeyboardAvoidingView>
+    <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />
     </View>
     {side ? <View style={styles.chatSide}>{panel}</View> : null}
     </View>

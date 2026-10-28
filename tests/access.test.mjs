@@ -106,3 +106,57 @@ test('bot notifications go to the MyBots app when it is polling, and fall back t
   assert.deepEqual(await sent, { notified: true, via: 'MyBots' });
   assert.equal(f.sent.filter(item => item.title === 'Prova').length, 0, 'não duplicou pelo Termux:API');
 });
+
+test('an approval reaches the notification with Aprovar/Recusar, once and only for what is safe to decide there', async t => {
+  const f = await setup(t, 'ask'); const run = f.open();
+  const url = path => `http://127.0.0.1:${f.app.port}${path}`; const auth = { Authorization: 'Bearer ' + f.app.token, 'Content-Type': 'application/json' };
+  const act = body => fetch(url('/device/notification-action'), { method: 'POST', headers: auth, body: JSON.stringify(body) });
+  const poll = () => fetch(url('/device/outbox'), { headers: auth }).then(response => response.json());
+  const take = async () => { const { items } = await poll(); for (const item of items) await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) }); return items; };
+  // The app is polling; a pending SMS approval comes with its hash and an approve works exactly once.
+  const waiting = poll(); await new Promise(r => setTimeout(r, 50));
+  const sms = run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
+  const [item] = (await waiting).items;
+  assert.ok(item.approvalId && item.actionHash && item.text.includes('Oi')); assert.equal(item.canReply, undefined);
+  await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) });
+  assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: 'errado' })).status, 400, 'hash diferente: nada executa');
+  assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 0);
+  assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: item.actionHash })).status, 200);
+  await sms; assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
+  assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: item.actionHash })).status, 400, 'não vale duas vezes');
+  // Recusar leaves the action undone, and the card is dismissed on the phone.
+  const second = run.call('sms_send', { number: '+5531999990000', text: 'Outro' }).catch(error => error);
+  let next, dismissed = [];
+  for (let i = 0; i < 6 && !next; i++) { for (const entry of await take()) { if (entry.approvalId) next = entry; if (entry.dismiss) dismissed.push(entry); } }
+  assert.ok(next, 'o segundo cartão chegou');
+  assert.equal((await act({ type: 'reject', approvalId: next.approvalId, actionHash: next.actionHash })).status, 200);
+  assert.ok(await second instanceof Error); assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
+  for (let i = 0; i < 6 && !dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId); i++) dismissed.push(...(await take()).filter(entry => entry.dismiss));
+  assert.ok(dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId), 'o aviso sai da tela');
+});
+
+test('payment, password and code approvals never take a button on the notification', async t => {
+  const f = await setup(t, 'ask');
+  const { noticeable } = await import('../supervisor/tools.mjs');
+  for (const tool of ['wallet/pay', 'browser/login', 'phone.fill_code', 'phone/act', 'termux', 'skill.propose', 'browser/upload', 'desktop/type', 'negotiation_close']) assert.equal(noticeable(tool, 'x'), false, tool);
+  assert.equal(noticeable('sms.send', 'x'), true); assert.equal(noticeable('x.y', '', { a: 1 }), false, 'argumentos que o aviso não mostra abrem o app'); assert.equal(noticeable('notifications.recent', '', {}), true); assert.equal(noticeable('sms.send', 'x'.repeat(601)), false, 'texto longo abre o app');
+  // Even with a valid hash, the endpoint refuses what only the app may decide.
+  const id = randomUUID();
+  const task = f.app.db.start(f.app.db.enqueue(f.bot.id, randomUUID(), 'Oi', selection).id);
+  f.app.db.run("INSERT INTO approvals VALUES(?,?,?,'pending',?)", id, task.id, 'h', JSON.stringify({ botId: f.bot.id, tool: 'wallet/pay', summary: 'Pagar R$ 10' }));
+  assert.throws(() => f.app.tools.noticeDecision(id, 'h', true), /Abra o MyBots/);
+});
+
+test('a bot notice can be answered from the notification and the answer reaches that bot as a message', async t => {
+  const f = await setup(t, 'full'); const run = f.open();
+  const url = path => `http://127.0.0.1:${f.app.port}${path}`; const auth = { Authorization: 'Bearer ' + f.app.token, 'Content-Type': 'application/json' };
+  const waiting = fetch(url('/device/outbox'), { headers: auth }).then(response => response.json()); await new Promise(r => setTimeout(r, 50));
+  const sent = run.call('notify_user', { title: 'Prova', body: 'Cálculo sexta' });
+  const [item] = (await waiting).items; assert.equal(item.canReply, true); assert.equal(item.approvalId, undefined);
+  await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) }); await sent;
+  const reply = await fetch(url('/device/notification-action'), { method: 'POST', headers: auth, body: JSON.stringify({ type: 'reply', botId: item.botId, text: 'Pode marcar para as 14h' }) });
+  assert.equal(reply.status, 200);
+  assert.ok(f.app.db.messages(f.bot.id).some(message => message.role === 'user' && message.text === 'Pode marcar para as 14h'));
+  assert.equal((await fetch(url('/device/notification-action'), { method: 'POST', body: '{}' })).status, 401, 'sem o token do pareamento');
+  assert.equal((await fetch(url('/device/notification-action'), { method: 'POST', headers: auth, body: JSON.stringify({ type: 'reply', botId: item.botId, text: '  ' }) })).status, 400);
+});

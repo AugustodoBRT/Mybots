@@ -192,3 +192,11 @@ O bot lê o mandato com `negotiation_status`, declara cada oferta com `negotiati
 - **fora do mandato, ou sem permissão para fechar**: aparece um cartão **Aceitar/Recusar** junto das outras decisões (e uma notificação). Aceitar fecha o negócio; Recusar volta a negociar dentro do mandato. O bot recebe a sua resposta como uma nova mensagem.
 
 Uma oferta acima do teto (ou abaixo do mínimo), fora do canal, de outro bot ou depois do prazo é recusada pelo MyBots. O prazo vencido encerra a negociação e recusa a proposta que esperava.
+
+## Acabamentos (v62)
+
+- **Resposta ao vivo**: o texto aparece enquanto é escrito, em lotes de ~32 ms. No Claude vem das mensagens parciais (`--include-partial-messages`, só com alguém ouvindo); no Codex vem por itens (a resposta aparece quando o item termina, antes do fim do turno). Também no PC, pelo mesmo link.
+- **Busca**: o ícone de lupa na Início busca em todos os bots e salas (sem diferenciar acento ou maiúscula); o alfinete filtra só as fixadas. Segurar uma mensagem abre **Copiar**, **Responder citando**, **Fixar** e **Reenviar** (só nas suas mensagens).
+- **Fila**: no chat, o cartão **Fila** lista o que espera (X cancela o item), **Pausar/Retomar** segura o que ainda não começou e **Corrigir rumo** interrompe a tarefa em andamento e manda a sua instrução na frente, na mesma sessão. A pausa não segura a correção. Só em conversa privada.
+- **Modelo reserva**: no perfil, **Se o limite acabar**. Quando a assinatura acaba, a mesma mensagem é respondida pela outra IA, com o histórico, e a mensagem mostra "Reserva". O bot continua com o mesmo nível, concessões e lista "Sempre perguntar"; a sessão da outra IA não é guardada. Só em conversa privada.
+- **Notificação**: respostas de bots têm **Responder** (a resposta vira mensagem para o bot) e pedidos de aprovação têm **Aprovar/Recusar** (uma vez, sem "sempre"). Pagamento, senha, código, terminal, instalar habilidade, arquivo saindo, controle do computador, negociação e textos longos só abrem o app.

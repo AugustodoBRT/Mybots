@@ -214,6 +214,22 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   </View>;
 }
 
+/** "Se o limite acabar": the other IA's model that answers when the subscription's limit ends. It keeps the bot's level and permissions. */
+export function FallbackSettings({ models, bot, disabled, onChange }) {
+  const [sheet, setSheet] = useState(false);
+  const own = providerOf(bot);
+  const options = [{ value: '', label: 'Nenhum', detail: 'Quando o limite acabar, o bot avisa e espera.' }, ...models.filter(item => providerOf(item) !== own)
+    .map(item => ({ value: `${providerOf(item)}|${item.model}`, label: `${PROVIDER_NAMES[providerOf(item)] || providerOf(item)} · ${item.displayName}`, detail: 'Responde no lugar quando o limite da assinatura acabar, com a conversa e o mesmo nível de acesso.' }))];
+  const current = bot.fallback ? `${bot.fallback.provider}|${bot.fallback.model}` : '';
+  const label = options.find(item => item.value === current)?.label || 'Nenhum';
+  return <View>
+    <View style={styles.settingsRow}><ChoiceField label="Se o limite acabar" value={label} disabled={disabled || options.length < 2} onPress={() => setSheet(true)} /></View>
+    <Text style={styles.settingsHint}>{options.length < 2 ? 'Conecte a outra IA para ter um modelo reserva.' : 'O modelo reserva nunca ganha mais acesso do que o bot já tem.'}</Text>
+    <ChoiceSheet visible={sheet} title="Se o limite acabar, usar" options={options} value={current} onClose={() => setSheet(false)}
+      onSelect={value => { if (!value) return onChange(null); const [provider, model] = value.split('|'); const chosen = models.find(item => providerOf(item) === provider && item.model === model); onChange({ provider, model, reasoningEffort: chosen?.defaultEffort ?? null }); }} />
+  </View>;
+}
+
 export function ApprovalCard({ approval, bot, onRespond, busy }) {
   const titles = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS' };
   const negotiation = approval.kind === 'negotiation';

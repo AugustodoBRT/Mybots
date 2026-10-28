@@ -79,7 +79,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const ready = Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
-    const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => queue.steps.has(task.id) ? { ...task, step: queue.steps.get(task.id) } : task);
+    // A waiting turn shows what it will say (shortened), so the person can pick which to cancel.
+    const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => ({ ...task, ...(task.state === 'queued' ? { preview: String(JSON.parse(payload).text || '').slice(0, 100), ...(JSON.parse(payload).steer ? { steer: true } : {}) } : {}), ...(queue.steps.has(task.id) ? { step: queue.steps.get(task.id) } : {}) }));
     // Home-screen widget pollers: woken on any change, they answer only when the widget's summary changed.
     const widgetPollers = new Set();
     let seq = 0;
@@ -117,11 +118,19 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const deliver = async (raw, options = {}) => {
       const args = { ...raw, title: plain(raw.title), body: plain(raw.body) };
       const botName = options.botName || '';
-      const item = { id: randomUUID(), tag: options.id || '', botId: options.botId || '', title: botName || args.title || 'MyBots', text: botName && args.title && args.title.trim().toLowerCase() !== botName.trim().toLowerCase() ? `${args.title}: ${args.body}` : args.body };
+      // A pending approval carries its hash so Aprovar/Recusar can answer it; a bot's notice can be answered with "Responder".
+      const extra = options.dismiss ? { dismiss: true } : options.approval ? { approvalId: options.approval.id, actionHash: options.approval.hash } : uuid(options.botId) ? { canReply: true } : {};
+      const item = { id: randomUUID(), tag: options.id || '', botId: options.botId || '', ...extra, title: botName || args.title || 'MyBots', text: botName && args.title && args.title.trim().toLowerCase() !== botName.trim().toLowerCase() ? `${args.title}: ${args.body}` : args.body };
       if (await toApp(item)) return { notified: true, via: 'MyBots' };
+      // Buttons exist only in the MyBots notification: without the app, an approval simply waits on its card.
+      if (options.approval || options.dismiss) return { notified: false };
       return fallback(args, options);
     };
-    tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device }); queue.tools = tools;
+    const approvalNotice = {
+      show: ({ approvalId, actionHash, botId, title, summary }) => { deliver({ title, body: summary.slice(0, 600) || 'Toque para ver.' }, { id: 'mybots-approval-' + approvalId, botId, botName: db.bot(botId)?.name, approval: { id: approvalId, hash: actionHash } }).catch(() => {}); },
+      dismiss: (approvalId, botId) => { deliver({ title: '', body: '' }, { id: 'mybots-approval-' + approvalId, botId, dismiss: true }).catch(() => {}); }
+    };
+    tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device, approvalNotice }); queue.tools = tools;
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
     tools.team = new Team(db, { rooms, changed: broadcast, selectionFor: bot => selectionFor(catalog(), bot),
       createBot: (data, selection) => { const bot = db.create(data, selection); tools.setAccountApps(bot.id, []); return bot; } });
@@ -325,7 +334,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         rooms: rooms.list().map(roomSummary),
         presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
         accountServers: knownServers() || [], bots: live.map(botSummary), deletedBots: all.filter(bot => bot.deletedAt),
-        active: [...new Set(db.activeTasks().map(task => task.bot_id))],
+        active: [...new Set(db.activeTasks().map(task => task.bot_id))], pausedQueues: live.filter(bot => queue.paused(bot.id)).map(bot => bot.id),
         connection: summary(), connections, models: catalog().map(item => {
           // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
           const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
@@ -377,7 +386,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'bot.apps': return { apps: tools.setAccountApps(params.botId, params.apps) };
         case 'agent.skills': { if (link.status().state !== 'online') return { skills: [], offline: true, message: 'O computador está desconectado: as skills dele aparecem quando ele voltar.' }; return { skills: ((await link.skills()).skills || []) }; }
-        case 'bot.update': { const bot = db.requireBot(params.botId); if (Array.isArray(params.skills) && params.skills.length) { const known = new Set(((await link.skills().catch(() => { throw new Error('Conecte o computador para ligar skills: é lá que elas ficam.'); })).skills || []).map(item => item.path)); if (params.skills.some(item => !known.has(item?.path))) throw new Error('Essa skill não está mais no computador.'); } if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const updated = db.configure(bot.id, selectionFor(catalog(), { ...bot, ...params }), params); link.control(browser.status().control); broadcast('activity.new'); return updated; }
+        case 'bot.update': { const bot = db.requireBot(params.botId); if (Array.isArray(params.skills) && params.skills.length) { const known = new Set(((await link.skills().catch(() => { throw new Error('Conecte o computador para ligar skills: é lá que elas ficam.'); })).skills || []).map(item => item.path)); if (params.skills.some(item => !known.has(item?.path))) throw new Error('Essa skill não está mais no computador.'); } if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const chosen = selectionFor(catalog(), { ...bot, ...params });
+          // The reserve model must be a real model of the other provider (a limit belongs to the subscription).
+          if (params.fallback) { const reserve = { ...selectionFor(catalog(), params.fallback), provider: params.fallback.provider }; if (reserve.provider === (chosen.provider || 'codex')) throw new Error('O modelo reserva precisa ser de outra IA (Codex ou Claude).'); params.fallback = reserve; }
+          const updated = db.configure(bot.id, chosen, params); link.control(browser.status().control); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };
         // A page of a private chat or a room, by cursor; the latest page also marks the conversation as seen.
@@ -394,6 +406,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (params.botId !== undefined) db.requireBot(params.botId); else db.requireRoom(params.roomId);
           db.markRead(params.botId !== undefined ? { botId: params.botId } : { roomId: params.roomId }); return { read: true };
         }
+        // Search across every conversation (FTS5) and pinning of a message.
+        case 'chat.search': {
+          if (params.botId !== undefined) db.requireBot(params.botId); if (params.roomId !== undefined) db.requireRoom(params.roomId);
+          if (typeof params.query !== 'string' && !params.pinned) throw new Error('Digite o que procurar.');
+          return db.search({ query: typeof params.query === 'string' ? params.query.slice(0, 200) : '', botId: params.botId, roomId: params.roomId, pinned: params.pinned === true, limit: params.limit });
+        }
+        case 'message.pin': if (typeof params.messageId !== 'string') throw new Error('Mensagem inválida.'); db.pinMessage(params.messageId, params.pinned !== false); return { pinned: params.pinned !== false };
         case 'bot.profile': return profile(params.botId);
         case 'chat.send': {
           if (!uuid(params.requestId)) throw new Error('Pedido sem identificador válido.');
@@ -412,6 +431,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           return { taskId: task.id, messageId: task.message_id, state: task.state };
         }
         case 'tasks.list': return publicTasks();
+        // The line of one bot: pause and resume it, or send the running turn a new instruction ("corrigir rumo").
+        case 'queue.pause': return queue.pause(params.botId, params.paused !== false);
+        case 'task.steer': {
+          if (!uuid(params.requestId)) throw new Error('Pedido sem identificador válido.');
+          db.requireBot(params.botId); if (typeof params.text !== 'string' || !params.text.trim()) throw new Error('Escreva a instrução.');
+          const result = await queue.steer(params.botId, params.requestId, params.text); broadcast('task.progress', { taskId: result.taskId }); return result;
+        }
         case 'task.cancel': if (!uuid(params.taskId)) throw new Error('Tarefa inválida.'); if (phone.controller?.taskId === params.taskId) phone.native('phoneStop', { taskId: params.taskId }); await queue.cancel(params.taskId); return { cancelled: true };
         // The Livre level's "sempre perguntar" list: only from the app on the phone (never through the computer's link).
         case 'negotiation.list': return negotiations.list();
@@ -567,6 +593,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     queue.on('changed', change => {
       // A step of the bot's work is only that event; changes of a task's state also refresh the rest.
+      if (change?.event === 'message.draft') { broadcast('message.draft', change); return; }
       broadcast(change?.event || 'task.progress', change || {}); if (!change || !('step' in change)) broadcast('activity.new');
       // A bot that named another member (@) in a room hands it the next turn.
       if (change?.event === 'task.done') rooms.answered(change.taskId, roomSelection);
@@ -611,6 +638,20 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         const poller = items => { clearTimeout(timer); answer(items); };
         const timer = setTimeout(() => { pollers.delete(poller); answer([]); lastPoll = Date.now(); }, 25000);
         pollers.add(poller); request.on('close', () => { clearTimeout(timer); pollers.delete(poller); });
+        return;
+      }
+      // Responder / Aprovar / Recusar on a notification: the same decisions the app makes, with the pairing token.
+      if (request.method === 'POST' && request.url === '/device/notification-action') {
+        try {
+          let raw = ''; for await (const chunk of request) { raw += chunk; if (raw.length > 20000) throw new Error('size'); }
+          const body = JSON.parse(raw); let result;
+          if (body.type === 'reply') {
+            if (!uuid(body.botId) || typeof body.text !== 'string' || !body.text.trim()) throw new Error('Escreva a resposta.');
+            result = await rpc('chat.send', { botId: body.botId, requestId: randomUUID(), text: body.text.trim().slice(0, 8000) });
+          } else if (body.type === 'approve' || body.type === 'reject') result = tools.noticeDecision(body.approvalId, body.actionHash, body.type === 'approve');
+          else throw new Error('Ação inválida.');
+          response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true }));
+        } catch (error) { response.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: String(error.message || 'Não deu certo.').slice(0, 200) })); }
         return;
       }
       if (request.method === 'POST' && request.url === '/device/outbox/ack') {

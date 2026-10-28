@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RemoteInput
+import android.content.BroadcastReceiver
 import android.content.Intent
 import android.os.Build
 import android.content.Context
@@ -171,6 +173,9 @@ internal object BotNotifier {
     if (Build.VERSION.SDK_INT >= 33 && !manager.areNotificationsEnabled()) return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(CHANNEL) == null)
       manager.createNotificationChannel(NotificationChannel(CHANNEL, "Mensagens dos bots", NotificationManager.IMPORTANCE_HIGH))
+    // A dismissal: the approval was answered somewhere else (or expired), so its notice leaves the shade.
+    val tag = item.optString("tag").ifEmpty { item.getString("id") }
+    if (item.optBoolean("dismiss")) { manager.cancel(tag.hashCode()); return true }
     val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
       ?.putExtra("mybotsBotId", item.optString("botId"))
     val tap = open?.let { PendingIntent.getActivity(context, item.getString("id").hashCode(), it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE) }
@@ -180,7 +185,82 @@ internal object BotNotifier {
       .setSmallIcon(R.drawable.mybots_notification).setContentTitle(title).setContentText(text)
       .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setColor(0xFF9ED8B9.toInt())
     if (tap != null) builder.setContentIntent(tap)
-    manager.notify(item.optString("tag").ifEmpty { item.getString("id") }.hashCode(), builder.build())
+    val notificationId = tag.hashCode()
+    val approvalId = item.optString("approvalId"); val actionHash = item.optString("actionHash"); val botId = item.optString("botId")
+    // Aprovar/Recusar answer one pending approval, once and never "sempre"; they ask for the unlocked phone. The supervisor
+    // refuses what only the app may decide (payments, passwords, codes). "Responder" sends a message to that bot.
+    if (approvalId.isNotEmpty() && actionHash.isNotEmpty()) {
+      builder.setVisibility(Notification.VISIBILITY_PRIVATE)
+      for ((label, name, code) in listOf(Triple("Aprovar", NoticeAction.APPROVE, 1), Triple("Recusar", NoticeAction.REJECT, 2))) {
+        val pending = NoticeAction.pending(context, name, notificationId + code, notificationId, false) { it.putExtra("approvalId", approvalId).putExtra("actionHash", actionHash) }
+        @Suppress("DEPRECATION") val action = Notification.Action.Builder(null, label, pending).apply { if (Build.VERSION.SDK_INT >= 31) setAuthenticationRequired(true) }.build()
+        builder.addAction(action)
+      }
+    } else if (item.optBoolean("canReply") && botId.isNotEmpty()) {
+      val pending = NoticeAction.pending(context, NoticeAction.REPLY, notificationId + 3, notificationId, true) { it.putExtra("botId", botId).putExtra("title", title) }
+      @Suppress("DEPRECATION") val action = Notification.Action.Builder(null, "Responder", pending).addRemoteInput(RemoteInput.Builder(NoticeAction.REPLY_KEY).setLabel("Responder a $title").build()).setAllowGeneratedReplies(true).build()
+      builder.addAction(action)
+    }
+    manager.notify(notificationId, builder.build())
     return true
+  }
+}
+
+/** The buttons of a MyBots notification: Aprovar, Recusar and the reply box. Each is one call to the supervisor on this phone. */
+internal object NoticeAction {
+  const val APPROVE = "com.mybots.app.NOTICE_APPROVE"
+  const val REJECT = "com.mybots.app.NOTICE_REJECT"
+  const val REPLY = "com.mybots.app.NOTICE_REPLY"
+  const val REPLY_KEY = "mybots_reply"
+
+  fun pending(context: Context, action: String, code: Int, notificationId: Int, mutable: Boolean, extras: (Intent) -> Intent): PendingIntent {
+    val intent = extras(Intent(action).setPackage(context.packageName).putExtra("notificationId", notificationId))
+    // A reply box needs a mutable intent, because the system adds the typed text to it.
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (mutable && Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE
+    return PendingIntent.getBroadcast(context, code, intent, flags)
+  }
+
+  /** Posts to the supervisor with the pairing token; returns null when it worked, else what to tell the person. */
+  fun send(context: Context, body: JSONObject): String? {
+    val saved = pairingPreferences(context); val token = saved.getString("token", null) ?: return "O MyBots não está pareado."
+    return try {
+      val connection = URL("http://127.0.0.1:${saved.getInt("port", 3219)}/device/notification-action").openConnection() as HttpURLConnection
+      connection.requestMethod = "POST"; connection.doOutput = true; connection.connectTimeout = 3000; connection.readTimeout = 15_000
+      connection.setRequestProperty("Authorization", "Bearer $token"); connection.setRequestProperty("Content-Type", "application/json")
+      connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+      if (connection.responseCode == 200) null
+      else (connection.errorStream?.bufferedReader()?.use { it.readText() }?.let { runCatching { JSONObject(it).optString("error") }.getOrNull() }).orEmpty().ifEmpty { "Não deu certo." }
+    } catch (_: Exception) { "O MyBots não respondeu." }
+  }
+}
+
+class NoticeActionReceiver : BroadcastReceiver() {
+  override fun onReceive(context: Context, intent: Intent) {
+    val app = context.applicationContext; val pending = goAsync()
+    val notificationId = intent.getIntExtra("notificationId", 0)
+    val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val body = JSONObject()
+    when (intent.action) {
+      NoticeAction.APPROVE, NoticeAction.REJECT -> body.put("type", if (intent.action == NoticeAction.APPROVE) "approve" else "reject")
+        .put("approvalId", intent.getStringExtra("approvalId")).put("actionHash", intent.getStringExtra("actionHash"))
+      NoticeAction.REPLY -> {
+        val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(NoticeAction.REPLY_KEY)?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) { manager.cancel(notificationId); pending.finish(); return }
+        body.put("type", "reply").put("botId", intent.getStringExtra("botId")).put("text", text)
+      }
+      else -> { pending.finish(); return }
+    }
+    Thread {
+      val problem = try { NoticeAction.send(app, body) } finally { }
+      // The reply box keeps spinning until the notice is replaced or removed: on success it goes, on failure it says why.
+      if (problem == null) manager.cancel(notificationId)
+      else {
+        @Suppress("DEPRECATION")
+        val builder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(app, "mybots_bots") else Notification.Builder(app))
+          .setSmallIcon(R.drawable.mybots_notification).setContentTitle("Não foi possível").setContentText(problem).setAutoCancel(true).setTimeoutAfter(15_000)
+        manager.notify(notificationId, builder.build())
+      }
+      pending.finish()
+    }.start()
   }
 }

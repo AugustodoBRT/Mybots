@@ -5,7 +5,8 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { SearchSheet } from './components/Search';
 import { desktop, column } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
@@ -75,7 +76,7 @@ function AppMain() {
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [maintenanceText, setMaintenanceText] = useState('Backups ficam no Termux e sobrevivem à desinstalação do MyBots.');
   const [backupNames, setBackupNames] = useState([]);
-  const [activityVisible, setActivityVisible] = useState(false);
+  const [activityVisible, setActivityVisible] = useState(false); const [searchVisible, setSearchVisible] = useState(false);
   const [walletVisible, setWalletVisible] = useState(false);
   // A file in the conversation: fetched from the supervisor in parts, then opened, shared or saved.
   const [fileSheet, setFileSheet] = useState(null);
@@ -243,6 +244,8 @@ function AppMain() {
         return;
       }
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
+      // The reply as it is written goes straight to the store, without reloading anything.
+      if (event === 'message.draft') { appStore.draft(data); return; }
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
       // The browser's timeline and downloads go to the open conversation's panels.
       if (event === 'browser.step' || event === 'browser.download') { for (const listener of browserEvents) listener(event, data); return; }
@@ -404,6 +407,7 @@ function AppMain() {
     catch (error) { setLoadError(error.message); }
     finally { setConnectionBusy(false); }
   };
+  const pinMessage = (message, pinned) => supervisor.current.call('message.pin', { messageId: message.id, pinned });
   const send = async (text, files = []) => {
     const bot = data?.bots.find(item => item.id === selected);
     // On the phone the supervisor queues messages sent while the bot works; the computer backend still answers one at a time.
@@ -629,10 +633,10 @@ function AppMain() {
   }, [share, data?.bots]);
   // The computer's wide window shows the list, the open conversation and today side by side.
   const wide = Boolean(desktop) && windowWidth >= 900;
-  const roomView = data && room ? <RoomScreen room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={wide ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
           onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
-  const chatView = data && bot && !room ? <ChatScreen bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
+  const chatView = data && bot && !room ? <ChatScreen onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
@@ -650,7 +654,7 @@ function AppMain() {
           onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView}</DesktopShell>
-      : roomView || chatView || <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+      : roomView || chatView || <HomeScreen onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
@@ -673,6 +677,7 @@ function AppMain() {
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await profileChanged(); }}
       loadAgentSkills={() => supervisor.current.call('agent.skills', {})}
       onAgentSkills={async skills => { await supervisor.current.call('bot.update', { botId: profileId, skills }); await profileChanged(); }}
+      onFallback={async fallback => { await supervisor.current.call('bot.update', { botId: profileId, fallback }); await profileChanged(); }} FallbackSettings={FallbackSettings}
       onGpu={async gpu => { await supervisor.current.call('bot.update', { botId: profileId, gpu }); await profileChanged(); }}
       onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await profileChanged(); }}
       skills={shownProfile?.skills || []}
@@ -768,6 +773,8 @@ function AppMain() {
         </ScrollView>
       </View></View>
     </Modal>
+    <SearchSheet visible={searchVisible} call={(method, params) => supervisor.current.call(method, params)} bots={data?.bots || []} rooms={data?.rooms || []} onClose={() => setSearchVisible(false)}
+      onOpen={item => { if (item.kind === 'room') { setRoomId(item.ownerId); setSelected(null); } else { setSelected(item.ownerId); setRoomId(null); setDraft(''); } }} />
     <Modal transparent visible={activityVisible} animationType="slide" onRequestClose={() => setActivityVisible(false)}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
         <View style={styles.sheetHandle} />

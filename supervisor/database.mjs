@@ -34,7 +34,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 11) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 12) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -140,6 +140,19 @@ export class Database {
         CREATE INDEX IF NOT EXISTS negotiation_offers_negotiation ON negotiation_offers(negotiation_id, created_at);
         PRAGMA user_version=11;`);
     });
+    // Full-text search over every conversation: one FTS5 index per message table, keyed by the message's rowid and kept by triggers.
+    // The backfill clears the index first, so running it again (the migration tests lower user_version) never duplicates rows.
+    if (version < 12) this.transaction(() => {
+      for (const [table, fts] of [['messages', 'messages_fts'], ['room_messages', 'room_messages_fts']]) {
+        this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(text, tokenize='unicode61 remove_diacritics 2');
+          CREATE TRIGGER IF NOT EXISTS ${table}_fts_insert AFTER INSERT ON ${table} BEGIN INSERT INTO ${fts}(rowid,text) VALUES(new.rowid, coalesce(json_extract(new.body,'$.text'),'')); END;
+          CREATE TRIGGER IF NOT EXISTS ${table}_fts_update AFTER UPDATE OF body ON ${table} BEGIN UPDATE ${fts} SET text=coalesce(json_extract(new.body,'$.text'),'') WHERE rowid=new.rowid; END;
+          CREATE TRIGGER IF NOT EXISTS ${table}_fts_delete AFTER DELETE ON ${table} BEGIN DELETE FROM ${fts} WHERE rowid=old.rowid; END;
+          DELETE FROM ${fts};
+          INSERT INTO ${fts}(rowid,text) SELECT rowid, coalesce(json_extract(body,'$.text'),'') FROM ${table};`);
+      }
+      this.db.exec('PRAGMA user_version=12;');
+    });
   }
   /** One step of a bot in its browser, kept with a small picture; only the latest 120 of each bot stay. */
   addBrowserStep(botId, taskId, { caption, url = '', title = '', image = null, width = null, height = null }) {
@@ -206,7 +219,7 @@ export class Database {
     const room = this.room(turn.room_id); if (!room) return;
     const stamp = now();
     const message = state === 'done'
-      ? { id: randomUUID(), role: 'assistant', botId: bot.id, text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), replyTo: turn.message_id, createdAt: stamp }
+      ? { id: randomUUID(), role: 'assistant', botId: bot.id, text: reply.text, status: 'complete', model: reply.model, ...(reply.fallback ? { fallback: true } : {}), ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), replyTo: turn.message_id, createdAt: stamp }
       : { id: randomUUID(), role: 'assistant', botId: bot.id, text: files.attachments ? 'Estes arquivos ficaram prontos antes da interrupção.' : '', status: 'error', error: error || 'A resposta não foi concluída.', ...files, replyTo: turn.message_id, createdAt: stamp };
     if (state === 'done' && reply?.codexSessionId) this.setRoomSession(room.id, bot.id, reply.codexSessionId);
     this.appendRoomMessage(room.id, message);
@@ -306,6 +319,39 @@ export class Database {
     this.run('DELETE FROM messages WHERE bot_id=?', botId);
     for (const message of messages) this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, botId, JSON.stringify(message));
     this.notify('chat.reset', { botId });
+  }
+  /**
+   * Search across every private chat and room: each word of `query` must appear (the last one as a prefix; accents and case ignored).
+   * Best matches first; `botId`/`roomId` narrow it to one conversation and `pinned` keeps only pinned messages.
+   */
+  search({ query, botId, roomId, pinned = false, limit = 30 } = {}) {
+    const words = String(query ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu)?.slice(0, 8) || [];
+    const size = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 100) : 30;
+    const match = words.map((word, index) => `"${word}"${index === words.length - 1 ? '*' : ''}`).join(' ');
+    const found = [];
+    for (const [kind, [table, column]] of Object.entries(CHATS)) {
+      if (kind === 'bot' ? roomId !== undefined : botId !== undefined) continue;
+      const owner = kind === 'bot' ? botId : roomId;
+      const where = [owner !== undefined ? `m.${column}=@owner` : '', pinned ? "json_extract(m.body,'$.pinned')=1" : '', match ? `${table}_fts MATCH @match` : ''].filter(Boolean);
+      if (!match && !pinned) return { results: [] };
+      const sql = match
+        ? `SELECT m.${column} AS owner, m.body, bm25(${table}_fts) AS rank, snippet(${table}_fts,0,'','','…',24) AS snippet FROM ${table}_fts JOIN ${table} m ON m.rowid=${table}_fts.rowid WHERE ${where.join(' AND ')} ORDER BY rank LIMIT @size`
+        : `SELECT m.${column} AS owner, m.body, 0 AS rank, '' AS snippet FROM ${table} m WHERE ${where.join(' AND ')} ORDER BY m.rowid DESC LIMIT @size`;
+      const params = { size, ...(owner !== undefined ? { owner } : {}), ...(match ? { match } : {}) };
+      for (const row of this.db.prepare(sql).all(params)) { const message = parse(row); found.push({ kind, ownerId: row.owner, rank: row.rank, message: { id: message.id, role: message.role, botId: message.botId, text: String(message.text || '').slice(0, 280), createdAt: message.createdAt, pinned: message.pinned === true }, snippet: row.snippet || String(message.text || '').slice(0, 120) }); }
+    }
+    found.sort((a, b) => a.rank - b.rank || String(b.message.createdAt).localeCompare(String(a.message.createdAt)));
+    return { results: found.slice(0, size) };
+  }
+  /** Pins or unpins one message of a chat or a room. */
+  pinMessage(id, pinned) {
+    const row = this.get('SELECT bot_id,body FROM messages WHERE id=?', id);
+    if (row) return this.updateMessage(id, { pinned: pinned ? true : undefined });
+    const room = this.get('SELECT room_id,body FROM room_messages WHERE id=?', id); if (!room) throw new Error('Mensagem não encontrada.');
+    const message = { ...parse(room), pinned: pinned ? true : undefined }; if (!pinned) delete message.pinned;
+    this.run('UPDATE room_messages SET body=? WHERE id=?', JSON.stringify(message), id);
+    this.notify('message.updated', { roomId: room.room_id, message });
+    return message;
   }
   /**
    * A page of a conversation, oldest first: the `limit` messages before the rowid `before` (or the latest ones).
@@ -458,6 +504,9 @@ export class Database {
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
     for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode','skills','gpu']) if (changes[field] !== undefined) updated[field] = changes[field];
+    // The reserve model for when the subscription's limit ends (null removes it); only another provider's makes sense.
+    if (changes.fallback !== undefined) { if (changes.fallback === null) delete updated.fallback; else updated.fallback = { provider: changes.fallback.provider, model: changes.fallback.model, reasoningEffort: changes.fallback.reasoningEffort }; }
+    if (updated.fallback && updated.fallback.provider === (updated.provider || 'codex')) delete updated.fallback;
     if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'shared';
     if (changes.provider === 'codex' && changes.browserMode === undefined && updated.browserMode === 'claude') updated.browserMode = 'shared';
     updated.browserMode = browserMode(updated);
@@ -491,7 +540,7 @@ export class Database {
   enqueue(botId, requestId, text, selection, origin = {}) {
     this.requireBot(botId);
     if (!uuid(requestId) || typeof text !== 'string' || !text.trim() || text.trim().length > 8000) throw new Error('Escreva uma mensagem de até 8.000 caracteres.');
-    const payload = JSON.stringify({ text: text.trim(), ...selection });
+    const payload = JSON.stringify({ text: text.trim(), ...selection, ...(origin.steer ? { steer: true } : {}) });
     const existing = this.task(requestId);
     if (existing) {
       if (existing.bot_id !== botId || existing.payload !== payload) throw new Error('Este pedido já foi usado para outra mensagem.');
@@ -529,11 +578,11 @@ export class Database {
       const turn = this.roomTurn(id);
       if (turn) this.roomReply(turn, bot, state, reply, error, files, usage);
       if (!turn) this.updateMessage(task.message_id, { status: state === 'done' ? 'complete' : 'error', error: error || undefined });
-      if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
+      if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(reply.fallback ? { fallback: true } : {}), ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
       else if (!turn && files.attachments) this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
       if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now() });
-      if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
-      if (reply?.limits && ['codex', 'claude'].includes(bot.provider || 'codex')) this.setLimits(bot.provider || 'codex', reply.limits);
+      if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, reply.provider || bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
+      if (reply?.limits && ['codex', 'claude'].includes(reply.provider || bot.provider || 'codex')) this.setLimits(reply.provider || bot.provider || 'codex', reply.limits);
       // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".
       if (state === 'done' && bot.provider === 'claude' && typeof reply.modelId === 'string' && /^[a-z]{1,20}$/.test(reply.model || '')) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'claude.model.' + reply.model, reply.modelId.slice(0, 80));
       this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);

@@ -18,7 +18,7 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     </Pressable>
     {message.status === 'error' && <Text style={styles.messageErrorText}>{message.error || 'A rotina não foi concluída.'}</Text>}
   </View>;
-  const model = message.model ? `${claudeName(message.modelId) || findModel(models, message)?.displayName || message.model}${message.reasoningEffort ? ` · ${EFFORT_NAMES[message.reasoningEffort] || message.reasoningEffort}` : ''}` : '';
+  const model = message.model ? `${message.fallback ? 'Reserva · ' : ''}${claudeName(message.modelId) || findModel(models, message)?.displayName || message.model}${message.reasoningEffort ? ` · ${EFFORT_NAMES[message.reasoningEffort] || message.reasoningEffort}` : ''}` : '';
   const error = message.status === 'error' && <View style={styles.messageError}>
     <Icon name="alert" size={16} color={C.red} /><Text style={styles.messageErrorText}>{message.error || 'A resposta não foi concluída.'}</Text>
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRetry(message.text, message)} style={styles.retryButton}><Icon name="refresh" size={14} color={C.text} /><Text style={styles.retryText}>Tentar de novo</Text></Pressable>

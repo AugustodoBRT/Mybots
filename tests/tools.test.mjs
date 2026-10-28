@@ -83,7 +83,7 @@ test('memory, local items, grants and avatars survive backup restore and databas
   const snapshot = f.db.snapshot(); const file = f.db.backup();
   const invalid = structuredClone(snapshot); invalid.toolsState.grants[0].bot_id = randomUUID(); assert.throws(() => f.db.restore(invalid));
   f.db.run('DELETE FROM memory'); f.db.run('DELETE FROM pending_items'); f.db.restore(JSON.parse(await readFile(file.path, 'utf8')));
-  assert.equal(f.db.all('SELECT * FROM memory').length, 1); assert.equal(f.db.all('SELECT * FROM pending_items').length, 1); assert.equal(f.db.bot(f.bot.id).avatar, 'cat'); assert.equal(f.db.get("PRAGMA user_version").user_version, 11);
+  assert.equal(f.db.all('SELECT * FROM memory').length, 1); assert.equal(f.db.all('SELECT * FROM pending_items').length, 1); assert.equal(f.db.bot(f.bot.id).avatar, 'cat'); assert.equal(f.db.get("PRAGMA user_version").user_version, 12);
 });
 
 test('real stdio MCP handshake routes through HTTP and UI approval response without blocking state reads', async t => {

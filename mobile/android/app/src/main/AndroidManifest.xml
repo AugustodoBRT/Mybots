@@ -88,6 +88,13 @@
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/mybots_widget_info"/>
     </receiver>
+    <receiver android:name="expo.modules.termuxbridge.NoticeActionReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="com.mybots.app.NOTICE_APPROVE"/>
+        <action android:name="com.mybots.app.NOTICE_REJECT"/>
+        <action android:name="com.mybots.app.NOTICE_REPLY"/>
+      </intent-filter>
+    </receiver>
     <receiver android:name="expo.modules.termuxbridge.PhoneControlReceiver" android:exported="false">
       <intent-filter>
         <action android:name="com.mybots.app.PHONE_STOP"/>

@@ -40,6 +40,12 @@ const money = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${
 const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva', 'browser.pay': 'Navegador: pagar com a carteira',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
+// Decisions that never take a button on a notification: money, passwords and codes, code that gets installed, the shell and
+// files leaving the phone. They open the app, where the whole card is read before deciding. A long summary does too.
+const APP_ONLY = /^(wallet\/|browser\/login|browser\/upload|browser\/chrome|browser\/mine\/|phone[./]|termux|skill\.propose|desktop\/|negotiation)/;
+// A decision with arguments the notice would not show (no summary) opens the app too.
+export const noticeable = (tool, summary = '', args = {}) => !APP_ONLY.test(tool) && String(summary).length <= 600 && (Boolean(summary) || !Object.keys(args || {}).length);
+
 function approvalText(tool, args, app) {
   if (tool === 'browser/mine/write') return { title: 'Agir no Meu Chrome', summary: args.summary };
   if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
@@ -74,7 +80,8 @@ const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 's
   'calls.search': 'callLog', 'location.get': 'location', 'device.status': 'status' };
 
 export class Tools {
-  constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null } = {}) {
+  constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null, approvalNotice = null } = {}) {
+    this.approvalNotice = approvalNotice;
     this.db = db; this.email = email; this.device = device; this.changed = changed; this.notify = notify; this.approvalMs = approvalMs; this.runs = new Map(); this.waiting = new Map(); this.paying = new Map();
     this.items = new Items(db, { changed });
     // Files a run sends to the person, attached to the bot's reply when the turn ends.
@@ -731,11 +738,11 @@ export class Tools {
     }
   }
   ask(run, tool, args, hash, app = null, always = null) {
-    const id = randomUUID(); const body = JSON.stringify({ botId: run.botId, tool, args, ...approvalText(tool, args, app), canAlways: Boolean(always), createdAt: now(), expiresAt: new Date(Date.now() + this.approvalMs).toISOString() });
+    const id = randomUUID(); const text = approvalText(tool, args, app); const body = JSON.stringify({ botId: run.botId, tool, args, ...text, canAlways: Boolean(always), createdAt: now(), expiresAt: new Date(Date.now() + this.approvalMs).toISOString() });
     return new Promise(resolve => {
       const timer = setTimeout(() => { this.db.run("UPDATE approvals SET state='expired' WHERE id=? AND state='pending'", id); finish(false); }, this.approvalMs);
       const finish = decision => {
-        clearTimeout(timer); this.waiting.delete(id);
+        clearTimeout(timer); this.waiting.delete(id); this.approvalNotice?.dismiss(id, run.botId);
         if (this.db.task(run.taskId)?.state === 'waiting_approval') { this.db.run("UPDATE tasks SET state='running',updated_at=? WHERE id=?", now(), run.taskId); this.db.event(run.taskId, 'running'); }
         this.changed('activity.new'); resolve(decision);
       };
@@ -746,10 +753,18 @@ export class Tools {
         this.db.record('approval_requested', 'Uma ferramenta precisa da sua aprovação.', run.botId, run.taskId);
       });
       this.changed('approval.request', { approvalId: id });
+      if (noticeable(tool, text.summary, args)) this.approvalNotice?.show({ approvalId: id, actionHash: hash, botId: run.botId, title: text.title, summary: text.summary || '' });
     });
   }
   /** The files a turn sent, handed to its reply once (and forgotten). */
   takeOutgoing(taskId) { const list = this.outgoing.get(taskId) || []; this.outgoing.delete(taskId); return list; }
+  /** Aprovar/Recusar on the notification: one time only (never "sempre"), and not for the decisions that open the app. */
+  noticeDecision(id, actionHash, approved) {
+    if (!uuid(id) || typeof approved !== 'boolean') throw new Error('Decisão inválida. Nenhuma ação foi executada.');
+    const row = this.db.get('SELECT * FROM approvals WHERE id=?', id); const body = row && JSON.parse(row.body);
+    if (!body || !noticeable(body.tool, body.summary, body.args)) throw new Error('Abra o MyBots para decidir isto.');
+    return this.respond(id, approved, actionHash, false);
+  }
   respond(id, approved, actionHash, always = false) {
     if (!uuid(id) || typeof approved !== 'boolean' || typeof always !== 'boolean') throw new Error('Decisão inválida. Nenhuma ação foi executada.');
     const row = this.db.get('SELECT * FROM approvals WHERE id=?', id); const pending = this.waiting.get(id);

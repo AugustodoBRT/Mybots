@@ -61,6 +61,8 @@ const ICONS = {
   wifi: [['path', { d: 'M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.4a4 4 0 0 1 6 0' }], ['circle', { cx: 12, cy: 19.3, r: 1.1, fill: true }]],
   play: [['path', { d: 'M8 5.5v13l10.5-6.5z' }]],
   pause: [['path', { d: 'M9 5.5v13M15 5.5v13' }]],
+  pin: [['path', { d: 'M9 4h6l-1 6 3 3H7l3-3-1-6zM12 13v7' }]],
+  reply: [['path', { d: 'M10 8L5 12.5 10 17M5 12.5h9a5 5 0 0 1 5 5V19' }]],
   copy: [['rect', { x: 8, y: 8, width: 12, height: 12, rx: 2.5 }], ['path', { d: 'M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8' }]],
   key: [['circle', { cx: 8, cy: 15, r: 4 }], ['path', { d: 'M11 12l9-9M16.5 6.5l2.5 2.5M14.5 8.5l2 2' }]]
 };

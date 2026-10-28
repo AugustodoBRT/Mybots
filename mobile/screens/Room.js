@@ -10,9 +10,12 @@ import { styles } from '../styles';
 import { C, Icon } from '../theme';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
+import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 
-function RoomView({ room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
+function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const openFile = useLiveCallback(onFile);
+  const [draftTime] = useState(() => new Date().toISOString());
+  const [held, setHeld] = useState(null); const hold = useLiveCallback(message => setHeld(message));
   const messages = useMemo(() => [...room.messages].reverse(), [room.messages]);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll(); const input = useRef(null);
   const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState(''); const [files, setFiles] = useState([]);
@@ -61,9 +64,10 @@ function RoomView({ room, data, onBack, onSend, onEdit, onCancel, onRespond, app
         <Text style={styles.chatEmptyTitle}>{room.name}</Text>
         <Text style={styles.chatEmptyText}>Escreva para todos ou chame alguém com @. Os bots também podem se chamar entre si.</Text></View>}
       </View>}
-      renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : item.role === 'user' || byId[item.botId] ? <Message message={item} bot={byId[item.botId] || members[0]} models={data.models || []} busy={sending} onRetry={retry} onFile={openFile} fileBusy={fileBusy} /> : <Text style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>}
+      renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : item.role === 'user' || byId[item.botId] ? <Actionable message={item} onHold={hold}><Message message={item} bot={byId[item.botId] || members[0]} models={data.models || []} busy={sending} onRetry={retry} onFile={openFile} fileBusy={fileBusy} /></Actionable> : <Text style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+      {members.filter(bot => drafts?.[room.id + ':' + bot.id]).map(bot => <Message key={'draft:' + bot.id} message={{ id: 'draft:' + bot.id, role: 'assistant', botId: bot.id, text: drafts[room.id + ':' + bot.id], status: 'complete', createdAt: draftTime }} bot={bot} models={data.models || []} busy onRetry={retry} onFile={openFile} fileBusy={null} />)}
       {working.map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : offline(data, bot.id) ? 'sleeping' : 'working'} tile={false} />
         <View style={styles.thinkingCard}><View style={styles.botWorking}><Text style={styles.thinkingText}>{bot.name} {offline(data, bot.id) ? 'responde quando o computador ligar' : data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.state === 'queued' ? 'na fila' : 'pensando'}</Text>{offline(data, bot.id) ? null : <Dots color={HUE_OF(bot)} />}</View>
           {(() => { const step = data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.step; return step ? <Text style={styles.thinkingStep} numberOfLines={1}>{step}</Text> : null; })()}
@@ -86,6 +90,7 @@ function RoomView({ room, data, onBack, onSend, onEdit, onCancel, onRespond, app
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
     </KeyboardAvoidingView>
+    <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => send(message.text)} canResend={!sending} />
   </View>;
 }
 

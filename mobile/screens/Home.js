@@ -6,7 +6,7 @@ import { styles } from '../styles';
 import { desktop } from '../desktop';
 import { Icon, C } from '../theme';
 
-function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
+function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
@@ -15,6 +15,7 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
       <View style={styles.brandRow}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={34} tile={false} /><Text style={styles.brand}>mybots</Text></View>
       <View style={styles.headerActions}>
         <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={styles.modeButton}><View style={[styles.statusDot, data?.connection?.loggedIn && styles.statusGood]} /><Text style={styles.modeButtonText}>{desktop ? 'No computador' : mode === 'phone' ? 'No celular' : 'No PC'}</Text></Pressable>
+        {mode === 'phone' && onSearch ? <IconButton icon="search" label="Buscar nas conversas" onPress={onSearch} size={38} /> : null}
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={38} />
       </View>
     </View>

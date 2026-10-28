@@ -85,7 +85,10 @@ export function validFolders(list) {
 }
 export { browserMode } from '../mobile/local.js';
 import { BROWSER_MODES } from '../mobile/local.js';
+import agentSkills from '../lib/agent-skills.cjs';
 export function validateProfile(data) {
+  if (data.gpu !== undefined && typeof data.gpu !== 'boolean') throw new Error('Escolha se o bot usa a placa de vídeo.');
+  if (data.skills !== undefined && (!agentSkills.validSkills(data.skills) || data.skills.some(item => SENSITIVE.test(item.path) || item.path.split('/').filter(Boolean).length < 3))) throw new Error('Use até 20 skills, cada uma uma pasta do computador (nunca a pasta pessoal inteira nem pastas de senhas e chaves).');
   if (data.browserMode !== undefined && ![...BROWSER_MODES, 'own'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');
   if (data.browserMode === 'claude' && data.provider !== 'claude') throw new Error('Claude in Chrome só está disponível para bots Claude.');
   if (data.browserMode === 'mine' && data.access === 'basic') throw new Error('Meu Chrome exige Navegador e não está disponível em Pouco acesso.');

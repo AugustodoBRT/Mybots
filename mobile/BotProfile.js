@@ -42,7 +42,7 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -60,6 +60,11 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
     <View style={[s.radio, selected && (options.warn ? s.radioWarn : s.radioOn)]}>{selected ? <View style={[s.radioDot, options.warn && { backgroundColor: C.peach }]} /> : null}</View>
     <View style={{ flex: 1 }}><Text style={s.itemTitle}>{title}</Text>{detail ? <Text style={s.hint}>{detail}</Text> : null}</View>
   </Pressable>;
+  // Skills (folders with SKILL.md) found on the computer: the bot only gets the ones turned on here.
+  const [catalog, setCatalog] = useState(null); const [skillsOpen, setSkillsOpen] = useState(false);
+  const onComputer = Boolean(phone && bot && bot.home && bot.home !== 'phone');
+  useEffect(() => { if (visible && skillsOpen && onComputer && loadAgentSkills) { setCatalog(null); loadAgentSkills().then(setCatalog, error => setCatalog({ skills: [], message: error.message })); } }, [visible, skillsOpen, onComputer, bot?.id]);
+  const setSkill = (skill, change) => { const current = bot.skills || []; const rest = current.filter(item => item.path !== skill.path); const mine = current.find(item => item.path === skill.path); return act(() => onAgentSkills(change === null ? rest : [...rest, { path: skill.path, write: false, ...mine, ...change }])); };
   const toggle = (value, onChange, label) => <Switch accessibilityLabel={label} value={value} disabled={saving} trackColor={{ false: C.line2, true: C.mint + '88' }} thumbColor={value ? C.mint : '#9AA2B1'} onValueChange={onChange} />;
   return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
     <View style={[s.backdrop, { paddingBottom: keyboard }]}><View style={s.keyboard}><View style={s.sheet}>
@@ -159,6 +164,24 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
                 <Pressable accessibilityRole="button" disabled={saving || active || !folder.trim()} onPress={() => act(async () => { await onFolders([...new Set([...(bot.folders || []), folder.trim().replace(/\/+$/, '')])]); setFolder(''); })} style={[s.smallButton, { marginTop: 0 }, (!folder.trim() || active) && s.disabled]}><Icon name="plus" size={14} color={C.mint} /><Text style={s.link}>Liberar</Text></Pressable>
               </View>
             </View></> : null}
+          {onComputer && onAgentSkills ? <>
+            <Pressable accessibilityRole="button" onPress={() => setSkillsOpen(value => !value)} style={s.disclosure}><Text style={s.link}>Skills{(bot.skills || []).length ? ` · ${(bot.skills || []).length} ligada${(bot.skills || []).length === 1 ? '' : 's'}` : ''}</Text><Icon name={skillsOpen ? 'down' : 'back'} size={15} color={C.mint} /></Pressable>
+            {skillsOpen && <View style={s.group}>
+              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Skills são pastas com instruções e scripts que ficam no computador (as de ~/.claude, ~/.codex e ~/.agents). {bot.name} só usa as que você ligar aqui, do mesmo jeito no Claude e no Codex, e só enxerga a pasta da skill, nunca o resto de ~/.claude ou ~/.codex.</Text>
+              {catalog === null ? <Text style={[s.hint, { padding: 14 }]}>Procurando no computador…</Text> : catalog.skills.length === 0 ? <Text style={[s.hint, { padding: 14 }]}>{catalog.message || 'Nenhuma skill encontrada no computador.'}</Text> : catalog.skills.map(skill => {
+                const mine = (bot.skills || []).find(item => item.path === skill.path);
+                return <View key={skill.path} style={[s.permission, { alignItems: 'flex-start' }]}>
+                  <View style={s.permissionCopy}><Text style={s.itemTitle}>{skill.name}</Text>{skill.source ? <Text style={[s.hint, { color: C.faint }]}>{skill.source}</Text> : null}<Text style={s.hint} numberOfLines={mine ? undefined : 2}>{skill.description || 'Sem descrição.'}</Text>
+                    {mine ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}><Switch accessibilityLabel={`${skill.name} pode ser melhorada`} value={Boolean(mine.write)} disabled={saving || active} trackColor={{ false: C.line2, true: C.mint + '88' }} thumbColor={mine.write ? C.mint : '#9AA2B1'} onValueChange={write => setSkill(skill, { write })} /><Text style={[s.hint, { flex: 1 }]}>Pode melhorar a skill (gravar nela o que aprender)</Text></View> : null}
+                  </View>
+                  <Switch accessibilityLabel={`Ligar ${skill.name}`} value={Boolean(mine)} disabled={saving || active} trackColor={{ false: C.line2, true: C.mint + '88' }} thumbColor={mine ? C.mint : '#9AA2B1'} onValueChange={on => setSkill(skill, on ? {} : null)} />
+                </View>;
+              })}
+              <View style={[s.permission, { borderBottomWidth: 0, alignItems: 'flex-start' }]}>
+                <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar a placa de vídeo</Text><Text style={s.hint}>Abre o acesso à GPU do computador para este bot (renderizar vídeo, por exemplo). Fica desligado por padrão: sem isso, o bot não enxerga a placa. Num bot Codex, ligar isso também tira o isolamento próprio do Codex: ele passa a poder gravar em qualquer lugar da sua pasta pessoal (senhas e chaves continuam escondidas).</Text></View>
+                <Switch accessibilityLabel="Usar a placa de vídeo" value={bot.gpu === true} disabled={saving || active} trackColor={{ false: C.line2, true: C.mint + '88' }} thumbColor={bot.gpu === true ? C.mint : '#9AA2B1'} onValueChange={on => act(() => onGpu(on))} />
+              </View>
+            </View>}</> : null}
           <Pressable accessibilityRole="button" onPress={() => setFine(value => !value)} style={s.disclosure}><Text style={s.link}>Ajustes finos</Text><Icon name={fine || !bot?.access ? 'back' : 'down'} size={15} color={C.mint} /></Pressable>
           {(fine || !bot?.access) && <View style={s.group}><Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Cada interruptor vale por cima do nível. Desligar uma ferramenta também cancela a aprovação que estiver aberta.</Text>
             {grants.map((grant, index) => <View key={grant.name} style={[s.permission, index === grants.length - 1 && { borderBottomWidth: 0 }]}><View style={s.permissionCopy}><Text style={s.itemTitle}>{grant.label}</Text><Text style={s.hint}>{grant.description}</Text>{bot?.access ? <Text style={[s.stateTag, grant.state === 'allow' ? s.stateAllow : grant.state === 'ask' ? s.stateAsk : s.stateDeny]}>{STATE[grant.state]}</Text> : null}</View>

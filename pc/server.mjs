@@ -12,6 +12,8 @@ import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
+import agentSkills from '../lib/agent-skills.cjs';
+const { discover, enabledFor } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { SENSITIVE, browserMode } from '../supervisor/tool-policy.mjs';
 import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
@@ -91,25 +93,38 @@ function findFolder(path) {
 }
 
 /** What the bot may edit here: its own folder, the folders the person freed for it, or the whole home on Acesso total. */
-export function computerFor(allowed, workspace, home = homedir()) {
+export function computerFor(allowed, workspace, home = homedir(), skills = []) {
   if (!allowed) return false;
   const folders = (Array.isArray(allowed.folders) ? allowed.folders : []).map(path => findFolder(resolve(path.startsWith('~') ? join(home, path.slice(1)) : path)))
     .filter(path => path && !SENSITIVE.test(path) && path !== home && path !== '/' && statSync(path).isDirectory());
-  return { workspace, folders: [...new Set(folders)], full: Boolean(allowed.full), home };
+  // Skills turned on: Claude may look into their folders (--add-dir); Codex may write only in the ones to improve.
+  return { workspace, folders: [...new Set(folders)], full: Boolean(allowed.full), home, skillDirs: skills.map(skill => skill.path), skillWritable: skills.filter(skill => skill.write).map(skill => skill.path) };
+}
+
+/** The graphics card's device files that exist here: the DRM nodes and the NVIDIA ones. */
+export function gpuDevices(dev = '/dev') {
+  const names = []; try { names.push(...readdirSync(dev)); } catch {}
+  return [...(names.includes('dri') ? ['dri'] : []), ...names.filter(name => /^nvidia/.test(name))].map(name => join(dev, name));
 }
 
 // Folders with keys, passwords and the other IA's login. Every IA turn here runs in a bubblewrap view of the disk where
 // they are empty, so no command or file read can reach them, whatever the IA decides.
 const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone', '.config/google-chrome'];
-export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc')) {
+export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev' } = {}) {
   if (!bwrap) return null;
   const hidden = [...new Set([...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
   // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
   // prevents reaching the host's sockets and browser profiles through another process's root directory.
   const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
   const sockets = ['/tmp/.ydotool_socket', process.env.YDOTOOL_SOCKET, process.env.XAUTHORITY, join(home, '.Xauthority')].filter(path => path?.startsWith('/') && existsSync(path) && !statSync(path).isDirectory());
+  // Skills turned on for the bot: only their folder, at the same absolute path, mounted after the folders hidden above
+  // (a skill under ~/.claude stays reachable for a Codex bot while the rest of ~/.claude is empty). Read-only unless
+  // the person allowed improving it.
+  const folders = skills.filter(skill => skill?.path && existsSync(skill.path)).flatMap(skill => [skill.write ? '--bind' : '--ro-bind', skill.path, skill.path]);
+  // The graphics card only when the person turned it on for this bot: the private /dev has no render devices.
+  const devices = gpu ? gpuDevices(dev).flatMap(path => ['--dev-bind', path, path]) : [];
   return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', '--unshare-pid', '--proc', '/proc', '--dev', '/dev',
-    ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set(sockets)].flatMap(path => ['--ro-bind', '/dev/null', path])];
+    ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set(sockets)].flatMap(path => ['--ro-bind', '/dev/null', path]), ...folders, ...devices];
 }
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude') };
@@ -281,6 +296,11 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
+      if (message.type === 'agent_skills' && typeof message.rid === 'string') {
+        try { send({ type: 'pc_result', rid: message.rid, result: { skills: discover().map(({ id, name, description, path, source }) => ({ id, name, description, path, source })) } }); }
+        catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','shared','separate','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).then(() => { if (message.rid) send({ type: 'pc_result', rid: message.rid, result: { sent: true } }); }, () => message.rid ? send({ type: 'pc_result', rid: message.rid, error: 'Entrada recusada.' }) : send({ type: 'browser_frame', botId: message.botId, error: 'Toque em Assumir antes de usar a página.' }));
@@ -316,13 +336,14 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const bot = message.bot || {}; configureBrowser(bot);
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
-        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory);
+        const enabledSkills = enabledFor(bot, discover());
+        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true });
         if (!wrap) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
         log(`Respondendo como ${bot.name}.`);
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer: computerFor(message.tools.computer, workspace), endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer: computerFor(message.tools.computer, workspace, undefined, enabledSkills), skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress })
         });

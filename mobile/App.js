@@ -668,6 +668,9 @@ function AppMain() {
       accountApps={shownProfile?.accountApps || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await profileChanged(); }}
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await profileChanged(); }}
+      loadAgentSkills={() => supervisor.current.call('agent.skills', {})}
+      onAgentSkills={async skills => { await supervisor.current.call('bot.update', { botId: profileId, skills }); await profileChanged(); }}
+      onGpu={async gpu => { await supervisor.current.call('bot.update', { botId: profileId, gpu }); await profileChanged(); }}
       onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await profileChanged(); }}
       skills={shownProfile?.skills || []}
       onSkill={async (method, id) => {

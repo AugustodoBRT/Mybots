@@ -6,7 +6,7 @@ const ACTIVE = ['queued', 'running', 'waiting_approval'];
 // How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
 const PROMPT_WINDOW = 600;
 // Bots asking each other (@Nome) continue at most this many rounds after the person's message.
-export const MAX_ROUNDS = 6;
+export const MAX_ROUNDS = 30;
 export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** The members named with @ in a text ("@Faculdade", "@pobre jobs"), in order, without repeats. */

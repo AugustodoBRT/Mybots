@@ -43,7 +43,7 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 | 📄 **Arquivos de ida e volta** | O bot baixa anexos de sites (com o login daquele navegador), lê e devolve PDF, Word ou planilha prontos, com **Abrir**, **Compartilhar** e **Salvar em Downloads**. Também entrega um arquivo num site, como um trabalho no SIGAA, sempre com a sua aprovação. |
 | ⏰ **Rotinas e pendências** | Por horário ou quando chega uma notificação ("e-mail do SIGAA"). Prazos viram pendências sem duplicar, e o aviso de véspera chega como notificação do MyBots. |
 | 🌙 **Funciona com a tela apagada** | Serviço em primeiro plano, alarmes exatos que atravessam o Doze e reinício automático do supervisor quando o Android o mata. |
-| 👥 **Salas com vários bots** | Junte bots numa conversa: sem @ todos respondem, com @Nome só quem você chamar. Um bot pode perguntar a outro com @ (até 3 rodadas), cada um com as próprias permissões e sem ver a memória dos outros. |
+| 👥 **Salas com vários bots** | Junte bots numa conversa: sem @ todos respondem, com @Nome só quem você chamar. Um bot pode perguntar a outro com @ (até 30 rodadas), cada um com as próprias permissões e sem ver a memória dos outros. |
 | 🔑 **Senhas salvas** | O bot entra sozinho nos sites com a senha que você salvou ou importou do Chrome (CSV); ela fica só no celular, só vale no site certo e a IA nunca a vê. |
 | 🪄 **Widget animado** | Na tela inicial, os bots respiram, piscam, olham em volta enquanto trabalham e acendem a antena quando esperam você, com a última mensagem e o próximo prazo. |
 | 📊 **Uso e limites** | Tokens de cada bot e de cada resposta, e quanto do limite da sua assinatura (5 horas e semana) já foi usado. |

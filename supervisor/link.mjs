@@ -15,7 +15,7 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
-  'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop'];
+  'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
 const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 
@@ -259,6 +259,16 @@ export class Link {
       const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
       this.commands.set(rid, done);
       if (!this.post({ type: 'browser_files', rid, botId, op, ...(name ? { name } : {}) })) done({ error: 'offline' });
+    });
+  }
+  /** The skills (folders with SKILL.md) found on the computer, for the profile's list and to check what a bot turns on. */
+  skills() {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou para responder.' }), 15000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'agent_skills', rid })) done({ error: 'offline' });
     });
   }
   post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }

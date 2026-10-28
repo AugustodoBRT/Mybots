@@ -12,6 +12,8 @@ import { create as createFile } from './creator.mjs';
 import { MCP_TOOLS, MCP_NAMES } from './mcp/catalog.mjs';
 import { describeTrigger } from '../mobile/routine-text.js';
 import { skillProposal, SKILL_NOTICE } from './skills.mjs';
+import agentSkills from '../lib/agent-skills.cjs';
+const { commandInside, insideSkill } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
 const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose']);
@@ -430,6 +432,12 @@ export class Tools {
     const target = String(kind === 'shell' ? input.command || '' : input.file_path || input.notebook_path || input.path || input.pattern || '').slice(0, 2000);
     if (SENSITIVE.test(target)) { this.db.record('tool_denied', `Computador: ${target.slice(0, 120)} bloqueado (senhas e chaves).`, run.botId, run.taskId); this.changed('activity.new'); return deny('Esse caminho guarda senhas ou chaves e fica fora do alcance dos bots.'); }
     const risky = kind === 'shell' && RISKY.test(target);
+    // Reading a skill turned on for the bot, running its scripts and (if the person allowed improving it) saving into it
+    // never ask: the person chose the skill, and the rest of the disk and the keys stay behind the usual rules.
+    if (!risky && Array.isArray(bot.skills) && bot.skills.length && (kind === 'shell' ? commandInside(bot.skills, target) : kind === 'read' ? insideSkill(bot.skills, target) : insideSkill(bot.skills.filter(item => item.write), target, true))) {
+      this.db.record('tool_done', `Skill: ${kind === 'shell' ? 'comando ' : kind === 'read' ? 'ler ' : 'salvar '}${target.slice(0, 160)}.`, run.botId, run.taskId); this.changed('activity.new');
+      return { behavior: 'allow', updatedInput: input };
+    }
     const key = 'computer/' + kind;
     const label = kind === 'shell' ? `comando ${target.slice(0, 160)}` : `${kind === 'read' ? 'ler' : 'salvar'} ${target.slice(0, 160)}`;
     const free = bot.access === 'free';

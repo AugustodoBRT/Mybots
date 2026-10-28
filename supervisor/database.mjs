@@ -449,7 +449,7 @@ export class Database {
     const bot = this.requireBot(id);
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode','skills','gpu']) if (changes[field] !== undefined) updated[field] = changes[field];
     if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'shared';
     if (changes.provider === 'codex' && changes.browserMode === undefined && updated.browserMode === 'claude') updated.browserMode = 'shared';
     updated.browserMode = browserMode(updated);

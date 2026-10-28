@@ -149,6 +149,38 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 - **Modelo reserva** quando o limite da assinatura acaba (Codex ↔ Claude), com a conversa mantida.
 - **Ações na mensagem** (segurar): copiar, responder citando, fixar e reenviar.
 
+## v63 — Design novo: identidade própria, celular e PC
+
+Pedido do usuário em 28/10/2026: o app faz muita coisa, mas o design é fraco. Ele é "meio cinza, meio verde" (`C.mint` em tudo, sobre fundos azulados `#090B10`/`#12161E`), o robozinho dos bots (`BotAvatar.js`, `BotFace.kt`) não tem graça, as opções estão mal colocadas e o PC é só o app do celular esticado (`desktop.js` centraliza tudo numa coluna de 820 px). Objetivo: um visual **único e bonito**, que não pareça um template, com movimento e com o PC aproveitando a tela.
+
+**Antes de codar: discutir a identidade dos bots com o usuário.** Não implemente nenhum avatar antes disso. Leve 3 ou 4 direções com protótipo (uma página HTML ou artifact com as opções animadas lado a lado, nos dois temas) e deixe o usuário escolher ou misturar. Ponto de partida para a conversa, sem decidir nada:
+- formas abstratas vivas (uma "gota" ou orbe que respira, muda de forma e de cor conforme o estado);
+- personagens ilustrados gerados por semente (cada bot nasce único; a pessoa pode sortear de novo);
+- monograma ou glifo com animação (letra do nome em um selo que se mexe);
+- foto ou imagem escolhida pela pessoa, com moldura animada do estado por cima.
+
+Em qualquer direção: o estado (trabalhando, esperando você, dormindo, erro) aparece no próprio avatar, também no widget (`MyBotsWidget.kt`) e nas notificações.
+
+1. **Sistema visual novo** (`theme.js` vira tokens por tema):
+   - **Escuro com preto de verdade** (`#000` de fundo, superfícies quase pretas, bom em tela OLED) e **claro** de verdade, não um escuro invertido. Opção em Ajustes: Escuro, Claro, Seguir o sistema. O PC segue a mesma escolha, inclusive a barra de rolagem e o `document.body` (hoje fixo em `#090B10`).
+   - Paleta e tipografia novas, com personalidade. Acabar com o verde como cor de tudo: uma cor de destaque da marca e a cor de cada bot só onde ela importa.
+   - Ícones, cantos, sombras, espaçamento e estados (pressionado, desativado, carregando) revisados em todo o app.
+2. **Movimento**: transições entre telas, folhas e cartões que entram com mola, mensagem nova aparecendo com suavidade, avatar vivo, retorno ao tocar. Tudo leve (Reanimated na thread de UI, sem pesar na conversa da v56–v57) e respeitando "reduzir movimento" do sistema.
+3. **Ajustes reorganizados**: hoje é uma lista longa. Exemplo do problema: com as senhas importadas (`PasswordsPanel`), aparece a lista inteira e é preciso rolar muito para chegar às outras opções.
+   - Ajustes por **categorias** (Conta e IA, Bots, Celular, Computador, Senhas e carteira, Backup, Sobre), cada uma numa tela ou seção recolhível, com busca nos ajustes.
+   - Senhas: um resumo ("312 senhas · 4 bots com acesso") que abre uma tela própria com busca, agrupada por site e carregando aos poucos. O mesmo vale para qualquer lista que possa crescer (conexões, rotinas, pastas).
+   - Revisar também o perfil do bot (`BotProfile.js`): o que se usa muito fica no alto, o avançado fica recolhido.
+4. **PC com cara de PC** (`DesktopShell`, `desktop.js`):
+   - Layout próprio em vez da coluna centralizada: barra lateral recolhível, conversa e um painel lateral que muda conforme o contexto (navegador do bot ao vivo, perfil, Hoje e Atividade), com divisórias que dá para arrastar.
+   - Ajustes e perfil em páginas largas com navegação à esquerda, em vez de folhas de celular abertas no meio da tela.
+   - Atalhos de teclado (Ctrl+K para buscar e trocar de bot, Ctrl+N para um bot novo, Esc para fechar), hover, menus de clique direito, arrastar arquivos para a conversa.
+   - Aproveitar a largura: Atividade e pendências em colunas, navegador do bot ao lado da conversa sem espremer.
+5. **Telas principais redesenhadas**: Início, conversa, sala, Atividade, aprovações, navegador do bot, criação de bot e primeira abertura (onboarding).
+
+**Como fazer**: começar pelo protótipo de direção visual (tema e avatar), conversar com o usuário e só depois aplicar. Trocar os tokens primeiro e depois tela por tela, para o app não ficar meio novo e meio velho por muito tempo.
+
+**Testes novos**: as telas principais nos dois temas, no celular e no PC, conferidas por capturas no emulador e na janela do PC (guardadas em `docs/screenshots/`); contraste mínimo AA nos textos; troca de tema sem reiniciar; "reduzir movimento" desliga as animações; lista com 1.000 senhas abre e rola sem travar e não empurra as outras opções; o avatar mostra cada estado; nenhuma função perdida (comparar a lista de ações de cada tela antes e depois).
+
 ---
 
 ## Ordem e por quê
@@ -158,3 +190,4 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 3. **v58**: o acabamento do navegador usa o protocolo de eventos da v56.
 4. **v59–v61**: o bot livre depende de ver e parar o bot com conforto (v55, v58) e de um app que aguente muitos eventos (v56, v57).
 5. **v62**: acabamentos independentes, que podem ser puxados antes se algum fizer falta.
+6. **v63**: o redesenho vem por último porque mexe em todas as telas. Feito depois que as funções estiverem no lugar, ninguém precisa redesenhar duas vezes. Começa com a conversa sobre a identidade dos bots.

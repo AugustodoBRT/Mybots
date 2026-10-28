@@ -6,8 +6,8 @@ import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, Scro
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, cardLastFour, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
-import { SvgXml } from 'react-native-svg';
+import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop } from '../desktop';
 
@@ -216,15 +216,16 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
 
 export function ApprovalCard({ approval, bot, onRespond, busy }) {
   const titles = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS' };
+  const negotiation = approval.kind === 'negotiation';
   const summary = approval.summary ?? Object.values(approval.args).filter(value => typeof value === 'string' && value).join('\n');
   return <View style={styles.approvalCard}>
     <View style={styles.approvalHeading}><Avatar bot={bot || { name: 'Bot', color: 'orange' }} size={44} state="waiting" />
-      <View style={{ flex: 1 }}><Text style={styles.approvalEyebrow}>PRECISA DE VOCÊ</Text><Text style={styles.approvalTitle}>{bot?.name || 'Seu bot'} quer {(approval.title || titles[approval.tool] || 'executar uma ação').replace(/^./, letter => letter.toLocaleLowerCase())}.</Text></View></View>
+      <View style={{ flex: 1 }}><Text style={styles.approvalEyebrow}>{negotiation ? 'PROPOSTA ESPERANDO VOCÊ' : 'PRECISA DE VOCÊ'}</Text><Text style={styles.approvalTitle}>{bot?.name || 'Seu bot'} quer {(approval.title || titles[approval.tool] || 'executar uma ação').replace(/^./, letter => letter.toLocaleLowerCase())}.</Text></View></View>
     {summary ? <Text selectable style={styles.approvalBody}>{summary}</Text> : null}
-    <View style={styles.approvalHintRow}><Icon name="clock" size={14} color={C.faint} /><Text style={styles.approvalHint}>{approval.canAlways ? 'Uma vez vale só agora. ' : ''}Expira às {new Date(approval.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.</Text></View>
+    <View style={styles.approvalHintRow}><Icon name="clock" size={14} color={C.faint} /><Text style={styles.approvalHint}>{negotiation ? 'Prazo do mandato: ' + new Date(approval.expiresAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '.' : `${approval.canAlways ? 'Uma vez vale só agora. ' : ''}Expira às ${new Date(approval.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`}</Text></View>
     <View style={styles.approvalActions}>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRespond(approval, false)} style={({ pressed }) => [styles.denyButton, pressed && styles.pressed]}><Text style={styles.denyText}>Recusar</Text></Pressable>
-      <PrimaryButton compact icon="check" title={busy ? 'Aguarde…' : 'Permitir'} disabled={busy} onPress={() => onRespond(approval, true)} style={{ flex: 1.4 }} />
+      <PrimaryButton compact icon="check" title={busy ? 'Aguarde…' : negotiation ? 'Aceitar' : 'Permitir'} disabled={busy} onPress={() => onRespond(approval, true)} style={{ flex: 1.4 }} />
     </View>
     {approval.canAlways ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRespond(approval, true, true)} style={styles.alwaysButton}><Icon name="shield" size={15} color={C.amber} /><Text style={styles.alwaysText}>Sempre permitir</Text></Pressable> : null}
   </View>;
@@ -284,8 +285,8 @@ export function TodayStrip({ data, onActivity }) {
 
 export function greeting() { const hour = new Date().getHours(); return hour < 5 ? 'Boa noite' : hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'; }
 
-export function NavBar({ mode, onActivity, onMaintenance, onConnection, onMode, attention }) {
-  const items = [['bots', 'Bots', null, true], ['activity', mode === 'phone' ? 'Atividade' : 'Conexão', mode === 'phone' ? onActivity : onConnection], ['settings', 'Ajustes', mode === 'phone' ? onMaintenance : onMode]];
+export function NavBar({ mode, onActivity, onMaintenance, onConnection, onMode, onWallet, attention }) {
+  const items = [['bots', 'Bots', null, true], ['activity', mode === 'phone' ? 'Atividade' : 'Conexão', mode === 'phone' ? onActivity : onConnection], ...(onWallet ? [['wallet', 'Carteira', onWallet]] : []), ['settings', 'Ajustes', mode === 'phone' ? onMaintenance : onMode]];
   return <View style={styles.bottomNav}>{items.map(([icon, label, onPress, active]) =>
     <Pressable key={icon} accessibilityRole="button" accessibilityState={{ selected: Boolean(active) }} onPress={onPress || undefined} style={[styles.navItem, active && styles.navItemActive]}>
       <View><Icon name={icon} size={21} color={active ? C.mint : C.muted} />{icon === 'activity' && attention ? <View style={styles.navBadge} /> : null}</View>
@@ -639,37 +640,76 @@ export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry 
 
 const reais = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${String(cents % 100).padStart(2, '0')}`;
 const PURCHASE_STATUS = { paga: '', cancelada: ' · não concluída', desconsiderada: ' · desconsiderada' };
+const CARD_BRANDS = { visa: ['VISA', '#1B2B6B', '#3E6BFF'], mastercard: ['Mastercard', '#2B2230', '#C2542D'], elo: ['elo', '#1C1C20', '#0F7F8F'], amex: ['AMEX', '#14464F', '#38A3B3'], hipercard: ['Hipercard', '#6A1620', '#D6455A'], card: ['', '#252B3A', '#566485'] };
 
-/** Ajustes → Carteira: the card (only its last digits), the rules, Congelar and the extract with each receipt. */
-export function WalletPanel() {
-  const [lastFour, setLastFour] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
-  const [rules, setRules] = useState({ frozen: true }); const [purchases, setPurchases] = useState([]); const [receipt, setReceipt] = useState(null);
-  const load = async () => { try { setLastFour(await cardLastFour()); setRules(await walletRules()); setPurchases(await walletPurchases()); } catch (error) { setNote(nativeMessage(error)); } };
+/** A card drawn like a card: gradient by brand, chip, the last four digits, holder and validity. Nothing secret is ever shown. */
+export function WalletCardArt({ card, frozen = false }) {
+  const [brand, from, to] = CARD_BRANDS[card.brand] || CARD_BRANDS.card; const id = 'g' + card.id.slice(0, 8);
+  const holder = String(card.holder || '').toUpperCase().slice(0, 26); const valid = `${String(card.month).padStart(2, '0')}/${String(card.year).slice(-2)}`;
+  return <View accessible accessibilityLabel={`Cartão ${brand || ''} final ${card.last4}${card.label ? ', ' + card.label : ''}${frozen ? ', carteira congelada' : ''}`} style={{ aspectRatio: 1.62, width: '100%', maxWidth: 380, alignSelf: 'center', borderRadius: 18, overflow: 'hidden', opacity: frozen ? 0.55 : 1 }}>
+    <Svg width="100%" height="100%" viewBox="0 0 320 198">
+      <Defs><LinearGradient id={id} x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={from} /><Stop offset="1" stopColor={to} /></LinearGradient></Defs>
+      <SvgRect width="320" height="198" rx="18" fill={`url(#${id})`} />
+      <SvgCircle cx="285" cy="30" r="95" fill="#FFFFFF" opacity="0.07" /><SvgCircle cx="250" cy="170" r="70" fill="#FFFFFF" opacity="0.06" />
+      <SvgRect x="24" y="62" width="40" height="30" rx="6" fill="#E8C873" opacity="0.92" /><SvgRect x="24" y="76" width="40" height="2" fill="#B8963F" opacity="0.7" /><SvgRect x="42" y="62" width="2" height="30" fill="#B8963F" opacity="0.7" />
+      <SvgText x="24" y="38" fill="#FFFFFF" fontSize="13" fontWeight="700" opacity="0.9">{(card.label || 'Cartão virtual').slice(0, 24)}</SvgText>
+      <SvgText x="24" y="128" fill="#FFFFFF" fontSize="21" fontWeight="600" letterSpacing="2">{`••••  ••••  ••••  ${card.last4}`}</SvgText>
+      <SvgText x="24" y="168" fill="#FFFFFF" fontSize="11" opacity="0.85" letterSpacing="1">{holder}</SvgText>
+      <SvgText x="24" y="184" fill="#FFFFFF" fontSize="9" opacity="0.7">{`VÁLIDO ATÉ ${valid}`}</SvgText>
+      <SvgText x="298" y="182" fill="#FFFFFF" fontSize="19" fontWeight="800" fontStyle="italic" textAnchor="end">{brand}</SvgText>
+      {frozen ? <SvgText x="296" y="36" fill="#FFFFFF" fontSize="11" fontWeight="700" textAnchor="end" letterSpacing="2">CONGELADA</SvgText> : null}
+    </Svg>
+  </View>;
+}
+
+/** Carteira: the cards drawn as cards, which bots may pay with each one, the rules, Congelar and the extract with each receipt. */
+export function WalletPanel({ bots = [] }) {
+  const [cards, setCards] = useState([]); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  const [rules, setRules] = useState({ frozen: true }); const [purchases, setPurchases] = useState([]); const [receipt, setReceipt] = useState(null); const [open, setOpen] = useState(null);
+  const load = async () => { try { setCards(await walletCards()); setRules(await walletRules()); setPurchases(await walletPurchases()); } catch (error) { setNote(nativeMessage(error)); } };
   useEffect(() => { load(); }, []);
   const native = action => async () => { setBusy(true); setNote(''); try { await action(); await load(); } catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); } };
-  const remove = () => Alert.alert('Apagar o cartão?', 'O cartão será removido deste celular.', [{ text: 'Cancelar', style: 'cancel' },
-    { text: 'Apagar', style: 'destructive', onPress: () => cardDelete().then(load).catch(error => setNote(nativeMessage(error))) }]);
+  const remove = card => Alert.alert(`Apagar o cartão final ${card.last4}?`, 'O cartão será removido deste celular e nenhum bot poderá usá-lo.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Apagar', style: 'destructive', onPress: () => cardDelete(card.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
   const dismiss = item => Alert.alert('Desconsiderar esta compra?', 'Use quando a compra não aconteceu (pedido cancelado ou recusado). Ela deixa de contar nos limites.', [{ text: 'Cancelar', style: 'cancel' },
     { text: 'Desconsiderar', onPress: () => walletDismiss(item.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
+  const toggle = (card, botId) => native(() => walletCardBots(card.id, card.bots.includes(botId) ? card.bots.filter(id => id !== botId) : [...card.bots, botId]))();
   const frozen = rules.frozen !== false;
   const month = new Date().toISOString().slice(0, 7);
   const spent = purchases.filter(item => item.status === 'paga' && new Date(item.at).toISOString().slice(0, 7) === month).reduce((sum, item) => sum + item.total, 0);
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>Cartão da carteira</Text>
-    <Text style={styles.optionDetail}>{lastFour ? `Cartão final ${lastFour}. ` : 'Nenhum cartão cadastrado. '}{frozen ? 'Carteira congelada: nenhum bot paga. ' : `Carteira ativa. ${rules.perMonth ? `Gasto no mês: ${reais(spent)} de ${reais(rules.perMonth)}. ` : ''}`}O cartão fica só neste celular; os bots veem apenas o final.</Text>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={native(cardEditor)} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{lastFour ? 'Trocar cartão' : 'Cadastrar cartão'}</Text></Pressable>
-      {lastFour ? <Pressable accessibilityRole="button" disabled={busy} onPress={remove} style={styles.stopButton}><Icon name="trash" size={13} color={C.faint} /><Text style={styles.stopText}>Apagar</Text></Pressable> : null}
-      <Pressable accessibilityRole="button" disabled={busy} onPress={native(walletRulesEditor)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{frozen ? 'Regras e descongelar' : 'Regras'}</Text></Pressable>
+  return <View>
+    <Text style={styles.optionDetail}>{frozen ? 'Carteira congelada: nenhum bot paga. ' : `Carteira ativa. ${rules.perMonth ? `Gasto no mês: ${reais(spent)} de ${reais(rules.perMonth)}. ` : ''}`}Os cartões ficam só neste celular; os bots veem apenas o final.</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={native(walletRulesEditor)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{frozen ? 'Regras e descongelar' : 'Regras de gasto'}</Text></Pressable>
       {!frozen ? <Pressable accessibilityRole="button" onPress={native(walletFreeze)} style={styles.stopButton}><Icon name="stop" size={13} color={C.amber} /><Text style={[styles.stopText, { color: C.amber }]}>Congelar carteira</Text></Pressable> : null}
     </View>
-    {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
-    {purchases.length ? <Text style={[styles.optionLabel, { marginTop: 14 }]}>Extrato</Text> : null}
+    {cards.map(card => {
+      const names = card.bots.map(id => bots.find(bot => bot.id === id)?.name).filter(Boolean);
+      return <View key={card.id} style={{ marginBottom: 18 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Bots do cartão final ${card.last4}`} onPress={() => setOpen(open === card.id ? null : card.id)}><WalletCardArt card={card} frozen={frozen} /></Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <Text style={[styles.optionDetail, { flex: 1 }]}>{names.length ? `Usado por: ${names.join(', ')}` : 'Nenhum bot pode usar este cartão ainda.'}</Text>
+          <Pressable accessibilityRole="button" onPress={() => setOpen(open === card.id ? null : card.id)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{open === card.id ? 'Fechar' : 'Escolher bots'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Apagar o cartão final ${card.last4}`} disabled={busy} onPress={() => remove(card)} style={styles.stopButton}><Icon name="trash" size={13} color={C.faint} /></Pressable>
+        </View>
+        {open === card.id ? <View style={{ marginTop: 8 }}>
+          <Text style={styles.optionDetail}>Só os bots marcados podem pagar com este cartão, sempre dentro das regras de gasto.</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            {bots.length ? bots.map(bot => { const on = card.bots.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} disabled={busy} onPress={() => toggle(card, bot.id)} style={[styles.stopButton, on && { borderColor: C.mint + '90', backgroundColor: C.mint + '18' }]}><Icon name={on ? 'check' : 'plus'} size={13} color={on ? C.mint : C.faint} /><Text style={[styles.stopText, on && { color: C.mint }]}>{bot.name}</Text></Pressable>; }) : <Text style={styles.optionDetail}>Crie um bot para liberar o cartão.</Text>}
+          </View>
+        </View> : null}
+      </View>;
+    })}
+    <Pressable accessibilityRole="button" disabled={busy} onPress={native(cardEditor)} style={{ minHeight: cards.length ? 96 : 150, width: '100%', maxWidth: 380, alignSelf: 'center', borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.line2, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 }}>
+      <Icon name="plus" size={22} color={C.mint} /><Text style={[styles.optionLabel, { color: C.mint }]}>{cards.length ? 'Adicionar outro cartão' : 'Adicionar cartão'}</Text><Text style={[styles.optionDetail, { textAlign: 'center', paddingHorizontal: 24 }]}>De preferência um cartão virtual do seu banco, com limite próprio.</Text>
+    </Pressable>
+    {note ? <Text style={[styles.optionDetail, { color: C.amber, marginTop: 8 }]}>{note}</Text> : null}
+    {purchases.length ? <Text style={[styles.optionLabel, { marginTop: 18 }]}>Extrato</Text> : null}
     {purchases.slice(0, 30).map(item => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
       {item.receipt ? <Pressable accessibilityRole="button" accessibilityLabel="Ver comprovante" onPress={() => setReceipt(item.receipt)}><Image source={{ uri: item.receipt }} style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: C.surface2 }} /></Pressable> : null}
       <View style={{ flex: 1 }}>
         <Text style={[styles.optionLabel, item.status !== 'paga' && { color: C.faint }]}>{reais(item.total)} · {item.store}{PURCHASE_STATUS[item.status] || ''}</Text>
-        <Text style={styles.optionDetail}>{(item.items || []).join(', ')} · {item.bot} · {new Date(item.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{item.reason ? `\n${item.reason}` : ''}</Text>
+        <Text style={styles.optionDetail}>{(item.items || []).join(', ')} · {item.bot}{item.card ? ` · final ${item.card}` : ''} · {new Date(item.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{item.reason ? `\n${item.reason}` : ''}</Text>
       </View>
       {item.status === 'paga' ? <Pressable accessibilityRole="button" onPress={() => dismiss(item)} style={styles.stopButton}><Text style={styles.stopText}>Desconsiderar</Text></Pressable> : null}
     </View>)}

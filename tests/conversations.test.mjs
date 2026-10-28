@@ -92,7 +92,7 @@ test('migration 9 moves room messages out of the room body, keeps their order an
   db.run('INSERT INTO rooms(id,body,updated_at) VALUES(?,?,?)', roomId, JSON.stringify({ id: roomId, name: 'Antiga', botIds: [a.id, b.id], messages, createdAt: stamp(0), updatedAt: stamp(999) }), stamp(999));
   db.close();
   db = new Database(directory); t.after(() => db.close());
-  assert.equal(db.get('PRAGMA user_version').user_version, 10);
+  assert.equal(db.get('PRAGMA user_version').user_version, 11);
   assert.equal(db.room(roomId).messages, undefined); assert.equal(db.room(roomId).name, 'Antiga');
   assert.deepEqual(db.roomMessages(roomId).map(message => message.text), messages.map(message => message.text));
   assert.deepEqual(db.chatSummary('room', roomId), { lastMessage: { id: messages[999].id, role: 'assistant', status: 'complete', text: 'Mensagem 999', createdAt: stamp(999), botId: b.id }, messageCount: 1000, unread: 0 });

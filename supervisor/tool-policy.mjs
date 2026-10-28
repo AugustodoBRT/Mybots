@@ -30,6 +30,9 @@ export const TOOL_DEFINITIONS = [
   { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Fora da pasta e comandos pedem aprovação no Médio; sudo, apagar pastas inteiras e git push sempre pedem.' },
   { name: 'desktop', label: 'Controlar a tela do computador', description: 'Permissão separada, desligada por padrão, inclusive no Acesso total. Vê a tela e as janelas, abre apps, clica e digita no PC. No Médio, ações pedem aprovação, com Sempre permitir. Pouco acesso nunca pode usar.' },
   // Skills: small programs a bot made, run on the phone without the IA. Installing one always asks the person.
+  { name: 'negotiation.status', label: 'Ver negociações', description: 'Consulta os mandatos de negociação deste bot.', readOnly: true, defaultAllowed: true },
+  { name: 'negotiation.offer', label: 'Declarar ofertas', description: 'Declara uma oferta dentro do mandato; o MyBots recusa o que o mandato não cobre.', defaultAllowed: true },
+  { name: 'negotiation.close', label: 'Fechar negócios', description: 'Fecha dentro do mandato ou leva a proposta à pessoa com Aceitar e Recusar.', defaultAllowed: true },
   { name: 'skill.list', label: 'Ver habilidades', description: 'Consulta as habilidades deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'skill.run', label: 'Usar habilidades', description: 'Roda no celular uma habilidade deste bot (um programa que você aprovou) e lê o resultado.', readOnly: true, defaultAllowed: true },
   { name: 'skill.propose', label: 'Criar habilidades', description: 'Propõe instalar no celular um programa que o bot escreveu (ex.: buscar vagas todo dia), com os sites que ele acessa. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
@@ -107,12 +110,12 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
-    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
-    'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
+    'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
     // Models often send "" for a filter they do not want; for optional fields that means no filter.
@@ -208,6 +211,13 @@ export function toolArguments(tool, args) {
   if (tool === 'team.leave_room' || tool === 'team.close_room') return { room: text('room', 60) };
   if (tool === 'team.post') return { room: text('room', 60), text: text('text', 4000) };
   if (tool === 'team.read_room') return { room: text('room', 60), limit: integer('limit', 1, 60, 30) };
+  if (tool === 'negotiation.status') return {};
+  if (tool === 'negotiation.offer' || tool === 'negotiation.close') {
+    if (!['whatsapp', 'olx', 'marketplace', 'email'].includes(args.channel)) throw new Error('Em channel, use whatsapp, olx, marketplace ou email.');
+    if (typeof args.amount !== 'number') throw new Error('Em amount, mande o valor em reais, como 850.');
+    const note = tool === 'negotiation.offer' ? text('text', 2000) : text('summary', 2000);
+    return { channel: args.channel, to: text('to', 200), amount: args.amount, [tool === 'negotiation.offer' ? 'text' : 'summary']: note, ...(args.negotiation === undefined ? {} : { negotiation: text('negotiation', 40) }) };
+  }
   if (tool === 'skill.list') return {};
   if (tool === 'skill.run') {
     const input = args.input === undefined ? {} : args.input;
@@ -257,7 +267,8 @@ export function toolArguments(tool, args) {
   if (tool === 'browser.pay') {
     if (!Array.isArray(args.items) || !args.items.length || args.items.length > 20 || args.items.some(item => typeof item !== 'string' || !item.trim() || item.length > 200)) throw new Error('Em items, liste de 1 a 20 itens da compra.');
     if (typeof args.total !== 'number' || !Number.isFinite(args.total) || args.total <= 0 || args.total > 1e7 || Math.abs(Math.round(args.total * 100) - args.total * 100) > 1e-6) throw new Error('Em total, mande o valor em reais com até duas casas, como 129.9.');
-    return { store: text('store', 200), items: args.items.map(item => item.trim()), category: text('category', 100), total: Math.round(args.total * 100) };
+    if (args.card !== undefined && !/^[0-9]{4}$/.test(String(args.card))) throw new Error('Em card, informe só os 4 últimos dígitos do cartão (ex.: 1234), como a carteira mostra.');
+    return { store: text('store', 200), items: args.items.map(item => item.trim()), category: text('category', 100), total: Math.round(args.total * 100), ...(args.card === undefined ? {} : { card: String(args.card) }) };
   }
   if (tool === 'browser.upload') {
     if (typeof args.file !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.file)) throw new Error('Em file, informe o id de um arquivo deste bot (veja em files_list).');

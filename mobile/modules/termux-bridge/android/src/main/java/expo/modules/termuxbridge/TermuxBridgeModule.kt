@@ -113,12 +113,29 @@ class TermuxBridgeModule : Module() {
         manager.requestPinAppWidget(ComponentName(context, MyBotsWidget::class.java), null, null)
     }
     // Saved site logins (Ajustes → Senhas). The list never includes the passwords.
-    AsyncFunction("cardLastFour") { PasswordVault.cardLastFour(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
+    // The cards for the Carteira screen: brand, last four, validity, holder, nickname and the bots the person allowed. Never the number or the code.
+    AsyncFunction("walletCards") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      val cards = PasswordVault.cardsPublic(context); val bots = WalletGuard.cardBots(context)
+      for (index in 0 until cards.length()) { val card = cards.getJSONObject(index); card.put("bots", bots.optJSONArray(card.getString("id")) ?: org.json.JSONArray()) }
+      cards.toString()
+    }
+    // Only the person, in the app, chooses which bots pay with a card; it counts as a change of the rules.
+    AsyncFunction("walletCardBots") { cardId: String, bots: List<String> ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      if (cardId !in PasswordVault.cardIds(context)) throw IllegalArgumentException("Cartão não encontrado.")
+      if (!WalletEditorGate.open()) throw IllegalStateException("Aguarde o controle do celular terminar.")
+      try { WalletGuard.setCardBots(context, cardId, bots.filter { it.matches(Regex("[0-9a-f-]{36}")) }) } finally { WalletEditorGate.close() }
+      true
+    }
     AsyncFunction("cardEditor") { promise: Promise ->
       val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para cadastrar o cartão.", null)
       CardEditor.show(activity, promise)
     }
-    AsyncFunction("cardDelete") { PasswordVault.deleteCard(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")); true }
+    AsyncFunction("cardDelete") { id: String ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      PasswordVault.deleteCard(context, id); WalletGuard.forgetCard(context, id); true
+    }
     AsyncFunction("walletRules") { WalletGuard.rules(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")).toString() }
     AsyncFunction("walletFreeze") { WalletPay.freeze(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")); true }
     AsyncFunction("walletPurchases") { WalletPay.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }

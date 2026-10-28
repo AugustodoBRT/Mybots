@@ -37,6 +37,15 @@ fun main() {
   fails("limite por compra") { WalletPolicy.check(rules.copy(perPurchase = 3999), intent, url, 4000, emptyList(), now, zone) }
   fails("limite do dia") { WalletPolicy.check(rules, intent, url, 4000, listOf(at("2026-10-28T12:00:00Z") to 4001L), now, zone) }
   fails("limite do mês") { WalletPolicy.check(rules, intent, url, 4000, listOf(at("2026-10-02T12:00:00Z") to 6001L), now, zone) }
+  // Which card a bot pays with: only the ones the person allowed for that bot, and the bot names one when there are several.
+  val cards = mapOf("a" to "1111", "b" to "2222", "c" to "3333")
+  check(WalletPolicy.pickCard(cards, listOf("b"), "") == "b")
+  check(WalletPolicy.pickCard(cards, listOf("a", "b"), "2222") == "b")
+  fails("não liberou nenhum cartão") { WalletPolicy.pickCard(cards, emptyList(), "") }
+  fails("não liberou nenhum cartão") { WalletPolicy.pickCard(cards, listOf("apagado"), "") }
+  fails("não pode usar o cartão final 3333") { WalletPolicy.pickCard(cards, listOf("a", "b"), "3333") }
+  fails("mais de um cartão liberado") { WalletPolicy.pickCard(cards, listOf("a", "b"), "") }
+  fails("Nenhum cartão cadastrado") { WalletPolicy.pickCard(emptyMap(), listOf("a"), "") }
   fails("congelada") { WalletPolicy.check(rules.copy(frozen = true), intent, url, 4000, emptyList(), now, zone) }
   fails("ainda não foram definidas") { WalletPolicy.check(rules.copy(perDay = 0), intent, url, 4000, emptyList(), now, zone) }
   // The day and the month turn at midnight on the phone's clock (Brasília is UTC-3), with the time given, not waited for.

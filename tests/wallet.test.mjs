@@ -58,7 +58,9 @@ test('browser_pay validates what the bot declares and converts reais to centavos
   assert.throws(() => toolArguments('browser.pay', { ...purchase, total: 89.999 }), /duas casas/);
   assert.throws(() => toolArguments('browser.pay', { ...purchase, total: -1 }), /total/);
   assert.throws(() => toolArguments('browser.pay', { ...purchase, items: [] }), /items/);
-  assert.throws(() => toolArguments('browser.pay', { ...purchase, card: CARD }), /não permitido/);
+  // The only card field is the last four digits (to choose among the cards the person allowed); a whole number is refused.
+  assert.throws(() => toolArguments('browser.pay', { ...purchase, card: CARD }), /4 últimos dígitos/);
+  assert.equal(toolArguments('browser.pay', { ...purchase, card: '3831' }).card, '3831');
 });
 
 test('below Livre every purchase asks, without "Sempre permitir"; the app gets the intent in centavos and the activity records it', async t => {

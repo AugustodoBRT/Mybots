@@ -12,6 +12,22 @@ internal data class WalletIntent(val store: String, val items: List<String>, val
  * from the page itself (or from the computer's browser process), not from what the bot says. Amounts are centavos.
  */
 internal object WalletPolicy {
+  /**
+   * The card a bot pays with. `lastFours` is every card (id → last four), `allowed` the ids the person chose for this bot,
+   * `hint` the last four the bot named (or empty). A card the person did not allow for that bot is never returned.
+   */
+  fun pickCard(lastFours: Map<String, String>, allowed: List<String>, hint: String): String {
+    if (lastFours.isEmpty()) throw IllegalStateException("Nenhum cartão cadastrado. Peça à pessoa para cadastrar em Carteira.")
+    val usable = allowed.filter { lastFours.containsKey(it) }
+    if (usable.isEmpty()) throw IllegalStateException("A pessoa não liberou nenhum cartão da carteira para este bot. Peça que ela escolha os bots de um cartão em Carteira.")
+    val names = usable.joinToString(", ") { "final " + lastFours[it] }
+    return when {
+      hint.length == 4 -> usable.firstOrNull { lastFours[it] == hint } ?: throw IllegalStateException("Este bot não pode usar o cartão final $hint. Cartões liberados: $names.")
+      usable.size == 1 -> usable[0]
+      else -> throw IllegalStateException("Há mais de um cartão liberado para este bot: $names. Informe o final em card.")
+    }
+  }
+
   fun host(url: String): String? = try {
     val uri = java.net.URI(url)
     if (uri.scheme?.lowercase() != "https" || uri.rawUserInfo != null) null else uri.host?.lowercase()?.trimEnd('.')?.takeIf { it.isNotEmpty() }

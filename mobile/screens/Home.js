@@ -6,7 +6,7 @@ import { styles } from '../styles';
 import { desktop } from '../desktop';
 import { Icon, C } from '../theme';
 
-function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
+function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom }) {
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
@@ -45,7 +45,7 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
       </View>}
     <View style={styles.homeFooter}><Icon name="shield" size={14} color={C.faint} /><Text style={styles.homeFooterText}>{mode === 'phone' ? 'Bots, conversas e arquivos ficam neste celular.' : 'Bots e conversas ficam no computador.'}</Text></View>
   </ScrollView>
-  <NavBar mode={mode} onActivity={onActivity} onMaintenance={onMaintenance} onConnection={onConnection} onMode={onMode} attention={Boolean(data?.approvals?.length)} />
+  <NavBar mode={mode} onActivity={onActivity} onWallet={onWallet} onMaintenance={onMaintenance} onConnection={onConnection} onMode={onMode} attention={Boolean(data?.approvals?.length)} />
   </View>;
 }
 

@@ -16,7 +16,7 @@ import agentSkills from '../lib/agent-skills.cjs';
 const { commandInside, insideSkill } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
-const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose']);
+const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close']);
 
 // Connector actions whose names only read. Anything that also mentions a change goes to the person.
 const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view|download)([_.\-]|$)/i;
@@ -49,7 +49,7 @@ function approvalText(tool, args, app) {
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
   if (tool === 'browser/submit') return { title: args.action === 'drag' ? 'Arrastar um item no navegador' : APPROVAL_TITLES[tool], summary: [args.action === 'drag' && `De (${args.x}, ${args.y}) para (${args.toX}, ${args.toY})`, args.label && `Alvo: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'browser/login') return { title: APPROVAL_TITLES[tool], summary: [args.page && `Site: ${args.page}`, 'O MyBots preenche a senha que você salvou; o bot não vê a senha.'].filter(Boolean).join('\n') };
-  if (tool === 'wallet/pay') return { title: `Pagar ${money(args.total)} com a carteira`, summary: [`Loja: ${args.store}`, `Itens: ${args.items.join(', ')}`, `Categoria: ${args.category}`, args.page && `Página: ${args.page}`, 'O app confere suas regras e o total da página e preenche o cartão; o bot não vê o cartão.'].filter(Boolean).join('\n') };
+  if (tool === 'wallet/pay') return { title: `Pagar ${money(args.total)} com a carteira`, summary: [`Loja: ${args.store}`, `Itens: ${args.items.join(', ')}`, `Categoria: ${args.category}`, args.card && `Cartão final ${args.card}`, args.page && `Página: ${args.page}`, 'O app confere suas regras e o total da página e preenche o cartão; o bot não vê o cartão.'].filter(Boolean).join('\n') };
   if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'skill.propose') return { title: 'Instalar uma habilidade no celular', summary: args.summary };
   if (tool === 'phone/act' || tool === 'phone.open_app' || tool === 'phone.fill_code' || tool === 'termux') return { title: APPROVAL_TITLES[tool], summary: args.summary };
@@ -318,6 +318,9 @@ export class Tools {
         if (tool === 'routine.list') result = { routines: this.routines.list(run.botId).map(({ botId, ...item }) => item) };
         else if (tool === 'routine.create') result = this.routines.create(run.botId, args);
         else result = args.delete ? this.routines.remove(args.id, run.botId) : this.routines.update(args.id, { enabled: args.enabled }, run.botId);
+      } else if (tool === 'negotiation.status' || tool === 'negotiation.offer' || tool === 'negotiation.close') {
+        if (!this.negotiations) throw new Error('As negociações não estão disponíveis.');
+        result = tool === 'negotiation.status' ? this.negotiations.status(run.botId) : tool === 'negotiation.offer' ? this.negotiations.offer(run.botId, args) : this.negotiations.close(run.botId, args);
       } else if (tool === 'skill.list') {
         if (!this.skills) throw new Error('As habilidades não estão disponíveis.');
         result = { skills: this.skills.forBot(run.botId).map(({ name, title, description, sites, version }) => ({ name, title, description, sites, version })) };
@@ -659,7 +662,7 @@ export class Tools {
    * passes here. Either way the purchase is booked in the app before the card leaves its vault.
    */
   async pay(run, bot, args, command) {
-    const intent = { store: args.store, items: args.items, category: args.category, total: args.total };
+    const intent = { store: args.store, items: args.items, category: args.category, total: args.total, ...(args.card ? { card: args.card } : {}) };
     if (!this.browser.available()) throw new Error('A carteira fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots.');
     this.paying.set(run.botId, { taskId: run.taskId, run, at: Date.now() });
     if (run.lane !== 'pc') {

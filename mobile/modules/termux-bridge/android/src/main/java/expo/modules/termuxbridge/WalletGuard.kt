@@ -33,6 +33,24 @@ internal object WalletGuard {
         .putLong("generation", preferences.getLong("generation", 0) + 1).commit())
       throw IllegalStateException("Não consegui salvar as regras da carteira.")
   }
+  /** Which bots may pay with each card: card id → bot ids. A card nobody chose is used by no bot. */
+  @Synchronized fun cardBots(context: Context): JSONObject = try { JSONObject(prefs(context).getString("cardBots", "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
+  @Synchronized fun setCardBots(context: Context, cardId: String, bots: List<String>) {
+    val preferences = prefs(context)
+    val all = cardBots(context)
+    if (bots.isEmpty()) all.remove(cardId) else all.put(cardId, JSONArray(bots.distinct().take(100)))
+    // Changing who may pay counts as a change of the rules: payments booked before it stop being valid.
+    if (!preferences.edit().putString("cardBots", all.toString()).putLong("generation", preferences.getLong("generation", 0) + 1).commit())
+      throw IllegalStateException("Não consegui salvar os bots do cartão.")
+  }
+  @Synchronized fun forgetCard(context: Context, cardId: String) {
+    if (cardBots(context).has(cardId)) setCardBots(context, cardId, emptyList())
+  }
+  /** The cards a bot may use, by id. */
+  @Synchronized fun cardsOf(context: Context, botId: String): List<String> {
+    val all = cardBots(context)
+    return all.keys().asSequence().filter { key -> all.optJSONArray(key)?.let { array -> (0 until array.length()).any { array.optString(it) == botId } } == true }.toList()
+  }
   @Synchronized fun generation(context: Context): Long = prefs(context).getLong("generation", 0)
   @Synchronized fun snapshot(context: Context): Pair<JSONObject, Long> = rules(context) to generation(context)
 }

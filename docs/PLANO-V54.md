@@ -4,7 +4,7 @@ Escrito em 27/10/2026, logo depois da v53 (0.31.1). Para usar numa conversa nova
 
 As regras de trabalho são as da seção 1 de [PLANO-V47.md](PLANO-V47.md) (testes, emulador, nó de PC isolado, entrega, docs), com duas mudanças desta fase:
 
-- Migração nova do banco agora é a **9** (`user_version=8` hoje).
+- Migração nova do banco: a 9 e a 10 já saíram (`room_messages`, `browser_steps`/`browser_downloads`); a da v61 é a **11** (negociações).
 - A regra 9 (segurança) continua, mas a trilha "bot livre" (v59 a v61) muda **onde** fica o freio: em vez de pedir aprovação a cada ação, o supervisor aplica **limites duros** que o modelo não consegue mudar (orçamento, lojas, mandato). Continua proibido: senha, número de cartão ou código passar pela IA; disfarçar automação; quebrar CAPTCHA (quem resolve é a pessoa, agora com muito mais conforto).
 
 **Versão intermediária 0.38.1 (versionCode 61, 28/10/2026):** entre a v60 e a v61 saiu uma entrega fora do plano, com skills por bot, "Usar a placa de vídeo" e salas com até 30 rodadas (detalhes em `docs/progresso.md` e `docs/seguranca.md`). Por isso, daqui em diante o **versionCode é o número da versão do plano mais 1**: a v61 sai como 0.39.0 com versionCode 62, a v62 com 63 e a v63 com 64. O nome "v61" continua sendo o da seção do plano, e `scripts/publish-release.sh` recebe o versionCode (62 para a v61).
@@ -133,7 +133,7 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 
 **Testes novos**: o cartão nunca aparece em log, resposta MCP ou evento (busca pelo número em tudo que sai); o limite por compra, dia e mês barra no supervisor mesmo com a IA insistindo; o total divergente da página é recusado; o preenchimento funciona em um checkout de teste com iframe (página montada com `setContent`); congelar bloqueia na hora.
 
-## v61 — Negociar e agir em seu nome
+## v61 — Negociar e agir em seu nome — concluída na v61
 
 1. **Mandato de negociação**: a pessoa define o objetivo ("comprar a bicicleta por até R$ 900", "vender o monitor por no mínimo R$ 600"), o preço-alvo, o teto, se o bot **pode fechar** ou só trazer a melhor proposta, e o prazo. O supervisor guarda o mandato e confere cada oferta que o bot vai mandar.
 2. **Canais**: WhatsApp (app, pela v59, ou WhatsApp Web no navegador do bot), OLX e Facebook Marketplace (navegador do bot, logado pela pessoa) e e-mail (já existe). Cada conversa negociada fica num painel com histórico, última oferta e status.

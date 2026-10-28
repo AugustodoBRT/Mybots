@@ -49,9 +49,19 @@ internal object WalletPay {
     if (!prefs(context).edit().putString("purchases", kept.toString()).commit()) throw IllegalStateException("Não consegui registrar a compra.")
   }
 
+  /** The last four digits the bot named for the card, if any. */
+  fun hint(json: JSONObject) = json.optString("card").filter { it in '0'..'9' }.takeLast(4)
+
+  /** The card a bot pays with: only cards the person allowed for that bot; when there are several, the bot names one by its last four. */
+  private fun chooseCard(context: Context, botId: String, hint: String): JSONObject {
+    val lastFours = PasswordVault.cardLastFours(context)
+    val id = WalletPolicy.pickCard(lastFours, WalletGuard.cardsOf(context, botId), hint)
+    return PasswordVault.cardForPayment(context, id) ?: throw IllegalStateException("O cartão não está mais na carteira.")
+  }
+
   /** Checks the rules and books the purchase, under the same lock as Congelar and the rules editor. */
-  fun authorize(context: Context, botId: String, botName: String, intent: WalletIntent, url: String, pageTotal: Long?): Payment = synchronized(WalletGuard) {
-    val card = PasswordVault.cardForPayment(context) ?: throw IllegalStateException("Nenhum cartão cadastrado. Peça à pessoa para cadastrar em Ajustes → Carteira.")
+  fun authorize(context: Context, botId: String, botName: String, intent: WalletIntent, url: String, pageTotal: Long?, cardHint: String = ""): Payment = synchronized(WalletGuard) {
+    val card = chooseCard(context, botId, cardHint)
     val (json, generation) = WalletGuard.snapshot(context)
     val list = ledger(context)
     val spent = (0 until list.length()).map { list.getJSONObject(it) }.filter { it.optString("status") == "paga" }.map { it.optLong("at") to it.optLong("total") }
@@ -59,7 +69,7 @@ internal object WalletPay {
     WalletPolicy.check(rules(json), intent, url, pageTotal, spent, now)
     val entry = JSONObject().put("id", java.util.UUID.randomUUID().toString()).put("at", now).put("botId", botId).put("bot", botName.take(60))
       .put("store", WalletPolicy.host(url)).put("items", JSONArray(intent.items)).put("category", intent.category).put("total", intent.total)
-      .put("card", card.getString("number").takeLast(4)).put("status", "paga")
+      .put("card", card.getString("number").takeLast(4)).put("cardId", card.getString("id")).put("status", "paga")
     list.put(entry); save(context, list)
     Payment(entry, generation, card)
   }
@@ -140,7 +150,7 @@ internal object WalletPay {
     val url = args.getString("url"); val challenge = args.getString("challenge")
     if (url.length > 2000 || !challenge.matches(Regex("[A-Za-z0-9_-]{32}")) || args.getString("publicKey").length > 1000) throw IllegalArgumentException("Pedido de pagamento inválido.")
     val total = args.optLong("pageTotal", 0).takeIf { it > 0 }
-    val payment = authorize(context, botId, args.optString("botName"), intent(args.getJSONObject("intent")), url, total)
+    val payment = authorize(context, botId, args.optString("botName"), intent(args.getJSONObject("intent")), url, total, hint(args.getJSONObject("intent")))
     val card = payment.card
     val bytes = JSONObject().put("url", url).put("challenge", challenge).put("total", total).put("number", card.getString("number")).put("cvv", card.getString("cvv"))
       .put("month", card.getInt("expiryMonth")).put("year", card.getInt("expiryYear")).put("name", card.getString("name")).toString().toByteArray(Charsets.UTF_8)
@@ -168,7 +178,7 @@ internal object WalletPay {
     val entry = (0 until ledger(context).length()).map { ledger(context).getJSONObject(it) }.firstOrNull { it.optString("id") == id } ?: return
     if (!args.optBoolean("ok")) { cancel(context, id, args.optString("error").ifEmpty { null }); return }
     args.optString("image").takeIf { it.isNotEmpty() }?.let { receipt(context, id, it) }
-    val card = PasswordVault.cardForPayment(context)
+    val card = PasswordVault.cardForPayment(context, entry.optString("cardId"))
     paid(context, Payment(entry, 0, card ?: JSONObject()))
   }
 }

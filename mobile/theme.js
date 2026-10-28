@@ -21,6 +21,7 @@ const ICONS = {
   activity: [['polyline', { points: '3 12.5 7 12.5 10 5 14 19 17 12.5 21 12.5' }]],
   settings: [['path', { d: 'M4 6.5h16M4 12h16M4 17.5h16' }], ['circle', { cx: 9, cy: 6.5, r: 2.2, solid: true }], ['circle', { cx: 15.5, cy: 12, r: 2.2, solid: true }], ['circle', { cx: 7.5, cy: 17.5, r: 2.2, solid: true }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
+  wallet: [['rect', { x: 3, y: 5.5, width: 18, height: 13, rx: 2.8 }], ['path', { d: 'M3 10h18M7 14.5h3.2' }]],
   back: [['polyline', { points: '15 18 9 12 15 6' }]],
   right: [['polyline', { points: '9 6 15 12 9 18' }]],
   down: [['polyline', { points: '6 9.5 12 15.5 18 9.5' }]],

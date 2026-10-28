@@ -27,6 +27,7 @@ import javax.crypto.spec.PSource
 internal object PasswordVault {
   private const val KEY = "entries"
   private const val CARD_KEY = "wallet_card"
+  private const val CARDS_KEY = "wallet_cards"
   @Volatile var offerListener: ((Map<String, Any?>) -> Unit)? = null
   // A login the person just typed in a bot's browser ("Assumir"), waiting for "Salvar?" in the chat.
   @Volatile private var offer: JSONObject? = null
@@ -42,7 +43,7 @@ internal object PasswordVault {
   }
 
   /** Native-only card storage. Never expose these arguments through the JS bridge or supervisor. */
-  fun saveCard(context: Context, number: String, expiryMonth: Int, expiryYear: Int, cvv: String, name: String, billingAddress: String) {
+  fun saveCard(context: Context, number: String, expiryMonth: Int, expiryYear: Int, cvv: String, name: String, billingAddress: String, label: String = ""): String {
     if (!number.matches(Regex("[0-9 -]+"))) throw IllegalArgumentException("Número de cartão inválido.")
     val digits = number.filter { it in '0'..'9' }
     if (digits.length !in 12..19 || !validCardNumber(digits)) throw IllegalArgumentException("Número de cartão inválido.")
@@ -51,9 +52,43 @@ internal object PasswordVault {
       (expiryYear == now.get(Calendar.YEAR) && expiryMonth < now.get(Calendar.MONTH) + 1)) throw IllegalArgumentException("Validade de cartão inválida.")
     if (!cvv.matches(Regex("[0-9]{3,4}"))) throw IllegalArgumentException("Código de segurança inválido.")
     if (name.isBlank() || name.length > 200 || billingAddress.isBlank() || billingAddress.length > 500) throw IllegalArgumentException("Informe o nome e o endereço de cobrança.")
-    val card = JSONObject().put("number", digits).put("expiryMonth", expiryMonth).put("expiryYear", expiryYear)
-      .put("cvv", cvv).put("name", name.trim()).put("billingAddress", billingAddress.trim())
-    if (!prefs(context).edit().putString(CARD_KEY, card.toString()).commit()) throw IllegalStateException("Não consegui guardar o cartão protegido.")
+    if (label.length > 40) throw IllegalArgumentException("Dê ao cartão um apelido de até 40 letras.")
+    val list = cardList(context)
+    if (list.length() >= 10) throw IllegalArgumentException("A carteira guarda até 10 cartões. Apague algum antes.")
+    if ((0 until list.length()).any { list.getJSONObject(it).optString("number") == digits }) throw IllegalArgumentException("Este cartão já está na carteira.")
+    val id = java.util.UUID.randomUUID().toString()
+    val card = JSONObject().put("id", id).put("number", digits).put("brand", cardBrand(digits)).put("expiryMonth", expiryMonth).put("expiryYear", expiryYear)
+      .put("cvv", cvv).put("name", name.trim()).put("billingAddress", billingAddress.trim()).put("label", label.trim())
+    list.put(card)
+    if (!prefs(context).edit().putString(CARDS_KEY, list.toString()).remove(CARD_KEY).commit()) throw IllegalStateException("Não consegui guardar o cartão protegido.")
+    return id
+  }
+
+  /** The cards, with the legacy single card (v60) moved into the list the first time it is read. */
+  private fun cardList(context: Context): JSONArray {
+    val preferences = prefs(context)
+    val stored = preferences.getString(CARDS_KEY, null)
+    if (stored != null) return try { JSONArray(stored) } catch (_: Exception) { JSONArray() }
+    val legacy = preferences.getString(CARD_KEY, null) ?: return JSONArray()
+    val card = JSONObject(legacy).put("id", java.util.UUID.randomUUID().toString()).put("label", "")
+    card.put("brand", cardBrand(card.getString("number")))
+    // Persist the move now: the id must be the same the next time the list is read.
+    val list = JSONArray().put(card)
+    if (!preferences.edit().putString(CARDS_KEY, list.toString()).remove(CARD_KEY).commit()) throw IllegalStateException("Não consegui guardar o cartão protegido.")
+    return list
+  }
+
+  /** Brand from the leading digits; only used to draw the card. */
+  internal fun cardBrand(digits: String): String {
+    val two = digits.take(2).toIntOrNull() ?: 0; val four = digits.take(4).toIntOrNull() ?: 0; val six = digits.take(6).toIntOrNull() ?: 0
+    return when {
+      six in listOf(401178, 401179, 431274, 438935, 451416, 457393, 457631, 457632, 504175, 627780, 636297, 636368) || digits.startsWith("5067") || digits.startsWith("4576") || digits.startsWith("6504") || digits.startsWith("6505") || digits.startsWith("6516") || digits.startsWith("6550") -> "elo"
+      digits.startsWith("606282") || digits.startsWith("3841") -> "hipercard"
+      two == 34 || two == 37 -> "amex"
+      digits.startsWith("4") -> "visa"
+      two in 51..55 || four in 2221..2720 -> "mastercard"
+      else -> "card"
+    }
   }
 
   private fun validCardNumber(digits: String): Boolean {
@@ -66,17 +101,28 @@ internal object PasswordVault {
     return sum % 10 == 0
   }
 
-  /** Only this non-sensitive suffix may be displayed outside the native vault. */
-  fun cardLastFour(context: Context): String? {
-    val stored = prefs(context).getString(CARD_KEY, null) ?: return null
-    return JSONObject(stored).getString("number").takeLast(4)
+  /** What may be shown outside the vault: the brand, the last four digits, the validity, the holder and the nickname. */
+  fun cardsPublic(context: Context): JSONArray {
+    val list = cardList(context); val out = JSONArray()
+    for (index in 0 until list.length()) {
+      val card = list.getJSONObject(index)
+      out.put(JSONObject().put("id", card.getString("id")).put("brand", card.optString("brand", "card")).put("last4", card.getString("number").takeLast(4))
+        .put("month", card.getInt("expiryMonth")).put("year", card.getInt("expiryYear")).put("holder", card.getString("name")).put("label", card.optString("label")))
+    }
+    return out
   }
+  fun cardIds(context: Context): List<String> = cardList(context).let { list -> (0 until list.length()).map { list.getJSONObject(it).getString("id") } }
 
   /** For WalletPay only, after the rules allowed a purchase: the card goes into a checkout field or encrypted to the computer. */
-  internal fun cardForPayment(context: Context): JSONObject? = prefs(context).getString(CARD_KEY, null)?.let { JSONObject(it) }
+  internal fun cardForPayment(context: Context, id: String): JSONObject? = cardList(context).let { list -> (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull { it.getString("id") == id } }
+  /** Every card with its last four, for choosing which one a bot pays with (no secret leaves). */
+  internal fun cardLastFours(context: Context): Map<String, String> = cardList(context).let { list -> (0 until list.length()).associate { list.getJSONObject(it).getString("id") to list.getJSONObject(it).getString("number").takeLast(4) } }
 
-  fun deleteCard(context: Context) {
-    if (!prefs(context).edit().remove(CARD_KEY).commit()) throw IllegalStateException("Não consegui excluir o cartão protegido.")
+  fun deleteCard(context: Context, id: String) {
+    val list = cardList(context); val kept = JSONArray()
+    for (index in 0 until list.length()) if (list.getJSONObject(index).getString("id") != id) kept.put(list.get(index))
+    if (kept.length() == list.length()) throw IllegalArgumentException("Cartão não encontrado.")
+    if (!prefs(context).edit().putString(CARDS_KEY, kept.toString()).remove(CARD_KEY).commit()) throw IllegalStateException("Não consegui excluir o cartão protegido.")
   }
 
   /** "https://sig.cefetmg.br/sigaa/x" or "sig.cefetmg.br" → "sig.cefetmg.br". */

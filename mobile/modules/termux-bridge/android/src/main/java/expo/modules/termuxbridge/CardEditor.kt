@@ -37,6 +37,7 @@ internal object CardEditor {
         isSaveEnabled = false
         fields.addView(this)
       }
+      val label = field("Apelido (opcional, ex.: Nubank compras)", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS)
       val number = field("Número do cartão", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)
       val month = field("Mês de validade (MM)", InputType.TYPE_CLASS_NUMBER)
       val year = field("Ano de validade (AAAA)", InputType.TYPE_CLASS_NUMBER)
@@ -45,13 +46,13 @@ internal object CardEditor {
       val address = field("Endereço de cobrança completo", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
       val scroll = ScrollView(activity).apply { addView(fields) }
       var settled = false
-      val dialog = AlertDialog.Builder(activity).setTitle("Cadastrar cartão")
+      val dialog = AlertDialog.Builder(activity).setTitle("Novo cartão")
         .setMessage("Os dados ficam protegidos neste celular.").setView(scroll)
         .setNegativeButton("Cancelar") { _, _ -> }
         .setPositiveButton("Salvar", null).create()
       dialog.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
       dialog.setOnDismissListener {
-        listOf(number, month, year, cvv, name, address).forEach { it.text?.clear() }
+        listOf(label, number, month, year, cvv, name, address).forEach { it.text?.clear() }
         active = false
         WalletEditorGate.close()
         if (!settled) { settled = true; promise.resolve(null) }
@@ -59,10 +60,10 @@ internal object CardEditor {
       dialog.setOnShowListener {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
           try {
-            PasswordVault.saveCard(activity.applicationContext, number.text.toString(), month.text.toString().toIntOrNull() ?: 0,
-              year.text.toString().toIntOrNull() ?: 0, cvv.text.toString(), name.text.toString(), address.text.toString())
+            val id = PasswordVault.saveCard(activity.applicationContext, number.text.toString(), month.text.toString().toIntOrNull() ?: 0,
+              year.text.toString().toIntOrNull() ?: 0, cvv.text.toString(), name.text.toString(), address.text.toString(), label.text.toString())
             settled = true
-            promise.resolve(PasswordVault.cardLastFour(activity.applicationContext))
+            promise.resolve(id)
             dialog.dismiss()
           } catch (error: IllegalArgumentException) {
             android.widget.Toast.makeText(activity, error.message ?: "Confira os dados do cartão.", android.widget.Toast.LENGTH_LONG).show()

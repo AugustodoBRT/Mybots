@@ -27,6 +27,7 @@ import { Browser, personInput } from './browser.mjs';
 import { Phone } from './phone.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
+import { Negotiations } from './negotiation.mjs';
 import { Nodes } from './nodes.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-frame.mjs';
 import { Link } from './link.mjs';
@@ -51,7 +52,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link, negotiations;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -225,6 +226,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     routines.runSkill = runSkill;
     // Pending items and their notice the day before the deadline (as MyBots, without calling the model).
     items = new Items(db, { notify: tools.notify, changed: broadcast, timeZone: () => routines.timeZone(), clock }); tools.items = items;
+    // Negotiation mandates: the bot's offers are checked here; the person's answer to a proposal reaches the bot as a new turn.
+    negotiations = new Negotiations(db, { changed: broadcast, notify: tools.notify, clock: () => (clock ? Number(clock()) : Date.now()),
+      answer: async (botId, text) => { try { await refresh(); const bot = db.requireBot(botId); if (statusFor(bot)?.loggedIn) { const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot)); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } } catch {} } }); tools.negotiations = negotiations;
     const nextWake = () => [routines.nextDue(), items.next()].filter(Boolean).sort()[0] || null;
     // A gap in the heartbeats is an interruption: a new instance means the supervisor stopped and started again;
     // the same instance means the phone suspended Termux (screen off, Doze) and the timers stopped meanwhile.
@@ -329,7 +333,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
         botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), phone: phone.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
         pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => kept.has(row.botId)),
-        approvals: db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })),
+        negotiations: negotiations.list(),
+        approvals: [...db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })), ...negotiations.cards()],
         // Only the tasks still going (the app shows them and their step); the history comes by tasks.list.
         tasks: publicTasks(db.activeTasks()), activity: db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 50'),
         heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
@@ -409,6 +414,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'tasks.list': return publicTasks();
         case 'task.cancel': if (!uuid(params.taskId)) throw new Error('Tarefa inválida.'); if (phone.controller?.taskId === params.taskId) phone.native('phoneStop', { taskId: params.taskId }); await queue.cancel(params.taskId); return { cancelled: true };
         // The Livre level's "sempre perguntar" list: only from the app on the phone (never through the computer's link).
+        case 'negotiation.list': return negotiations.list();
+        case 'negotiation.save': { const result = negotiations.save(params); broadcast('activity.new'); return result; }
+        case 'negotiation.cancel': return negotiations.cancel(params.id);
+        case 'negotiation.respond': return negotiations.respond(params.offerId, params.accept);
         case 'free.get': return tools.freeSettings();
         case 'free.set': return tools.setFreeList(params.ask);
         case 'phone.status': return phone.status();
@@ -763,7 +772,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     await new Promise((resolveStart, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveStart); });
     const actualPort = server.address().port; queue.toolEndpoint = `http://127.0.0.1:${actualPort}`;
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
-    api = { db, queue, tools, routines, items, nodes, link, token, port: actualPort, rpc, state, async close() {
+    api = { db, queue, tools, routines, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
       clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();

@@ -5,6 +5,7 @@ import BotAvatar, { BOT_COLORS, BOT_FORMS, BOT_FORM_NAMES, formFor } from './Bot
 import { BOT_TEMPLATES } from './bot-templates';
 import { C, F, Icon } from './theme';
 import { plainText } from './markdown';
+import NegotiationPanel from './NegotiationPanel';
 import { column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 const when = value => new Date(value).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 // The access levels, like Claude Code's permission modes; switches stay under "Ajustes finos". Livre is chosen only
@@ -42,7 +43,7 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -53,7 +54,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
   }, [visible, bot?.id]);
   const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
   const act = async action => { setSaving(true); setError(''); try { await action(); } catch (e) { setError(e.message); } finally { setSaving(false); } };
-  const tabs = [['profile', 'Perfil', 'user'], ['routines', 'Rotinas', 'bolt'], ['tools', 'Acesso', 'shield'], ['memory', 'Memória', 'memory']];
+  const tabs = [['profile', 'Perfil', 'user'], ['routines', 'Rotinas', 'bolt'], ...(phone && bot && onNegotiation ? [['negotiate', 'Negociar', 'hand']] : []), ['tools', 'Acesso', 'shield'], ['memory', 'Memória', 'memory']];
   const canSave = !(saving || active || !form.name?.trim() || !form.model);
   const radio = (selected, title, detail, onPress, options = {}) => <Pressable key={title} accessibilityRole="radio" accessibilityState={{ selected }} disabled={options.disabled} onPress={onPress}
     style={({ pressed }) => [s.choice, selected && s.choiceOn, selected && options.warn && s.choiceWarn, pressed && s.pressed]}>
@@ -210,6 +211,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
               <View style={s.routineActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onSkill('skill.run', skill.id))} style={s.smallButton}><Icon name="play" size={14} color={C.mint} /><Text style={s.link}>{saving ? 'Rodando…' : 'Rodar agora'}</Text></Pressable>
                 <Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onSkill('skill.remove', skill.id))} style={s.smallButton}><Icon name="trash" size={14} color={C.red} /><Text style={s.deleteText}>Remover</Text></Pressable></View>
             </View>)}</> : null}</>}
+        {tab === 'negotiate' && bot && <NegotiationPanel bot={bot} negotiations={negotiations} onNegotiation={onNegotiation} disabled={saving} />}
         {tab === 'memory' && <><Text style={s.sectionTitle}>O que {bot?.name} guardou</Text><Text style={s.hint}>Estas lembranças pertencem somente a este bot.</Text>
           {memories.length ? memories.map(item => <View key={item.id} style={s.item}><Text style={s.itemTitle}>{item.key}</Text><Text selectable style={s.itemText}>{item.text}</Text></View>) : <View style={s.emptyBox}><Icon name="memory" size={26} color={C.faint} /><Text style={s.empty}>Nenhuma lembrança ainda. Peça para o bot guardar algo.</Text></View>}
           <Text style={s.label}>PENDÊNCIAS</Text>

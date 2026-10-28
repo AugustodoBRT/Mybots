@@ -37,6 +37,14 @@ public class WalletGuardTest {
     if (error.get() != null) throw new AssertionError(error.get());
     if (!guard.rules(context).getBoolean("frozen") || guard.generation(context) != 2 || guard.rules(context).getLong("perPurchase") != 1000)
       throw new AssertionError("freeze must win against a stale editor");
+    var before = guard.generation(context);
+    if (!guard.cardsOf(context, "bot-a").isEmpty()) throw new AssertionError("a card nobody chose is used by no bot");
+    guard.setCardBots(context, "card-1", java.util.List.of("bot-a", "bot-b")); guard.setCardBots(context, "card-2", java.util.List.of("bot-b"));
+    if (!guard.cardsOf(context, "bot-a").equals(java.util.List.of("card-1")) || guard.cardsOf(context, "bot-b").size() != 2 || !guard.cardsOf(context, "bot-c").isEmpty()) throw new AssertionError("cards per bot");
+    if (guard.generation(context) != before + 2) throw new AssertionError("choosing the bots of a card is a change of the rules");
+    guard.forgetCard(context, "card-1");
+    if (!guard.cardsOf(context, "bot-a").isEmpty() || guard.cardsOf(context, "bot-b").size() != 1) throw new AssertionError("deleting a card takes its bots with it");
+    System.out.println("WalletGuard: bots por cartão e cartão apagado: OK");
     System.out.println("WalletGuard: padrão congelado, geração e congelamento concorrente: OK");
   }
 }

@@ -76,6 +76,7 @@ function AppMain() {
   const [maintenanceText, setMaintenanceText] = useState('Backups ficam no Termux e sobrevivem à desinstalação do MyBots.');
   const [backupNames, setBackupNames] = useState([]);
   const [activityVisible, setActivityVisible] = useState(false);
+  const [walletVisible, setWalletVisible] = useState(false);
   // A file in the conversation: fetched from the supervisor in parts, then opened, shared or saved.
   const [fileSheet, setFileSheet] = useState(null);
   const [fileBusy, setFileBusy] = useState(null);
@@ -526,7 +527,7 @@ function AppMain() {
   };
   const respondApproval = async (approval, approved, always = false) => {
     setApprovalBusy(approval.id);
-    try { await supervisor.current.call('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved, always }); await loadSupervisorState(); }
+    try { await supervisor.current.call(...(approval.kind === 'negotiation' ? ['negotiation.respond', { offerId: approval.offerId, accept: approved }] : ['approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved, always }])); await loadSupervisorState(); }
     catch (error) { setLoadError(error.message); }
     finally { setApprovalBusy(null); }
   };
@@ -646,10 +647,10 @@ function AppMain() {
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : wide ? <DesktopShell data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
-          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
+          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView}</DesktopShell>
       : roomView || chatView || <HomeScreen data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onActivity={() => setActivityVisible(true)}
+            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
@@ -665,6 +666,7 @@ function AppMain() {
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
+      negotiations={data.negotiations || []} onNegotiation={async (method, params) => { await supervisor.current.call(method, params); await loadSupervisorState(); }}
       accountApps={shownProfile?.accountApps || []} accountServers={data.accountServers || []}
       onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await profileChanged(); }}
       onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await profileChanged(); }}
@@ -718,7 +720,7 @@ function AppMain() {
           {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
           {termuxAvailable ? <><Text style={styles.sheetSection}>SENHAS</Text><PasswordsPanel bots={data?.bots || []} /></> : null}
-          {termuxAvailable && !desktop ? <><Text style={styles.sheetSection}>CARTEIRA</Text><WalletPanel /></> : null}
+          {termuxAvailable && !desktop ? <><Text style={styles.sheetSection}>CARTEIRA</Text><Pressable accessibilityRole="button" onPress={() => { setMaintenanceVisible(false); setWalletVisible(true); }} style={styles.modeOption}><Text style={styles.optionLabel}>Abrir a Carteira</Text><Text style={styles.optionDetail}>Cartões, quais bots podem usar cada um, regras de gasto e extrato.</Text></Pressable></> : null}
           <Text style={styles.sheetSection}>CONTAS E APPS</Text>
           {desktop ? null : <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();
@@ -753,6 +755,15 @@ function AppMain() {
             setMaintenanceText(`${device}\n\n${result.report}`);
           })} />
           <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.mint} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable></>}
+        </ScrollView>
+      </View></View>
+    </Modal>
+    <Modal transparent visible={walletVisible} animationType="slide" onRequestClose={() => setWalletVisible(false)}>
+      <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
+        <View style={styles.sheetHandle} />
+        <SheetHeader title="Carteira" subtitle="Cartões dos seus bots, com limites que só você muda." onClose={() => setWalletVisible(false)} />
+        <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
+          {walletVisible ? <WalletPanel bots={(data?.bots || []).filter(bot => !bot.deletedAt)} /> : null}
         </ScrollView>
       </View></View>
     </Modal>

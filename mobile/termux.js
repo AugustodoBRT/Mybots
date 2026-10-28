@@ -30,9 +30,10 @@ export const onUpdate = listener => native.addListener('onUpdate', listener);
 export const widgetStatus = () => native.widgetStatus();
 export const requestWidget = () => native.requestWidget();
 // Saved site logins: kept in the app (Keystore); the bots' browser fills them, the model never sees them.
-export const cardLastFour = () => native.cardLastFour();
+export const walletCards = async () => JSON.parse(await native.walletCards());
+export const walletCardBots = (cardId, bots) => native.walletCardBots(cardId, bots);
 export const cardEditor = () => native.cardEditor();
-export const cardDelete = () => native.cardDelete();
+export const cardDelete = id => native.cardDelete(id);
 export const walletRules = async () => JSON.parse(await native.walletRules());
 export const walletFreeze = () => native.walletFreeze();
 export const walletRulesEditor = () => native.walletRulesEditor();

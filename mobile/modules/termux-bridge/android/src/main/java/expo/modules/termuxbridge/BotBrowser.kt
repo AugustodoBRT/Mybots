@@ -639,7 +639,7 @@ internal object BotBrowser {
     val url = onMain { tab(context, botId).web.url ?: "" }
     val read = js(context, botId, "JSON.stringify((${asset(context, "checkout-total.js")})())")
     val total = read.optLong("total", 0).takeIf { read.has("total") && !read.isNull("total") && it > 0 }
-    val payment = WalletPay.authorize(context, botId, args.optString("botName"), WalletPay.intent(args.getJSONObject("intent")), url, total)
+    val payment = WalletPay.authorize(context, botId, args.optString("botName"), WalletPay.intent(args.getJSONObject("intent")), url, total, WalletPay.hint(args.getJSONObject("intent")))
     val id = payment.entry.getString("id")
     WalletPay.filling[botId] = System.currentTimeMillis()
     try {

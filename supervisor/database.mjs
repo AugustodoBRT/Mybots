@@ -34,7 +34,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 10) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 11) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -131,6 +131,14 @@ export class Database {
         CREATE TABLE IF NOT EXISTS browser_downloads (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, place TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, mime TEXT NOT NULL, attachment_id TEXT, created_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS browser_downloads_bot ON browser_downloads(bot_id);
         PRAGMA user_version=10;`);
+    });
+    // Negotiation mandates (what a bot may offer, buy or sell, and until when) and every offer made or received under them.
+    if (version < 11) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS negotiations (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL, deadline TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS negotiations_bot ON negotiations(bot_id, status);
+        CREATE TABLE IF NOT EXISTS negotiation_offers (id TEXT PRIMARY KEY, negotiation_id TEXT NOT NULL REFERENCES negotiations(id), body TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS negotiation_offers_negotiation ON negotiation_offers(negotiation_id, created_at);
+        PRAGMA user_version=11;`);
     });
   }
   /** One step of a bot in its browser, kept with a small picture; only the latest 120 of each bot stay. */

@@ -53,8 +53,6 @@ export const FREE_ASK_OPTIONS = [
   ['wallet/pay', 'Pagar com a carteira', 'Cada pagamento com o cartão guardado.', true],
   ['browser/submit', 'Enviar formulários no navegador', 'Botões de enviar, confirmar e arrastar.', false],
   ['browser/login', 'Entrar com senha salva', 'O bot nunca vê a senha, mas entra na sua conta.', false],
-  ['phone/act', 'Tocar e digitar em outros apps', 'Cada toque, texto ou rolagem no celular.', false],
-  ['phone.open_app', 'Abrir apps no celular', '', false],
   ['phone.fill_code', 'Preencher códigos de verificação', 'Mesmo com o remetente e o site certos.', false],
   ['termux', 'Comandos no Termux', 'Qualquer comando no terminal do celular.', false],
   ['computer/shell', 'Comandos no computador', 'Qualquer comando no terminal do PC.', false],
@@ -63,6 +61,8 @@ export const FREE_ASK_OPTIONS = [
   ['notify.user', 'Mandar notificações', '', false],
   ['routine.create', 'Criar rotinas', '', false]
 ];
+// Retired from the list: on Livre the bot opens apps, taps, types and scrolls on its own, as the person asked. An old saved list may still carry them.
+export const FREE_ASK_RETIRED = ['phone/act', 'phone.open_app'];
 export const FREE_ASK_DEFAULT = FREE_ASK_OPTIONS.filter(item => item[3]).map(item => item[0]);
 export function validFreeAsk(list) {
   return Array.isArray(list) && list.length <= FREE_ASK_OPTIONS.length && list.every(key => FREE_ASK_OPTIONS.some(item => item[0] === key));

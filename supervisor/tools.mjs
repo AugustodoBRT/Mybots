@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { now, uuid } from './database.mjs';
-import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, PHONE_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode, FREE_ASK_OPTIONS, FREE_ASK_DEFAULT, validFreeAsk } from './tool-policy.mjs';
+import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, PHONE_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode, FREE_ASK_OPTIONS, FREE_ASK_DEFAULT, FREE_ASK_RETIRED, validFreeAsk } from './tool-policy.mjs';
 import { PHONE_NOTICE, phoneCaption, phoneLabel } from './phone.mjs';
 import { BROWSER_NOTICE, stepCaption } from './browser.mjs';
 import { Items } from './items.mjs';
@@ -183,6 +183,7 @@ export class Tools {
     const saved = this.db.get("SELECT value FROM metadata WHERE key='free.ask'")?.value;
     let list;
     try { list = saved === undefined ? [...FREE_ASK_DEFAULT] : JSON.parse(saved); } catch { list = [...FREE_ASK_DEFAULT]; }
+    if (Array.isArray(list)) list = list.filter(key => !FREE_ASK_RETIRED.includes(key));
     if (!validFreeAsk(list)) list = [...FREE_ASK_DEFAULT];
     // Existing choices predate the wallet. Enable its new default once, without undoing later choices.
     if (!this.db.get("SELECT value FROM metadata WHERE key='free.wallet_default'")) {
@@ -197,6 +198,7 @@ export class Tools {
   freeAsk(key) { return this.freeList().includes(key); }
   freeSettings() { const list = this.freeList(); return { options: FREE_ASK_OPTIONS.map(([key, label, detail]) => ({ key, label, detail, ask: list.includes(key) })) }; }
   setFreeList(list) {
+    if (Array.isArray(list)) list = list.filter(key => !FREE_ASK_RETIRED.includes(key));
     if (!validFreeAsk(list)) throw new Error('Lista inválida.');
     const before = this.freeList(); const after = FREE_ASK_OPTIONS.map(item => item[0]).filter(key => list.includes(key));
     this.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(after));

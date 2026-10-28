@@ -37,6 +37,11 @@ fun main() {
   fails("limite por compra") { WalletPolicy.check(rules.copy(perPurchase = 3999), intent, url, 4000, emptyList(), now, zone) }
   fails("limite do dia") { WalletPolicy.check(rules, intent, url, 4000, listOf(at("2026-10-28T12:00:00Z") to 4001L), now, zone) }
   fails("limite do mês") { WalletPolicy.check(rules, intent, url, 4000, listOf(at("2026-10-02T12:00:00Z") to 6001L), now, zone) }
+  // Empty allowed stores and categories mean any; the forbidden list and the three limits still apply.
+  val open = rules.copy(allowed = emptyList(), categories = emptyList())
+  check(WalletPolicy.check(open, WalletIntent("corretora.example", listOf("Compra"), "criptomoeda", 4000), "https://corretora.example/checkout", 4000, emptyList(), now, zone) == 6000L)
+  fails("proibida") { WalletPolicy.check(open.copy(blocked = listOf("corretora.example")), WalletIntent("corretora.example", listOf("Compra"), "criptomoeda", 4000), "https://corretora.example/checkout", 4000, emptyList(), now, zone) }
+  fails("limite por compra") { WalletPolicy.check(open.copy(perPurchase = 3999), intent, url, 4000, emptyList(), now, zone) }
   // Which card a bot pays with: only the ones the person allowed for that bot, and the bot names one when there are several.
   val cards = mapOf("a" to "1111", "b" to "2222", "c" to "3333")
   check(WalletPolicy.pickCard(cards, listOf("b"), "") == "b")

@@ -46,8 +46,9 @@ internal object WalletPolicy {
     val page = host(url) ?: throw IllegalArgumentException("O pagamento só é feito numa página https.")
     if (!within(page, domain(intent.store))) throw IllegalArgumentException("A loja informada não é a do checkout aberto ($page).")
     if (rules.blocked.any { within(page, domain(it)) }) throw IllegalArgumentException("A loja $page está proibida na carteira.")
-    if (rules.allowed.none { within(page, domain(it)) }) throw IllegalArgumentException("A loja $page não está entre as lojas permitidas da carteira.")
-    if (rules.categories.none { it.trim().equals(intent.category.trim(), ignoreCase = true) }) throw IllegalArgumentException("A categoria “${intent.category.take(60)}” não está permitida. Permitidas: ${rules.categories.joinToString(", ")}.")
+    // Empty lists mean "any": the person limits the spending (per purchase, day and month) and forbids what they know is bad.
+    if (rules.allowed.isNotEmpty() && rules.allowed.none { within(page, domain(it)) }) throw IllegalArgumentException("A loja $page não está entre as lojas permitidas da carteira.")
+    if (rules.categories.isNotEmpty() && rules.categories.none { it.trim().equals(intent.category.trim(), ignoreCase = true) }) throw IllegalArgumentException("A categoria “${intent.category.take(60)}” não está permitida. Permitidas: ${rules.categories.joinToString(", ")}.")
     if (intent.items.isEmpty() || intent.items.any { it.isBlank() || it.length > 200 }) throw IllegalArgumentException("Informe os itens da compra.")
     if (intent.total <= 0) throw IllegalArgumentException("Informe o total da compra.")
     if (pageTotal == null) throw IllegalArgumentException("Não encontrei um único total visível no checkout. Abra a etapa final do pagamento, com o total à mostra.")

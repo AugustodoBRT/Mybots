@@ -91,11 +91,11 @@ test('Livre: nothing asks except the "sempre perguntar" list; phone and Termux e
 test('the wallet approval is enabled once for an existing Livre list and respects a later choice', async t => {
   const f = await setup(t);
   f.app.db.run("DELETE FROM metadata WHERE key='free.wallet_default'");
-  f.app.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(['phone.open_app']));
+  f.app.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(['browser/submit']));
   const selected = () => f.app.tools.freeSettings().options.filter(item => item.ask).map(item => item.key);
-  assert.deepEqual(selected(), ['wallet/pay', 'phone.open_app']);
-  await f.app.rpc('free.set', { ask: ['phone.open_app'] });
-  assert.deepEqual(selected(), ['phone.open_app']);
+  assert.deepEqual(selected(), ['wallet/pay', 'browser/submit']);
+  await f.app.rpc('free.set', { ask: ['browser/submit'] });
+  assert.deepEqual(selected(), ['browser/submit']);
 });
 
 test('the model never raises a level: no Livre from team tools, a Livre maker makes Acesso total, the computer cannot choose it', async t => {
@@ -136,15 +136,14 @@ test('phone commands reach the app with the turn and bot, steps go to the timeli
   assert.equal(f.app.state().approvals.length, 0);
   assert.equal(f.app.state().phone.caption, 'Abrindo Configurações');
   assert.match((await f.app.rpc('browser.steps', { botId: f.bot.id })).steps.at(-1).caption, /^No celular: Abrindo Configurações/);
-  // On the list: the same action becomes an approval card, even on Livre, without "Sempre permitir".
-  await f.app.rpc('free.set', { ask: ['phone.open_app'] });
-  const pending = run.call('phone_open_app', { app: 'Relógio' });
-  const item = await f.answer(true);
-  assert.equal(item.title, 'Abrir um app no celular'); assert.equal(item.canAlways, false); assert.match(item.summary, /Relógio/);
-  await pending;
-  const refused = run.call('phone_open_app', { app: 'Câmera' });
-  await f.answer(false);
-  await assert.rejects(refused, /recusada/);
+  // Opening apps, tapping, typing and scrolling are no longer on the list: even an old saved list that carries them never asks.
+  f.app.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(['phone/act', 'phone.open_app']));
+  assert.equal(f.app.tools.freeAsk('phone.open_app'), false); assert.equal(f.app.tools.freeAsk('phone/act'), false);
+  assert.ok(!f.app.tools.freeSettings().options.some(item => item.key === 'phone/act' || item.key === 'phone.open_app'));
+  await f.app.rpc('free.set', { ask: ['phone.open_app', 'phone/act'] });
+  await run.call('phone_open_app', { app: 'Relógio' });
+  await run.call('phone_tap', { id: 1 });
+  assert.equal(f.app.state().approvals.length, 0);
   const log = f.app.state().activity.map(entry => entry.detail).join('\n');
   assert.match(log, /Livre começou a controlar o celular/); assert.match(log, /Celular: abrir app \(Configurações\): concluído/);
   // The turn ends: the app is told to drop the overlay and the notice.

@@ -80,12 +80,12 @@ internal object WalletRulesEditor {
       val purchase = field("Máximo por compra (R$)", amount("perPurchase"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
       val day = field("Máximo por dia (R$)", amount("perDay"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
       val month = field("Máximo por mês (R$)", amount("perMonth"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-      val allowed = field("Lojas permitidas (domínios separados por vírgula)", entries("allowedStores"), InputType.TYPE_CLASS_TEXT)
+      val allowed = field("Lojas permitidas (vazio = qualquer loja; domínios separados por vírgula)", entries("allowedStores"), InputType.TYPE_CLASS_TEXT)
       val blocked = field("Lojas proibidas (domínios separados por vírgula)", entries("blockedStores"), InputType.TYPE_CLASS_TEXT)
-      val categories = field("Categorias permitidas (separadas por vírgula)", entries("categories"), InputType.TYPE_CLASS_TEXT)
+      val categories = field("Categorias permitidas (vazio = qualquer uma; separadas por vírgula)", entries("categories"), InputType.TYPE_CLASS_TEXT)
       val frozen = CheckBox(activity).apply { text = "Carteira congelada"; isChecked = current.optBoolean("frozen", true); fields.addView(this) }
       val dialog = AlertDialog.Builder(activity).setTitle("Regras da carteira")
-        .setMessage("As regras ficam só neste celular e nenhum bot consegue mudá-las. Desmarque “Carteira congelada” para os bots poderem pagar.")
+        .setMessage("As regras ficam só neste celular e nenhum bot consegue mudá-las. Os três limites valem sempre; lojas permitidas e categorias vazias liberam qualquer uma, e as lojas proibidas continuam barradas. Desmarque “Carteira congelada” para os bots poderem pagar.")
         .setView(ScrollView(activity).apply { addView(fields) }).setNegativeButton("Cancelar") { _, _ -> }
         .setPositiveButton("Salvar", null).create()
       var settled = false
@@ -107,7 +107,7 @@ internal object WalletRulesEditor {
               host
             }
             val allow = hosts(allowed); val block = hosts(blocked); val cats = strings(categories)
-            if (allow.isEmpty() || cats.isEmpty() || cats.any { it.length > 100 }) throw IllegalArgumentException("Informe pelo menos uma loja permitida e uma categoria.")
+            if (cats.any { it.length > 100 }) throw IllegalArgumentException("Cada categoria pode ter até 100 letras.")
             val rules = JSONObject().put("perPurchase", cents(purchase)).put("perDay", cents(day)).put("perMonth", cents(month))
               .put("allowedStores", JSONArray(allow)).put("blockedStores", JSONArray(block)).put("categories", JSONArray(cats))
             WalletGuard.saveFromEditor(activity.applicationContext, rules, frozen.isChecked, generation)

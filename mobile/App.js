@@ -174,7 +174,8 @@ function AppMain() {
   const loadFree = useCallback(async () => {
     let settings = await supervisor.current.call('free.get');
     const guard = !desktop && termuxAvailable ? await freeGuard().catch(() => null) : null;
-    const mine = guard?.ask ? JSON.parse(guard.ask) : null; const theirs = settings.options.filter(item => item.ask).map(item => item.key);
+    const retired = ['phone/act', 'phone.open_app'];
+    const mine = guard?.ask ? JSON.parse(guard.ask).filter(key => !retired.includes(key)) : null; const theirs = settings.options.filter(item => item.ask).map(item => item.key);
     if (Array.isArray(mine) && JSON.stringify([...mine].sort()) !== JSON.stringify([...theirs].sort())) {
       settings = await supervisor.current.call('free.set', { ask: mine });
       Alert.alert('Lista restaurada', 'A lista “Sempre perguntar” do nível Livre tinha sido mudada fora do app. O MyBots pôs de volta a que você escolheu.');

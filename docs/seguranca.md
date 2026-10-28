@@ -214,7 +214,7 @@ O CAPTCHA continua sendo resolvido pela pessoa. O worker só localiza o desafio 
 
 ### A lista "Sempre perguntar"
 
-Uma lista só, para todos os bots Livres, editada no perfil (aba Acesso). Itens: comandos perigosos (sudo, apagar pastas inteiras, git push — no PC ou no Termux), instalar habilidades, anexar arquivos em sites, enviar SMS (esses quatro começam ligados), enviar formulários, entrar com senha salva, tocar e digitar em outros apps, abrir apps, preencher códigos, comandos no Termux, comandos no PC, agir nos apps da conta, controlar a tela do PC, mandar notificações e criar rotinas. O cartão do Livre **não tem "Sempre permitir"**: a lista só muda pela tela dela. Um app conectado marcado como "ações sempre pedem aprovação" continua pedindo também no Livre.
+Uma lista só, para todos os bots Livres, editada no perfil (aba Acesso). Itens: comandos perigosos (sudo, apagar pastas inteiras, git push — no PC ou no Termux), instalar habilidades, anexar arquivos em sites, enviar SMS (esses quatro começam ligados, e o pagamento com a carteira também), enviar formulários, entrar com senha salva, preencher códigos, comandos no Termux, comandos no PC, agir nos apps da conta, controlar a tela do PC, mandar notificações e criar rotinas. O cartão do Livre **não tem "Sempre permitir"**: a lista só muda pela tela dela. Um app conectado marcado como "ações sempre pedem aprovação" continua pedindo também no Livre.
 
 **Limite do Codex**: o Codex não deixa o MyBots decidir comando a comando dentro do terminal. Por isso, com **"Comandos no Termux"** na lista, um bot Codex fica **sem terminal** no celular; **"Comandos perigosos"** vale para ele só como instrução. Para o Claude, os dois itens geram cartão de verdade.
 
@@ -308,3 +308,8 @@ O bot pode negociar, mas **o que ele pode oferecer vive no supervisor, fora do a
 ### Carteira com vários cartões (v61)
 
 A carteira guarda até 10 cartões no cofre do Android. **Quais bots podem pagar com cada cartão** é uma regra da pessoa, guardada nas preferências privadas do app (`WalletGuard`), e só se muda na tela Carteira; escolher os bots conta como mudar as regras (invalida pagamentos reservados antes). Um cartão que ninguém liberou não é usado. Com mais de um cartão liberado, o bot informa o final (`card`); um final que não foi liberado para ele é recusado. Apagar um cartão leva junto a lista de bots dele. O cartão da v60 (único) é movido para a lista na primeira leitura e **começa sem nenhum bot liberado** (falha fechada): a pessoa escolhe os bots em Carteira.
+
+### Ajustes da 0.39.1
+
+- **Livre não pergunta ação a ação no celular.** "Tocar e digitar em outros apps" e "Abrir apps no celular" saíram da lista "Sempre perguntar": num bot Livre, abrir um app, tocar, digitar, rolar e voltar nunca geram cartão (uma lista antiga que ainda os traga é ignorada). O que continua barrando no celular são os limites duros (senhas e códigos fora da IA, telas que são sempre da pessoa, apps que recusam acessibilidade) e os itens que a pessoa ligar na lista, como preencher códigos.
+- **Carteira: lojas permitidas e categorias são opcionais.** Vazio significa qualquer loja https. Continuam valendo, sempre, os três limites (por compra, dia e mês), o total lido na própria página, a lista de lojas proibidas, o cartão liberado para o bot e o congelamento. Seed phrase e chaves privadas de carteiras de criptomoedas continuam fora do alcance da IA; o bot usa conta em corretora ou uma carteira da pessoa.

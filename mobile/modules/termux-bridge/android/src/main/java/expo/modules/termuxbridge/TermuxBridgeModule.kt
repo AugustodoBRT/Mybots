@@ -453,6 +453,38 @@ class TermuxBridgeModule : Module() {
       true
     }
 
+    // Controle do celular (nível Livre): the accessibility service, Android 13's "configurações restritas" and Parar.
+    AsyncFunction("phoneAccess") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      mapOf("enabled" to MyBotsAccess.enabled(context), "connected" to (MyBotsAccess.instance != null), "restricted" to MyBotsAccess.restricted(context),
+        "sdk" to Build.VERSION.SDK_INT, "screenshots" to (Build.VERSION.SDK_INT >= 30))
+    }
+    AsyncFunction("openAccessibility") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+      true
+    }
+    AsyncFunction("phoneStop") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      PhoneControl.immediate(context.applicationContext, org.json.JSONObject().put("op", "phoneStop").put("args", org.json.JSONObject()))
+      true
+    }
+    // Who is on the Livre level, kept by the app (out of Termux's reach) and compared with the supervisor's copy.
+    AsyncFunction("freeGuard") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      mapOf("bots" to FreeGuard.bots(context).toList(), "ask" to FreeGuard.ask(context), "warned" to FreeGuard.warned(context))
+    }
+    AsyncFunction("freeGuardSet") { botId: String, on: Boolean ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      if (!botId.matches(Regex("[0-9a-fA-F-]{36}"))) throw IllegalArgumentException("Bot inválido.")
+      FreeGuard.set(context, botId, on); true
+    }
+    AsyncFunction("freeGuardAsk") { value: String ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      if (value.length > 4000) throw IllegalArgumentException("Lista inválida.")
+      FreeGuard.setAsk(context, value); true
+    }
+
     AsyncFunction("flushNotifications") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       NotificationForwarder.flush(context.applicationContext)

@@ -5,10 +5,10 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PasswordsPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { desktop, column } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
-import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo } from './termux';
+import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
@@ -153,6 +153,33 @@ function AppMain() {
     }
   });
 
+  // The Livre level is the person's choice, made in this app: a bot the supervisor says is Livre but the app never put
+  // there (changed from Termux, a backup) goes back to Acesso total, and the person is told.
+  const freeChecking = useRef(false);
+  const checkFree = useCallback(async next => {
+    if (desktop || !termuxAvailable || freeChecking.current) return;
+    const guard = await freeGuard(); if (!guard) return;
+    const strays = (next.bots || []).filter(bot => bot.access === 'free' && !guard.bots.includes(bot.id));
+    for (const id of guard.bots.filter(id => !(next.bots || []).some(bot => bot.id === id && bot.access === 'free'))) await freeGuardSet(id, false);
+    if (!strays.length) return;
+    freeChecking.current = true;
+    try {
+      for (const bot of strays) await supervisor.current.call('bot.update', { botId: bot.id, access: 'full' });
+      Alert.alert('Nível Livre desfeito', `${strays.map(bot => bot.name).join(', ')} ${strays.length > 1 ? 'estavam' : 'estava'} no nível Livre sem ter sido escolhido neste app. Por segurança, ${strays.length > 1 ? 'voltaram' : 'voltou'} para Acesso total. Se foi você (por exemplo, restaurando um backup), escolha Livre de novo no perfil.`);
+    } finally { freeChecking.current = false; }
+  }, []);
+  const [freeSettings, setFreeSettings] = useState(null);
+  // The "sempre perguntar" list: the app keeps its own copy and puts it back if the supervisor's was changed elsewhere.
+  const loadFree = useCallback(async () => {
+    let settings = await supervisor.current.call('free.get');
+    const guard = !desktop && termuxAvailable ? await freeGuard().catch(() => null) : null;
+    const mine = guard?.ask ? JSON.parse(guard.ask) : null; const theirs = settings.options.filter(item => item.ask).map(item => item.key);
+    if (Array.isArray(mine) && JSON.stringify([...mine].sort()) !== JSON.stringify([...theirs].sort())) {
+      settings = await supervisor.current.call('free.set', { ask: mine });
+      Alert.alert('Lista restaurada', 'A lista “Sempre perguntar” do nível Livre tinha sido mudada fora do app. O MyBots pôs de volta a que você escolheu.');
+    }
+    setFreeSettings(settings); return settings;
+  }, []);
   const loadSupervisorState = useCallback(async () => {
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
@@ -161,6 +188,7 @@ function AppMain() {
     // The conversation on screen is being read: its new messages are not unseen.
     const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
     setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
+    checkFree(next).catch(() => {});
 
     return next;
   }, []);
@@ -530,6 +558,8 @@ function AppMain() {
   const shownProfile = profile?.botId === profileId ? profile : null;
   // After a change in the profile: the state and the profile's own lists.
   const profileChanged = async () => { await loadSupervisorState(); if (profileId) await loadProfile(profileId); };
+  const profileFree = data?.bots?.find(item => item.id === profileId)?.access === 'free';
+  useEffect(() => { if (profileId && profileFree) loadFree().catch(() => {}); }, [profileId, profileFree]);
   const roomSave = async payload => {
     if (roomSheet?.room) await supervisor.current.call('room.update', { roomId: roomSheet.room.id, ...payload });
     else { const created = await supervisor.current.call('room.create', payload); setRoomId(created.id); setSelected(null); }
@@ -605,7 +635,9 @@ function AppMain() {
           onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
-          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }} /> : null;
+          onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
+          onPhoneStop={async () => { await Promise.resolve(phoneStopNow()).catch(() => {}); await supervisor.current.call('phone.stop', {}); await loadSupervisorState(); }}
+          onPhoneControl={desktop ? null : async who => { await supervisor.current.call('phone.control', { who }); await loadSupervisorState(); }} /> : null;
   return <View style={[styles.app, desktop && !wide && column]}>
     <ShareTargets />
     <StatusBar barStyle="light-content" backgroundColor={C.bg} />
@@ -645,7 +677,24 @@ function AppMain() {
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
       onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await profileChanged(); }}
-      onAccess={async access => { await supervisor.current.call('bot.update', { botId: profileId, access }); await profileChanged(); }}
+      onAccess={async access => {
+        if (access === 'free') {
+          const guard = await freeGuard().catch(() => null);
+          if (!guard?.warned) await new Promise((resolve, reject) => Alert.alert('Nível Livre: o bot age como você no celular',
+            'Ele vai poder abrir e usar os outros apps do celular (mandar mensagens, pedir comida, mexer em configurações), usar o terminal completo do Termux e agir nos sites e contas em que você está logado, sem pedir licença a cada passo.\n\nSó pedem aprovação os itens que você deixar em “Sempre perguntar”. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA e bancos continuam com você, e cada ação fica na Atividade.\n\nEnquanto ele controla o celular, uma barra com Parar fica sempre na tela. Use Livre só com bots e pedidos em que você confia.',
+            [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Entendi, usar Livre', style: 'destructive', onPress: resolve }]));
+        }
+        // The app's own record comes first: MyBotsAccess obeys only bots it lists.
+        if (!desktop && termuxAvailable) await freeGuardSet(profileId, access === 'free');
+        await supervisor.current.call('bot.update', { botId: profileId, access }); await profileChanged();
+        if (access === 'free') loadFree().catch(() => {});
+      }}
+      freeChoice={mode === 'phone' && !desktop && termuxAvailable} freeSettings={freeSettings} PhoneControl={!desktop && termuxAvailable ? PhoneControlAccess : null}
+      onFreeAsk={async (key, on) => {
+        const list = (freeSettings?.options || []).filter(item => item.key === key ? on : item.ask).map(item => item.key);
+        if (!desktop && termuxAvailable) await freeGuardAsk(JSON.stringify(list));
+        setFreeSettings(await supervisor.current.call('free.set', { ask: list }));
+      }}
       onComplete={async id => { await supervisor.current.call('item.complete', { id }); await loadSupervisorState(); }}
       onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} />}
     <Modal transparent visible={maintenanceVisible} animationType="slide" onRequestClose={() => setMaintenanceVisible(false)}>

@@ -94,9 +94,12 @@ export class Queue extends EventEmitter {
         const reply = await execute(bot, prompt, {
           signal: controller.signal,
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(bot.id, 'desktop') === 'allow', browser: this.tools.policy(bot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: bot.access === 'full',
+          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(bot.id, 'desktop') === 'allow', browser: this.tools.policy(bot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
-            computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' ? { folders: Array.isArray(bot.folders) ? bot.folders : [], full: bot.access === 'full' } : false } : undefined,
+            computer: next.lane === 'pc' && this.tools.policy(bot.id, 'computer') !== 'deny' ? { folders: Array.isArray(bot.folders) ? bot.folders : [], full: ['full', 'free'].includes(bot.access) } : false,
+            // Livre on the phone: Termux's whole shell. Codex cannot ask command by command, so "Comandos no Termux" on the list keeps it without one.
+            termux: next.lane === 'phone' && this.tools.policy(bot.id, 'termux') === 'allow' && (bot.provider === 'claude' || !this.tools.freeAsk('termux')),
+            phone: this.tools.policy(bot.id, 'phone') === 'allow' } : undefined,
           onSession: async id => { if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
           // What the bot says along the way becomes a message now; what it is doing shows under "Pensando".
           onProgress: ({ say, step } = {}) => {

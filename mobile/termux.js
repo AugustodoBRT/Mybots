@@ -53,6 +53,13 @@ export const keepAliveStatus = () => native.keepAliveStatus();
 export const setKeepAlive = enabled => native.setKeepAlive(enabled);
 export const startKeepAlive = () => native?.startKeepAlive();
 export const openPowerSettings = target => native.openPowerSettings(target);
+// Controle do celular (nível Livre): the accessibility service, an instant Parar and the app's own copy of who is Livre.
+export const phoneAccess = () => native.phoneAccess();
+export const openAccessibility = () => native.openAccessibility();
+export const phoneStopNow = () => native?.phoneStop();
+export const freeGuard = () => native ? native.freeGuard() : Promise.resolve(null);
+export const freeGuardSet = (botId, on) => native?.freeGuardSet(botId, on);
+export const freeGuardAsk = value => native?.freeGuardAsk(value);
 // Each bot's own browser: the live WebView for the chat panel, and the person's back/reload after "Assumir".
 export const BotBrowserView = native ? requireNativeViewManager('TermuxBridge', 'BotBrowserView') : null;
 let frameView;

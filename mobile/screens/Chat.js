@@ -9,11 +9,11 @@ import { desktop } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
-import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline } from '../BotBrowserPanel';
+import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 
-function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const retryMessage = useLiveCallback(onRetry);
   const openFile = useLiveCallback(onFile);
   const messages = useMemo(() => [...bot.messages].reverse(), [bot.messages]);
@@ -105,6 +105,7 @@ function ChatView({ bot, data, error, onLogs, draft, setDraft, sending, saving, 
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
+      {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id]) ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
       {browserCall ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />

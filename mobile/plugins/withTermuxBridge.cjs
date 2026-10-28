@@ -65,6 +65,13 @@ module.exports = function withTermuxBridge(config) {
         'android:permission': 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE'
       }, 'intent-filter': [{ action: [{ $: { 'android:name': 'android.service.notification.NotificationListenerService' } }] }] });
     }
+    // The Livre level's hands on other apps: Android's accessibility service, turned on by the person in Ajustes.
+    if (!application.service.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.MyBotsAccess')) {
+      application.service.push({ $: { 'android:name': 'expo.modules.termuxbridge.MyBotsAccess', 'android:exported': 'true', 'android:label': 'MyBots: controle do celular',
+        'android:permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE' },
+        'intent-filter': [{ action: [{ $: { 'android:name': 'android.accessibilityservice.AccessibilityService' } }] }],
+        'meta-data': [{ $: { 'android:name': 'android.accessibilityservice', 'android:resource': '@xml/mybots_access' } }] });
+    }
     if (!application.service.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.KeepAliveService')) {
       application.service.push({ $: { 'android:name': 'expo.modules.termuxbridge.KeepAliveService', 'android:exported': 'false', 'android:foregroundServiceType': 'specialUse' },
         property: [{ $: { 'android:name': 'android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE', 'android:value': 'Mantém o supervisor local dos bots e suas rotinas agendadas funcionando com a tela apagada.' } }] });
@@ -84,6 +91,11 @@ module.exports = function withTermuxBridge(config) {
       application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.MyBotsWidget', 'android:exported': 'false', 'android:label': '@string/mybots_widget_label' },
         'intent-filter': [{ action: [{ $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' } }] }],
         'meta-data': [{ $: { 'android:name': 'android.appwidget.provider', 'android:resource': '@xml/mybots_widget_info' } }] });
+    }
+    // Parar and Assumir in the notice shown while a bot controls the phone.
+    if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.PhoneControlReceiver')) {
+      application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.PhoneControlReceiver', 'android:exported': 'false' },
+        'intent-filter': [{ action: ['STOP', 'TAKE', 'RETURN'].map(name => ({ $: { 'android:name': 'com.mybots.app.PHONE_' + name } })) }] });
     }
     if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.KeepAliveReceiver')) {
       application.receiver.push({ $: { 'android:name': 'expo.modules.termuxbridge.KeepAliveReceiver', 'android:exported': 'true' },

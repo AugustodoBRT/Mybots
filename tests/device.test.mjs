@@ -65,7 +65,8 @@ test('a bot reads notifications only with its grant, filtered by app and text, m
 test('SMS, contacts, calls, location and battery call Termux:API with fixed arguments and per-bot grants', async t => {
   const f = await setup(t);
   for (const tool of ['sms.search', 'contacts.search', 'calls.search', 'location.get', 'device.status']) f.app.tools.grant(f.bot.id, tool, true);
-  assert.deepEqual((await f.call('sms.search', { query: 'código' })).messages.map(item => item.body), ['Seu código é 1234']);
+  // Verification codes never reach the IA (v59): the message stays, the number is hidden.
+  assert.deepEqual((await f.call('sms.search', { query: 'código' })).messages.map(item => item.body), ['Seu código é [código protegido]']);
   assert.deepEqual((await f.call('contacts.search', { query: 'maria' })).contacts.map(item => item.name), ['Maria Souza']);
   assert.equal((await f.call('calls.search', { query: 'Maria' })).calls[0].type, 'MISSED');
   assert.equal((await f.call('location.get', { provider: 'gps' })).provider, 'network');

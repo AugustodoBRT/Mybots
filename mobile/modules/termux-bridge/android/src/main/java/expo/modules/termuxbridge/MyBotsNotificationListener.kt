@@ -45,12 +45,14 @@ class MyBotsNotificationListener : NotificationListenerService() {
     val text = listOf(body, lines).filter { it.isNotBlank() }.joinToString("\n")
     if (title.isBlank() && text.isBlank()) return null
     val app = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString() } catch (error: Exception) { sbn.packageName }
+    // Verification codes stay in the app (phone_fill_code); the supervisor and the IA only see that one arrived.
+    val (safeTitle, safeText) = VerificationCodes.capture(sbn.packageName, app, title, text, sbn.postTime)
     return JSONObject()
       .put("id", "${sbn.key}|${sbn.postTime}")
       .put("package", sbn.packageName)
       .put("app", app.take(100))
-      .put("title", title.take(300))
-      .put("text", text.take(4000))
+      .put("title", safeTitle.take(300))
+      .put("text", safeText.take(4000))
       .put("subText", extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty().take(200))
       .put("category", notification.category.orEmpty())
       .put("time", sbn.postTime)

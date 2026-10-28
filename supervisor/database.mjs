@@ -464,7 +464,7 @@ export class Database {
     // Moving to another device also starts a new session there: an IA session lives on the machine that made it.
     const moved = (updated.home || 'phone') !== (bot.home || 'phone') || browserMode(updated) !== browserMode(bot);
     if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
-    const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total' }[updated.access];
+    const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total', free: 'Livre' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
     this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${updated.provider === 'claude' ? 'Claude' : 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
     return updated;

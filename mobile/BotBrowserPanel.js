@@ -138,6 +138,35 @@ function StepImage({ step, call, style }) {
 }
 
 /**
+ * The phone's other apps while a Livre bot controls them: what it is doing, the picture after its last step, Parar
+ * (always) and Assumir/Devolver. On the phone itself the same bar floats over the other apps (MyBotsAccess).
+ */
+export function PhoneLiveCard({ bot, phone, call, onStop, onControl }) {
+  const [step, setStep] = useState(null); const [busy, setBusy] = useState('');
+  const mine = phone?.controller?.botId === bot.id, help = phone?.help?.[bot.id], person = phone?.control === 'person';
+  useEffect(() => {
+    let live = true;
+    call('browser.steps', { botId: bot.id, limit: 10 }).then(result => { const last = (result.steps || []).filter(item => item.caption.startsWith('No celular')).at(-1); if (live && last) setStep(last); }).catch(() => {});
+    const listener = (event, data) => { if (event === 'browser.step' && data?.botId === bot.id && String(data.caption).startsWith('No celular')) setStep(data); };
+    browserEvents.add(listener);
+    return () => { live = false; browserEvents.delete(listener); };
+  }, [bot.id]);
+  if (!mine && !help) return null;
+  const act = async (name, action) => { setBusy(name); try { await action(); } catch {} finally { setBusy(''); } };
+  return <View style={styles.helpCard}>
+    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="phone" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>{mine ? 'CELULAR · AO VIVO' : 'CELULAR'}</Text></View>
+    <Text style={styles.helpTitle}>{person ? 'Você está no controle do celular' : help ? `${bot.name} precisa de você no celular` : `${bot.name} está usando o celular`}</Text>
+    <Text style={styles.helpBody}>{help && !mine ? help.reason : person ? `${bot.name} espera você devolver.` : phone.caption || 'Olhando a tela'}</Text>
+    {step?.image ? <StepImage key={step.id} step={step} call={call} style={[styles.phoneShot, { aspectRatio: step.width && step.height ? step.width / step.height : 0.5 }]} /> : null}
+    <Text style={styles.helpHint}>{mine ? 'No próprio celular, uma barra no topo mostra cada passo, com Parar e Assumir. Parar interrompe na hora, mesmo no meio de um passo.' : 'Faça o que foi pedido no celular e depois toque em “Devolver ao bot”.'}</Text>
+    <View style={styles.keys}>
+      {mine ? <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act('stop', onStop)} style={[styles.key, styles.stopKey]}><Icon name="stop" size={14} color="#FFFFFF" /><Text style={[styles.keyText, { color: '#FFFFFF' }]}>{busy === 'stop' ? 'Parando…' : 'Parar'}</Text></Pressable> : null}
+      {onControl ? <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act('control', () => onControl(person || help && !mine ? 'bot' : 'person'))} style={styles.key}><Text style={styles.keyText}>{person || help && !mine ? 'Devolver ao bot' : 'Assumir'}</Text></Pressable> : null}
+    </View>
+  </View>;
+}
+
+/**
  * The browser's timeline in the conversation: each step of the bot's latest browser work with a picture of the page
  * right after it. Tapping one opens that moment.
  */
@@ -162,7 +191,7 @@ export function BrowserTimeline({ bot, call, working }) {
   const index = open ? shown.findIndex(step => step.id === open) : -1, current = shown[index];
   return <View style={styles.timeline}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: show }} onPress={() => setExpanded(value => !value)} style={styles.timelineHead}>
-      <Icon name="globe" size={14} color={C.sky} /><Text style={styles.timelineTitle}>LINHA DO TEMPO DO NAVEGADOR</Text>
+      <Icon name="globe" size={14} color={C.sky} /><Text style={styles.timelineTitle}>{shown.every(step => step.caption.startsWith('No celular')) ? 'LINHA DO TEMPO DO CELULAR' : shown.some(step => step.caption.startsWith('No celular')) ? 'LINHA DO TEMPO' : 'LINHA DO TEMPO DO NAVEGADOR'}</Text>
       <Text style={styles.hint}>{shown.length} {shown.length === 1 ? 'passo' : 'passos'}</Text>
       {working ? null : <View style={{ transform: [{ rotate: show ? '180deg' : '0deg' }] }}><Icon name="down" size={13} color={C.muted} /></View>}
     </Pressable>
@@ -472,6 +501,7 @@ const styles = StyleSheet.create({
   typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, toolOn: { borderColor: C.mint },
   keys: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, key: { minWidth: 44, height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   keyText: { color: C.text2, fontFamily: F.b, fontSize: 12.5 },
+  stopKey: { flexDirection: 'row', gap: 6, backgroundColor: C.red, borderColor: C.red, paddingHorizontal: 16 }, phoneShot: { width: '62%', alignSelf: 'center', borderRadius: 14, backgroundColor: '#0B0F15' },
   watching: { position: 'absolute', right: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, backgroundColor: '#090B10D9' },
   watchingText: { color: C.text2, fontFamily: F.b, fontSize: 10.5 },
   hint: { color: C.muted, fontFamily: F.m, fontSize: 11.5, lineHeight: 17 }, error: { color: C.red, fontFamily: F.m, fontSize: 12 },

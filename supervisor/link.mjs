@@ -15,9 +15,9 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
-  'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send'];
+  'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
-const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download'];
+const DESKTOP_EVENTS = ['task.progress', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
@@ -222,6 +222,9 @@ export class Link {
   /** A request from the MyBots window on the computer, answered by the phone's supervisor like the app's own. */
   async desktop({ method, params }) {
     if (!DESKTOP_METHODS.includes(method) || !this.rpc) return { error: 'Isto só pode ser feito no celular.' };
+    // The Livre level is chosen on the phone only, with its warning, never from the computer.
+    if (['bot.create', 'bot.update'].includes(method) && params?.access === 'free') return { error: 'O nível Livre só se escolhe no app do celular.' };
+    if (method === 'phone.stop') params = { source: 'computer' };
     try { return { result: await this.rpc(method, params && typeof params === 'object' && !Array.isArray(params) ? params : {}) }; }
     catch (error) { return { error: error.code ? 'Não foi possível gravar ou ler os dados do supervisor.' : error.message }; }
   }
@@ -279,7 +282,7 @@ export class Link {
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
       this.runs.set(id, { taskId: tools?.taskId, onSession, onProgress, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
-      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
+      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, phone: Boolean(tools.phone), computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {
         send({ type: 'cancel', id });
         timer = setTimeout(() => this.runs.get(id)?.reject(new Error('Pedido cancelado.')), 8000);

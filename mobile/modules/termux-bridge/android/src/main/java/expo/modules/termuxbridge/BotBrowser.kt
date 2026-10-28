@@ -124,7 +124,9 @@ internal object BotBrowser {
         for (index in 0 until commands.length()) {
           val command = commands.getJSONObject(index)
           // One bot's commands keep their order; different bots (and PDF work) never wait for each other.
-          lane(command.optString("botId").takeIf { it.isNotEmpty() && it != "null" } ?: "device").execute { respond(context, port, token, command) }
+          // The phone's other apps have their own lane; Parar, Assumir and the end of a turn never wait behind it.
+          val op = command.optString("op")
+          lane(if (op in PHONE_NOW) "phone-now" else if (op.startsWith("phone")) "phone" else command.optString("botId").takeIf { it.isNotEmpty() && it != "null" } ?: "device").execute { respond(context, port, token, command) }
         }
       } catch (_: InterruptedException) { return }
       catch (_: Exception) { try { Thread.sleep(5000) } catch (_: InterruptedException) { return } }
@@ -142,7 +144,8 @@ internal object BotBrowser {
       val result = URL("http://127.0.0.1:$port/device/browser/result").openConnection() as HttpURLConnection
       result.requestMethod = "POST"; result.doOutput = true; result.connectTimeout = 3000; result.readTimeout = 10_000
       result.setRequestProperty("Authorization", "Bearer $token"); result.setRequestProperty("Content-Type", "application/json")
-      result.outputStream.use { it.write(answer.toString().toByteArray(Charsets.UTF_8)) }
+      // A verification code the app filled or saw never goes back in an answer (page text, field values, titles).
+      result.outputStream.use { it.write(VerificationCodes.redact(answer.toString()).toByteArray(Charsets.UTF_8)) }
       result.responseCode; result.disconnect()
     } catch (_: Exception) {}
   }
@@ -206,7 +209,12 @@ internal object BotBrowser {
     JSONObject().put("url", tab.web.url ?: "about:blank").put("title", tab.web.title ?: "").put("loading", tab.loading).put("isolated", isolated)
   }
 
+  private val PHONE_NOW = setOf("phoneStop", "phoneEnd", "phoneControl")
+
   private fun run(context: Context, command: JSONObject): JSONObject {
+    val op = command.getString("op")
+    if (op in PHONE_NOW) return PhoneControl.immediate(context, command)
+    if (op.startsWith("phone")) return PhoneControl.run(context, command)
     // File work for the supervisor, not tied to a bot's browser.
     when (command.getString("op")) {
       "pdfRead" -> return DeviceFiles.pdfRead(context, command.optJSONObject("args") ?: JSONObject())
@@ -313,13 +321,21 @@ internal object BotBrowser {
       }
       "screenshot" -> {
         try {
-          js(context, botId, "(() => { const data = ($READ_PAGE)({}); if (${args.optBoolean("marks")}) ($MARK_JS)(data.elements); const layer = document.createElement('div'); layer.setAttribute('data-mybots-mask',''); layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647'; for (const el of document.querySelectorAll('input[type=password]')) { const r=el.getBoundingClientRect(); const box=document.createElement('div'); box.style.cssText='position:absolute;background:#000;left:'+r.x+'px;top:'+r.y+'px;width:'+r.width+'px;height:'+r.height+'px'; layer.append(box); } document.documentElement.append(layer); return JSON.stringify({ok:true}); })()")
+          js(context, botId, "(() => { const data = ($READ_PAGE)({}); if (${args.optBoolean("marks")}) ($MARK_JS)(data.elements); const layer = document.createElement('div'); layer.setAttribute('data-mybots-mask',''); layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647'; const codes = ${org.json.JSONArray(VerificationCodes.secrets())}; for (const el of [...document.querySelectorAll('input[type=password]'), ...[...document.querySelectorAll('input,textarea')].filter(el => codes.some(code => el.value.includes(code)))]) { const r=el.getBoundingClientRect(); const box=document.createElement('div'); box.style.cssText='position:absolute;background:#000;left:'+r.x+'px;top:'+r.y+'px;width:'+r.width+'px;height:'+r.height+'px'; layer.append(box); } document.documentElement.append(layer); return JSON.stringify({ok:true}); })()")
           Thread.sleep(100)
           onMain(15_000) { screenshot(context, botId) }
         } finally { runCatching { js(context, botId, "(() => { ($MARK_JS)(null); document.querySelector('[data-mybots-mask]')?.remove(); return JSON.stringify({ok:true}); })()") } }
       }
       else -> throw IllegalArgumentException("Comando de navegador inválido.")
     }
+  }
+
+  /** The address a verification code would go to (phone_fill_code with where browser). */
+  fun codeTarget(context: Context, botId: String): String = onMain { tab(context, botId).web.url ?: "" }
+
+  /** A code from a notification into a field of the bot's page, inside the app: the page answers only ok or an error. */
+  fun fillCode(context: Context, botId: String, id: Int, code: String) {
+    js(context, botId, "($CODE_JS)(${JSONObject().put("id", id).put("code", code)})")
   }
 
   private fun screenshot(context: Context, botId: String, maxWidth: Float = 720f, quality: Int = 70): JSONObject {
@@ -657,6 +673,16 @@ internal object BotBrowser {
       document.addEventListener('submit', e => send(e.target), true);
       document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('button, input[type=submit], input[type=image], a'); const pw = document.querySelector('input[type=password]'); if (b && pw && pw.value) send(b.form || pw.form); }, true);
       document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.type === 'password') send(e.target.form); }, true); }
+  """.trimIndent()
+
+  private val CODE_JS = """
+    ({ id, code }) => { $FIND
+      const tag = el.tagName.toLowerCase();
+      if (tag !== 'input' && tag !== 'textarea') return JSON.stringify({ error: 'Este elemento não é um campo de texto. Veja os campos em browser_read.' });
+      el.scrollIntoView({ block: 'center' }); el.focus();
+      Object.getOwnPropertyDescriptor(tag === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(el, code);
+      el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+      return JSON.stringify({ ok: true }); }
   """.trimIndent()
 
   private val TYPE_JS = """

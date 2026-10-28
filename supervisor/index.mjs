@@ -24,6 +24,7 @@ import { Routines } from './routines.mjs';
 import { Attachments } from './attachments.mjs';
 import { Apps } from './apps.mjs';
 import { Browser, personInput } from './browser.mjs';
+import { Phone } from './phone.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
 import { Nodes } from './nodes.mjs';
@@ -197,6 +198,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
     browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;
     attachments.pdf = args => browser.device('pdfRead', args);
+    // The phone's other apps (Livre): Parar cancels the controlling turn; the app's own stop flag acts first.
+    const phone = new Phone(browser, { changed: broadcast, record: (kind, detail, botId, taskId) => { db.record(kind, detail, botId, taskId); broadcast('activity.new'); }, cancel: taskId => queue.cancel(taskId).catch(() => {}) }); tools.phone = phone;
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock }); tools.routines = routines;
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
@@ -324,7 +327,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
           return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
         }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
-        botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
+        botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), phone: phone.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
         pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => kept.has(row.botId)),
         approvals: db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })),
         // Only the tasks still going (the app shows them and their step); the history comes by tasks.list.
@@ -344,6 +347,22 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // Changes of messages and bots go out with their content as soon as they are saved.
     db.listen((event, data) => broadcast(event, event === 'bot.updated' ? (() => { const bot = db.bot(data.botId); return { botId: data.botId, bot: bot && botSummary(bot) }; })() : data));
     link.rpc = (method, params) => rpc(method, params);
+    // "Assumir" / "Devolver ao bot" on the phone, from the app or the overlay. Handing back after a request for help
+    // continues the bot's work as a new turn, like the browser.
+    const phoneControl = async (who, from) => {
+      const help = phone.setControl(who, from);
+      const owner = help?.botId || phone.controller?.botId;
+      if (owner) db.record('phone_control', who === 'person' ? 'Você assumiu o celular.' : 'Celular devolvido ao bot.', owner);
+      if (help) {
+        await refresh();
+        const bot = db.requireBot(help.botId);
+        if (statusFor(bot)?.loggedIn) {
+          const task = db.enqueue(bot.id, randomUUID(), `[Celular devolvido] Terminei o que você pediu (“${help.reason}”) e devolvi o celular. Continue de onde parou; confira a tela com phone_screen.`, selectionFor(catalog(), bot));
+          broadcast('task.progress', { taskId: task.id }); queue.schedule();
+        }
+      }
+      broadcast('activity.new'); return { control: who, continued: Boolean(help) };
+    };
     const rpc = async (method, params = {}, socket = null) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
       switch (method) {
@@ -387,7 +406,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           return { taskId: task.id, messageId: task.message_id, state: task.state };
         }
         case 'tasks.list': return publicTasks();
-        case 'task.cancel': if (!uuid(params.taskId)) throw new Error('Tarefa inválida.'); await queue.cancel(params.taskId); return { cancelled: true };
+        case 'task.cancel': if (!uuid(params.taskId)) throw new Error('Tarefa inválida.'); if (phone.controller?.taskId === params.taskId) phone.native('phoneStop', { taskId: params.taskId }); await queue.cancel(params.taskId); return { cancelled: true };
+        // The Livre level's "sempre perguntar" list: only from the app on the phone (never through the computer's link).
+        case 'free.get': return tools.freeSettings();
+        case 'free.set': return tools.setFreeList(params.ask);
+        case 'phone.status': return phone.status();
+        case 'phone.stop': return phone.stop(params.source === 'computer' ? 'computer' : 'app');
+        case 'phone.control': return phoneControl(params.who, 'app');
         case 'activity.list': return db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 100');
         case 'grants.set': return tools.grant(params.botId, params.tool, params.allowed);
         case 'approval.respond': return tools.respond(params.approvalId, params.approved, params.actionHash, params.always ?? false);
@@ -590,6 +615,17 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       if (request.method === 'GET' && request.url === '/device/browser') {
         const cancel = browser.poll(commands => { if (!response.writableEnded) response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ commands })); });
         request.on('close', cancel);
+        return;
+      }
+      // MyBotsAccess on the phone: the overlay's and the notice's Parar, Assumir and Devolver.
+      if (request.method === 'POST' && request.url === '/device/phone') {
+        try {
+          let raw = ''; for await (const chunk of request) { raw += chunk; if (raw.length > 2000) throw new Error('size'); }
+          const { event, source } = JSON.parse(raw);
+          const result = event === 'stop' ? await phone.stop(source === 'notice' ? 'notice' : 'overlay') : event === 'take' || event === 'return' ? await phoneControl(event === 'take' ? 'person' : 'bot', 'native') : null;
+          if (!result) throw new Error('event');
+          response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result));
+        } catch { if (!response.headersSent) response.writeHead(400).end(); }
         return;
       }
       if (request.method === 'POST' && request.url === '/device/browser/result') {

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MyBotsAccess: reads and acts on other apps only when a Livre bot asks; never an accessibility tool, so apps that hide from such services stay hidden. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+  android:description="@string/mybots_access_description"
+  android:summary="@string/mybots_access_summary"
+  android:accessibilityEventTypes="typeWindowStateChanged"
+  android:accessibilityFeedbackType="feedbackGeneric"
+  android:accessibilityFlags="flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
+  android:canRetrieveWindowContent="true"
+  android:canPerformGestures="true"
+  android:canTakeScreenshot="true"
+  android:notificationTimeout="100"
+  android:isAccessibilityTool="false" />

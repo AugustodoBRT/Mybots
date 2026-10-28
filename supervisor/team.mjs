@@ -1,7 +1,7 @@
 import { fold } from './rooms.mjs';
 import { ACCESS_LEVELS } from './tool-policy.mjs';
 
-const RANK = { basic: 0, ask: 1, full: 2 };
+const RANK = { basic: 0, ask: 1, full: 2, free: 3 };
 // Brakes against a bot (or a loop of bots) multiplying: a few per turn, a ceiling for the whole app.
 export const LIMITS = { bots: 30, rooms: 20, botsPerTurn: 5, roomsPerTurn: 3 };
 const short = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -44,7 +44,9 @@ export class Team {
     if (this.live().some(bot => fold(bot.name) === fold(args.name))) throw new Error(`Já existe um bot chamado ${args.name}. Escolha outro nome ou use o que existe.`);
     if (/[@\n]/.test(args.name)) throw new Error('O nome do bot não pode ter @ nem quebra de linha.');
     // Never above the maker: a bot with Médio makes Médio or Pouco acesso bots, not Acesso total.
-    const level = args.access || caller.access;
+    // Livre is only ever the person's choice: a Livre bot makes Acesso total bots at most.
+    const level = args.access || (caller.access === 'free' ? 'full' : caller.access);
+    if (level === 'free') throw new Error('Só a pessoa põe um bot no nível Livre, pelo app.');
     if (level && caller.access !== undefined && RANK[level] > RANK[caller.access]) throw new Error('Você não pode criar um bot com mais acesso do que o seu. Escolha o mesmo nível ou menor.');
     if (level && !ACCESS_LEVELS.includes(level)) throw new Error('Nível de acesso inválido.');
     const selection = this.selectionFor({ provider: caller.provider, model: caller.model, reasoningEffort: caller.reasoningEffort });

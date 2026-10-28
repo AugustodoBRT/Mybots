@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="mybots_access_summary">Deixa bots no nível Livre mexerem nos apps do celular quando você pede.</string>
+  <string name="mybots_access_description">Os bots do MyBots no nível Livre usam este serviço para ver a tela, tocar, digitar, rolar e abrir apps quando você pede algo a eles. Enquanto um bot controla o celular, aparece uma barra com o que ele está fazendo e um botão Parar, além de uma notificação fixa. Campos de senha chegam mascarados aos bots, e códigos de verificação vão direto para o campo, sem passar pela IA. Bots em outros níveis não usam este serviço. Você pode desligar aqui quando quiser.</string>
+</resources>

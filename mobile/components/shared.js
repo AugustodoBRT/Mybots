@@ -6,7 +6,7 @@ import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, Scro
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop } from '../desktop';
@@ -475,6 +475,31 @@ export function PhoneAccess({ stats, lastPoll }) {
     <Text style={[styles.optionDetail, { marginTop: 8 }]}>SMS, contatos, chamadas, localização, bateria e as notificações que os bots mandam usam o Termux:API. Na primeira vez que um bot usar cada um, o Android pede a permissão.</Text>
     <BotNoticeStatus lastPoll={lastPoll} />
     <TermuxApiStatus />
+    <PhoneControlAccess />
+  </View>;
+}
+
+/**
+ * Controle do celular (nível Livre): Android's accessibility service for MyBots. On Android 13+, an app installed outside
+ * a store needs "Permitir configurações restritas" in its info before the service can be turned on.
+ */
+export function PhoneControlAccess() {
+  const [status, setStatus] = useState(null);
+  const check = useCallback(() => { phoneAccess().then(setStatus).catch(() => setStatus(null)); }, []);
+  useEffect(() => { check(); const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); }); return () => subscription.remove(); }, [check]);
+  if (!status) return null;
+  const on = status.enabled && status.connected;
+  return <View style={styles.appRow}>
+    <Text style={styles.optionLabel}>Controle do celular · {on ? 'Ligado' : status.enabled ? 'Ligado, esperando o Android' : 'Desligado'}</Text>
+    <Text style={styles.optionDetail}>{on ? 'Bots no nível Livre podem ver a tela e usar os outros apps quando você pede. Enquanto isso, uma barra com Parar fica no topo da tela e uma notificação fixa aparece. Apps de banco costumam recusar: nesses, o bot chama você.'
+      : status.enabled ? 'O serviço está ligado, mas o Android ainda não o iniciou. Desligue e ligue de novo em Acessibilidade.'
+      : 'Só bots no nível Livre usam. Para ligar: toque em Ligar o controle, procure MyBots (em Apps instalados ou Serviços baixados) e ative.'}</Text>
+    {!status.enabled && status.sdk >= 33 ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>No Android 13 ou mais novo, se aparecer “Configuração restrita”: volte aqui, toque em Abrir informações do app, toque nos três pontos (⋮) no canto de cima, escolha “Permitir configurações restritas”, confirme e tente ligar de novo.{status.restricted ? ' Neste celular esse bloqueio ainda está ativo.' : ''}</Text> : null}
+    {!status.screenshots ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>Neste Android (antes do 11) o bot lê a tela, mas não consegue ver capturas dela.</Text> : null}
+    <View style={styles.appActions}>
+      {!on ? <Pressable onPress={() => openAccessibility().catch(() => {})}><Text style={styles.deleteText}>Ligar o controle</Text></Pressable> : <Pressable onPress={() => openAccessibility().catch(() => {})}><Text style={styles.deleteText}>Desligar em Acessibilidade</Text></Pressable>}
+      {!status.enabled && status.sdk >= 33 ? <Pressable onPress={() => openAppSettings('com.mybots.app').catch(() => {})}><Text style={styles.deleteText}>Abrir informações do app</Text></Pressable> : null}
+    </View>
   </View>;
 }
 

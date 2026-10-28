@@ -20,7 +20,7 @@ const OPS = ['act', 'tabs', 'find', 'open', 'read', 'inspect', 'click', 'type', 
 // Phone work that is not a bot's browser: reading and writing PDFs with Android's own tools.
 const DEVICE_OPS = ['pdfRead', 'pdfCreate'];
 // open and click may start a download (up to 90 s on the phone).
-const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000 };
+const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, phoneOpenApp: 30000, phoneScreen: 25000 };
 
 // Loopback and link-local hosts are never opened: the supervisor and other local services live there.
 export function safeUrl(value) {
@@ -86,8 +86,9 @@ export class Browser {
     if (signal?.aborted) return Promise.reject(new Error('Pedido de navegador interrompido.'));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.pending.get(id)?.reject(new Error(botId ? 'O navegador demorou para responder. A página pode estar lenta; tente browser_read.' : 'O celular demorou para processar o arquivo.')), TIMEOUTS[op] || 20000);
-      const stop = () => this.pending.get(id)?.reject(new Error('Pedido de navegador interrompido.'));
+      const phone = /^phone/.test(op);
+      const timer = setTimeout(() => this.pending.get(id)?.reject(new Error(botId ? 'O navegador demorou para responder. A página pode estar lenta; tente browser_read.' : phone ? 'O celular demorou para responder. Veja a tela de novo com phone_screen.' : 'O celular demorou para processar o arquivo.')), TIMEOUTS[op] || 20000);
+      const stop = () => this.pending.get(id)?.reject(new Error(phone ? 'Parado: a pessoa interrompeu o controle do celular.' : 'Pedido de navegador interrompido.'));
       const clear = () => { clearTimeout(timer); this.pending.delete(id); signal?.removeEventListener('abort', stop); };
       this.pending.set(id, { command: { id, botId, op, args, ...(botId ? { profile: this.profile(botId) } : {}) }, sent: false, timer, resolve: value => { clear(); resolve(value); }, reject: error => { clear(); reject(error); } });
       signal?.addEventListener('abort', stop, { once: true });

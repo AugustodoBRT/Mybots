@@ -36,16 +36,43 @@ export const TOOL_DEFINITIONS = [
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   // The team: bots making bots, opening rooms, adding and removing members. No approval cards; one switch turns it all off.
   { name: 'team', label: 'Equipe de bots', description: 'Criar outros bots, abrir salas, pôr e tirar bots delas, sair sozinho e chamar os outros para trabalhar (@Nome), tudo sem perguntar. Um bot nunca cria outro com mais acesso do que o próprio. Desligado em Pouco acesso, a menos que você ligue.', defaultAllowed: true },
-  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true }
+  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true },
+  // Only on the Livre level: the other apps of the phone (MyBotsAccess) and Termux's whole shell.
+  { name: 'phone', label: 'Controlar o celular', description: 'Só no nível Livre. Vê a tela, toca, digita, rola e abre apps no celular pelo serviço de acessibilidade do MyBots, com um botão Parar sempre visível. Senhas aparecem mascaradas; códigos de verificação vão direto para o campo, sem o bot ver.' },
+  { name: 'termux', label: 'Terminal do Termux', description: 'Só no nível Livre, quando o bot responde pelo celular: o shell completo do Termux para instalar pacotes, rodar scripts e usar o Termux:API.' }
 ];
+// What still asks on the Livre level: the person edits this list in the app; the model never sees a way to change it.
+export const FREE_ASK_OPTIONS = [
+  ['risky', 'Comandos perigosos', 'sudo, apagar pastas inteiras e git push, no computador ou no Termux.', true],
+  ['skill.propose', 'Instalar habilidades', 'Programas que o bot escreve para rodar sozinhos no celular.', true],
+  ['browser/upload', 'Anexar arquivos em sites', 'Mandar um arquivo seu para um site.', true],
+  ['sms.send', 'Enviar SMS', 'Pelo seu chip.', true],
+  ['browser/submit', 'Enviar formulários no navegador', 'Botões de enviar, confirmar e arrastar.', false],
+  ['browser/login', 'Entrar com senha salva', 'O bot nunca vê a senha, mas entra na sua conta.', false],
+  ['phone/act', 'Tocar e digitar em outros apps', 'Cada toque, texto ou rolagem no celular.', false],
+  ['phone.open_app', 'Abrir apps no celular', '', false],
+  ['phone.fill_code', 'Preencher códigos de verificação', 'Mesmo com o remetente e o site certos.', false],
+  ['termux', 'Comandos no Termux', 'Qualquer comando no terminal do celular.', false],
+  ['computer/shell', 'Comandos no computador', 'Qualquer comando no terminal do PC.', false],
+  ['account.connectors/write', 'Agir nos apps da conta', 'Gmail, Agenda, Drive e outros: enviar, criar, apagar.', false],
+  ['desktop', 'Controlar a tela do computador', 'Cliques e teclas no PC (a permissão própria continua valendo).', false],
+  ['notify.user', 'Mandar notificações', '', false],
+  ['routine.create', 'Criar rotinas', '', false]
+];
+export const FREE_ASK_DEFAULT = FREE_ASK_OPTIONS.filter(item => item[3]).map(item => item[0]);
+export function validFreeAsk(list) {
+  return Array.isArray(list) && list.length <= FREE_ASK_OPTIONS.length && list.every(key => FREE_ASK_OPTIONS.some(item => item[0] === key));
+}
 export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
 export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
+export const PHONE_TOOLS = ['phone.screen', 'phone.tap', 'phone.type', 'phone.scroll', 'phone.open_app', 'phone.back', 'phone.fill_code', 'phone.ask_user'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
-export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : TEAM_TOOLS.includes(tool) ? 'team' : tool;
+export const grantOf = tool => BROWSER_TOOLS.includes(tool) ? 'browser' : DESKTOP_TOOLS.includes(tool) ? 'desktop' : TEAM_TOOLS.includes(tool) ? 'team' : PHONE_TOOLS.includes(tool) ? 'phone' : tool;
 export const AVATARS = ['orbit', 'pixel', 'cat', 'spark'];
-// Pouco acesso, médio (pergunta na primeira vez) e acesso total. Bots without a level keep their switches.
-export const ACCESS_LEVELS = ['basic', 'ask', 'full'];
+// Pouco acesso, médio (pergunta na primeira vez), acesso total e livre (nada pergunta, salvo a lista "sempre perguntar"
+// e os limites duros). Bots without a level keep their switches.
+export const ACCESS_LEVELS = ['basic', 'ask', 'full', 'free'];
 // Where a bot lives: on the phone, on the computer (offline while it is off) or wherever is on (the computer when connected).
 export const HOMES = ['phone', 'pc', 'any'];
 // Keys, passwords and the MyBots pairing on the computer: out of reach whatever the level.
@@ -80,6 +107,7 @@ export function toolArguments(tool, args) {
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
+    'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
   const text = (name, max, optional = false) => {
@@ -163,6 +191,7 @@ export function toolArguments(tool, args) {
     const color = text('color', 10, true); const avatar = text('avatar', 10, true); const access = text('access', 10, true); const home = text('home', 10, true);
     if (color && !['green','blue','purple','orange'].includes(color)) throw new Error('Use color green, blue, purple ou orange.');
     if (avatar && !AVATARS.includes(avatar)) throw new Error('Use avatar orbit, pixel, cat ou spark.');
+    if (access === 'free') throw new Error('Só a pessoa põe um bot no nível Livre, pelo app. Use access basic, ask ou full.');
     if (access && !ACCESS_LEVELS.includes(access)) throw new Error('Use access basic, ask ou full.');
     if (home && !HOMES.includes(home)) throw new Error('Use home phone, pc ou any.');
     return { name: text('name', 40), instructions: text('instructions', 2000, true), ...(color ? { color } : {}), ...(avatar ? { avatar } : {}), ...(access ? { access } : {}), ...(home ? { home } : {}) };
@@ -225,7 +254,39 @@ export function toolArguments(tool, args) {
     return { id: integer('id', 1, 100000), file: args.file.toLowerCase() };
   }
   if (tool === 'browser.wait') return { url: text('url', 200, true), text: text('text', 200, true), selector: text('selector', 200, true), timeoutSeconds: integer('timeoutSeconds', 1, 30, 10) };
-  if (tool === 'browser.ask_user') return { reason: text('reason', 300) };
+  if (tool === 'browser.ask_user' || tool === 'phone.ask_user') return { reason: text('reason', 300) };
+  if (tool === 'phone.screen') {
+    if (args.image !== undefined && typeof args.image !== 'boolean') throw new Error('Use image true ou false.');
+    return { image: args.image === true };
+  }
+  if (tool === 'phone.tap') {
+    if (args.long !== undefined && typeof args.long !== 'boolean') throw new Error('Use long true ou false.');
+    if (args.id !== undefined) { if (args.x !== undefined || args.y !== undefined) throw new Error('Use id ou x/y, não os dois.'); return { id: integer('id', 1, 5000), long: args.long === true }; }
+    return { x: integer('x', 0, 10000), y: integer('y', 0, 10000), long: args.long === true };
+  }
+  if (tool === 'phone.type') {
+    if (args.submit !== undefined && typeof args.submit !== 'boolean') throw new Error('Use submit true ou false.');
+    if (typeof args.text !== 'string' || args.text.length > 2000 || /\u0000/.test(args.text)) throw new Error('Texto até 2.000 caracteres.');
+    return { id: integer('id', 1, 5000), text: args.text, submit: args.submit === true };
+  }
+  if (tool === 'phone.scroll') {
+    if (!['up', 'down', 'left', 'right'].includes(args.direction)) throw new Error('Use direction up, down, left ou right.');
+    return { direction: args.direction, ...(args.id !== undefined ? { id: integer('id', 1, 5000) } : {}) };
+  }
+  if (tool === 'phone.open_app') {
+    const app = text('app', 100);
+    if (/[\n\r/\\]/.test(app)) throw new Error('Informe o nome do app (como aparece no celular) ou o pacote, como com.android.settings.');
+    return { app };
+  }
+  if (tool === 'phone.back') {
+    if (args.home !== undefined && typeof args.home !== 'boolean') throw new Error('Use home true ou false.');
+    return { home: args.home === true };
+  }
+  if (tool === 'phone.fill_code') {
+    const where = args.where === undefined ? 'phone' : args.where;
+    if (!['phone', 'browser'].includes(where)) throw new Error('Use where phone (outro app) ou browser (o navegador do bot no celular).');
+    return { from: text('from', 100), id: integer('id', 1, where === 'browser' ? 100000 : 5000), where };
+  }
   if (tool === 'routine.create') return routineArguments(args);
   if (tool === 'connector.permission') {
     if (typeof args.tool_name !== 'string' || !args.tool_name || args.tool_name.length > 200) throw new Error('Pedido de permissão inválido.');

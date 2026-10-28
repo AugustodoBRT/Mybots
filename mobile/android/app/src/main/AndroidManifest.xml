@@ -69,6 +69,12 @@
         <action android:name="android.service.notification.NotificationListenerService"/>
       </intent-filter>
     </service>
+    <service android:name="expo.modules.termuxbridge.MyBotsAccess" android:exported="true" android:label="MyBots: controle do celular" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService"/>
+      </intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/mybots_access"/>
+    </service>
     <service android:name="expo.modules.termuxbridge.KeepAliveService" android:exported="false" android:foregroundServiceType="specialUse">
       <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Mantém o supervisor local dos bots e suas rotinas agendadas funcionando com a tela apagada."/>
     </service>
@@ -81,6 +87,13 @@
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/mybots_widget_info"/>
+    </receiver>
+    <receiver android:name="expo.modules.termuxbridge.PhoneControlReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="com.mybots.app.PHONE_STOP"/>
+        <action android:name="com.mybots.app.PHONE_TAKE"/>
+        <action android:name="com.mybots.app.PHONE_RETURN"/>
+      </intent-filter>
     </receiver>
     <receiver android:name="expo.modules.termuxbridge.KeepAliveReceiver" android:exported="true">
       <intent-filter>

@@ -7,11 +7,13 @@ import { C, F, Icon } from './theme';
 import { plainText } from './markdown';
 import { column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 const when = value => new Date(value).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-// The three access levels, like Claude Code's permission modes; switches stay under "Ajustes finos".
+// The access levels, like Claude Code's permission modes; switches stay under "Ajustes finos". Livre is chosen only
+// here, on the phone, after its warning.
 export const ACCESS = [
   ['basic', 'Pouco acesso', 'Conversa, memória, pendências, anexos e rotinas. Nada do celular nem das suas contas.'],
   ['ask', 'Médio', 'Pode tudo, mas pergunta na primeira vez que precisar (ler notificações, mandar SMS…). Responda “Sempre permitir” e ele não pergunta de novo.'],
-  ['full', 'Acesso total', 'Faz tudo sem perguntar: ler notificações, e-mails, SMS, mandar notificações e mensagens, agir nos apps da sua conta.']
+  ['full', 'Acesso total', 'Faz tudo sem perguntar: ler notificações, e-mails, SMS, mandar notificações e mensagens, agir nos apps da sua conta.'],
+  ['free', 'Livre', 'Faz praticamente tudo o que você faz no celular: mexe nos outros apps, usa o terminal do Termux e não pede licença, só o que estiver em “Sempre perguntar”. Tudo fica na Atividade e o botão Parar fica sempre na tela.']
 ];
 // Where the bot lives, like a person who is online only where they are.
 export const HOMES = [
@@ -40,7 +42,7 @@ function useKeyboardRoom(scroll) {
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
 const colorNames = { green: 'Menta', blue: 'Céu', purple: 'Lavanda', orange: 'Pêssego' };
-export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings }) {
+export default function BotProfile({ visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: formFor(bot), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -91,16 +93,28 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
           <Text style={s.label}>INTELIGÊNCIA</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider) => setForm(old => ({ ...old, model, reasoningEffort, provider }))} />
           {phone && <><Text style={s.label}>ONDE ELE VIVE</Text>{HOMES.map(([key, title, detail]) => radio(form.home === key, title, detail, () => field('home', key), { disabled: saving || active }))}
             {form.home !== 'phone' && !nodes.length ? <Text style={s.hint}>Nenhum computador conectado ainda. Até ele chegar, {form.home === 'pc' ? 'as mensagens para este bot ficam esperando' : 'este bot trabalha no celular'}.</Text> : null}</>}
-          {phone && !bot && <><Text style={s.label}>NÍVEL DE ACESSO</Text>{ACCESS.map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
+          {phone && !bot && <><Text style={s.label}>NÍVEL DE ACESSO</Text>{ACCESS.filter(([key]) => key !== 'free').map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
           {active && <Text style={s.hint}>Aguarde ou cancele a tarefa para salvar o perfil.</Text>}
           <Pressable accessibilityRole="button" disabled={!canSave} onPress={() => act(() => onSave(form))} style={({ pressed }) => [s.primary, !canSave && s.disabled, pressed && s.pressed]}>
             <Icon name={bot ? 'check' : 'spark'} size={19} color={C.mintInk} stroke={2.4} /><Text style={s.primaryText}>{saving ? 'Salvando…' : bot ? 'Salvar alterações' : 'Criar meu bot'}</Text></Pressable>
           {bot && <Pressable accessibilityRole="button" disabled={saving || active} onPress={onDelete} style={s.delete}><Icon name="trash" size={16} color={C.red} /><Text style={s.deleteText}>Apagar bot e conversa</Text></Pressable>}
         </>}
         {tab === 'tools' && <><Text style={s.sectionTitle}>Quanto {bot?.name} pode fazer?</Text>
-          {ACCESS.map(([key, title, detail]) => radio(bot?.access === key, title, detail, () => act(() => onAccess(key)), { warn: key === 'full', disabled: saving || active }))}
+          {ACCESS.filter(([key]) => key !== 'free' || freeChoice || bot?.access === 'free').map(([key, title, detail]) => radio(bot?.access === key, title, detail, () => act(() => onAccess(key)), { warn: key === 'full' || key === 'free', disabled: saving || active || key === 'free' && !freeChoice }))}
+          {!freeChoice && bot?.access !== 'free' && phone ? <Text style={s.hint}>O nível Livre se escolhe no app do celular.</Text> : null}
           {!bot?.access ? <Text style={s.hint}>Este bot usa a configuração personalizada antiga (os interruptores abaixo). Escolha um nível para simplificar.</Text> : null}
           {active ? <Text style={s.hint}>Aguarde a resposta terminar para mudar o nível.</Text> : null}
+          {bot?.access === 'free' ? <>
+            {PhoneControl ? <PhoneControl /> : null}
+            <Text style={s.label}>SEMPRE PERGUNTAR (NÍVEL LIVRE)</Text>
+            <View style={s.group}>
+              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>No Livre, só o que estiver ligado aqui pede sua aprovação, num cartão como o de sempre. Vale para todos os bots no nível Livre e só muda por aqui, no app; o bot não consegue mudar. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA continua com você, e o MyBots, instalar apps e dar permissões nunca são feitos por bots.{bot.provider !== 'claude' ? ' No Codex, o MyBots não consegue perguntar comando a comando no Termux: com “Comandos no Termux” ligado, ele fica sem terminal no celular, e “Comandos perigosos” vale só como instrução.' : ''}</Text>
+              {(freeSettings?.options || []).map((item, index, list) => <View key={item.key} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={s.permissionCopy}><Text style={s.itemTitle}>{item.label}</Text>{item.detail ? <Text style={s.hint}>{item.detail}</Text> : null}</View>
+                {toggle(item.ask, on => act(() => onFreeAsk(item.key, on)), item.label)}
+              </View>)}
+              {!freeSettings ? <Text style={[s.hint, { padding: 14 }]}>Carregando…</Text> : null}
+            </View></> : null}
           {phone && bot?.provider === 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
             <Text style={s.label}>APPS DA SUA CONTA DO CLAUDE</Text>
             <View style={s.group}>
@@ -149,7 +163,7 @@ export default function BotProfile({ visible, bot, models, defaultSelection, gra
           {(fine || !bot?.access) && <View style={s.group}><Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Cada interruptor vale por cima do nível. Desligar uma ferramenta também cancela a aprovação que estiver aberta.</Text>
             {grants.map((grant, index) => <View key={grant.name} style={[s.permission, index === grants.length - 1 && { borderBottomWidth: 0 }]}><View style={s.permissionCopy}><Text style={s.itemTitle}>{grant.label}</Text><Text style={s.hint}>{grant.description}</Text>{bot?.access ? <Text style={[s.stateTag, grant.state === 'allow' ? s.stateAllow : grant.state === 'ask' ? s.stateAsk : s.stateDeny]}>{STATE[grant.state]}</Text> : null}</View>
               {toggle(bot?.access ? grant.state === 'allow' : grant.allowed, allowed => act(() => onGrant(grant.name, allowed)), grant.label)}</View>)}</View>}
-          <View style={s.security}><Icon name="shield" size={20} color={C.mint} /><View style={{ flex: 1 }}><Text style={s.itemTitle}>Um bot não herda acessos de outro.</Text><Text style={s.hint}>Sem terminal e sem ler os arquivos do celular. Cada ação fica registrada na Atividade.</Text></View></View></>}
+          <View style={s.security}><Icon name="shield" size={20} color={C.mint} /><View style={{ flex: 1 }}><Text style={s.itemTitle}>Um bot não herda acessos de outro.</Text><Text style={s.hint}>{bot?.access === 'free' ? 'No Livre, só este bot ganha o terminal do Termux e o controle do celular; senhas, cartões, códigos e os arquivos do supervisor continuam fora do alcance dele.' : 'Sem terminal e sem ler os arquivos do celular.'} Cada ação fica registrada na Atividade.</Text></View></View></>}
         {tab === 'routines' && <><Text style={s.sectionTitle}>O que {bot?.name} faz sozinho</Text><Text style={s.hint}>Peça na conversa, por exemplo: “todo dia às 8h me resume os e-mails” ou “quando chegar notificação do SIGAA, anote a atividade”. Você aprova cada rotina antes de ela existir.</Text>
           {routines.length ? routines.map(item => <View key={item.id} style={s.item}>
             <View style={s.routineHead}><View style={s.itemIcon}><Icon name={item.trigger?.type === 'notification' ? 'bell' : 'clock'} size={17} color={item.enabled ? C.sky : C.faint} /></View><Text style={[s.itemTitle, { flex: 1 }]}>{item.title}</Text>{toggle(item.enabled, enabled => act(() => onRoutine('routine.update', item.id, { enabled })), `Rotina ${item.title} ${item.enabled ? 'ativa' : 'pausada'}`)}</View>

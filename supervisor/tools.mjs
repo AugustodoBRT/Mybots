@@ -32,9 +32,10 @@ const PHONE_PROTECTED = /(^|[\s/~'"=])\.mybots(\/|\s|$|['"])|mybots-supervisor|\
 
 const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
   'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina',
-  'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva',
+  'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva', 'wallet/pay': 'Pagar com a carteira',
   'termux': 'Rodar um comando no Termux', 'phone/act': 'Mexer em outro app do celular', 'phone.open_app': 'Abrir um app no celular', 'phone.fill_code': 'Preencher um código de verificação' };
-const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva',
+const money = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${String(cents % 100).padStart(2, '0')}`;
+const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva', 'browser.pay': 'Navegador: pagar com a carteira',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 function approvalText(tool, args, app) {
@@ -46,6 +47,7 @@ function approvalText(tool, args, app) {
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
   if (tool === 'browser/submit') return { title: args.action === 'drag' ? 'Arrastar um item no navegador' : APPROVAL_TITLES[tool], summary: [args.action === 'drag' && `De (${args.x}, ${args.y}) para (${args.toX}, ${args.toY})`, args.label && `Alvo: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'browser/login') return { title: APPROVAL_TITLES[tool], summary: [args.page && `Site: ${args.page}`, 'O MyBots preenche a senha que você salvou; o bot não vê a senha.'].filter(Boolean).join('\n') };
+  if (tool === 'wallet/pay') return { title: `Pagar ${money(args.total)} com a carteira`, summary: [`Loja: ${args.store}`, `Itens: ${args.items.join(', ')}`, `Categoria: ${args.category}`, args.page && `Página: ${args.page}`, 'O app confere suas regras e o total da página e preenche o cartão; o bot não vê o cartão.'].filter(Boolean).join('\n') };
   if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'skill.propose') return { title: 'Instalar uma habilidade no celular', summary: args.summary };
   if (tool === 'phone/act' || tool === 'phone.open_app' || tool === 'phone.fill_code' || tool === 'termux') return { title: APPROVAL_TITLES[tool], summary: args.summary };
@@ -71,7 +73,7 @@ const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 's
 
 export class Tools {
   constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null } = {}) {
-    this.db = db; this.email = email; this.device = device; this.changed = changed; this.notify = notify; this.approvalMs = approvalMs; this.runs = new Map(); this.waiting = new Map();
+    this.db = db; this.email = email; this.device = device; this.changed = changed; this.notify = notify; this.approvalMs = approvalMs; this.runs = new Map(); this.waiting = new Map(); this.paying = new Map();
     this.items = new Items(db, { changed });
     // Files a run sends to the person, attached to the bot's reply when the turn ends.
     this.outgoing = new Map();
@@ -177,8 +179,18 @@ export class Tools {
   /** The Livre level's "sempre perguntar" list: one for all Livre bots, changed only from the app (free.set). */
   freeList() {
     const saved = this.db.get("SELECT value FROM metadata WHERE key='free.ask'")?.value;
-    if (saved === undefined) return [...FREE_ASK_DEFAULT];
-    try { const list = JSON.parse(saved); return validFreeAsk(list) ? list : [...FREE_ASK_DEFAULT]; } catch { return [...FREE_ASK_DEFAULT]; }
+    let list;
+    try { list = saved === undefined ? [...FREE_ASK_DEFAULT] : JSON.parse(saved); } catch { list = [...FREE_ASK_DEFAULT]; }
+    if (!validFreeAsk(list)) list = [...FREE_ASK_DEFAULT];
+    // Existing choices predate the wallet. Enable its new default once, without undoing later choices.
+    if (!this.db.get("SELECT value FROM metadata WHERE key='free.wallet_default'")) {
+      if (!list.includes('wallet/pay')) list.push('wallet/pay');
+      this.db.transaction(() => {
+        this.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(list));
+        this.db.run("INSERT INTO metadata VALUES('free.wallet_default','1') ON CONFLICT(key) DO NOTHING");
+      });
+    }
+    return list;
   }
   freeAsk(key) { return this.freeList().includes(key); }
   freeSettings() { const list = this.freeList(); return { options: FREE_ASK_OPTIONS.map(([key, label, detail]) => ({ key, label, detail, ask: list.includes(key) })) }; }
@@ -569,7 +581,7 @@ export class Tools {
         }
       };
       const reading = ['browser.read','browser.find','browser.screenshot','browser.wait','browser.ask_user'].includes(tool) || tool === 'browser.tabs' && ['list','switch'].includes(args.action) || tool === 'browser.act' && (['hover','scroll'].includes(args.action) || args.action === 'key' && ['Tab','Shift+Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(args.key));
-      if (mine && !reading && tool !== 'browser.upload') {
+      if (mine && !reading && tool !== 'browser.upload' && tool !== 'browser.pay') {
         const write = this.gate(bot, 'browser', { writeKey: 'browser/mine/write', legacyAsk: true, freeKey: 'browser/submit' });
         if (write.ask && !await this.ask(run, 'browser/mine/write', { summary: `Meu Chrome · ${label}\n${JSON.stringify(args).slice(0, 1500)}` }, hash, null, write.always)) throw new Error(refused);
       }
@@ -601,6 +613,14 @@ export class Tools {
         if (write.ask && !(await this.ask(run, 'browser/login', { page: this.browser.pages.get(run.botId)?.url || '' }, hash, null, write.always))) throw new Error(refused);
         this.requireGrant(run, 'browser');
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'login'), next: 'Use browser_read para confirmar que entrou. Se a página pedir código ou CAPTCHA, use browser_ask_user.' };
+      } else if (tool === 'browser.pay') {
+        // Every purchase asks below Livre; on Livre, unless "Pagar com a carteira" was taken off the list. Never "Sempre permitir".
+        if (bot.access !== 'free' || this.freeAsk('wallet/pay')) {
+          if (!(await this.ask(run, 'wallet/pay', { ...args, page: this.browser.pages.get(run.botId)?.url || '' }, hash, null, null))) throw new Error(refused);
+        }
+        this.requireGrant(run, 'browser');
+        result = { untrusted: true, notice: BROWSER_NOTICE, ...await this.pay(run, bot, args, command), next: 'O cartão está no formulário. Confira com browser_read e clique no botão de finalizar a compra. Se o banco pedir confirmação (3-D Secure, app do banco), use browser_ask_user.' };
+        this.db.record('wallet_pay', `${bot.name} pagou ${money(args.total)} em ${args.store}: ${args.items.join(', ')}`.slice(0, 300), run.botId, run.taskId);
       } else if (tool === 'browser.upload') {
         // Handing a file to a site always asks, on every level: the card names the file and the site.
         if (!this.attachments) throw new Error('Os arquivos não estão disponíveis.');
@@ -624,6 +644,50 @@ export class Tools {
     } catch (error) {
       this.db.record('tool_denied', `${label}: ${error.message}`.slice(0, 300), run.botId, run.taskId); this.changed('activity.new'); throw error;
     }
+  }
+  /**
+   * browser_pay. On the phone, the app reads the checkout, checks the rules and fills the card itself. On the computer,
+   * its browser process reads the checkout and gets the card from the app encrypted to a one-time key: only ciphertext
+   * passes here. Either way the purchase is booked in the app before the card leaves its vault.
+   */
+  async pay(run, bot, args, command) {
+    const intent = { store: args.store, items: args.items, category: args.category, total: args.total };
+    if (!this.browser.available()) throw new Error('A carteira fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots.');
+    this.paying.set(run.botId, { taskId: run.taskId, run, at: Date.now() });
+    if (run.lane !== 'pc') {
+      try { return await command(run.botId, 'pay', { intent, botName: bot.name }); } catch (error) { this.paying.delete(run.botId); throw error; }
+    }
+    let id = null;
+    try {
+      const checkout = await this.pcCommand(run, 'browser.pay', {});
+      const { id: booked, ...envelope } = await this.browser.queue({ botId: run.botId, op: 'pcPay', args: { url: checkout.url, pageTotal: checkout.pageTotal, publicKey: checkout.publicKey, challenge: checkout.challenge, intent, botName: bot.name }, signal: run.signal });
+      id = booked;
+      this.requireGrant(run, 'browser');
+      if (this.browser.control.get(run.botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot.');
+      const filled = await this.pcCommand(run, 'browser.pay_fill', envelope);
+      const shot = await this.pcCommand(run, 'browser.screenshot', {}).catch(() => null);
+      await this.browser.queue({ botId: run.botId, op: 'payDone', args: { id, ok: true, image: typeof shot?.image === 'string' ? shot.image : '' } }).catch(() => {});
+      return { ...filled, total: money(args.total) };
+    } catch (error) {
+      this.paying.delete(run.botId);
+      await this.pcCommand(run, 'browser.pay_clear', {}).catch(() => {});
+      if (id) await this.browser.queue({ botId: run.botId, op: 'payDone', args: { id, ok: false, error: error.message } }).catch(() => {});
+      throw error;
+    }
+  }
+  /** Congelar carteira (app or notice): the card leaves the computer's checkouts and the paying turns stop at once. */
+  async walletFrozen() {
+    // Only turns still running: a finished turn's checkout was already cleared when it ended.
+    const live = new Set(this.runs.values());
+    const recent = [...this.paying].filter(([, item]) => Date.now() - item.at < 15 * 60000 && live.has(item.run));
+    this.paying.clear();
+    for (const [botId, { taskId, run }] of recent) {
+      if (run.lane === 'pc') await this.pcCommand(run, 'browser.pay_clear', {}).catch(() => {});
+      this.db.record('wallet_frozen', 'Carteira congelada: o pagamento foi interrompido.', botId, taskId);
+      await this.cancelTask?.(taskId);
+    }
+    this.changed('activity.new');
+    return { frozen: true, stopped: recent.length };
   }
   /** The browser's timeline: the step in words and a small picture of the page right after it. A missing picture never fails the step. */
   async browserStep(run, tool, args, result, target, command) {

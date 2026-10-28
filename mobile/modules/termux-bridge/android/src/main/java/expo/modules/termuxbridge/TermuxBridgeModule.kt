@@ -113,6 +113,20 @@ class TermuxBridgeModule : Module() {
         manager.requestPinAppWidget(ComponentName(context, MyBotsWidget::class.java), null, null)
     }
     // Saved site logins (Ajustes → Senhas). The list never includes the passwords.
+    AsyncFunction("cardLastFour") { PasswordVault.cardLastFour(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
+    AsyncFunction("cardEditor") { promise: Promise ->
+      val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para cadastrar o cartão.", null)
+      CardEditor.show(activity, promise)
+    }
+    AsyncFunction("cardDelete") { PasswordVault.deleteCard(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")); true }
+    AsyncFunction("walletRules") { WalletGuard.rules(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")).toString() }
+    AsyncFunction("walletFreeze") { WalletPay.freeze(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")); true }
+    AsyncFunction("walletPurchases") { WalletPay.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
+    AsyncFunction("walletDismiss") { id: String -> WalletPay.dismiss(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id); true }
+    AsyncFunction("walletRulesEditor") { promise: Promise ->
+      val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para editar a carteira.", null)
+      WalletRulesEditor.show(activity, promise)
+    }
     AsyncFunction("passwordsList") { PasswordVault.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
     AsyncFunction("passwordSave") { site: String, username: String, password: String, bots: List<String>? ->
       PasswordVault.save(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), site, username, password, bots)

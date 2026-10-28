@@ -153,7 +153,7 @@ test('saved PC login: one-use RSA-OAEP/AES-GCM envelope, URL and challenge check
   const data = Buffer.concat([cipher.update(JSON.stringify({ url, challenge, username: 'pessoa', password: 'senha-só-no-navegador' })), cipher.final()]);
   const envelope = { key: publicEncrypt({ key: publicKey, oaepHash: 'sha256' }, key).toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') };
   const session = new BrowserSession('/unused'); let received;
-  session.context = {}; session.page = { url: () => url, title: async () => 'senha-só-no-navegador', evaluate: async (fn, values) => { received = values; } };
+  session.context = {}; session.page = { url: () => url, frames: () => [], title: async () => 'senha-só-no-navegador', evaluate: async (fn, values) => { received = values; } };
   session.login = { privateKey, url, challenge, until: Date.now() + 10000 };
   const result = await session.command('login_fill', envelope);
   assert.equal(received.password, 'senha-só-no-navegador'); assert.equal(result.title, '[senha protegida]'); assert.doesNotMatch(JSON.stringify(result), /senha-só|pessoa|privateKey/);

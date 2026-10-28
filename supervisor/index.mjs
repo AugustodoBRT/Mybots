@@ -199,7 +199,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;
     attachments.pdf = args => browser.device('pdfRead', args);
     // The phone's other apps (Livre): Parar cancels the controlling turn; the app's own stop flag acts first.
-    const phone = new Phone(browser, { changed: broadcast, record: (kind, detail, botId, taskId) => { db.record(kind, detail, botId, taskId); broadcast('activity.new'); }, cancel: taskId => queue.cancel(taskId).catch(() => {}) }); tools.phone = phone;
+    const phone = new Phone(browser, { changed: broadcast, record: (kind, detail, botId, taskId) => { db.record(kind, detail, botId, taskId); broadcast('activity.new'); }, cancel: taskId => queue.cancel(taskId).catch(() => {}) }); tools.phone = phone; tools.cancelTask = taskId => queue.cancel(taskId).catch(() => {});
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock }); tools.routines = routines;
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
@@ -617,12 +617,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         request.on('close', cancel);
         return;
       }
-      // MyBotsAccess on the phone: the overlay's and the notice's Parar, Assumir and Devolver.
+      // MyBotsAccess on the phone: the overlay's and the notice's Parar, Assumir and Devolver, and Congelar carteira.
       if (request.method === 'POST' && request.url === '/device/phone') {
         try {
           let raw = ''; for await (const chunk of request) { raw += chunk; if (raw.length > 2000) throw new Error('size'); }
           const { event, source } = JSON.parse(raw);
-          const result = event === 'stop' ? await phone.stop(source === 'notice' ? 'notice' : 'overlay') : event === 'take' || event === 'return' ? await phoneControl(event === 'take' ? 'person' : 'bot', 'native') : null;
+          const result = event === 'stop' ? await phone.stop(source === 'notice' ? 'notice' : 'overlay') : event === 'take' || event === 'return' ? await phoneControl(event === 'take' ? 'person' : 'bot', 'native') : event === 'walletFrozen' ? await tools.walletFrozen() : null;
           if (!result) throw new Error('event');
           response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(result));
         } catch { if (!response.headersSent) response.writeHead(400).end(); }

@@ -12,6 +12,7 @@ import java.security.KeyFactory
 import java.security.SecureRandom
 import java.security.spec.X509EncodedKeySpec
 import java.security.spec.MGF1ParameterSpec
+import java.util.Calendar
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.GCMParameterSpec
@@ -25,6 +26,7 @@ import javax.crypto.spec.PSource
  */
 internal object PasswordVault {
   private const val KEY = "entries"
+  private const val CARD_KEY = "wallet_card"
   @Volatile var offerListener: ((Map<String, Any?>) -> Unit)? = null
   // A login the person just typed in a bot's browser ("Assumir"), waiting for "Salvar?" in the chat.
   @Volatile private var offer: JSONObject? = null
@@ -37,6 +39,44 @@ internal object PasswordVault {
   private fun entries(context: Context) = try { JSONArray(prefs(context).getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
   private fun write(context: Context, list: JSONArray) {
     if (!prefs(context).edit().putString(KEY, list.toString()).commit()) throw IllegalStateException("Não consegui guardar a senha protegida.")
+  }
+
+  /** Native-only card storage. Never expose these arguments through the JS bridge or supervisor. */
+  fun saveCard(context: Context, number: String, expiryMonth: Int, expiryYear: Int, cvv: String, name: String, billingAddress: String) {
+    if (!number.matches(Regex("[0-9 -]+"))) throw IllegalArgumentException("Número de cartão inválido.")
+    val digits = number.filter { it in '0'..'9' }
+    if (digits.length !in 12..19 || !validCardNumber(digits)) throw IllegalArgumentException("Número de cartão inválido.")
+    val now = Calendar.getInstance()
+    if (expiryMonth !in 1..12 || expiryYear !in now.get(Calendar.YEAR)..9999 ||
+      (expiryYear == now.get(Calendar.YEAR) && expiryMonth < now.get(Calendar.MONTH) + 1)) throw IllegalArgumentException("Validade de cartão inválida.")
+    if (!cvv.matches(Regex("[0-9]{3,4}"))) throw IllegalArgumentException("Código de segurança inválido.")
+    if (name.isBlank() || name.length > 200 || billingAddress.isBlank() || billingAddress.length > 500) throw IllegalArgumentException("Informe o nome e o endereço de cobrança.")
+    val card = JSONObject().put("number", digits).put("expiryMonth", expiryMonth).put("expiryYear", expiryYear)
+      .put("cvv", cvv).put("name", name.trim()).put("billingAddress", billingAddress.trim())
+    if (!prefs(context).edit().putString(CARD_KEY, card.toString()).commit()) throw IllegalStateException("Não consegui guardar o cartão protegido.")
+  }
+
+  private fun validCardNumber(digits: String): Boolean {
+    var sum = 0
+    for ((index, char) in digits.reversed().withIndex()) {
+      var value = char - '0'
+      if (index % 2 == 1) { value *= 2; if (value > 9) value -= 9 }
+      sum += value
+    }
+    return sum % 10 == 0
+  }
+
+  /** Only this non-sensitive suffix may be displayed outside the native vault. */
+  fun cardLastFour(context: Context): String? {
+    val stored = prefs(context).getString(CARD_KEY, null) ?: return null
+    return JSONObject(stored).getString("number").takeLast(4)
+  }
+
+  /** For WalletPay only, after the rules allowed a purchase: the card goes into a checkout field or encrypted to the computer. */
+  internal fun cardForPayment(context: Context): JSONObject? = prefs(context).getString(CARD_KEY, null)?.let { JSONObject(it) }
+
+  fun deleteCard(context: Context) {
+    if (!prefs(context).edit().remove(CARD_KEY).commit()) throw IllegalStateException("Não consegui excluir o cartão protegido.")
   }
 
   /** "https://sig.cefetmg.br/sigaa/x" or "sig.cefetmg.br" → "sig.cefetmg.br". */

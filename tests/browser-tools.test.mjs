@@ -66,12 +66,21 @@ test('Chrome: hover, scroll, drag, find, same-origin frames, marks, popup tabs a
   await s.view(false);
 });
 
-test('Android embeds the same reader, target inspection and screenshot marks as Chrome', async () => {
+test('Android embeds the browser reader and inspection with additional card protection', async () => {
   const { readFile } = await import('node:fs/promises');
   const { readPage, inspectPoint, markPage } = await import('../supervisor/browser-page.mjs');
   const native = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
   for (const [name, fn] of [['READ_PAGE', readPage], ['POINT_JS', inspectPoint], ['MARK_JS', markPage]]) {
-    const embedded = native.split(`private val ${name} = """`)[1].split('""".trimIndent()')[0].replaceAll("${'$'}", () => '$');
+    let embedded = native.split(`private val ${name} = """`)[1].split('""".trimIndent()')[0].replaceAll("${'$'}", () => '$');
+    if (name === 'READ_PAGE') {
+      assert.match(embedded, /el\.type === 'password' \|\| \(\$CARD_JS\)\(el\)/);
+      embedded = embedded.replace("el.type === 'password' || ($CARD_JS)(el)", "el.type === 'password'");
+    }
+    if (name === 'POINT_JS') {
+      assert.match(embedded, /\(\$CARD_JS\)\(el\) \? 'campo protegido'/);
+      embedded = embedded.replace("el && ($CARD_JS)(el) ? 'campo protegido' : (el?.getAttribute('aria-label') || el?.textContent || el?.name || '')", "el?.getAttribute('aria-label') || el?.textContent || el?.name || ''")
+        .replace("el?.type === 'password' || el && ($CARD_JS)(el)", "el?.type === 'password'");
+    }
     assert.equal(embedded, fn.toString());
   }
   const action = native.split('private val ACT_JS = """')[1].split('""".trimIndent()')[0];
@@ -81,9 +90,43 @@ test('Android embeds the same reader, target inspection and screenshot marks as 
   assert.match(JSON.parse(runInNewContext(`(${action})({ action: 'click', x: 10, y: 10 })`, { document })).error, /só quando o bot responde pelo computador/);
   const click = native.split('private val CLICK_JS = """')[1].split('""".trimIndent()')[0].replace('$FIND', 'const el = document.elementFromPoint(0, 0);');
   assert.match(JSON.parse(runInNewContext(`(${click})(1)`, { document })).error, /só quando o bot responde pelo computador/);
-  const inspect = native.split('private val INSPECT_JS = """')[1].split('""".trimIndent()')[0].replace('$FIND', '');
+  const card = (await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8')).trim();
+  const { CARD_FIELD_SOURCE } = await import('../pc/browser-worker.mjs');
+  assert.equal(CARD_FIELD_SOURCE, card);
+  assert.match(native, /context\.assets\.open\("card-field\.js"\)/);
+  const inspect = native.split('private val INSPECT_JS = """')[1].split('""".trimIndent()')[0].replace('$FIND', '').replaceAll('$CARD_JS', () => card);
   const result = runInNewContext(`(${inspect})(1)`, { el: { tagName: 'INPUT', value: 'senha-protegida', placeholder: 'Senha', getAttribute: key => key === 'type' ? 'password' : '' }, location: { href: 'https://example.com' } });
   assert.equal(JSON.parse(result).kind, 'password'); assert.doesNotMatch(result, /senha-protegida/);
+  const cardResult = runInNewContext(`(${inspect})(1)`, { el: { tagName: 'INPUT', value: '987', placeholder: '', getAttribute: key => key === 'autocomplete' ? 'cc-csc' : '' }, location: { href: 'https://example.com' } });
+  assert.equal(JSON.parse(cardResult).kind, 'password'); assert.doesNotMatch(cardResult, /987/);
 
 
+});
+
+test('Android and PC share conservative card fields and mask frames only on checkout pages', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  const { CARD_FIELD_SOURCE } = await import('../pc/browser-worker.mjs');
+  const native = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
+  const card = runInNewContext(`(${CARD_FIELD_SOURCE})`);
+  const element = (id = '', autocomplete = '', value = '') => ({ tagName: 'INPUT', id, name: '', placeholder: '', value, getAttribute: key => key === 'autocomplete' ? autocomplete : '' });
+  for (const id of ['cardapio-busca', 'discard-reason', 'scorecard', 'credit-simulator', 'gift-card-code', 'billing-name', 'billing-address']) assert.equal(card(element(id)), '', id);
+  for (const [id, autocomplete] of [['card-number', ''], ['card_cvv', ''], ['', 'cc-number'], ['', 'cc-csc']]) assert.ok(card(element(id, autocomplete)), `${id} ${autocomplete}`);
+  const type = native.split('private val TYPE_JS = """')[1].split('""".trimIndent()')[0].replace('$FIND', '').replaceAll('$CARD_JS', () => CARD_FIELD_SOURCE);
+  for (const id of ['cardapio-busca', 'discard-reason', 'scorecard', 'credit-simulator', 'gift-card-code', 'billing-name', 'billing-address']) {
+    const el = element(id); el.focus = () => {}; el.scrollIntoView = () => {}; el.dispatchEvent = () => {}; el.tagName = 'INPUT';
+    const context = { el, Event: class {}, InputEvent: class {}, HTMLInputElement: class { set value(v) { this._value = v; } } };
+    const result = JSON.parse(runInNewContext(`(${type})({ text: 'livre' })`, context));
+    assert.ok(!result.error, `${id}: ${result.error}`); assert.equal(el._value, 'livre');
+  }
+  const cvv = element('', 'cc-csc', '987');
+  assert.match(JSON.parse(runInNewContext(`(${type})({ text: '456' })`, { el: cvv })).error, /protegidos/);
+  const mask = native.split('private val MASK_JS get() = """')[1].split('""".trimIndent()')[0].replaceAll('$CARD_JS', () => CARD_FIELD_SOURCE).replaceAll('$MARK_JS', '() => {}').replaceAll('$READ_PAGE', '() => ({elements:[]})');
+  const box = el => Object.assign(el, { getBoundingClientRect: () => ({ x: 1, y: 2, width: 3, height: 4 }) });
+  const iframe = src => box({ tagName: 'IFRAME', src });
+  const calc = (fields, frames) => JSON.parse(runInNewContext(`(${mask})({marks:false,codes:[]})`, { URL, document: { baseURI: 'https://loja.com/', querySelectorAll: selector => selector === 'iframe' ? frames : fields } })).boxes.length;
+  assert.equal(calc([], [iframe('https://youtube.com/embed/video'), iframe('https://maps.google.com/map')]), 0);
+  assert.equal(calc([], [iframe('https://js.stripe.com/v3/checkout')]), 1);
+  assert.equal(calc([box(element('', 'cc-number'))], [iframe('https://youtube.com/embed/video')]), 2);
+  assert.equal(calc([], [iframe('https://stripe.com.evil.example/embed')]), 0);
 });

@@ -295,7 +295,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
           const mainChrome = browserMode(run.bot) === 'claude';
           const chrome = mainChrome && message.op === 'chrome.begin';
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|thumb)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           // Only the screen and the mouse have one pilot at a time; each bot's browser is its own, so they run side by side.
           if (isDesktop) { if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.'); owner = run; }
@@ -332,7 +332,11 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         send({ type: 'failed', id: message.id, error: controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
       } finally {
         runs.delete(message.id); controls.delete(run); if (owner === run) owner = null;
-        if (!controller.signal.aborted && (browser.running ? browser.running(run.bot.id) : browser.workers?.has(run.bot.id))) await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
+        // A login or payment still pending ends with the turn, and a card left in a checkout's fields is cleared.
+        if (!controller.signal.aborted && (browser.running ? browser.running(run.bot.id) : browser.workers?.has(run.bot.id))) {
+          await browser.command(run.bot.id, 'login_cancel', {}, controller.signal).catch(() => {});
+          await browser.command(run.bot.id, 'pay_clear', {}, controller.signal).catch(() => {});
+        }
         controller.abort('finished');
       }
     });

@@ -3,6 +3,8 @@ import { generateKeyPairSync, randomBytes, privateDecrypt, createDecipheriv } fr
 import { lookup } from 'node:dns/promises';
 import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/browser-page.mjs';
 import { viewSize } from '../supervisor/browser-frame.mjs';
+import { redactCardNumbers } from '../supervisor/card-pan.mjs';
+import { readCheckoutTotal } from '../supervisor/wallet-checkout.mjs';
 import { safeUrl, stepCaption, BLOCKED } from '../supervisor/browser.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
@@ -10,7 +12,14 @@ import { join, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
-// Keep password fields and their values out of reads; screenshots mask them as well.
+// The WebView reads the same function from this bundled asset.
+export const CARD_FIELD_SOURCE = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8').trim();
+const CARD_FILL_SOURCE = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-fill.js', import.meta.url), 'utf8').trim().replace('__MYBOTS_CARD_FIELD__', CARD_FIELD_SOURCE);
+// Payment processors whose card frames may receive the card, besides the checkout's own site (same list as the phone).
+const PROCESSORS = ['stripe.com', 'stripe.network', 'mercadopago.com', 'mercadopago.com.br', 'mercadolibre.com', 'adyen.com', 'pagseguro.uol.com.br', 'pagbank.com.br', 'paypal.com', 'braintreegateway.com', 'cielo.com.br', 'getnet.com.br', 'pagar.me', 'checkout.com', 'ebanx.com', 'iugu.com', 'vindi.com.br', 'asaas.com'];
+const cardFrame = (frameUrl, pageHost) => { try { const url = new URL(frameUrl); return url.protocol === 'https:' && (url.hostname === pageHost || PROCESSORS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))); } catch { return frameUrl === 'about:srcdoc' || frameUrl === 'about:blank'; } };
+const CARD_MARK = '[data-mybots-card]';
+
 export async function allowedUrl(value) {
   const url = new URL(safeUrl(value));
   const ips = await lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true });
@@ -96,7 +105,7 @@ const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'Arrow
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true, mode = 'own', connect, botId = basename(profile) } = {}) { this.profile = profile; this.mode = mode; this.botId = botId; this.downloadSerial = 0; this.connect = connect; this.headless = headless; this.login = null; this.secrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
+  constructor(profile, { headless = true, mode = 'own', connect, botId = basename(profile) } = {}) { this.profile = profile; this.mode = mode; this.botId = botId; this.downloadSerial = 0; this.connect = connect; this.headless = headless; this.login = null; this.payment = null; this.secrets = new Set(); this.cardSecrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
     try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
     this.autoReturn = this.siteViews.__autoReturn === true;
   }
@@ -121,7 +130,7 @@ export class BrowserSession {
       page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) (this.cdp || this.device) && this.emitFrame({ loading: true }); });
       page.on('domcontentloaded', () => { if (this.cdp || this.device) this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
-      page.on('framenavigated', frame => { if (frame === page.mainFrame()) this.tabBar().catch(() => {}); });
+      page.on('framenavigated', frame => { if (frame === page.mainFrame() && page === this.page) this.syncCardSite(); if (frame === page.mainFrame()) this.tabBar().catch(() => {}); if (this.cdp && page === this.page) this.maskFields().catch(() => {}); });
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
         this.metrics.get(page)?.detach().catch(() => {}); this.metrics.delete(page);
@@ -240,12 +249,67 @@ export class BrowserSession {
     const { width, height } = this.viewportSize(), { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality });
     return { image: Buffer.from(data, 'base64'), width, height };
   }
-  // Pictures of the page (live view, timeline) show password and code fields as dots.
+  // Pictures of the page (live view, timeline) hide password, code and card fields.
   async maskFields() {
-    for (const frame of this.page.frames()) await frame.evaluate(() => {
-      if (document.querySelector('style[data-mybots-live-mask]')) return;
-      const style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); style.textContent = 'input[type=password],input[autocomplete=one-time-code] { -webkit-text-security:disc!important; text-shadow:none!important; }'; document.documentElement.append(style);
-    }).catch(() => {});
+    for (const frame of this.page.frames()) await frame.evaluate(source => {
+      const cardField = (0, eval)(`(${source})`);
+      const mark = () => {
+        for (const el of document.querySelectorAll('input,textarea,select')) {
+          if (cardField(el)) { if (!el.hasAttribute('data-mybots-card')) el.setAttribute('data-mybots-card', ''); } else if (el.hasAttribute('data-mybots-card')) el.removeAttribute('data-mybots-card');
+        }
+      };
+      let style = document.querySelector('style[data-mybots-live-mask]');
+      if (!style) { style = document.createElement('style'); style.setAttribute('data-mybots-live-mask', ''); document.documentElement.append(style); }
+      style.textContent = 'input[type=password],input[autocomplete=one-time-code] { -webkit-text-security:disc!important; text-shadow:none!important; } [data-mybots-card] { color:transparent!important; background:#000!important; text-shadow:none!important; caret-color:transparent!important; }';
+      mark();
+      if (!document.__mybotsCardObserver) {
+        document.__mybotsCardObserver = new MutationObserver(mark);
+        document.__mybotsCardObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['autocomplete', 'name', 'id', 'aria-label', 'placeholder'] });
+      }
+    }, CARD_FIELD_SOURCE).catch(() => {});
+  }
+  syncCardSite() {
+    let site; try { site = new URL(this.page.url()).origin; } catch { site = ''; }
+    if (this.cardSite !== site) { this.cardSecrets.clear(); this.cardSite = site; }
+  }
+  async rememberCards() {
+    this.syncCardSite();
+    for (const frame of this.page.frames()) {
+      const values = await frame.locator('input,textarea,select').evaluateAll((els, source) => {
+        const cardField = (0, eval)(`(${source})`);
+        return els.map(el => [cardField(el), String(el.value || '')]).filter(([kind, value]) => kind && (kind === 'number' ? value.replace(/\D/g, '').length >= 12 : value.length >= 3)).map(([, value]) => value);
+      }, CARD_FIELD_SOURCE).catch(() => []);
+      for (const value of values) this.cardSecrets.add(value);
+    }
+  }
+  // Read and redact within one browser task, so a changing field cannot slip between reading and collecting its value.
+  async pageData(fn, args) {
+    return this.page.evaluate(({ source, input, cardSource, panSource }) => {
+      const redactCardNumbers = (0, eval)(`(${panSource})`), cardField = (0, eval)(`(${cardSource})`);
+      const values = new Set(), protectedIds = new Set();
+      const collect = doc => {
+        for (const el of doc.querySelectorAll('input,textarea,select')) {
+          const kind = cardField(el), value = String(el.value || '');
+          if (!kind) continue;
+          if (kind === 'number' ? value.replace(/\D/g, '').length >= 12 : value.length >= 3) values.add(value);
+          if (el.dataset.mybotsId) protectedIds.add(Number(el.dataset.mybotsId));
+        }
+        for (const frame of doc.querySelectorAll('iframe')) try { if (frame.contentDocument) collect(frame.contentDocument); } catch {}
+      };
+      collect(document);
+      const result = (0, eval)(`(${source})`)(input);
+      collect(document);
+      const hide = value => {
+        if (typeof value === 'string') {
+          for (const secret of values) value = value.split(secret).join('[cartão protegido]');
+          return redactCardNumbers(value);
+        }
+        if (Array.isArray(value)) return value.map(hide);
+        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, key === 'label' && protectedIds.has(value.id) ? 'Campo de cartão' : hide(item)]));
+        return value;
+      };
+      return hide(result);
+    }, { source: fn.toString(), input: args, cardSource: CARD_FIELD_SOURCE, panSource: redactCardNumbers.toString() });
   }
   /** Where the bot is about to act, for the person watching: a cursor, the element's outline and a caption. */
   async showAction(op, args, target, rect, point) {
@@ -320,7 +384,11 @@ export class BrowserSession {
   }
   redact(value) {
     // Fragments shorter than 4 characters would replace ordinary letters all over URLs, titles and reads.
-    if (typeof value === 'string') { for (const secret of this.secrets) if (secret.length >= 4) value = value.split(secret).join('[senha protegida]'); return value; }
+    if (typeof value === 'string') {
+      for (const secret of this.secrets) if (secret.length >= 4) value = value.split(secret).join('[senha protegida]');
+      for (const secret of this.cardSecrets) value = value.split(secret).join('[cartão protegido]');
+      return redactCardNumbers(value);
+    }
     if (Array.isArray(value)) return value.map(item => this.redact(item));
     if (value && typeof value === 'object' && !Buffer.isBuffer(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, ['image','inputKey'].includes(key) ? item : this.redact(item)]));
     return value;
@@ -331,13 +399,13 @@ export class BrowserSession {
     return page.__mybotsObservation = (async () => {
       await page.exposeBinding('__mybotsFocus', async ({ frame }) => {
         if (page !== this.page || !this.device || page.isClosed()) return;
-        const focus = await frame.evaluate(() => {
+        const focus = await frame.evaluate(source => {
           const el = document.activeElement;
           const active = !!el && (['INPUT','TEXTAREA'].includes(el.tagName) || el.isContentEditable) && !el.disabled && !el.readOnly;
-          const secret = active && (el.type === 'password' || el.autocomplete === 'one-time-code' || /otp|token|code|codigo|código|verification/i.test(el.name + ' ' + el.id + ' ' + el.autocomplete));
+          const secret = active && (el.type === 'password' || el.autocomplete === 'one-time-code' || /otp|token|codigo|código|verification/i.test(el.name + ' ' + el.id + ' ' + el.autocomplete + ' ' + el.getAttribute('aria-label')) || !!(0, eval)(`(${source})`)(el));
           const r = active ? el.getBoundingClientRect() : null;
           return { active, type: active ? el.type || 'text' : '', secret: !!secret, rect: r ? { x:r.x,y:r.y,width:r.width,height:r.height } : null };
-        }).catch(() => ({ active: false, secret: false }));
+        }, CARD_FIELD_SOURCE).catch(() => ({ active: false, secret: false }));
         if (frame !== page.mainFrame() && focus.rect) { const box = await (await frame.frameElement()).boundingBox().catch(() => null); if (box) { focus.rect.x += box.x; focus.rect.y += box.y; } }
         this.focus = focus; this.emitFrame({ focus });
       });
@@ -485,19 +553,21 @@ export class BrowserSession {
   async inspect(id) {
     const target = this.target(id);
     if (await target.count() !== 1) throw new Error('Elemento não encontrado. Use browser_read de novo.');
-    return target.evaluate(el => ({ kind: el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' ? 'submit' : 'field', label: (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.placeholder || el.textContent || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 200), url: location.href }));
+    return target.evaluate((el, source) => ({ kind: el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' ? 'submit' : 'field', label: (0, eval)(`(${source})`)(el) ? 'Campo de cartão' : (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.placeholder || el.textContent || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 200), url: location.href }), CARD_FIELD_SOURCE);
   }
   async command(op, input = {}) {
+    if (this.page && op !== 'login' && op !== 'pay') await this.rememberCards();
     const result = await this.perform(op, input);
-    if (op === 'login') return result; // Internal encryption material goes only to the phone's vault, never to MCP.
+    if (op === 'login' || op === 'pay') return result; // Internal encryption material goes only to the phone's vault, never to MCP.
     return this.redact(result);
   }
 
   async perform(op, input = {}) {
-    if (op === 'login_cancel') { this.login = null; return { cancelled: true }; }
+    if (op === 'login_cancel') { this.login = null; this.payment = null; return { cancelled: true }; }
+    if (op === 'pay_clear') { this.payment = null; if (this.page) await this.fillCard({ clear: true }).catch(() => {}); return { cleared: true }; }
     await this.start();
     const { expectedTarget, ...publicInput } = input;
-    const args = ['inspect', 'login_fill', 'login_cancel', 'upload', 'thumb'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
+    const args = ['inspect', 'login_fill', 'login_cancel', 'pay', 'pay_fill', 'pay_clear', 'upload', 'thumb'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
     if (op === 'thumb') {
       // The timeline's picture of this moment, with password fields as dots.
       await this.maskFields();
@@ -513,7 +583,7 @@ export class BrowserSession {
       return this.withDownload(await this.info(), await this.awaitDownload(before));
     }
     if (op === 'read' || op === 'find') {
-      const content = await this.page.evaluate(readPage, op === 'find' ? args : {});
+      const content = await this.pageData(readPage, op === 'find' ? args : {});
       this.elementFrames = new Map();
       for (const frame of this.page.frames()) {
         if (frame.url() !== 'about:blank' && frame !== this.page.mainFrame() && new URL(frame.url()).origin !== new URL(this.page.url()).origin) continue;
@@ -539,7 +609,7 @@ export class BrowserSession {
       return this.info();
     }
     if (op === 'act') {
-      const target = await this.page.evaluate(inspectPoint, args);
+      const target = await this.pageData(inspectPoint, args);
       if (expectedTarget && ['kind','label','url'].some(key => target[key] !== expectedTarget[key])) throw new Error('O alvo mudou. Leia a página e tente de novo.');
       const mouse = this.page.mouse, before = this.downloadSerial;
       await this.showAction('act', args, target, target.rect, ['key','scroll'].includes(args.action) ? null : { x: args.x, y: args.y });
@@ -552,7 +622,7 @@ export class BrowserSession {
       const { rect, ...shown } = target;
       return this.withDownload({ ...await this.info(), target: shown }, await this.awaitDownload(before));
     }
-    if (op === 'inspect') return args.action ? this.page.evaluate(inspectPoint, args) : this.inspect(args.id);
+    if (op === 'inspect') return args.action ? this.pageData(inspectPoint, args) : this.inspect(args.id);
     if (op === 'click') {
       const inspected = await this.inspect(args.id), before = this.downloadSerial;
       await this.showAction('click', args, inspected, await this.target(args.id).boundingBox().catch(() => null));
@@ -562,6 +632,7 @@ export class BrowserSession {
     if (op === 'type') {
       const target = this.target(args.id); const inspected = await this.inspect(args.id);
       if (inspected.kind === 'password') throw new Error('Senhas só por browser_login ou pela pessoa no Chrome.');
+      if (await target.evaluate((el, source) => !!(0, eval)(`(${source})`)(el), CARD_FIELD_SOURCE)) throw new Error('Campos de cartão só podem ser preenchidos pela carteira ou pela pessoa.');
       await this.showAction('type', args, inspected, await target.boundingBox().catch(() => null));
       if (await target.evaluate(el => el.tagName === 'SELECT')) await target.selectOption({ label: args.text });
       else await target.fill(args.text);
@@ -585,8 +656,9 @@ export class BrowserSession {
     }
     if (op === 'screenshot') {
       try {
-        if (args.marks) { const read = await this.page.evaluate(readPage); await this.page.evaluate(markPage, read.elements); }
-        return { ...await this.info(), ...this.viewportSize(), image: (await this.page.screenshot({ type: 'jpeg', quality: 65, mask: [...this.page.frames().map(frame => frame.locator('input[type=password]')), ...[...this.secrets].map(secret => this.page.getByText(secret, { exact: false }))] })).toString('base64') };
+        await this.rememberCards(); await this.maskFields();
+        if (args.marks) { const read = await this.pageData(readPage); await this.page.evaluate(markPage, read.elements); }
+        return { ...await this.info(), ...this.viewportSize(), image: (await this.page.screenshot({ type: 'jpeg', quality: 65, mask: [...this.page.frames().map(frame => frame.locator(`input[type=password],${CARD_MARK}`)), ...[...this.secrets, ...this.cardSecrets].map(secret => this.page.getByText(secret, { exact: false }))], maskColor: '#000000' })).toString('base64') };
       } finally { if (args.marks) await this.page.evaluate(markPage, null).catch(() => {}); }
     }
     if (op === 'login') {
@@ -624,10 +696,50 @@ export class BrowserSession {
         return { filled: true, ...await this.info() };
       } catch { throw new Error('Não consegui preencher o login protegido. Confira a página de login e tente browser_login novamente.'); }
     }
+    // browser_pay: the address and the total come from this page, read here, never from the bot.
+    if (op === 'pay') {
+      const url = await allowedUrl(this.page.url());
+      if (!url.startsWith('https://')) throw new Error('O pagamento só é feito numa página https.');
+      const { total } = await this.page.evaluate(readCheckoutTotal);
+      const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+      const challenge = randomBytes(24).toString('base64url');
+      this.payment = { privateKey, url, challenge, total, until: Date.now() + 60000 };
+      return { url, pageTotal: total, publicKey: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'), challenge };
+    }
+    if (op === 'pay_fill') {
+      const pending = this.payment; this.payment = null;
+      if (!pending || pending.until < Date.now() || pending.url !== this.page.url()) throw new Error('O pedido de pagamento venceu ou a página mudou.');
+      let card;
+      try {
+        const key = privateDecrypt({ key: pending.privateKey, oaepHash: 'sha256' }, Buffer.from(args.key, 'base64'));
+        const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(args.iv, 'base64'));
+        decipher.setAAD(Buffer.from(pending.challenge)); decipher.setAuthTag(Buffer.from(args.tag, 'base64'));
+        const bytes = Buffer.concat([decipher.update(Buffer.from(args.data, 'base64')), decipher.final()]);
+        key.fill(0); card = JSON.parse(bytes.toString('utf8')); bytes.fill(0);
+      } catch { throw new Error('Não consegui abrir o cartão enviado pelo celular. Nada foi preenchido.'); }
+      if (card.url !== pending.url || card.challenge !== pending.challenge || card.total !== pending.total || !/^\d{12,19}$/.test(card.number)) throw new Error('O pedido de pagamento não confere com esta página. Nada foi preenchido.');
+      // Known before it is typed: no echo of the card in reads, titles or pictures.
+      for (const value of [card.number, card.number.replace(/(\d{4})(?=\d)/g, '$1 '), card.cvv]) this.cardSecrets.add(value);
+      if ((await this.page.evaluate(readCheckoutTotal)).total !== pending.total) throw new Error('O total da página mudou. Nada foi preenchido.');
+      const filled = await this.fillCard({ ...card, url: pending.url });
+      if (!filled.includes('number')) { await this.fillCard({ clear: true }).catch(() => {}); throw new Error('Não encontrei o campo do número do cartão nesta página. Abra a etapa de pagamento com cartão; se ela estiver num quadro que o MyBots não conhece, use browser_ask_user.'); }
+      return { paid: true, filled: [...new Set(filled)], ...await this.info() };
+    }
     throw new Error('Comando do navegador inválido.');
   }
+  /** The card into the checkout's own fields and its payment processor's frames (any origin), or empty again. */
+  async fillCard(card) {
+    const pageHost = new URL(this.page.url()).hostname, filled = [];
+    for (const frame of this.page.frames()) {
+      if (frame !== this.page.mainFrame() && !cardFrame(frame.url(), pageHost)) continue;
+      const result = await frame.evaluate(({ source, card, main }) => (0, eval)(`(${source})`)(main ? card : { ...card, url: '' }), { source: CARD_FILL_SOURCE, card, main: frame === this.page.mainFrame() }).catch(() => ({ filled: [] }));
+      if (result.moved) throw new Error('A página mudou. Nada foi preenchido.');
+      filled.push(...result.filled);
+    }
+    return filled;
+  }
   async close() {
-    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.closing = true; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
+    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.payment = null; this.closing = true; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
     if (this.mode === 'mine' || this.mode === 'shared') {
       // Only this bot's tabs close: Meu Chrome and the shared Chrome keep running for the person and the other bots.
       if (this.onDisconnect) (this.mode === 'mine' ? this.browser : this.context)?.off(this.mode === 'mine' ? 'disconnected' : 'close', this.onDisconnect);
@@ -677,7 +789,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
       const result = op === 'device' ? await session.deviceView(args) || { restored: true } : op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
       process.send?.({ id, result });
     } catch (error) {
-      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou|executáveis/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
+      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou|executáveis|pagamento|cartão|Nada foi preenchido/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
     }
   };
   process.on('message', message => {

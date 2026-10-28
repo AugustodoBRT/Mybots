@@ -5,7 +5,7 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { desktop, column } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
@@ -585,9 +585,9 @@ function AppMain() {
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') check(); });
     return () => { subscription.remove(); foreground.remove(); };
   }, []);
-  const checkUpdate = useCallback(async function checkUpdate(manual = false) {
+  const checkUpdate = useCallback(async function checkUpdate(manual = false, foreground = false) {
     if (!termuxAvailable) return;
-    if (!manual && Date.now() - updateChecked.current < 6 * 3600000) return;
+    if (!manual && Date.now() - updateChecked.current < (foreground ? 1 : 6) * 3600000) return;
     updateChecked.current = Date.now();
     if (manual) setUpdate(old => ({ ...old, checking: true, error: '' }));
     try { const info = await updateCheck(); setUpdate(old => ({ ...old, info, checking: false, error: '', dismissed: manual ? false : old?.dismissed })); }
@@ -601,7 +601,7 @@ function AppMain() {
     if (!termuxAvailable) return undefined;
     checkUpdate();
     const subscription = onUpdate(step => setUpdate(old => ({ ...old, step })));
-    const foreground = AppState.addEventListener('change', state => { if (state === 'active') { checkUpdate(); resumeUpdate.current?.(); } });
+    const foreground = AppState.addEventListener('change', state => { if (state === 'active') { checkUpdate(false, true); resumeUpdate.current?.(); } });
     return () => { subscription.remove(); foreground.remove(); };
   }, [checkUpdate]);
   // Back from "Instalar apps desconhecidos": the update continues by itself.
@@ -715,6 +715,7 @@ function AppMain() {
           {termuxAvailable ? <WidgetRow /> : null}
           <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
           {termuxAvailable ? <><Text style={styles.sheetSection}>SENHAS</Text><PasswordsPanel bots={data?.bots || []} /></> : null}
+          {termuxAvailable && !desktop ? <><Text style={styles.sheetSection}>CARTEIRA</Text><WalletPanel /></> : null}
           <Text style={styles.sheetSection}>CONTAS E APPS</Text>
           {desktop ? null : <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
             const result = await supervisor.current.call(method, params); await loadSupervisorState();

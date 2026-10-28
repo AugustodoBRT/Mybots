@@ -66,8 +66,8 @@ test('Livre: nothing asks except the "sempre perguntar" list; phone and Termux e
   const f = await setup(t);
   assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'allow'); assert.equal(f.app.tools.policy(f.bot.id, 'termux'), 'allow');
   assert.equal(f.app.tools.policy(f.bot.id, 'sms.send'), 'allow');
-  // The default list: risky commands, skills, uploads and SMS still ask; the rest does not.
-  assert.deepEqual(FREE_ASK_DEFAULT, ['risky', 'skill.propose', 'browser/upload', 'sms.send']);
+  // The default list: risky commands, skills, uploads, SMS and wallet payments still ask.
+  assert.deepEqual(FREE_ASK_DEFAULT, ['risky', 'skill.propose', 'browser/upload', 'sms.send', 'wallet/pay']);
   const bot = f.app.db.requireBot(f.bot.id);
   assert.equal(f.app.tools.gate(bot, 'sms.send', { freeKey: 'sms.send' }).ask, true);
   assert.equal(f.app.tools.gate(bot, 'notify.user', { alwaysAsk: true, freeKey: 'notify.user' }).ask, false);
@@ -86,6 +86,16 @@ test('Livre: nothing asks except the "sempre perguntar" list; phone and Termux e
   f.app.tools.grant(f.bot.id, 'phone', false);
   assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'deny');
   assert.ok(!f.open().names().includes('phone_screen'));
+});
+
+test('the wallet approval is enabled once for an existing Livre list and respects a later choice', async t => {
+  const f = await setup(t);
+  f.app.db.run("DELETE FROM metadata WHERE key='free.wallet_default'");
+  f.app.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(['phone.open_app']));
+  const selected = () => f.app.tools.freeSettings().options.filter(item => item.ask).map(item => item.key);
+  assert.deepEqual(selected(), ['wallet/pay', 'phone.open_app']);
+  await f.app.rpc('free.set', { ask: ['phone.open_app'] });
+  assert.deepEqual(selected(), ['phone.open_app']);
 });
 
 test('the model never raises a level: no Livre from team tools, a Livre maker makes Acesso total, the computer cannot choose it', async t => {

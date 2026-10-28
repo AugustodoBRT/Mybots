@@ -96,6 +96,35 @@ test('a password typed letter by letter is protected whole, and ordinary letters
   assert.deepEqual([...s.secrets].filter(secret => secret.startsWith('S')), ['Segredo9']);
 });
 
+test('card fields and echoes are hidden from browser output and screenshot, including iframe fields', real, async t => {
+  const s = await session(t);
+  await s.page.setContent(`<input autocomplete="cc-number" value="4242 4242 4242 4242"><input id="cvv" value="987" aria-label="987"><input placeholder="Número do cartão" value="4242424242424242"><p>4242 4242 4242 4242 / 987</p><iframe srcdoc='<input autocomplete="cc-exp" value="12/30">'></iframe>`);
+  const read = await s.command('read');
+  assert.doesNotMatch(JSON.stringify(read), /4242 4242 4242 4242|987|12\/30/);
+  const number = read.elements.find(item => item.kind === 'input');
+  const cvv = read.elements.find(item => item.label === 'Campo de cartão' && item.id !== number.id);
+  assert.equal((await s.command('inspect', { id: cvv.id })).label, 'Campo de cartão');
+  assert.doesNotMatch(JSON.stringify(await s.command('inspect', { action: 'click', x: cvv.box.x + 2, y: cvv.box.y + 2 })), /987/);
+  assert.equal(read.elements.filter(item => item.label === 'Campo de cartão').length, 4);
+  await assert.rejects(s.command('type', { id: number.id, text: 'anything' }), /cartão/);
+  const shot = await s.command('screenshot');
+  const pixel = await s.page.evaluate(async ({ image, box }) => {
+    const img = new Image(); img.src = 'data:image/jpeg;base64,' + image; await img.decode();
+    const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height;
+    const context = canvas.getContext('2d'); context.drawImage(img, 0, 0);
+    return [...context.getImageData(Math.round(box.x + box.w / 2), Math.round(box.y + box.h / 2), 1, 1).data];
+  }, { image: shot.image, box: number.box });
+  assert.ok(pixel.slice(0, 3).every(channel => channel < 20), `campo não estava tapado: ${pixel}`);
+});
+
+test('card read redacts the value present during the read even if it changed after the previous check', real, async t => {
+  const s = await session(t);
+  await s.page.setContent('<input id="cvv" value="111" aria-label="111"><p id="echo">111</p>');
+  const remember = s.rememberCards.bind(s);
+  s.rememberCards = async () => { await remember(); await s.page.evaluate(() => { const input = document.querySelector('#cvv'); input.value = '789'; input.setAttribute('aria-label', '789'); document.querySelector('#echo').textContent = '789'; }); };
+  assert.doesNotMatch(JSON.stringify(await s.command('read')), /789/);
+});
+
 test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for filled tokens or disappearance', real, async t => {
   const { captchaState } = await import('../supervisor/browser-page.mjs');
   const s = await session(t), events = []; s.frame = f => events.push(f);
@@ -161,4 +190,27 @@ test('live input validates gestures and encrypted envelopes without echoing payl
   const { textEdit } = await import('../mobile/browser-input.js');
   assert.deepEqual(textEdit('acao','ação'), { delete:3,text:'ção' });
   assert.deepEqual(textEdit('Olá 😀','Olá 😃'), { delete:1,text:'😃' });
+});
+
+test('ordinary card-like identifiers and billing fields remain readable and typable', real, async t => {
+  const s = await session(t);
+  const ids = ['cardapio-busca', 'discard-reason', 'scorecard', 'credit-simulator', 'gift-card-code', 'billing-name', 'billing-address'];
+  await s.page.setContent(ids.map(id => `<input id="${id}" placeholder="${id}" value="visível-${id}">`).join('') + '<input autocomplete="cc-number" value="12345678901"><input autocomplete="cc-csc" value="12"><p>visível-cc e 12345678901 e 12</p>');
+  const read = await s.command('read');
+  for (const id of ids) {
+    const item = read.elements.find(el => el.label === id);
+    assert.ok(item, `campo ${id} deve estar visível`);
+    await s.command('type', { id: item.id, text: `editado-${id}` });
+    assert.equal(await s.page.locator(`#${id}`).inputValue(), `editado-${id}`);
+  }
+  assert.equal(s.cardSecrets.size, 0, 'valores curtos não entram no conjunto de segredos');
+  const cc = await s.page.locator('[autocomplete="cc-number"]');
+  await cc.fill('123456789012'); await s.page.locator('[autocomplete="cc-csc"]').fill('987');
+  await s.rememberCards();
+  assert.ok(s.cardSecrets.has('123456789012')); assert.ok(s.cardSecrets.has('987'));
+  s.cardSite = 'https://outra-loja.example'; await s.rememberCards();
+  assert.ok(!s.cardSecrets.has('123456789012') || s.page.url() === 'about:blank');
+  await s.page.locator('[autocomplete="cc-number"]').fill(''); await s.page.locator('[autocomplete="cc-csc"]').fill('');
+  s.cardSite = 'https://outra-loja.example'; await s.rememberCards();
+  assert.equal(s.cardSecrets.size, 0, 'segredos devem ser esquecidos ao mudar de site');
 });

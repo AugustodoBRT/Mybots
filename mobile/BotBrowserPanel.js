@@ -3,7 +3,7 @@ import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator } from 'react-native';
-import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput } from './termux';
+import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, termuxAvailable, walletRules, walletFreeze } from './termux';
 import { C, F, Icon } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
@@ -51,6 +51,16 @@ function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
     </Pressable>)}
     {onNew && enabled && tabs.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Nova aba" onPress={onNew} style={styles.tabNew}><Icon name="plus" size={14} color={C.text2} /></Pressable> : null}
   </ScrollView>;
+}
+
+/** Congelar carteira next to the live page while the wallet can pay: one tap, and the card leaves the checkout at once. */
+function WalletFreeze() {
+  const [open, setOpen] = useState(false); const [note, setNote] = useState('');
+  useEffect(() => { if (termuxAvailable) walletRules().then(rules => setOpen(rules.frozen === false)).catch(() => {}); }, []);
+  if (!open) return note ? <Text style={styles.hint}>{note}</Text> : null;
+  return <Pressable accessibilityRole="button" onPress={() => walletFreeze().then(() => { setOpen(false); setNote('Carteira congelada. Nenhum bot paga até você descongelar em Ajustes → Carteira.'); }).catch(error => setNote(String(error?.message || error)))} style={styles.key}>
+    <Icon name="stop" size={13} color={C.amber} /><Text style={[styles.keyText, { color: C.amber }]}>Congelar carteira</Text>
+  </Pressable>;
 }
 
 /** Back, forward, reload and the address, always visible; they act only after "Assumir". */
@@ -381,6 +391,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
       </View>
     </View> : null}
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
+    <WalletFreeze />
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
@@ -447,6 +458,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     {error ? <Text style={styles.error}>{error}</Text> : null}
     {assumed ? <Text style={styles.hint}>Você está usando o navegador do celular; o bot espera. {shared ? 'Um login feito aqui vale para os bots que navegam no celular, não para o computador. ' : ''}Login do Google não funciona aqui: para Gmail, Agenda e Drive use os apps da conta.</Text> : null}
     {info && !info.isolated ? <Text style={styles.hint}>Este celular não tem perfis de navegador (Android System WebView antigo): quando um bot com Navegador separado navega, os logins do navegador compartilhado são apagados. Atualize o “Android System WebView”.</Text> : null}
+    <WalletFreeze />
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>

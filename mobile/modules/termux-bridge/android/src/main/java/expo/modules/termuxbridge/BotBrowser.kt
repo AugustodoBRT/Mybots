@@ -78,6 +78,12 @@ internal object BotBrowser {
     var profile = "shared"
     @Volatile var icon: String? = null
     @Volatile var action: Map<String, Any>? = null
+    val cardSecrets = ConcurrentHashMap.newKeySet<String>()
+    @Volatile var cardSite: String? = null
+    @Volatile var cardOverflow = false
+    // Each frame's channel (its origin): the card reaches a payment processor's frame only through it.
+    val frames = java.util.concurrent.CopyOnWriteArrayList<Pair<String, androidx.webkit.JavaScriptReplyProxy>>()
+    val frameFilled = java.util.concurrent.atomic.AtomicInteger()
   }
   // Which profile each bot uses, from the supervisor's commands and the chat's panel.
   private val profiles = ConcurrentHashMap<String, String>()
@@ -145,7 +151,12 @@ internal object BotBrowser {
       result.requestMethod = "POST"; result.doOutput = true; result.connectTimeout = 3000; result.readTimeout = 10_000
       result.setRequestProperty("Authorization", "Bearer $token"); result.setRequestProperty("Content-Type", "application/json")
       // A verification code the app filled or saw never goes back in an answer (page text, field values, titles).
-      result.outputStream.use { it.write(VerificationCodes.redact(answer.toString()).toByteArray(Charsets.UTF_8)) }
+      val tab = onMain { tabs[command.optString("botId")] }
+      val envelope = if (command.optString("op") in setOf("pcLogin", "pcPay") && answer.optBoolean("ok")) answer.optJSONObject("value") else null
+      val encrypted = envelope != null && envelope.keys().asSequence().toSet() == (if (command.optString("op") == "pcPay") setOf("key", "iv", "data", "tag", "id") else setOf("key", "iv", "data", "tag")) &&
+        listOf("key", "iv", "data", "tag").all { envelope.opt(it) is String }
+      val safe = if (encrypted) answer else (redactCards(VerificationCodes.redactJson(answer), tab) as JSONObject).put("id", command.optString("id"))
+      result.outputStream.use { it.write(safe.toString().toByteArray(Charsets.UTF_8)) }
       result.responseCode; result.disconnect()
     } catch (_: Exception) {}
   }
@@ -159,10 +170,12 @@ internal object BotBrowser {
   }
 
   private fun js(context: Context, botId: String, script: String, timeoutMs: Long = 10_000): JSONObject {
+    collectCardSecrets(context, botId)
     val value = AtomicReference<String?>()
     val done = CountDownLatch(1)
-    onMain { tab(context, botId).web.evaluateJavascript(script) { value.set(it); done.countDown() } }
+    onMain { tab(context, botId).web.evaluateJavascript(script.replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })) { value.set(it); done.countDown() } }
     if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) throw IllegalStateException("A página não respondeu. Tente browser_wait e leia de novo.")
+    collectCardSecrets(context, botId)
     val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null }
       ?: throw IllegalStateException("A página ainda não carregou. Use browser_wait.")
     val json = JSONObject(text)
@@ -170,6 +183,56 @@ internal object BotBrowser {
     json.optJSONArray("elements")?.let { elements -> for (n in 0 until elements.length()) elements.optJSONObject(n)?.optJSONObject("box")?.let { box -> for (key in listOf("x", "y", "w", "h")) box.put(key, box.optDouble(key) * scale) } }
     if (json.has("error")) throw IllegalStateException(json.getString("error"))
     return json
+  }
+
+  private fun rememberCard(tab: Tab, kind: String, value: String) {
+    if (kind == "overflow") { tab.cardOverflow = true; return }
+    val digits = value.filter { it in '0'..'9' }
+    if (!((kind == "number" && digits.length >= 12) || (kind == "security" && value.length >= 3))) return
+    if (value.length > 100 || tab.cardSecrets.size >= 200 && value !in tab.cardSecrets) { tab.cardOverflow = true; return }
+    tab.cardSecrets.add(value)
+    if (kind == "number") tab.cardSecrets.add(digits)
+  }
+
+  private fun redactCards(value: Any?, tab: Tab?): Any? {
+    val secrets = tab?.cardSecrets?.toList()?.sortedByDescending { it.length }.orEmpty()
+    fun clean(item: Any?, key: String = ""): Any? = when (item) {
+      is JSONObject -> JSONObject().also { out -> item.keys().forEach { name -> out.put(name, clean(item.opt(name), name)) } }
+      is JSONArray -> JSONArray().also { out -> for (index in 0 until item.length()) out.put(clean(item.opt(index))) }
+      is String -> if (key == "image" || key == "icon") item else if (tab?.cardOverflow == true) "[conteúdo protegido]" else secrets.fold(item) { text, secret -> text.replace(secret, "[cartão protegido]") }
+      else -> item
+    }
+    return clean(value)
+  }
+
+  /** Collect before and after actions as well as from the document-start observer; no values leave this process. */
+  private fun collectCardSecrets(context: Context, botId: String) {
+    val value = AtomicReference<String?>(); val done = CountDownLatch(1)
+    onMain {
+      val tab = tab(context, botId)
+      val observer = context.assets.open("card-observer.js").bufferedReader().use { it.readText() }.replace("__MYBOTS_CARD_FILL__", fillScript(context))
+        .replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })
+      val collect = """(() => { const all = []; const visit = doc => { try {
+        if (doc === document) { $observer }
+        const cardField = ($CARD_JS);
+        for (const el of doc.querySelectorAll('input,textarea,select')) {
+          const kind = cardField(el), value = String(el.value || '');
+          if ((kind === 'number' && value.replace(/\D/g, '').length >= 12) || (kind === 'security' && value.length >= 3)) all.push({kind,value});
+        }
+        for (const frame of doc.querySelectorAll('iframe')) if (frame.contentDocument) visit(frame.contentDocument);
+      } catch {} }; visit(document); return JSON.stringify(all); })()"""
+        .replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })
+      tab.web.evaluateJavascript(collect) { value.set(it); done.countDown() }
+    }
+    if (!done.await(10, TimeUnit.SECONDS)) throw IllegalStateException("Não consegui verificar os campos protegidos da página.")
+    val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null }
+      ?: throw IllegalStateException("Não consegui verificar os campos protegidos da página.")
+    val secrets = JSONArray(text)
+    val tab = onMain { tabs[botId] } ?: return
+    for (index in 0 until secrets.length()) {
+      val item = secrets.optJSONObject(index) ?: continue
+      rememberCard(tab, item.optString("kind"), item.optString("value"))
+    }
   }
 
   private fun waitLoaded(botId: String, timeoutMs: Long) {
@@ -225,6 +288,8 @@ internal object BotBrowser {
     val args = command.optJSONObject("args") ?: JSONObject()
     if (command.has("profile")) useProfile(botId, command.optString("profile") == "separate")
     if (command.getString("op") == "pcLogin") return PasswordVault.forComputer(context, botId, args)
+    if (command.getString("op") == "pcPay") return WalletPay.forComputer(context, botId, args)
+    if (command.getString("op") == "payDone") { WalletPay.computerDone(context, args); return JSONObject().put("ok", true) }
     if (command.getString("op") in listOf("act", "inspect") && args.has("action")) {
       val scale = onMain { val web = tab(context, botId).web; val width = web.width.coerceAtLeast(1); val height = web.height.coerceAtLeast(1); minOf(1f, 720f / width, 800f / height) * web.scale }
       for (key in listOf("x", "y", "toX", "toY")) if (args.has(key)) args.put(key, args.getDouble(key) / scale)
@@ -242,7 +307,7 @@ internal object BotBrowser {
         page(context, botId).also { result -> file?.let { result.put("download", it) } }
       }
       // The timeline's picture of this moment, small.
-      "thumb" -> onMain(15_000) { screenshot(context, botId, 480f, 60) }
+      "thumb" -> maskedScreenshot(context, botId, false, 480f, 60)
       "read" -> js(context, botId, READ_JS).also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
       "inspect" -> if (args.has("action")) js(context, botId, "JSON.stringify(($POINT_JS)($args))") else js(context, botId, "($INSPECT_JS)($id)")
       "tabs" -> throw IllegalStateException("Disponível só quando o bot responde pelo computador.")
@@ -288,6 +353,7 @@ internal object BotBrowser {
         js(context, botId, "($UPLOAD_JS)($input)", 30_000)
         page(context, botId).put("attached", name)
       }
+      "pay" -> pay(context, botId, args)
       // A saved login (PasswordVault): the app fills and sends it itself; the password never leaves the app.
       "login" -> {
         val before = DeviceFiles.downloadSerial()
@@ -319,13 +385,7 @@ internal object BotBrowser {
         }
         page(context, botId).put("found", found)
       }
-      "screenshot" -> {
-        try {
-          js(context, botId, "(() => { const data = ($READ_PAGE)({}); if (${args.optBoolean("marks")}) ($MARK_JS)(data.elements); const layer = document.createElement('div'); layer.setAttribute('data-mybots-mask',''); layer.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647'; const codes = ${org.json.JSONArray(VerificationCodes.secrets())}; for (const el of [...document.querySelectorAll('input[type=password]'), ...[...document.querySelectorAll('input,textarea')].filter(el => codes.some(code => el.value.includes(code)))]) { const r=el.getBoundingClientRect(); const box=document.createElement('div'); box.style.cssText='position:absolute;background:#000;left:'+r.x+'px;top:'+r.y+'px;width:'+r.width+'px;height:'+r.height+'px'; layer.append(box); } document.documentElement.append(layer); return JSON.stringify({ok:true}); })()")
-          Thread.sleep(100)
-          onMain(15_000) { screenshot(context, botId) }
-        } finally { runCatching { js(context, botId, "(() => { ($MARK_JS)(null); document.querySelector('[data-mybots-mask]')?.remove(); return JSON.stringify({ok:true}); })()") } }
-      }
+      "screenshot" -> maskedScreenshot(context, botId, args.optBoolean("marks"))
       else -> throw IllegalArgumentException("Comando de navegador inválido.")
     }
   }
@@ -338,12 +398,31 @@ internal object BotBrowser {
     js(context, botId, "($CODE_JS)(${JSONObject().put("id", id).put("code", code)})")
   }
 
-  private fun screenshot(context: Context, botId: String, maxWidth: Float = 720f, quality: Int = 70): JSONObject {
+  // Apply the same fail-closed mask to explicit screenshots and timeline thumbnails.
+  private fun maskedScreenshot(context: Context, botId: String, marks: Boolean, maxWidth: Float = 720f, quality: Int = 70): JSONObject {
+    try {
+      val masks = js(context, botId, "($MASK_JS)(${JSONObject().put("marks", marks).put("codes", JSONArray(VerificationCodes.secrets()))})").getJSONArray("boxes")
+      Thread.sleep(100)
+      return onMain(15_000) { screenshot(context, botId, maxWidth, quality, masks) }
+    } finally {
+      runCatching { js(context, botId, "(() => { ($MARK_JS)(null); document.querySelector('[data-mybots-mask]')?.remove(); return JSON.stringify({ok:true}); })()") }
+    }
+  }
+
+  private fun screenshot(context: Context, botId: String, maxWidth: Float = 720f, quality: Int = 70, masks: JSONArray): JSONObject {
     val tab = tab(context, botId)
     val web = tab.web
     layoutDetached(context, web)
     val bitmap = Bitmap.createBitmap(web.width.coerceAtLeast(1), web.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-    web.draw(Canvas(bitmap))
+    val canvas = Canvas(bitmap)
+    web.draw(canvas)
+    val black = android.graphics.Paint().apply { color = android.graphics.Color.BLACK }
+    val cssScale = web.scale
+    for (i in 0 until masks.length()) {
+      val box = masks.getJSONObject(i)
+      canvas.drawRect((box.getDouble("x") * cssScale).toFloat(), (box.getDouble("y") * cssScale).toFloat(),
+        ((box.getDouble("x") + box.getDouble("w")) * cssScale).toFloat(), ((box.getDouble("y") + box.getDouble("h")) * cssScale).toFloat(), black)
+    }
     val scale = minOf(1f, maxWidth / bitmap.width, 800f / bitmap.height)
     val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
     val out = ByteArrayOutputStream()
@@ -380,9 +459,10 @@ internal object BotBrowser {
   }
 
   private fun emit(tab: Tab) {
-    val state = mutableMapOf<String, Any>("url" to (tab.web.url ?: ""), "title" to (tab.web.title ?: ""), "loading" to tab.loading, "isolated" to isolated, "shared" to (tab.profile == "shared"),
+    fun safe(value: String) = if (tab.cardOverflow) "[conteúdo protegido]" else tab.cardSecrets.toList().sortedByDescending { it.length }.fold(VerificationCodes.redact(value)) { text, secret -> text.replace(secret, "[cartão protegido]") }
+    val state = mutableMapOf<String, Any>("url" to safe(tab.web.url ?: ""), "title" to safe(tab.web.title ?: ""), "loading" to tab.loading, "isolated" to isolated, "shared" to (tab.profile == "shared"),
       "back" to tab.web.canGoBack(), "forward" to tab.web.canGoForward())
-    tab.icon?.let { state["icon"] = it }; tab.action?.let { state["action"] = it }
+    tab.icon?.let { state["icon"] = it }; tab.action?.let { action -> state["action"] = action.mapValues { (_, value) -> if (value is String) safe(value) else value } }
     tab.listeners.toList().forEach { it(state) }
   }
 
@@ -404,6 +484,21 @@ internal object BotBrowser {
     if (isolated) { ProfileStore.getInstance().getOrCreateProfile(profile); WebViewCompat.setProfile(web, profile) }
     else sharedOwner = owner
     val tab = Tab(botId, web, wrapper).also { it.profile = profile }
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+      WebViewCompat.addWebMessageListener(web, "mybotsCardSecret", setOf("*")) { _, message, origin, main, reply ->
+        try {
+          val item = JSONObject(message.data ?: "")
+          when (item.optString("kind")) {
+            "hello" -> if (!main && tab.frames.none { it.second == reply }) tab.frames.add(origin.toString() to reply)
+            "filled" -> tab.frameFilled.addAndGet(item.optInt("count").coerceIn(0, 20))
+            else -> rememberCard(tab, item.optString("kind"), item.optString("value"))
+          }
+        } catch (_: Exception) {}
+      }
+      val observer = context.assets.open("card-observer.js").bufferedReader().use { it.readText() }.replace("__MYBOTS_CARD_FILL__", fillScript(context))
+        .replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })
+      WebViewCompat.addDocumentStartJavaScript(web, observer, setOf("*"))
+    }
     web.settings.apply {
       javaScriptEnabled = true; domStorageEnabled = true
       allowFileAccess = false; allowContentAccess = false
@@ -438,7 +533,12 @@ internal object BotBrowser {
         if (host == null || leaf == null || !onlyUnknownIssuer) { refuse(); return }
         Thread { val trusted = IncompleteChain.trusted(leaf, host); main.post { if (trusted) handler.proceed() else refuse() } }.start()
       }
-      override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { tab.loading = true; tab.icon = null; emit(tab) }
+      override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+        val uri = Uri.parse(url ?: ""); val site = "${uri.scheme.orEmpty().lowercase()}://${uri.host.orEmpty().lowercase().trimEnd('.')}:${uri.port}"
+        if (site != tab.cardSite) { tab.cardSecrets.clear(); tab.cardOverflow = false; tab.cardSite = site }
+        tab.frames.clear()
+        tab.loading = true; tab.icon = null; emit(tab)
+      }
       override fun onPageFinished(view: WebView, url: String?) { tab.loading = false; flushCookies(botId); emit(tab); if (tab.capture) view.evaluateJavascript(captureScript(tab), null) }
     }
     // Downloads go to the bot's files; uploads only through browser_upload (approved file, no picker); no camera, microphone or location.
@@ -503,6 +603,7 @@ internal object BotBrowser {
     if (on) tab.web.evaluateJavascript(captureScript(tab), null)
   }
   private fun captureScript(tab: Tab) = "($CAPTURE_JS)(${JSONObject.quote("mybots-login:${tab.nonce}:")})"
+    .replace(CARD_JS, tab.web.context.assets.open("card-field.js").bufferedReader().use { it.readText() })
 
   fun action(context: Context, botId: String, action: String): Boolean {
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")
@@ -518,6 +619,94 @@ internal object BotBrowser {
     }
     return true
   }
+
+  // The PC and WebView load the same card-field function from this asset.
+  private fun asset(context: Context, name: String) = context.assets.open(name).bufferedReader().use { it.readText() }.trim()
+  private fun fillScript(context: Context) = asset(context, "card-fill.js").replace(CARD_JS, asset(context, "card-field.js"))
+  // Payment processors whose card frames may receive the card, besides the checkout's own site.
+  private val PROCESSORS = listOf("stripe.com", "stripe.network", "mercadopago.com", "mercadopago.com.br", "mercadolibre.com", "adyen.com", "pagseguro.uol.com.br", "pagbank.com.br", "paypal.com", "braintreegateway.com", "cielo.com.br", "getnet.com.br", "pagar.me", "checkout.com", "ebanx.com", "iugu.com", "vindi.com.br", "asaas.com")
+  private fun processor(origin: String, page: String?): Boolean {
+    val host = WalletPolicy.host(origin) ?: return false
+    return host == page || PROCESSORS.any { host == it || host.endsWith(".$it") }
+  }
+
+  /**
+   * browser_pay on this phone: the total and the address are read from the page here, the rules are checked by
+   * WalletPay, and only then the card goes into the checkout's fields (and its processor's frames). Congelar or a
+   * rules change in the middle clears them again.
+   */
+  private fun pay(context: Context, botId: String, args: JSONObject): JSONObject {
+    val url = onMain { tab(context, botId).web.url ?: "" }
+    val read = js(context, botId, "JSON.stringify((${asset(context, "checkout-total.js")})())")
+    val total = read.optLong("total", 0).takeIf { read.has("total") && !read.isNull("total") && it > 0 }
+    val payment = WalletPay.authorize(context, botId, args.optString("botName"), WalletPay.intent(args.getJSONObject("intent")), url, total)
+    val id = payment.entry.getString("id")
+    WalletPay.filling[botId] = System.currentTimeMillis()
+    try {
+      val tab = onMain { tab(context, botId) }
+      val card = payment.card
+      // Known before it is typed, so no echo of it (page text, titles, answers) ever leaves the app.
+      rememberCard(tab, "number", card.getString("number")); rememberCard(tab, "number", card.getString("number").chunked(4).joinToString(" "))
+      rememberCard(tab, "security", card.getString("cvv"))
+      val input = JSONObject().put("url", url).put("number", card.getString("number")).put("cvv", card.getString("cvv"))
+        .put("month", card.getInt("expiryMonth")).put("year", card.getInt("expiryYear")).put("name", card.getString("name"))
+      if (!WalletPay.valid(context, payment.generation)) throw IllegalStateException("A carteira foi congelada.")
+      val filled = js(context, botId, "JSON.stringify((${fillScript(context)})($input))").optJSONArray("filled") ?: JSONArray()
+      val kinds = (0 until filled.length()).map { filled.optString(it) }
+      tab.frameFilled.set(0)
+      val pageHost = WalletPolicy.host(url)
+      val targets = tab.frames.filter { processor(it.first, pageHost) }
+      if (targets.isNotEmpty()) {
+        val message = JSONObject().put("fill", input).toString()
+        onMain { targets.forEach { runCatching { it.second.postMessage(message) } } }
+        val until = System.currentTimeMillis() + 2000
+        while (tab.frameFilled.get() == 0 && System.currentTimeMillis() < until) Thread.sleep(50)
+        Thread.sleep(150)
+      }
+      if ("number" !in kinds && tab.frameFilled.get() == 0) throw IllegalStateException("Não encontrei o campo do número do cartão nesta página. Abra a etapa de pagamento com cartão; se ela estiver num quadro que o MyBots não conhece, use browser_ask_user.")
+      if (!WalletPay.valid(context, payment.generation)) throw IllegalStateException("A carteira foi congelada durante o pagamento. Os campos do cartão foram limpos.")
+      runCatching { WalletPay.receipt(context, id, maskedScreenshot(context, botId, false).getString("image")) }
+      WalletPay.paid(context, payment)
+      return page(context, botId).put("paid", true).put("card", "final ${card.getString("number").takeLast(4)}").put("total", WalletPolicy.money(payment.entry.optLong("total")))
+    } catch (error: Exception) {
+      WalletPay.filling.remove(botId)
+      runCatching { clearCards(context, botId) }
+      WalletPay.cancel(context, id, error.message)
+      throw error
+    }
+  }
+
+  /** Congelar or a failed payment: the card fields of this bot's page and its frames go back to empty. */
+  fun clearCards(context: Context, botId: String) {
+    val tab = onMain { tabs[botId] } ?: return
+    val clear = JSONObject().put("clear", true)
+    onMain {
+      tab.web.evaluateJavascript("(${fillScript(context)})($clear)", null)
+      val message = JSONObject().put("fill", clear).toString()
+      tab.frames.forEach { runCatching { it.second.postMessage(message) } }
+    }
+  }
+
+  private val CARD_JS = "__MYBOTS_CARD_FIELD__"
+  private val MASK_JS get() = """({marks, codes}) => {
+    ($MARK_JS)(null);
+    if (marks) ($MARK_JS)(($READ_PAGE)({}).elements);
+    const cardField = ($CARD_JS), boxes = [];
+    const fields = [...document.querySelectorAll('input,textarea,select')];
+    const frames = [...document.querySelectorAll('iframe')];
+    const paymentFrame = el => {
+      try {
+        const host = new URL(el.src, document.baseURI).hostname.toLowerCase();
+        return ['stripe.com', 'stripe.network', 'paypal.com', 'braintreegateway.com', 'adyen.com', 'adyenpayments.com', 'mercadopago.com', 'mercadopago.com.br', 'pagar.me', 'pagseguro.uol.com.br', 'checkout.com', 'worldpay.com', 'cybersource.com'].some(domain => host === domain || host.endsWith('.' + domain));
+      } catch { return false; }
+    };
+    const coverFrames = fields.some(cardField) || frames.some(paymentFrame);
+    for (const el of [...fields, ...frames]) {
+      if (!(el.tagName === 'IFRAME' ? coverFrames : el.type === 'password' || cardField(el) || codes.some(code => String(el.value || '').includes(code)))) continue;
+      const r = el.getBoundingClientRect(); boxes.push({x:r.x,y:r.y,w:r.width,h:r.height});
+    }
+    return JSON.stringify({boxes});
+  }""".trimIndent()
 
   // The scripts below run inside the page. Elements get a stable data-mybots-id until the page changes.
   private val READ_PAGE = """function readPage({ query = '', limit = 5 } = {}) {
@@ -535,7 +724,7 @@ internal object BotBrowser {
       const visible = r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
       if (!visible && el.type !== 'file') continue;
       if (!el.dataset.mybotsId) el.dataset.mybotsId = String(window.__mybotsNext++);
-      const kind = el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' && el.form ? 'submit' : el.tagName.toLowerCase();
+      const kind = el.type === 'password' || ($CARD_JS)(el) ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' && el.form ? 'submit' : el.tagName.toLowerCase();
       const label = clean(el.getAttribute('aria-label') || (el.labels?.[0]?.innerText) || el.getAttribute('placeholder') || el.textContent || el.title || el.name || el.getAttribute('href'));
       const item = { id: Number(el.dataset.mybotsId), kind, label };
       if (visible && r.bottom > 0 && r.right > 0 && r.top < win.innerHeight && r.left < win.innerWidth) item.box = { x: r.x + ox, y: r.y + oy, w: r.width, h: r.height };
@@ -549,7 +738,9 @@ internal object BotBrowser {
     }
     const copy = doc.body?.cloneNode(true);
     copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]').forEach(el => el.remove());
-    texts.push((copy?.textContent || '').replace(/\s+/g, ' '));
+    // Separate block text before concatenating it, including consecutive card numbers.
+    copy?.querySelectorAll('p,div,li,section,article,header,footer,main,aside,nav,table,tr,td,th,ul,ol,h1,h2,h3,h4,h5,h6,br').forEach(el => { el.prepend('\n'); el.append('\n'); });
+    texts.push((copy?.textContent || '').replace(/[^\S\n]+/g, ' ').replace(/\n+/g, '\n'));
     for (const el of doc.querySelectorAll('iframe')) {
       try {
         if (!el.contentDocument?.body || el.contentWindow.location.origin !== location.origin) continue;
@@ -568,9 +759,9 @@ internal object BotBrowser {
   }
   el = el?.closest('button,a,input,textarea,select,[role=button],[contenteditable=true]') || el;
   const box = el?.getBoundingClientRect?.(), rect = box && box.width > 0 ? { x: box.x + dx, y: box.y + dy, width: box.width, height: box.height } : null;
-  const label = String(el?.getAttribute('aria-label') || el?.textContent || el?.name || '').replace(/\s+/g, ' ').slice(0, 200);
+  const label = String(el && ($CARD_JS)(el) ? 'campo protegido' : (el?.getAttribute('aria-label') || el?.textContent || el?.name || '')).replace(/\s+/g, ' ').slice(0, 200);
   const write = !!el && (el.type === 'submit' || el.type === 'image' || !!el.form || el.tagName === 'A' && /comprar|pagar|pagamento|checkout|buy|purchase|pay/i.test(label + ' ' + el.getAttribute('href')));
-  return { kind: el?.type === 'password' ? 'password' : write ? 'submit' : 'field', label, url: location.href, rect };
+  return { kind: el?.type === 'password' || el && ($CARD_JS)(el) ? 'password' : write ? 'submit' : 'field', label, url: location.href, rect };
 }""".trimIndent()
   private val MARK_JS = """function markPage(elements) {
   document.querySelector('[data-mybots-marks]')?.remove();
@@ -616,9 +807,9 @@ internal object BotBrowser {
   private val INSPECT_JS = """
     (id) => { $FIND
       const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
-      const kind = tag === 'input' && type === 'password' ? 'password' : tag === 'input' && type === 'file' ? 'file' : (tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form) ? 'submit' : tag === 'a' ? 'link' : 'other';
+      const kind = tag === 'input' && type === 'password' || ($CARD_JS)(el) ? 'password' : tag === 'input' && type === 'file' ? 'file' : (tag === 'input' && (type === 'submit' || type === 'image')) || (tag === 'button' && el.type === 'submit' && el.form) ? 'submit' : tag === 'a' ? 'link' : 'other';
       const near = kind === 'file' ? ((el.labels && el.labels[0] && el.labels[0].innerText) || (el.closest('label, td, div, fieldset') || {}).innerText || el.name) : '';
-      const label = String(near || (tag === 'input' ? (type === 'password' ? el.placeholder : el.value || el.placeholder) : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      const label = String(near || (tag === 'input' ? (kind === 'password' ? 'campo protegido' : el.value || el.placeholder) : el.innerText) || el.getAttribute('aria-label') || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
       return JSON.stringify({ kind, label, url: location.href }); }
   """.trimIndent()
 
@@ -664,9 +855,9 @@ internal object BotBrowser {
   private val CAPTURE_JS = """
     (prefix) => { if (window.__mybotsCapture === prefix) return; window.__mybotsCapture = prefix;
       const send = form => {
-        const scope = form || document; const pw = scope.querySelector('input[type=password]');
+        const scope = form || document; const pw = [...scope.querySelectorAll('input[type=password]')].find(el => !($CARD_JS)(el));
         if (!pw || !pw.value) return;
-        const texts = [...scope.querySelectorAll('input')].filter(el => ['text', 'email', 'tel', 'number', ''].includes((el.getAttribute('type') || '').toLowerCase()));
+        const texts = [...scope.querySelectorAll('input')].filter(el => !($CARD_JS)(el) && ['text', 'email', 'tel', 'number', ''].includes((el.getAttribute('type') || '').toLowerCase()));
         const user = texts.filter(el => el.compareDocumentPosition(pw) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
         try { prompt(prefix + JSON.stringify({ u: user ? user.value : '', p: pw.value })); } catch (e) {}
       };
@@ -688,7 +879,7 @@ internal object BotBrowser {
   private val TYPE_JS = """
     ({ id, text, submit }) => { $FIND
       const tag = el.tagName.toLowerCase(), type = (el.getAttribute('type') || '').toLowerCase();
-      if (tag === 'input' && type === 'password') return JSON.stringify({ error: 'Campos de senha só a pessoa preenche.' });
+      if (tag === 'input' && type === 'password' || ($CARD_JS)(el)) return JSON.stringify({ error: 'Campos protegidos só a pessoa preenche.' });
       el.scrollIntoView({ block: 'center' }); el.focus();
       if (tag === 'select') {
         const option = [...el.options].find(o => o.text.trim().toLowerCase() === text.trim().toLowerCase() || o.value === text);

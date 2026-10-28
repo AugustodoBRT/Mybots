@@ -94,9 +94,69 @@ internal object FreeGuard {
   fun bots(context: Context): Set<String> = prefs(context).getStringSet("bots", emptySet()).orEmpty()
   fun set(context: Context, botId: String, on: Boolean) { val next = bots(context).toMutableSet().apply { if (on) add(botId) else remove(botId) }; prefs(context).edit().putStringSet("bots", next).apply { if (on) putBoolean("warned", true) }.apply() }
   fun warned(context: Context) = prefs(context).getBoolean("warned", false)
-  fun ask(context: Context): String? = prefs(context).getString("ask", null)
-  fun setAsk(context: Context, json: String) { prefs(context).edit().putString("ask", json).apply() }
+  @Synchronized fun ask(context: Context): String? {
+    val saved = prefs(context)
+    if (!saved.getBoolean("wallet_default_migrated", false)) {
+      val editor = saved.edit()
+      saved.getString("ask", null)?.let { value ->
+        try {
+          val array = JSONArray(value)
+          if ((0 until array.length()).none { array.optString(it) == "wallet/pay" }) array.put("wallet/pay")
+          editor.putString("ask", array.toString())
+        } catch (_: Exception) { /* Invalid legacy data is handled by the supervisor defaults. */ }
+      }
+      editor.putBoolean("wallet_default_migrated", true).commit()
+    }
+    return saved.getString("ask", null)
+  }
+  @Synchronized fun setAsk(context: Context, json: String) { ask(context); prefs(context).edit().putString("ask", json).apply() }
   fun allows(context: Context, botId: String) = botId in bots(context)
+}
+
+/** Conservative identification for payment fields and card numbers on accessibility screens. */
+internal object CardProtection {
+  private val field = Regex("(?:\\bcc[-_ ]?(?:number|num|csc|cvv|exp|name)\\b|(?<![a-z0-9])card[-_ ]?(?:number|num|security|verification|code|cvv|cvc|expiry|expiration|exp|holder)|n[úu]mero.{0,12}cart[aã]o|cart[aã]o.{0,12}(?:n[úu]mero|validade|seguran[çc]a)|\\b(?:cvv|cvc|csc)\\b|validade.{0,12}cart[aã]o)", RegexOption.IGNORE_CASE)
+  private val pan = Regex("(?:\\d[ -]?){12,18}\\d")
+  private val url = Regex("(?:[a-z][a-z0-9+.-]*://|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,63}(?=[:/?#]|\\b))[^\\s<>\"']+", RegexOption.IGNORE_CASE)
+
+  // Match the same brands, Luhn check and text boundaries as supervisor/card-pan.mjs.
+  private fun isPan(number: String): Boolean {
+    fun n(length: Int) = number.take(length).toInt()
+    val known = number[0] == '4' || n(2) in 51..55 || n(4) in 2221..2720 ||
+      n(2) in setOf(34, 37) || n(3) in 300..305 || n(2) in setOf(36, 38, 39) ||
+      n(4) == 6011 || n(2) == 65 || n(3) in 644..649 || n(6) in 622126..622925 ||
+      n(4) in 3528..3589 || n(6) in setOf(606282, 637095, 637568, 637599, 637609, 637612) || n(4) == 3841 ||
+      n(6) in setOf(401178, 401179, 431274, 438935, 451416, 457393, 457631, 457632, 504175, 627780, 636297, 636368) ||
+      n(6) in 506699..506778 || n(6) in 509000..509999 || n(6) in 650031..650033 || n(6) in 650035..650051 ||
+      n(6) in 650405..650439 || n(6) in 650485..650538 || n(6) in 650541..650598 || n(6) in 650700..650718 ||
+      n(6) in 650720..650727 || n(6) in 650901..650978 || n(6) in 651652..651679 || n(6) in 655000..655019 || n(6) in 655021..655058
+    if (!known) return false
+    val sum = number.reversed().mapIndexed { index, c ->
+      val d = c.digitToInt() * if (index % 2 == 1) 2 else 1
+      if (d > 9) d - 9 else d
+    }.sum()
+    return sum % 10 == 0
+  }
+  private fun matchesPan(text: String): List<IntRange> {
+    val urls = url.findAll(text).map { it.range }.toList()
+    return pan.findAll(text).filter { match ->
+      val start = match.range.first; val end = match.range.last + 1
+      (start == 0 || !text[start - 1].isLetterOrDigit()) && (end == text.length || !text[end].isLetterOrDigit()) &&
+        urls.none { start <= it.last && end > it.first } && isPan(match.value.replace(" ", "").replace("-", ""))
+    }.map { it.range }.toList()
+  }
+  private fun redactPan(text: String): String {
+    val out = StringBuilder(text)
+    for (range in matchesPan(text).asReversed()) out.replace(range.first, range.last + 1, "[cartão protegido]")
+    return out.toString()
+  }
+  private val cvc = Regex("(?i)(\\b(?:cvv|cvc|csc)\\b\\s*[:#-]?\\s*)\\d{3,4}\\b")
+  fun redact(text: String): String = cvc.replace(redactPan(text), "$1[cartão protegido]")
+  fun sensitive(node: AccessibilityNodeInfo): Boolean {
+    val hint = if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString().orEmpty() else ""
+    val meta = "${node.viewIdResourceName.orEmpty()} $hint ${node.contentDescription ?: ""}".replace(Regex("gift[-_ ]?card[-_ ]?code", RegexOption.IGNORE_CASE), " ")
+    return field.containsMatchIn(meta) || matchesPan(node.text?.toString().orEmpty()).isNotEmpty() || cvc.containsMatchIn(node.text?.toString().orEmpty())
+  }
 }
 
 /**
@@ -132,13 +192,21 @@ internal object VerificationCodes {
 
   /** A text the bot is about to read, without any code: known ones, and anything that looks like one in a message about a code. */
   fun hide(text: String): String {
-    var out = text
+    var out = CardProtection.redact(text)
     for (code in secrets()) out = out.replace(code, MASK)
     return if (CONTEXT.containsMatchIn(out)) out.replace(CODE, MASK) else out
   }
 
   /** The same for a whole answer to the supervisor (JSON text). */
-  fun redact(text: String): String { var out = text; for (code in secrets()) out = out.replace(code, MASK); return out }
+  fun redact(text: String): String { var out = CardProtection.redact(text); for (code in secrets()) out = out.replace(code, MASK); return out }
+
+  /** Redact string values, not serialized JSON: timestamps and other numbers must stay valid JSON. */
+  fun redactJson(value: Any?, key: String = ""): Any? = when (value) {
+    is JSONObject -> JSONObject().also { out -> value.keys().forEach { name -> out.put(name, redactJson(value.opt(name), name)) } }
+    is JSONArray -> JSONArray().also { out -> for (index in 0 until value.length()) out.put(redactJson(value.opt(index))) }
+    is String -> if (key == "image" || key == "icon") value else redact(value)
+    else -> value
+  }
 
   fun fold(value: String) = Normalizer.normalize(value, Normalizer.Form.NFD).replace(Regex("\\p{M}"), "").lowercase()
 
@@ -164,6 +232,7 @@ class PhoneControlReceiver : BroadcastReceiver() {
       PhoneControl.ACTION_STOP -> PhoneControl.stopHere(context.applicationContext, "notice")
       PhoneControl.ACTION_TAKE -> PhoneControl.takeHere(context.applicationContext, true)
       PhoneControl.ACTION_RETURN -> PhoneControl.takeHere(context.applicationContext, false)
+      WalletPay.ACTION_FREEZE -> WalletPay.freeze(context.applicationContext)
     }
   }
 }
@@ -191,6 +260,8 @@ internal object PhoneControl {
   @Volatile var person = false
   private val stopped = ConcurrentHashMap.newKeySet<String>()
   private val nodes = ConcurrentHashMap<Int, AccessibilityNodeInfo>()
+  private val editorToken = ThreadLocal<Long>()
+  private fun <T> editorAction(block: () -> T): T = WalletEditorGate.action(editorToken.get() ?: throw IllegalStateException("Comando inválido."), block)
   private var bar: LinearLayout? = null
   private var label: TextView? = null
   private var takeButton: TextView? = null
@@ -200,6 +271,8 @@ internal object PhoneControl {
 
   /** A queued command from the supervisor (phone lane). Stop, take-over and end come through immediate() instead. */
   fun run(context: Context, command: JSONObject): JSONObject {
+    editorToken.set(WalletEditorGate.token())
+    try {
     val args = command.optJSONObject("args") ?: JSONObject()
     val taskId = args.optString("taskId")
     if (taskId.isEmpty() || taskId in stopped) throw Stopped()
@@ -207,7 +280,7 @@ internal object PhoneControl {
     if (person) throw IllegalStateException("A pessoa assumiu o celular. Espere ela tocar em “Devolver ao bot”.")
     val service = service()
     begin(context, service, taskId, args.optString("botName").take(40))
-    return when (command.getString("op")) {
+    val result = when (command.getString("op")) {
       "phoneScreen" -> screen(service, args.optBoolean("image"))
       "phoneTap" -> tap(context, service, args)
       "phoneType" -> type(context, service, args)
@@ -215,12 +288,15 @@ internal object PhoneControl {
       "phoneOpenApp" -> openApp(context, service, args)
       "phoneBack" -> {
         check(taskId)
-        service.performGlobalAction(if (args.optBoolean("home")) AccessibilityService.GLOBAL_ACTION_HOME else AccessibilityService.GLOBAL_ACTION_BACK)
+        editorAction { service.performGlobalAction(if (args.optBoolean("home")) AccessibilityService.GLOBAL_ACTION_HOME else AccessibilityService.GLOBAL_ACTION_BACK) }
         pause(taskId, 600); after(service, JSONObject())
       }
       "phoneFillCode" -> fillCode(context, service, args)
       else -> throw IllegalArgumentException("Comando do celular inválido.")
     }
+    WalletEditorGate.check(editorToken.get() ?: throw IllegalStateException("Comando inválido."))
+    return result
+    } finally { editorToken.remove() }
   }
 
   fun immediate(context: Context, command: JSONObject): JSONObject {
@@ -247,7 +323,7 @@ internal object PhoneControl {
 
   fun release() { main.post { removeOverlay() } }
 
-  private fun post(context: Context, body: JSONObject) = sender.execute {
+  fun post(context: Context, body: JSONObject) = sender.execute {
     try {
       val saved = pairingPreferences(context)
       val token = saved.getString("token", null) ?: return@execute
@@ -260,6 +336,7 @@ internal object PhoneControl {
   }
 
   private fun check(taskId: String) {
+    WalletEditorGate.check(editorToken.get() ?: throw IllegalStateException("Comando inválido."))
     if (taskId in stopped) throw Stopped()
     if (person) throw IllegalStateException("A pessoa assumiu o celular. Espere ela tocar em “Devolver ao bot”.")
   }
@@ -391,6 +468,7 @@ internal object PhoneControl {
         // Verification codes on any screen (the SMS app, a field just filled) are never read by the bot.
         val text = VerificationCodes.hide(raw); val description = VerificationCodes.hide(rawDescription)
         val coded = text != raw || description != rawDescription
+        val card = CardProtection.sensitive(node)
         val useful = node.isClickable || node.isLongClickable || node.isEditable || node.isScrollable || node.isCheckable || text.isNotEmpty() || description.isNotEmpty()
         if (useful) {
           val box = Rect(); node.getBoundsInScreen(box)
@@ -400,11 +478,11 @@ internal object PhoneControl {
             val item = JSONObject().put("id", id)
               .put("kind", when { node.isEditable -> "campo"; node.isCheckable -> "opção"; node.isClickable -> "botão"; node.isScrollable -> "lista"; else -> "texto" })
             // Passwords, as in the browser: the IA sees that there is one, never what it is.
-            if (node.isPassword) { item.put("password", true); if (text.isNotEmpty()) item.put("text", "••••"); secret.add(box) }
+            if (node.isPassword || card) { item.put(if (card) "card" else "password", true); if (text.isNotEmpty()) item.put("text", "••••"); secret.add(box) }
             else if (coded) { item.put("code", true); secret.add(box); if (text.isNotEmpty()) item.put("text", text.take(200)) }
             else if (text.isNotEmpty()) item.put("text", text.take(200))
-            if (description.isNotEmpty() && description != text) item.put("description", description.take(200))
-            if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString()?.takeIf { it.isNotBlank() && it != text }?.let { item.put("hint", it.take(120)) }
+            if (!card && description.isNotEmpty() && description != text) item.put("description", description.take(200))
+            if (!card && Build.VERSION.SDK_INT >= 26) node.hintText?.toString()?.takeIf { it.isNotBlank() && it != text }?.let { item.put("hint", VerificationCodes.hide(it).take(120)) }
             if (node.isCheckable) item.put("checked", node.isChecked)
             if (node.isScrollable) item.put("scrollable", true)
             if (node.isFocused) item.put("focused", true)
@@ -447,7 +525,7 @@ internal object PhoneControl {
     return node
   }
 
-  private fun labelOf(node: AccessibilityNodeInfo) = (node.text?.toString()?.takeUnless { node.isPassword } ?: node.contentDescription?.toString() ?: (if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null)).orEmpty().replace(Regex("\\s+"), " ").trim().take(40)
+  private fun labelOf(node: AccessibilityNodeInfo) = if (node.isPassword || CardProtection.sensitive(node)) "campo protegido" else VerificationCodes.hide((node.text?.toString()?.takeUnless { node.isPassword } ?: node.contentDescription?.toString() ?: (if (Build.VERSION.SDK_INT >= 26) node.hintText?.toString() else null)).orEmpty().replace(Regex("\\s+"), " ").trim()).take(40)
 
   private fun tap(context: Context, service: MyBotsAccess, args: JSONObject): JSONObject {
     val taskId = args.optString("taskId"); val long = args.optBoolean("long")
@@ -460,7 +538,7 @@ internal object PhoneControl {
       show(taskId, if (name.isEmpty()) verb else "$verb em ‘$name’", box)
       var target: AccessibilityNodeInfo? = node
       while (target != null && !(if (long) target.isLongClickable else target.isClickable)) target = target.parent
-      val done = target?.performAction(if (long) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK) == true
+      val done = editorAction { target?.performAction(if (long) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK) == true }
       if (!done) gesture(service, taskId, box.exactCenterX(), box.exactCenterY(), null, if (long) 700 else 60)
       pause(taskId, 700)
       return after(service, JSONObject().put("target", JSONObject().put("label", name)))
@@ -476,17 +554,17 @@ internal object PhoneControl {
     val taskId = args.optString("taskId")
     requireActionable(service)
     val node = node(args.getInt("id"))
-    if (node.isPassword) throw IllegalStateException("Campos de senha só a pessoa preenche. Use phone_ask_user.")
+    if (node.isPassword || CardProtection.sensitive(node)) throw IllegalStateException("Campos protegidos só a pessoa preenche. Use phone_ask_user.")
     if (!node.isEditable) throw IllegalStateException("Este elemento não é um campo de texto. Veja os campos em phone_screen.")
     val box = Rect(); node.getBoundsInScreen(box)
     val name = labelOf(node)
     show(taskId, if (name.isEmpty()) "Digitando" else "Digitando em ‘$name’", box)
-    node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+    editorAction { node.performAction(AccessibilityNodeInfo.ACTION_FOCUS) }
     val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, args.optString("text")) }
-    if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)) throw IllegalStateException("O app não aceitou o texto neste campo.")
+    if (!editorAction { node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle) }) throw IllegalStateException("O app não aceitou o texto neste campo.")
     if (args.optBoolean("submit")) {
       check(taskId)
-      if (Build.VERSION.SDK_INT >= 30) node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+      if (Build.VERSION.SDK_INT >= 30) editorAction { node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id) }
     }
     pause(taskId, 500)
     return after(service, JSONObject().put("target", JSONObject().put("label", name)))
@@ -505,7 +583,7 @@ internal object PhoneControl {
       "left" -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id
       else -> AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id
     }
-    val done = target != null && (target.performAction(actionId) || target.performAction(if (direction == "up" || direction == "left") AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+    val done = editorAction { target != null && (target.performAction(actionId) || target.performAction(if (direction == "up" || direction == "left") AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) }
     if (!done) {
       // A swipe in the middle of the screen (or of the list): content moves the opposite way of the finger.
       val metrics = service.resources.displayMetrics
@@ -538,7 +616,7 @@ internal object PhoneControl {
     show(taskId, "Abrindo $name", null)
     val intent = manager.getLaunchIntentForPackage(packageName) ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(packageName, match.activityInfo.name)
     // An enabled accessibility service may start activities from the background.
-    service.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+    editorAction { service.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)) }
     val until = System.currentTimeMillis() + 8000
     while (System.currentTimeMillis() < until && service.rootInActiveWindow?.packageName?.toString() != packageName) pause(taskId, 150)
     pause(taskId, 500)
@@ -574,7 +652,7 @@ internal object PhoneControl {
     val box = Rect(); node.getBoundsInScreen(box)
     show(taskId, "Preenchendo o código", box)
     val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, code.code) }
-    if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)) throw IllegalStateException("O app não aceitou o código neste campo.")
+    if (!editorAction { node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle) }) throw IllegalStateException("O app não aceitou o código neste campo.")
     VerificationCodes.used(code)
     pause(taskId, 500)
     return after(service, JSONObject().put("filled", true).put("sender", sender).put("target", JSONObject().put("label", app)))
@@ -587,11 +665,20 @@ internal object PhoneControl {
     // The bar must not catch the bot's own touch.
     main.post { bar?.let { view -> (view.layoutParams as? WindowManager.LayoutParams)?.let { it.flags = it.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE; try { (service.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(view, it) } catch (_: Exception) {} } } }
     Thread.sleep(50)
+    val token = editorToken.get() ?: throw IllegalStateException("Comando inválido.")
+    WalletEditorGate.beginGesture(token)
+    val ended = java.util.concurrent.atomic.AtomicBoolean(false)
+    fun finishGesture() { if (ended.compareAndSet(false, true)) WalletEditorGate.endGesture(); done.countDown() }
     main.post {
-      service.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build(), object : AccessibilityService.GestureResultCallback() {
-        override fun onCompleted(gestureDescription: GestureDescription?) { ok.set(true); done.countDown() }
-        override fun onCancelled(gestureDescription: GestureDescription?) { done.countDown() }
-      }, main)
+      try {
+        val started = WalletEditorGate.action(token) {
+          service.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build(), object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) { ok.set(true); finishGesture() }
+            override fun onCancelled(gestureDescription: GestureDescription?) { finishGesture() }
+          }, main)
+        }
+        if (!started) finishGesture()
+      } catch (_: Exception) { finishGesture() }
     }
     done.await(duration + 3000, TimeUnit.MILLISECONDS)
     main.post { bar?.let { view -> (view.layoutParams as? WindowManager.LayoutParams)?.let { it.flags = it.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv(); try { (service.getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(view, it) } catch (_: Exception) {} } } }
@@ -613,7 +700,7 @@ internal object PhoneControl {
     fun visit(node: AccessibilityNodeInfo?, depth: Int) {
       if (node == null || depth > 40) return
       val words = "${node.text ?: ""} ${node.contentDescription ?: ""}"
-      if (node.isPassword || VerificationCodes.hide(words) != words) boxes.add(Rect().also { node.getBoundsInScreen(it) })
+      if (node.isPassword || CardProtection.sensitive(node) || VerificationCodes.hide(words) != words) boxes.add(Rect().also { node.getBoundsInScreen(it) })
       for (index in 0 until node.childCount) visit(node.getChild(index), depth + 1)
     }
     visit(service.rootInActiveWindow, 0)

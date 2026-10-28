@@ -2,11 +2,11 @@ import { useStore } from '../state/useStore';
 import { selectHome, selectBots, selectShareTargets } from '../state/store';
 import { C, Icon } from '../theme';
 import BotAvatar from '../BotAvatar';
-import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet } from 'react-native';
+import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, cardLastFour, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop } from '../desktop';
@@ -633,6 +633,51 @@ export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry 
         <Text style={styles.scannerText}>Aponte para o QR do MyBots no computador.</Text>
         <Pressable accessibilityRole="button" onPress={() => setScanning(false)} style={styles.scannerClose}><Text style={styles.denyText}>Cancelar</Text></Pressable>
       </View>
+    </Modal>
+  </View>;
+}
+
+const reais = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${String(cents % 100).padStart(2, '0')}`;
+const PURCHASE_STATUS = { paga: '', cancelada: ' · não concluída', desconsiderada: ' · desconsiderada' };
+
+/** Ajustes → Carteira: the card (only its last digits), the rules, Congelar and the extract with each receipt. */
+export function WalletPanel() {
+  const [lastFour, setLastFour] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  const [rules, setRules] = useState({ frozen: true }); const [purchases, setPurchases] = useState([]); const [receipt, setReceipt] = useState(null);
+  const load = async () => { try { setLastFour(await cardLastFour()); setRules(await walletRules()); setPurchases(await walletPurchases()); } catch (error) { setNote(nativeMessage(error)); } };
+  useEffect(() => { load(); }, []);
+  const native = action => async () => { setBusy(true); setNote(''); try { await action(); await load(); } catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); } };
+  const remove = () => Alert.alert('Apagar o cartão?', 'O cartão será removido deste celular.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Apagar', style: 'destructive', onPress: () => cardDelete().then(load).catch(error => setNote(nativeMessage(error))) }]);
+  const dismiss = item => Alert.alert('Desconsiderar esta compra?', 'Use quando a compra não aconteceu (pedido cancelado ou recusado). Ela deixa de contar nos limites.', [{ text: 'Cancelar', style: 'cancel' },
+    { text: 'Desconsiderar', onPress: () => walletDismiss(item.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
+  const frozen = rules.frozen !== false;
+  const month = new Date().toISOString().slice(0, 7);
+  const spent = purchases.filter(item => item.status === 'paga' && new Date(item.at).toISOString().slice(0, 7) === month).reduce((sum, item) => sum + item.total, 0);
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>Cartão da carteira</Text>
+    <Text style={styles.optionDetail}>{lastFour ? `Cartão final ${lastFour}. ` : 'Nenhum cartão cadastrado. '}{frozen ? 'Carteira congelada: nenhum bot paga. ' : `Carteira ativa. ${rules.perMonth ? `Gasto no mês: ${reais(spent)} de ${reais(rules.perMonth)}. ` : ''}`}O cartão fica só neste celular; os bots veem apenas o final.</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={native(cardEditor)} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{lastFour ? 'Trocar cartão' : 'Cadastrar cartão'}</Text></Pressable>
+      {lastFour ? <Pressable accessibilityRole="button" disabled={busy} onPress={remove} style={styles.stopButton}><Icon name="trash" size={13} color={C.faint} /><Text style={styles.stopText}>Apagar</Text></Pressable> : null}
+      <Pressable accessibilityRole="button" disabled={busy} onPress={native(walletRulesEditor)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{frozen ? 'Regras e descongelar' : 'Regras'}</Text></Pressable>
+      {!frozen ? <Pressable accessibilityRole="button" onPress={native(walletFreeze)} style={styles.stopButton}><Icon name="stop" size={13} color={C.amber} /><Text style={[styles.stopText, { color: C.amber }]}>Congelar carteira</Text></Pressable> : null}
+    </View>
+    {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
+    {purchases.length ? <Text style={[styles.optionLabel, { marginTop: 14 }]}>Extrato</Text> : null}
+    {purchases.slice(0, 30).map(item => <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+      {item.receipt ? <Pressable accessibilityRole="button" accessibilityLabel="Ver comprovante" onPress={() => setReceipt(item.receipt)}><Image source={{ uri: item.receipt }} style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: C.surface2 }} /></Pressable> : null}
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.optionLabel, item.status !== 'paga' && { color: C.faint }]}>{reais(item.total)} · {item.store}{PURCHASE_STATUS[item.status] || ''}</Text>
+        <Text style={styles.optionDetail}>{(item.items || []).join(', ')} · {item.bot} · {new Date(item.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{item.reason ? `\n${item.reason}` : ''}</Text>
+      </View>
+      {item.status === 'paga' ? <Pressable accessibilityRole="button" onPress={() => dismiss(item)} style={styles.stopButton}><Text style={styles.stopText}>Desconsiderar</Text></Pressable> : null}
+    </View>)}
+    <Modal visible={Boolean(receipt)} transparent animationType="fade" onRequestClose={() => setReceipt(null)}>
+      <Pressable style={{ flex: 1, backgroundColor: '#000000E6', justifyContent: 'center', padding: 16 }} onPress={() => setReceipt(null)}>
+        {receipt ? <Image source={{ uri: receipt }} resizeMode="contain" style={{ width: '100%', height: '80%' }} /> : null}
+        <Text style={[styles.optionDetail, { textAlign: 'center', marginTop: 10 }]}>Comprovante do checkout, com o cartão tapado. Toque para fechar.</Text>
+      </Pressable>
     </Modal>
   </View>;
 }

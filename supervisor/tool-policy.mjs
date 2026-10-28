@@ -47,6 +47,7 @@ export const FREE_ASK_OPTIONS = [
   ['skill.propose', 'Instalar habilidades', 'Programas que o bot escreve para rodar sozinhos no celular.', true],
   ['browser/upload', 'Anexar arquivos em sites', 'Mandar um arquivo seu para um site.', true],
   ['sms.send', 'Enviar SMS', 'Pelo seu chip.', true],
+  ['wallet/pay', 'Pagar com a carteira', 'Cada pagamento com o cartão guardado.', true],
   ['browser/submit', 'Enviar formulários no navegador', 'Botões de enviar, confirmar e arrastar.', false],
   ['browser/login', 'Entrar com senha salva', 'O bot nunca vê a senha, mas entra na sua conta.', false],
   ['phone/act', 'Tocar e digitar em outros apps', 'Cada toque, texto ou rolagem no celular.', false],
@@ -63,7 +64,7 @@ export const FREE_ASK_DEFAULT = FREE_ASK_OPTIONS.filter(item => item[3]).map(ite
 export function validFreeAsk(list) {
   return Array.isArray(list) && list.length <= FREE_ASK_OPTIONS.length && list.every(key => FREE_ASK_OPTIONS.some(item => item[0] === key));
 }
-export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.pay', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
 export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 export const PHONE_TOOLS = ['phone.screen', 'phone.tap', 'phone.type', 'phone.scroll', 'phone.open_app', 'phone.back', 'phone.fill_code', 'phone.ask_user'];
@@ -103,7 +104,7 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
-    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
@@ -248,6 +249,12 @@ export function toolArguments(tool, args) {
     if (args.submit !== undefined && typeof args.submit !== 'boolean') throw new Error('Use submit true ou false.');
     if (typeof args.text !== 'string' || args.text.length > 2000 || /\u0000/.test(args.text)) throw new Error('Texto até 2.000 caracteres.');
     return { id: integer('id', 1, 100000), text: args.text, submit: args.submit === true };
+  }
+  // The wallet's rules and the checkout's own total are checked in the app; here, only the shape of what the bot declares.
+  if (tool === 'browser.pay') {
+    if (!Array.isArray(args.items) || !args.items.length || args.items.length > 20 || args.items.some(item => typeof item !== 'string' || !item.trim() || item.length > 200)) throw new Error('Em items, liste de 1 a 20 itens da compra.');
+    if (typeof args.total !== 'number' || !Number.isFinite(args.total) || args.total <= 0 || args.total > 1e7 || Math.abs(Math.round(args.total * 100) - args.total * 100) > 1e-6) throw new Error('Em total, mande o valor em reais com até duas casas, como 129.9.');
+    return { store: text('store', 200), items: args.items.map(item => item.trim()), category: text('category', 100), total: Math.round(args.total * 100) };
   }
   if (tool === 'browser.upload') {
     if (typeof args.file !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.file)) throw new Error('Em file, informe o id de um arquivo deste bot (veja em files_list).');

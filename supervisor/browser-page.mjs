@@ -28,7 +28,9 @@ export function readPage({ query = '', limit = 5 } = {}) {
     }
     const copy = doc.body?.cloneNode(true);
     copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]').forEach(el => el.remove());
-    texts.push((copy?.textContent || '').replace(/\s+/g, ' '));
+    // Separate block text before concatenating it, including consecutive card numbers.
+    copy?.querySelectorAll('p,div,li,section,article,header,footer,main,aside,nav,table,tr,td,th,ul,ol,h1,h2,h3,h4,h5,h6,br').forEach(el => { el.prepend('\n'); el.append('\n'); });
+    texts.push((copy?.textContent || '').replace(/[^\S\n]+/g, ' ').replace(/\n+/g, '\n'));
     for (const el of doc.querySelectorAll('iframe')) {
       try {
         if (!el.contentDocument?.body || el.contentWindow.location.origin !== location.origin) continue;

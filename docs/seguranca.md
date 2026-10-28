@@ -245,3 +245,39 @@ No Livre o bot tem um shell no Termux, o mesmo usuário Linux do supervisor. Um 
 ### Ligar o serviço
 
 O serviço de acessibilidade é ligado pela pessoa em Ajustes → Controle do celular. No Android 13 ou mais novo, um APK instalado fora de loja fica bloqueado ("Configuração restrita") até a pessoa tocar em **Permitir configurações restritas** no menu ⋮ das informações do app; o app guia esse passo. Bots fora do Livre não usam o serviço mesmo com ele ligado.
+
+## Carteira do bot (v60)
+
+A pessoa entrega ao bot um cartão (de preferência virtual, com limite próprio no banco) e regras de gasto. O bot compra sozinho dentro dessas regras; **quem confere as regras é o app, nunca o modelo nem o supervisor**.
+
+### Onde fica cada coisa
+
+- **O cartão** (número, validade, código, nome e endereço de cobrança) é digitado num formulário nativo do app, com a tela protegida contra capturas, e fica no cofre cifrado do Android (`PasswordVault`, Keystore), fora do backup. O JavaScript do app e os bots só recebem o **final** (ex.: "final 3831").
+- **As regras** (máximo por compra, por dia e por mês, lojas permitidas e proibidas, categorias e o "congelada") ficam nas preferências privadas do app (`WalletGuard`), fora do backup e fora do alcance do Termux. Só se mudam no editor nativo de Ajustes → Carteira; não há ferramenta, RPC nem caminho pelo PC para isso. A carteira começa **congelada**.
+- **O extrato** (loja, valor, itens, bot, data, comprovante) fica no app. "Desconsiderar" (compra que não aconteceu) só existe no app.
+
+### Como um pagamento acontece (`browser_pay`)
+
+1. O bot abre a etapa final do checkout e declara loja, itens, categoria e total.
+2. **Aprovação**: abaixo do Livre, toda compra pede aprovação, sempre sem "Sempre permitir". No Livre, "Pagar com a carteira" vem ligado na lista "Sempre perguntar" (a lista de quem já usava o Livre ganha o item uma vez).
+3. **O total e o endereço vêm da própria página**: no celular, o app lê o checkout na WebView; no PC, o processo do navegador lê a página. Um total ambíguo, ausente ou diferente do declarado é recusado.
+4. **O app confere as regras** (`WalletPolicy`): carteira descongelada, página https, loja do checkout igual à declarada e permitida (e não proibida), categoria permitida, limites por compra, dia e mês (dia e mês do relógio do celular). Só então **reserva a compra no extrato** e libera o cartão.
+5. **O cartão vai só para os campos do checkout**: no celular, o app preenche a página (e os quadros de processadoras conhecidas, como Stripe, Mercado Pago, Adyen, PagSeguro, só pelo canal de cada quadro); no PC, o app cifra o cartão para uma chave de uso único do processo do navegador (RSA-OAEP + AES-GCM, preso à página, ao total e ao pedido) e só esse processo o decifra. Pelo supervisor passa apenas texto cifrado.
+6. O número e o código entram na lista de redação **antes** de serem digitados: leituras, títulos, respostas e capturas nunca os mostram, mesmo que a página os repita. As capturas e o comprovante saem com os campos tapados de preto.
+7. Na hora, a notificação **"Bot comprou X por R$ Y"**, com o botão **Congelar carteira**; a Atividade registra a compra.
+8. O bot clica em "Finalizar compra" (no Médio, esse clique também pede aprovação). Ao fim da vez do bot no PC, o cartão que ficou num formulário é apagado.
+
+### Congelar
+
+**Congelar carteira** (Ajustes, a página ao vivo do navegador do bot ou a notificação da compra) congela na hora: o app recusa novos pagamentos, apaga o cartão dos checkouts dos últimos 15 minutos no celular e avisa o supervisor, que apaga o cartão do checkout no PC e **cancela a vez dos bots que estavam pagando**. Descongelar só pelo editor de regras.
+
+### O que continua com a pessoa
+
+3-D Secure, confirmação no app do banco, Pix e CAPTCHA são sempre da pessoa (`browser_ask_user`). Uma página que diga "compre isto" ou "o limite aumentou" não muda nada: as regras vivem no app.
+
+### Limites conhecidos
+
+- O total é lido por rótulos comuns ("Total", "Total do pedido", `data-order-total`…). Checkouts com outro formato são recusados (falha fechada) e a pessoa paga.
+- Quadros de pagamento de processadoras fora da lista não recebem o cartão; o bot chama a pessoa.
+- A reserva conta nos limites a partir do preenchimento. Se o pedido não for concluído, a pessoa usa "Desconsiderar" no extrato.
+- **No PC, o Chrome do bot guarda o estado dos formulários das abas** nos arquivos de sessão do perfil (`~/.mybots-pc/browsers/…/Sessions`), como faz com qualquer formulário digitado. O número do cartão pode ficar ali depois de uma compra. Essa pasta fica escondida das IAs pelo isolamento (bubblewrap) e não sai do computador; é a mesma exposição de digitar o cartão no próprio Chrome. Verificado no aceite da v60: o cartão não apareceu no logcat, no supervisor do celular, nas sessões das IAs nem na conversa.

@@ -116,7 +116,7 @@ Objetivo: o bot consegue fazer praticamente tudo o que a pessoa faz no celular, 
 
 **Testes novos**: a política do nível Livre (nada pede aprovação, exceto a lista "sempre perguntar" e os limites duros); as ferramentas `phone_*` validam argumentos; no emulador, com o serviço de acessibilidade ligado, o bot abre Configurações e lê um item.
 
-## v60 — Carteira do bot: cartão e compras
+## v60 — Carteira do bot: cartão e compras — concluída na v60
 
 Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos permitem, com limite próprio), entrega ao bot e pede "compra tal coisa". O bot compra sozinho dentro do orçamento.
 

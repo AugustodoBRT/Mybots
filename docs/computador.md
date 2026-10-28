@@ -177,3 +177,7 @@ O navegador padrão dos bots agora é o **Navegador compartilhado**: um Chrome d
 ## Nível Livre (v59)
 
 O nível **Livre** se escolhe só no app do celular (perfil do bot → Acesso), depois de um aviso. No computador, um bot Livre trabalha como no Acesso total, mas sem cartões de aprovação, salvo o que estiver em **Sempre perguntar** (por padrão: comandos perigosos como sudo, apagar pastas inteiras e git push; instalar habilidades; anexar arquivos em sites; enviar SMS). A janela do PC mostra o nível, o cartão "Celular ao vivo" e o botão **Parar** quando um bot está controlando o celular, mas não escolhe Livre nem muda a lista. Um bot Livre que responde pelo PC também controla os apps do celular (as ferramentas `phone_*` rodam no app do celular).
+
+## Carteira do bot (v60)
+
+Em **Ajustes → Carteira** (no celular): cadastre o cartão, defina as regras (máximo por compra, por dia e por mês, lojas permitidas e proibidas, categorias) e desmarque "Carteira congelada". Depois é só pedir: "compra o livro X na loja Y". O bot abre o checkout e chama `browser_pay` com loja, itens, categoria e total. O app confere tudo com a própria página e preenche o cartão, tanto no navegador do celular quanto no Chrome do bot no PC. Você recebe a notificação da compra e a vê no extrato, com o comprovante. **Congelar carteira** fica em Ajustes, na página ao vivo do navegador do bot e na notificação. 3-D Secure, app do banco e Pix são sempre com você.

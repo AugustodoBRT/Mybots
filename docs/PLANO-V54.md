@@ -7,6 +7,8 @@ As regras de trabalho são as da seção 1 de [PLANO-V47.md](PLANO-V47.md) (test
 - Migração nova do banco agora é a **9** (`user_version=8` hoje).
 - A regra 9 (segurança) continua, mas a trilha "bot livre" (v59 a v61) muda **onde** fica o freio: em vez de pedir aprovação a cada ação, o supervisor aplica **limites duros** que o modelo não consegue mudar (orçamento, lojas, mandato). Continua proibido: senha, número de cartão ou código passar pela IA; disfarçar automação; quebrar CAPTCHA (quem resolve é a pessoa, agora com muito mais conforto).
 
+**Versão intermediária 0.38.1 (versionCode 61, 28/10/2026):** entre a v60 e a v61 saiu uma entrega fora do plano, com skills por bot, "Usar a placa de vídeo" e salas com até 30 rodadas (detalhes em `docs/progresso.md` e `docs/seguranca.md`). Por isso, daqui em diante o **versionCode é o número da versão do plano mais 1**: a v61 sai como 0.39.0 com versionCode 62, a v62 com 63 e a v63 com 64. O nome "v61" continua sendo o da seção do plano, e `scripts/publish-release.sh` recebe o versionCode (62 para a v61).
+
 Antes da v54: terminar e commitar o trabalho em andamento no `mobile/App.js` (rolagem que fica onde a pessoa lê, `useStickyScroll` + botão de descer), que já está no diff local.
 
 ---

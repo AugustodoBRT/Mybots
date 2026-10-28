@@ -1010,3 +1010,5 @@ Seção v61 do `PLANO-V54.md`. Por pedido do usuário durante o plano, **não h�
 ### Entrega
 
 APK ARM64 offline: `dist/apk/mybots-v62.apk` e `.sha256`, **versionCode 62 / 0.39.0**, 44.123.392 bytes, só ABI ARM64. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `6fd5838b9d522d6f1da1eb7999e36ba396c409ec97342902194514c5877906c3`. Nenhuma permissão nova pedida ao Android.
+
+Release pública [v62](https://github.com/AugustodoBRT/Mybots/releases/tag/v62) (0.39.0), marcada como a mais recente, com APK e `.sha256`; o APK baixado da Release é idêntico ao local. Tag no commit `859b4a7`; commit sem coautoria de IA. **PC atualizado depois da Release**: `scripts/build-desktop.sh` regenerou a interface, compilou e instalou a janela e reiniciou o serviço real em **28/10/2026 às 16:53 (Brasília)**; `mybots-pc` **active** (PID 393274). Emulador encerrado; provas em `.build-tools/emulator-state/v61/`. O diretório `output/` preexistente ficou fora dos commits.

@@ -1245,3 +1245,11 @@ Pedidos do usuário: ver imagens direto no chat como no WhatsApp, os modelos pod
 
 ### Entrega da 0.45.0
 APK ARM64 offline `dist/apk/mybots-v76.apk` e `.sha256`, **versionCode 76 / 0.45.0**, 44.355.607 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v76](https://github.com/AugustodoBRT/Mybots/releases/tag/v76), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
+
+## 29/10/2026 — 0.45.1 (versionCode 77): colar e arrastar arquivos na janela do PC
+Pedido do usuário: na janela do PC só dava para anexar pelo botão "+" (escolhendo nos arquivos); queria colar com Ctrl+V (print, foto copiada) e arrastar arquivos para a conversa.
+- **Colar (Ctrl+V)** em qualquer lugar da janela: print, imagem ou arquivo copiado vira anexo da mensagem; texto copiado continua sendo texto (se a área de transferência tem texto, o app não intercepta).
+- **Arrastar**: já havia o código, mas a janela do app (Tauri) tinha o tratamento de arrastar do próprio sistema ligado, que impede o `drop` da página; ficou `dragDropEnabled: false` em `desktop/src-tauri/tauri.conf.json`. Ao arrastar um arquivo aparece uma faixa "Solte para anexar à mensagem".
+- Os mesmos limites: até 5 arquivos e 2,5 MB juntos no PC.
+- O envio dos anexos até um bot do celular foi conferido no teste da janela (supervisor de teste): a mensagem sai com a imagem em bolha e o arquivo como cartão. **Não testado**: a janela instalada (Tauri) de verdade, em especial colar arquivos copiados do gerenciador de arquivos (o WebKitGTK no Linux às vezes só entrega imagens), e arrastar do gerenciador de arquivos.
+- Anexar em **salas** pelo PC continua só pelo celular.

@@ -6,7 +6,7 @@
   "build": { "frontendDist": "../loader" },
   "app": {
     "windows": [
-      { "label": "main", "title": "MyBots", "width": 1000, "height": 760, "minWidth": 420, "minHeight": 560, "visible": false, "backgroundColor": "#090B10" }
+      { "label": "main", "title": "MyBots", "width": 1000, "height": 760, "minWidth": 420, "minHeight": 560, "visible": false, "backgroundColor": "#090B10", "dragDropEnabled": false }
     ],
     "security": { "csp": null }
   },

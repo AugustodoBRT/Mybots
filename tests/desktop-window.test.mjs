@@ -67,6 +67,18 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await (await big).setFiles({ name: 'grande.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(3 * 1024 * 1024) });
   await page.getByText('No computador, os anexos de uma mensagem podem somar até 2,5 MB. Para arquivos maiores, use o celular.', { exact: true }).waitFor({ timeout: 30000 });
 
+  // Pasting a picture (Ctrl+V) and dragging a file onto the window attach them too; pasted text stays text.
+  await page.evaluate(() => { const data = new DataTransfer(); data.items.add(new File(['x'], 'colada.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })); });
+  await seen('colada.png');
+  await page.evaluate(() => { const data = new DataTransfer(); data.items.add(new File(['y'], 'arrastada.txt', { type: 'text/plain' })); window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: data, bubbles: true, cancelable: true })); });
+  await seen('Solte para anexar à mensagem');
+  await page.evaluate(() => { const data = new DataTransfer(); data.items.add(new File(['y'], 'arrastada.txt', { type: 'text/plain' })); window.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true })); });
+  await seen('arrastada.txt');
+  assert.equal(await page.getByText('Solte para anexar à mensagem').count(), 0, 'a faixa some ao soltar');
+  // The attached files go with the message to the bot: the message shows them.
+  await page.getByLabel('Sua mensagem').fill('Veja os anexos'); await page.getByLabel('Enviar mensagem').click();
+  await seen('Veja os anexos'); await page.getByLabel(/Imagem colada\.png/).first().waitFor(); await seen('arrastada.txt');
+
   // Ctrl+K searches and Enter opens the first match.
   await page.keyboard.press('Control+k'); await page.getByLabel('Buscar e trocar de bot').fill('nic'); await seen('↑ ↓ escolhem · Enter abre · Esc fecha · Ctrl+N cria um bot');
   await page.keyboard.press('Enter'); await page.getByRole('tab', { name: /Nico/ }).waitFor();

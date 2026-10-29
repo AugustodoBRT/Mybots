@@ -81,14 +81,24 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     } catch (e) { setComposerError(e.message); }
   };
   const pickWebFile = () => { const input = globalThis.document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => addWebFiles(input.files); input.click(); };
-  // Dropping files anywhere in the window attaches them to the open conversation.
-  const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles;
+  // Files dropped anywhere in the window, or pasted with Ctrl+V (a screenshot, a copied picture or file), attach to the open conversation.
+  const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles; const [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (!desktop) return undefined;
-    const over = event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); };
-    const drop = event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
-    globalThis.addEventListener('dragover', over); globalThis.addEventListener('drop', drop);
-    return () => { globalThis.removeEventListener('dragover', over); globalThis.removeEventListener('drop', drop); };
+    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files'));
+    const enter = event => { if (has(event)) { depth++; setDragging(true); } };
+    const over = event => { if (has(event)) event.preventDefault(); };
+    const leave = event => { if (has(event) && --depth <= 0) { depth = 0; setDragging(false); } };
+    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
+    const paste = event => {
+      const list = Array.from(event.clipboardData?.files || []); if (!list.length) return;
+      // Copied text that also carries a picture (cells of a sheet) stays text; a screenshot or a copied picture or file becomes an attachment.
+      if (event.clipboardData.getData('text/plain').trim()) return;
+      event.preventDefault(); dropRef.current(list);
+    };
+    const events = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop], ['paste', paste]];
+    for (const [name, handler] of events) globalThis.addEventListener(name, handler);
+    return () => { for (const [name, handler] of events) globalThis.removeEventListener(name, handler); };
   }, []);
   const attach = async () => {
     setComposerError('');
@@ -169,6 +179,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       </View>} />
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
+    {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}
     <View style={[styles.composerArea, readingColumn]}>
       {error ? <Text style={styles.composerError}>Confira a conexão antes de enviar.</Text> : null}
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}

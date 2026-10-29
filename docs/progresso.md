@@ -1297,3 +1297,7 @@ Pergunta do usuário: parece que os bots Codex não enxergam imagens?
 ### Entrega da 0.46.1
 APK ARM64 offline `dist/apk/mybots-v81.apk` e `.sha256`, **versionCode 81 / 0.46.1**, 44.366.859 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v81](https://github.com/AugustodoBRT/Mybots/releases/tag/v81), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
 Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o mesmo nome `images` duas vezes em `runReply` quebrava toda resposta de bot Codex); a suíte o pegou (5 testes), corrigi antes de publicar e refiz o APK. A etapa de entrega agora para se `npm test` falhar.
+
+## 0.46.2 (versionCode 82) — salas e times sem limite de rodadas
+- `MAX_ROUNDS` removido de `supervisor/rooms.mjs`: bots que se chamam com @ (resposta ou `team_post`) continuam até ninguém ser chamado. A fila de 12 respostas por sala e a trava contra chamar quem já espera continuam.
+- Testes ajustados (cadeia de 40 respostas em `rooms.test.mjs`). `npm test` 317/317. Release v82 publicada, APK conferido, PC atualizado. Não testado em celular real.

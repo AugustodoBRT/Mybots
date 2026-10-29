@@ -1102,3 +1102,4 @@ Seção v63 do `PLANO-V54.md`, parte 2, depois do aceite da parte 1 pelo usuári
 
 ### Entrega da v63 parte 2
 APK ARM64 offline `dist/apk/mybots-v66.apk` e `.sha256`, **versionCode 66 / 0.42.0**, 44.264.204 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `bd02ca40754476cf6e1875a4971e5484194fd78f5372a360d5b6b1817d2f42c3`. Nenhuma permissão nova pedida ao Android.
+Release pública [v66](https://github.com/AugustodoBRT/Mybots/releases/tag/v66) (0.42.0), a mais recente, com APK e `.sha256`; o APK baixado da Release é idêntico ao local. Commit `33e0ec7`, sem coautoria de IA. **PC atualizado depois da Release**: `scripts/build-desktop.sh` em **29/10/2026 às 02:22 (Brasília)**; `mybots-pc` **active** (PID 92235). Emulador e daemons do Gradle encerrados; o diretório `output/` e as pastas `personagens-*` preexistentes ficaram fora dos commits.

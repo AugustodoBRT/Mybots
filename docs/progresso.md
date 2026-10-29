@@ -1206,3 +1206,6 @@ Pedidos do usuário depois de usar a janela do PC:
 - **Logos oficiais** do Claude e da OpenAI nos anéis de limite, no lugar dos SVGs desenhados (`mobile/brand.js`, do Simple Icons, CC0; as marcas são de Anthropic e OpenAI).
 - Testes: `message-tree.json` regenerado (a mensagem mudou de propósito); `desktop-window.test.mjs` usa o botão de opções e o aviso do navegador. `npm test` 309/309.
 - **Não testado**: o logo do Claude no anel (só havia o limite do Codex no teste), a janela do PC instalada e o chat privado no celular real.
+
+### Entrega da 0.44.2
+APK ARM64 offline `dist/apk/mybots-v73.apk` e `.sha256`, **versionCode 73 / 0.44.2**, 44.344.267 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v73](https://github.com/AugustodoBRT/Mybots/releases/tag/v73), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`. Daqui em diante, cada tarefa termina com essa entrega (pedido do usuário).

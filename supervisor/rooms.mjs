@@ -5,8 +5,6 @@ import { TOOLS_TEXT } from '../mobile/local.js';
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
 // How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
 const PROMPT_WINDOW = 600;
-// Bots asking each other (@Nome) continue at most this many rounds after the person's message.
-export const MAX_ROUNDS = 30;
 export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** The members named with @ in a text ("@Faculdade", "@pobre jobs"), in order, without repeats. */
@@ -22,7 +20,7 @@ export function mentions(text, bots) {
 
 /**
  * Group conversations: the person and several bots. Without @, every member answers in turn; with @, only the named
- * ones. A bot that names another member in its answer hands it the next turn, up to MAX_ROUNDS. Each bot answers with
+ * ones. A bot that names another member in its answer hands it the next turn, with no limit of rounds (the chain ends when nobody is named). Each bot answers with
  * its own permissions and tools, sees only the room's conversation (never another bot's memory or private chat) and
  * keeps one IA session per room.
  */
@@ -72,7 +70,7 @@ export class Rooms {
   }
   /**
    * A bot writes in a room by itself (not as an answer to a turn). The members it names with @ get a turn, one
-   * round after the turn it is in (or the first, from a private chat), so a chain still stops at MAX_ROUNDS.
+   * round after the turn it is in (or the first, from a private chat), so a chain keeps counting its rounds.
    */
   post(roomId, bot, text, selectionFor, round = 0) {
     const room = this.db.requireRoom(roomId);
@@ -80,7 +78,7 @@ export class Rooms {
     const clean = typeof text === 'string' ? text.trim() : '';
     if (!clean || clean.length > 4000) throw new Error('Escreva de 1 a 4.000 caracteres.');
     const called = mentions(clean, this.members(room)).filter(item => item.id !== bot.id);
-    const turns = round + 1 <= MAX_ROUNDS ? called : [];
+    const turns = called;
     if (turns.length && this.active(roomId).length + turns.length > 12) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Espere um pouco.');
     const stamp = now(); const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: stamp };
     const waiting = new Set(this.active(roomId).filter(task => task.state === 'queued').map(task => task.bot_id));
@@ -89,7 +87,7 @@ export class Rooms {
       for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
     });
     this.changed('task.progress'); this.schedule();
-    return { posted: true, called: turns.map(item => item.name), ...(called.length > turns.length ? { limit: 'Limite de encadeamento atingido: ninguém foi chamado agora. Espere a pessoa continuar.' } : {}), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
+    return { posted: true, called: turns.map(item => item.name), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
   }
   /** The room's tasks still to answer, oldest first. */
   active(roomId) {
@@ -127,7 +125,7 @@ export class Rooms {
   /** After a bot answered: the members it named (@) answer next, while rounds remain and they are not already in line. */
   answered(taskId, selectionFor) {
     const turn = this.db.roomTurn(taskId); const task = this.db.task(taskId);
-    if (!turn || task?.state !== 'done' || turn.round >= MAX_ROUNDS) return;
+    if (!turn || task?.state !== 'done') return;
     const room = this.db.room(turn.room_id); if (!room || room.deletedAt) return;
     const reply = [...this.db.page({ roomId: room.id, limit: 100 }).messages].reverse().find(item => item.role === 'assistant' && item.botId === task.bot_id && item.replyTo === turn.message_id);
     if (!reply || reply.status !== 'complete') return;

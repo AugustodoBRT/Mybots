@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createSupervisor } from '../supervisor/index.mjs';
-import { MAX_ROUNDS } from '../supervisor/rooms.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
 const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }] };
@@ -120,12 +119,12 @@ test('rules: no stronger bot than its maker, only its own rooms, at least two me
   assert.equal(f.app.tools.policy(basic.id, 'team'), 'allow');
 });
 
-test('a chain of calls made with team_post stops at MAX_ROUNDS', async t => {
-  const f = await setup(t, async (bot, prompt, call) => bot.name === 'Ping' ? (await call('team_post', { room: 'Eco', text: 'ping @Pong' }).catch(() => null), 'Chamei.') : 'Devolvo para @Ping.');
+test('a chain of calls made with team_post ends without any limit of rounds', async t => {
+  let count = 0;
+  const f = await setup(t, async (bot, prompt, call) => ++count >= 40 ? 'Pronto.' : bot.name === 'Ping' ? (await call('team_post', { room: 'Eco', text: 'ping @Pong' }).catch(() => null), 'Chamei.') : 'Devolvo para @Ping.');
   const ping = await f.make('Ping'); const pong = await f.make('Pong');
   await f.app.rpc('room.create', { name: 'Eco', botIds: [ping.id, pong.id] });
   await f.app.rpc('room.send', { roomId: f.app.db.rooms()[0].id, requestId: randomUUID(), text: '@Ping vai' });
   await f.idle();
   assert.ok(f.app.db.task(f.app.db.all('SELECT task_id FROM room_turns').at(-1).task_id).state === 'done');
-  assert.ok(Math.max(...f.app.db.all('SELECT round FROM room_turns').map(row => row.round)) <= MAX_ROUNDS);
 });

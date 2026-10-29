@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createSupervisor } from '../supervisor/index.mjs';
-import { mentions, MAX_ROUNDS } from '../supervisor/rooms.mjs';
+import { mentions } from '../supervisor/rooms.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
 const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }] };
@@ -58,16 +58,17 @@ test('a room needs 2 to 8 bots; without @ all answer in order, with @ only the n
   assert.equal(state.rooms[0].name, 'Estudos'); assert.deepEqual(state.rooms[0].active, []);
 });
 
-test('a bot naming another hands it the next turn, at most MAX_ROUNDS times after the person spoke', async t => {
-  // Two bots that always ask each other.
-  const f = await setup(t, bot => bot.name === 'Ping' ? 'Pergunta para @Pong.' : 'Devolvo para @Ping.');
+test('a bot naming another hands it the next turn, with no limit of rounds', async t => {
+  // Two bots that ask each other until the 40th answer, past the old limit of 30 rounds.
+  let count = 0;
+  const f = await setup(t, bot => ++count >= 40 ? 'Pronto.' : bot.name === 'Ping' ? 'Pergunta para @Pong.' : 'Devolvo para @Ping.');
   const ping = await f.make('Ping'); const pong = await f.make('Pong');
   const room = await f.app.rpc('room.create', { name: 'Eco', botIds: [ping.id, pong.id] });
   await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Ping começa' });
   await f.idle();
   const answers = f.app.db.roomMessages(room.id).filter(item => item.role === 'assistant');
-  assert.equal(answers.length, 1 + MAX_ROUNDS);
-  assert.deepEqual(answers.map(item => item.botId), Array.from({ length: 1 + MAX_ROUNDS }, (_, index) => index % 2 ? pong.id : ping.id));
+  assert.equal(answers.length, 40);
+  assert.deepEqual(answers.map(item => item.botId), Array.from({ length: 40 }, (_, index) => index % 2 ? pong.id : ping.id));
   // Turns from other bots tell the bot who called it.
   assert.match(f.calls[1].prompt, /Ping chamou você/);
 });

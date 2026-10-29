@@ -1301,3 +1301,7 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 ## 0.46.2 (versionCode 82) — salas e times sem limite de rodadas
 - `MAX_ROUNDS` removido de `supervisor/rooms.mjs`: bots que se chamam com @ (resposta ou `team_post`) continuam até ninguém ser chamado. A fila de 12 respostas por sala e a trava contra chamar quem já espera continuam.
 - Testes ajustados (cadeia de 40 respostas em `rooms.test.mjs`). `npm test` 317/317. Release v82 publicada, APK conferido, PC atualizado. Não testado em celular real.
+
+## 0.46.3 (versionCode 83) — o app volta a sincronizar
+- Defeito: `validateBackup` (`mobile/local.js`) só aceitava skills antigas (id UUID) e rejeitava as de pastas do computador (`{ path, write }`). O `bots.merge` do app falhava com "Perfil inválido no backup" a cada conexão; o app ficava sem atualizar (mensagens do PC não apareciam, "supervisor desconectado"). Achado com bots Helena, Otávio, Rafael, Marta e Caio no celular do usuário (script de diagnóstico via WebSocket no Termux).
+- Teste novo em `maintenance.test.mjs`. `npm test` 318/318. Release v83, APK conferido, PC atualizado. Não testado em celular real.

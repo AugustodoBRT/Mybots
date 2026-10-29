@@ -1,10 +1,13 @@
-import { mkdirSync, writeFileSync, renameSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, writeFileSync, renameSync, readFileSync, rmSync, copyFileSync, chmodSync, openSync, readSync, closeSync, statSync } from 'node:fs';
+import { join, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
 import { officeText } from './documents.mjs';
 import { BLOCKED } from './browser.mjs';
 
+// A file the bot already has on disk (a video it rendered) goes to the conversation by copy, never held in memory: the only ceiling is the disk.
+export const BIG_FILE = 4 * 1024 * 1024 * 1024;
+const MIME_BY_EXTENSION = { mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf', zip: 'application/zip', csv: 'text/csv', txt: 'text/plain', md: 'text/markdown', json: 'application/json', html: 'text/html', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
 export const LIMITS = { files: 5, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20, pdfImagePages: 4 };
 const IMAGES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const TEXT = /^(text\/|application\/(json|xml|csv|javascript|x-yaml|yaml|x-sh|sql)|.*\+xml$|.*\+json$)/;
@@ -40,6 +43,23 @@ export class Attachments {
     this.db.run('INSERT INTO attachments VALUES(?,?,?,?,?,?)', id, botId, name, mime, bytes.length, now());
     return { id, name, mime, size: bytes.length };
   }
+  /** Keeps a file that is already on disk (any size) for a bot, copying it without reading it into memory. */
+  adopt(botId, from, size, name = basename(from)) {
+    name = String(name).replace(/[\u0000-\u001f/\\]/g, '_').slice(0, 120) || 'arquivo';
+    if (BLOCKED.test(name)) throw new Error('Arquivos executáveis são bloqueados.');
+    if (!(size > 0)) throw new Error('O arquivo está vazio.');
+    if (size > BIG_FILE) throw new Error('O arquivo passa de 4 GB.');
+    const id = randomUUID(); const mime = MIME_BY_EXTENSION[(name.split('.').pop() || '').toLowerCase()] || 'application/octet-stream';
+    copyFileSync(from, this.path(id) + '.tmp'); chmodSync(this.path(id) + '.tmp', 0o600); renameSync(this.path(id) + '.tmp', this.path(id));
+    this.db.run('INSERT INTO attachments VALUES(?,?,?,?,?,?)', id, botId, name, mime, size, now());
+    return { id, name, mime, size };
+  }
+  /** One part of a stored file, read from where it starts (the whole file is never loaded). */
+  part(id, offset, length) {
+    const path = this.path(id), size = statSync(path).size, fd = openSync(path, 'r');
+    try { const buffer = Buffer.alloc(Math.max(0, Math.min(length, size - offset))); const read = buffer.length ? readSync(fd, buffer, 0, buffer.length, offset) : 0; return { size, bytes: buffer.subarray(0, read) }; }
+    finally { closeSync(fd); }
+  }
   /** The bot's files, newest first: what the person sent, what it downloaded and what it made. */
   list(botId, limit = 50) {
     return { files: this.db.all('SELECT id,name,mime,size,created_at FROM attachments WHERE bot_id=? ORDER BY created_at DESC LIMIT ?', botId, limit).map(row => ({ id: row.id, name: row.name, mime: row.mime, size: row.size, createdAt: row.created_at })) };
@@ -68,6 +88,8 @@ export class Attachments {
   discard(items) { for (const item of items) { rmSync(this.path(item.id), { force: true }); this.db.run('DELETE FROM attachments WHERE id=?', item.id); } }
   async read(botId, id, { offset = 0, page = 1, asImage = false } = {}) {
     const row = this.meta(botId, id);
+    // A big file (a video, a long recording) is not read here: it is for the person, who gets it with Open, Share and Save.
+    if (row.size > 50 * 1024 * 1024) return { untrusted: true, notice: NOTICE, name: row.name, mime: row.mime, unsupported: true, message: `Este arquivo tem ${Math.round(row.size / 1048576)} MB, grande demais para eu ler aqui. Se a pessoa precisa dele, mande com file_send.` };
     const bytes = readFileSync(this.path(id));
     const meta = `${row.name} · ${row.mime} · ${Math.ceil(row.size / 1024)} KB`;
     const long = (text, extra = {}) => ({ untrusted: true, notice: NOTICE, name: row.name, mime: row.mime, ...extra, offset,

@@ -1262,3 +1262,12 @@ Pergunta do usuário: por que só 2,5 MB? O limite vinha da primeira versão da 
 
 ### Entrega da 0.45.2
 APK ARM64 offline `dist/apk/mybots-v78.apk` e `.sha256`, **versionCode 78 / 0.45.2**, 44.356.995 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v78](https://github.com/AugustodoBRT/Mybots/releases/tag/v78), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
+
+## 29/10/2026 — 0.45.3 (versionCode 79): bot manda arquivo de qualquer tamanho
+Pergunta do usuário: se um bot do Claude gerar um vídeo de 200 MB, ele não consegue mandar? (no outro app funciona).
+- Antes, tudo passava inteiro pela memória: `file_create` até 20 MB (feito de texto) e os anexos que o bot podia mandar eram só os que já estavam guardados (anexo seu, download do navegador, arquivo criado). Um arquivo que o bot gerasse no disco (um vídeo feito com ffmpeg) não tinha como ir para a conversa.
+- **`file_send` com `path`** (e `id` como antes): o bot manda um arquivo do celular pelo caminho; o supervisor **copia o arquivo para os anexos sem lê-lo na memória** (`Attachments.adopt`, `copyFileSync`), até 4 GB (o teto real é o espaço do disco). Vale para arquivos da **pasta de trabalho do bot** e, com a permissão de Termux, da **pasta do Termux sem pastas ocultas** (onde ficam os dados e as chaves do app); links simbólicos para fora são resolvidos e recusados. A mensagem do bot traz Abrir, Compartilhar e Salvar. O tipo vem da extensão (mp4, mov, mp3, zip, png…).
+- **Leitura em partes sem carregar o arquivo**: `file.read` lê só o pedaço (3 MB) com `readSync`; a janela do PC grava em disco parte por parte (`saveFile`), em vez de juntar tudo na memória. O celular já guardava por partes.
+- O bot não lê arquivo de mais de 50 MB com `attachment_read` (avisa que é para mandar com `file_send`).
+- Testes: `big-files.test.mjs` (60 MB: copia, lê em 20 partes, recusa `/etc/passwd`, `..` e link simbólico). `npm test` 314/314.
+- **Não feito**: (1) arquivo do **computador** (bot que roda no PC): o supervisor está no celular e o canal PC→celular manda o arquivo inteiro em uma mensagem; falta um envio em partes do PC para o celular; (2) **você mandar** arquivo grande para o bot (o limite de 10 MB por mensagem continua: o arquivo vai em base64 numa mensagem só); (3) não testei com um vídeo de verdade no celular real.

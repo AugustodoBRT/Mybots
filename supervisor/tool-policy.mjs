@@ -132,7 +132,7 @@ export function toolArguments(tool, args) {
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
-    'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
+    'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
     'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
@@ -354,7 +354,8 @@ export function toolArguments(tool, args) {
     return { name, format: args.format, content: args.content, send: args.send !== false };
   }
   if (tool === 'file.send') {
-    if (typeof args.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.id)) throw new Error('Informe o id de um arquivo deste bot (veja em files_list).');
+    if (typeof args.path === 'string' && args.path.trim() && args.id === undefined) { if (args.path.length > 1000 || args.path.includes('\0')) throw new Error('Caminho inválido.'); return { path: args.path.trim() }; }
+    if (typeof args.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(args.id)) throw new Error('Informe o id de um arquivo deste bot (veja em files_list) ou o caminho (path) de um arquivo na sua pasta de trabalho.');
     return { id: args.id };
   }
   if (tool === 'routine.update') {

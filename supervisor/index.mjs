@@ -551,8 +551,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (!row) throw new Error('Arquivo não encontrado.');
           db.requireBot(row.bot_id);
           const offset = Number.isInteger(params.offset) && params.offset >= 0 ? params.offset : 0; const part = 3 * 1024 * 1024;
-          const bytes = readFileSync(attachments.path(row.id));
-          return { id: row.id, name: row.name, mime: row.mime, size: bytes.length, chunk: bytes.subarray(offset, offset + part).toString('base64'), next: offset + part < bytes.length ? offset + part : null };
+          const piece = attachments.part(row.id, offset, part);
+          return { id: row.id, name: row.name, mime: row.mime, size: piece.size, chunk: piece.bytes.toString('base64'), next: offset + part < piece.size ? offset + part : null };
         }
         case 'outbox.ack': for (const id of Array.isArray(params.ids) ? params.ids.slice(0, 50) : []) outbox.get(id)?.done(); return { acknowledged: true };
         case 'device.timezone': return routines.setTimeZone(params.timeZone);

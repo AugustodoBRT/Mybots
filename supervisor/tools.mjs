@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, realpathSync, statSync } from 'node:fs';
+import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { now, uuid } from './database.mjs';
 import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, PHONE_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode, FREE_ASK_OPTIONS, FREE_ASK_DEFAULT, FREE_ASK_RETIRED, validFreeAsk } from './tool-policy.mjs';
 import { PHONE_NOTICE, phoneCaption, phoneLabel } from './phone.mjs';
@@ -310,7 +310,8 @@ export class Tools {
           if (made.bytes.length > 20 * 1024 * 1024) throw new Error('O arquivo passaria de 20 MB; divida o conteúdo.');
           file = this.attachments.store(run.botId, made);
           this.db.record('file_created', `Arquivo criado: ${file.name}.`, run.botId, run.taskId);
-        } else { const row = this.attachments.meta(run.botId, args.id); file = { id: row.id, name: row.name, mime: row.mime, size: row.size }; }
+        } else if (args.path) { file = this.attachments.adopt(run.botId, ...this.sendablePath(run, args.path)); this.db.record('file_created', `Arquivo enviado: ${file.name}.`, run.botId, run.taskId); }
+        else { const row = this.attachments.meta(run.botId, args.id); file = { id: row.id, name: row.name, mime: row.mime, size: row.size }; }
         if (tool === 'file.send' || args.send) {
           const list = this.outgoing.get(run.taskId) || [];
           if (!list.some(item => item.id === file.id)) list.push(file);
@@ -757,6 +758,22 @@ export class Tools {
     });
   }
   /** The files a turn sent, handed to its reply once (and forgotten). */
+  /**
+   * A file the bot made on the phone, to send to the person by its path: from the bot's own work folder, or (with the Termux permission) from
+   * Termux's folder without hidden folders (where the app's own data and keys live). Returns what `Attachments.adopt` takes.
+   */
+  sendablePath(run, input) {
+    const workspace = realpathSync(join(this.db.directory, 'workspaces', run.botId));
+    let real; try { real = realpathSync(isAbsolute(input) ? input : resolve(workspace, input)); } catch { throw new Error('Não achei esse arquivo. O caminho é no celular (sua pasta de trabalho ou a do Termux); arquivos do computador ainda não podem ser mandados por caminho.'); }
+    const inside = base => { const rel = relative(base, real); return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel); };
+    let home = null; try { home = process.env.HOME ? realpathSync(process.env.HOME) : null; } catch {}
+    const hidden = base => relative(base, real).split(sep).some(part => part.startsWith('.'));
+    const allowed = inside(workspace) || (home && inside(home) && !hidden(home) && this.policy(run.botId, 'termux') === 'allow');
+    if (!allowed) throw new Error('Só posso mandar arquivos da sua pasta de trabalho ou, com a permissão de Termux, da pasta do Termux (sem pastas ocultas).');
+    const info = statSync(real);
+    if (!info.isFile()) throw new Error('Isso não é um arquivo.');
+    return [real, info.size];
+  }
   /** Pictures the model drew (see generatedImages in lib/codex-runner.cjs) join the files that go with the reply, shown as images in the chat. */
   adoptImages(botId, taskId, images) {
     if (!this.attachments || !images?.length) return;

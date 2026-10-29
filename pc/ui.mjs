@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, chmodSync, appendFileSync, unlinkSync } from 'node:fs';
 import { join, normalize, extname, parse } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -100,12 +100,14 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
   async function saveFile({ id, name, action }) {
     if (typeof id !== 'string' || typeof name !== 'string' || !['save', 'open'].includes(action)) throw new Error('Arquivo inválido.');
     if (!phone.online()) throw new Error(OFFLINE);
-    const chunks = []; let offset = 0;
-    do { const part = await phone.call('file.read', { id, offset }); chunks.push(Buffer.from(part.chunk, 'base64')); offset = part.next; } while (offset !== null && offset !== undefined);
     mkdirSync(downloads, { recursive: true });
     const clean = parse(name.replace(/[\u0000-\u001f/\\]/g, ' ').trim() || 'arquivo');
     let target = join(downloads, clean.base); for (let n = 2; existsSync(target); n++) target = join(downloads, `${clean.name} (${n})${clean.ext}`);
-    writeFileSync(target, Buffer.concat(chunks));
+    // Written part by part as it arrives, so a big file (a video) never sits whole in memory.
+    let offset = 0;
+    try {
+      do { const part = await phone.call('file.read', { id, offset }); const bytes = Buffer.from(part.chunk, 'base64'); if (offset === 0) writeFileSync(target, bytes); else appendFileSync(target, bytes); offset = part.next; } while (offset !== null && offset !== undefined);
+    } catch (error) { try { unlinkSync(target); } catch {} throw error; }
     if (action === 'open') spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
     log(`Arquivo salvo em ${target}.`);
     return { path: target };

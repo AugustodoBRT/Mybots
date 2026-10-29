@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 // The screens of the v63 redesign follow the plan's rules: Portuguese only, sentence case, no spaced capitals,
 // no stripe on one side of a card, no gradients, no bottom tab bar.
-const FILES = ['screens/Home.js', 'components/Drawer.js', 'components/CommandBar.js', 'components/Lists.js', 'components/Settings.js', 'components/Passwords.js', 'components/NewBot.js', 'components/FacePicker.js', 'BotProfile.js', 'NegotiationPanel.js', 'components/DesktopShell.js', 'components/Activity.js'];
+const FILES = ['screens/Home.js', 'components/Drawer.js', 'components/CommandBar.js', 'components/Lists.js', 'components/Settings.js', 'components/Passwords.js', 'components/NewBot.js', 'components/FacePicker.js', 'BotProfile.js', 'NegotiationPanel.js', 'components/DesktopShell.js', 'components/Activity.js', 'components/Usage.js'];
 const source = file => readFileSync(new URL(`../mobile/${file}`, import.meta.url), 'utf8');
 const ENGLISH = /\b(Loading|Cancel|Save|Settings|Search|Delete|Close|Back|Next|Send|Edit|Profile|Wallet|Activity|Message|Actions|Overlay|Approval|Transaction|Command Bar|Online|Offline|Submit|Remove|Add)\b/;
 

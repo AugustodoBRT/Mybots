@@ -720,59 +720,6 @@ export function resetLabel(iso) {
   return `renova ${soon ? 'às ' + at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : at.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}`;
 }
 
-export function UsagePanel({ usage, bots, connections, onRefresh }) {
-  const [busy, setBusy] = useState(null); const [note, setNote] = useState({});
-  const refresh = async provider => {
-    setBusy(provider); setNote(old => ({ ...old, [provider]: '' }));
-    try { await onRefresh(provider); } catch (error) { setNote(old => ({ ...old, [provider]: nativeMessage(error) })); } finally { setBusy(null); }
-  };
-  // A connected IA without windows yet (Claude only reports them with a reply) gets a card that explains it.
-  const missing = ['codex', 'claude'].filter(provider => connections?.[provider]?.loggedIn && !usage?.limits?.[provider]);
-  const limits = Object.entries(usage?.limits || {});
-  const rows = Object.entries(usage?.bots || {}).map(([id, value]) => ({ bot: bots.find(item => item.id === id), ...value })).filter(row => row.bot && row.week.turns)
-    .sort((a, b) => (b.week.input + b.week.output) - (a.week.input + a.week.output));
-  const days = usage?.days || []; const peak = Math.max(1, ...days.map(day => day.input + day.output));
-  const total = rows.reduce((sum, row) => sum + row.week.input + row.week.output, 0);
-  const refreshButton = provider => <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => refresh(provider)} style={styles.stopButton}>
-    {busy === provider ? <ActivityIndicator size="small" color={C.accent} /> : <Icon name="refresh" size={13} color={C.accent} />}<Text style={[styles.stopText, { color: C.accent }]}>{busy === provider ? 'Consultando' : 'Consultar agora'}</Text></Pressable>;
-  return <>
-    {!limits.length && !rows.length && !missing.length ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Uso</Text><Text style={styles.optionDetail}>Depois das primeiras respostas aparecem aqui os tokens de cada bot e quanto do limite da sua assinatura já foi usado.</Text></View> : null}
-    {missing.map(provider => <View key={provider} style={styles.modeOption}>
-      <Text style={styles.optionLabel}>{PLAN_NAMES[provider]} · limite da assinatura</Text>
-      <Text style={styles.optionDetail}>{provider === 'claude' ? 'O Claude só informa o limite junto de uma resposta. Aparece aqui depois que um bot com Claude responder, ou consulte agora com uma resposta curtinha do Haiku.' : 'Ainda não consultado.'}</Text>
-      {note[provider] ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note[provider]}</Text> : null}
-      <View style={{ alignItems: 'flex-start', marginTop: 10 }}>{refreshButton(provider)}</View>
-    </View>)}
-    {limits.map(([provider, item]) => <View key={provider} style={styles.modeOption}>
-      <Text style={styles.optionLabel}>{PLAN_NAMES[provider]}{item.plan ? ` ${item.plan[0].toUpperCase()}${item.plan.slice(1)}` : ''} · limite da assinatura</Text>
-      {item.windows.map(window => { const tone = window.used >= 90 ? C.red : window.used >= 70 ? C.amber : C.accent; return <View key={window.key} style={styles.limitRow}>
-        <View style={styles.limitHead}><Text style={styles.limitName}>{WINDOW_NAMES[window.key] || window.key}</Text><Text style={[styles.limitValue, { color: tone }]}>{window.used}% usado</Text></View>
-        <View style={styles.updateBar}><View style={[styles.updateFill, { width: `${Math.max(2, window.used)}%`, backgroundColor: tone }]} /></View>
-        <Text style={styles.limitMeta}>{resetLabel(window.resetsAt)}</Text>
-      </View>; })}
-      <Text style={styles.limitMeta}>Atualizado {new Date(item.checkedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · vale para tudo que usa esta conta, não só o MyBots.</Text>
-      {note[provider] ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note[provider]}</Text> : null}
-      {connections?.[provider]?.loggedIn ? <View style={{ alignItems: 'flex-start', marginTop: 10 }}>{refreshButton(provider)}</View> : null}
-    </View>)}
-    {rows.length ? <View style={styles.modeOption}>
-      <View style={styles.limitHead}><Text style={styles.optionLabel}>Tokens nos últimos 7 dias</Text><Text style={styles.limitValue}>{tokensLabel(total)}</Text></View>
-      <Text style={styles.limitMeta}>Só os bots do MyBots. A cada passo de uma resposta (cada ferramenta usada) a IA relê a conversa e as ferramentas; a parte em cache custa bem menos do limite.</Text>
-      <View style={styles.usageChart}>{days.map(day => { const value = day.input + day.output; return <View key={day.date} style={styles.usageDay}>
-        <View style={styles.usageTrack}><View style={[styles.usageColumn, { height: `${Math.max(value ? 4 : 0, value / peak * 100)}%` }]} /></View>
-        <Text style={styles.usageDayText}>{new Date(day.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase()}</Text>
-      </View>; })}</View>
-      {rows.map(row => { const value = row.week.input + row.week.output; return <View key={row.bot.id} style={styles.usageBot}>
-        <Avatar bot={row.bot} size={34} tile={false} animated={false} />
-        <View style={{ flex: 1 }}>
-          <View style={styles.limitHead}><Text style={styles.limitName} numberOfLines={1}>{row.bot.name}</Text><Text style={styles.limitValue}>{tokensLabel(value)}</Text></View>
-          <View style={styles.usageShare}><View style={[styles.usageShareFill, { width: `${Math.max(2, value / Math.max(1, total) * 100)}%`, backgroundColor: HUE_OF(row.bot) }]} /></View>
-          <Text style={styles.limitMeta}>{row.week.turns} {row.week.turns > 1 ? 'respostas' : 'resposta'} · {tokensLabel(row.week.input)} processados ({Math.round(row.week.cached / Math.max(1, row.week.input) * 100)}% em cache) · {tokensLabel(row.week.output)} escritos · hoje {tokensLabel(row.today.input + row.today.output)}</Text>
-        </View>
-      </View>; })}
-    </View> : null}
-  </>;
-}
-
 export function ItemsByDeadline({ items, bots, onComplete }) {
   if (!items.length) return null;
   const pad = value => String(value).padStart(2, '0');

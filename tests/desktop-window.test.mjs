@@ -24,6 +24,9 @@ test('janela do PC: lista, abas, Ctrl+K, Ctrl+N, Ajustes em duas colunas, Ativid
   const app = await createSupervisor({ directory: join(directory, 'sup'), port: 0, codex, execute: async () => ({ text: 'Pronto.', ...selection }) });
   const bots = []; for (const name of ['Atlas', 'Clara', 'Nico']) bots.push(await app.rpc('bot.create', { name, instructions: `Bot ${name}.`, access: 'ask', face: { seed: name }, ...selection }));
   await app.rpc('person.update', { name: 'Augusto' });
+// Spend over the last week: a few replies per day for the first two bots, none for the third.
+const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-sol') => { const at = new Date(Date.now() - daysAgo * 86400000).toISOString(); app.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', crypto.randomUUID(), botId, null, 'codex', model, input, cached, output, at); };
+  for (let d = 0; d < 7; d++) { addUsage(app, bots[0].id, d, 1e6 * (d + 1), 8e5 * (d + 1), 1e5 * (d % 3 + 1)); addUsage(app, bots[1].id, d, 4e5, 1e5, 2e4); }
   const web = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://x').pathname); let file = normalize(join(ui, path === '/' ? 'index.html' : path));
     if (!file.startsWith(ui) || !existsSync(file) || !statSync(file).isFile()) file = join(ui, 'index.html');
@@ -80,9 +83,16 @@ test('janela do PC: lista, abas, Ctrl+K, Ctrl+N, Ajustes em duas colunas, Ativid
   const settingsBox = await page.getByText('Aparência', { exact: true }).first().boundingBox(); assert.ok(settingsBox.x > 300, 'o conteúdo ocupa o espaço ao lado das categorias');
 
   await page.getByLabel('Atividade', { exact: true }).first().click(); await railStays();
-  for (const heading of ['Precisa de você', 'Em andamento', 'Concluído hoje']) await seen(heading);
-  const columns = await Promise.all(['Precisa de você', 'Em andamento', 'Concluído hoje'].map(text => page.getByText(text, { exact: true }).first().boundingBox()));
-  assert.ok(columns[2].x > 900, 'a terceira coluna usa a largura da janela');
+  for (const heading of ['Precisa de você', 'Em andamento', 'Concluído hoje', 'Gasto nos últimos 7 dias', 'Gasto de cada bot']) await seen(heading);
+  // The week is a line (not columns) with dollars; every bot is listed with its own spend, also the one that spent nothing.
+  const chart = page.getByLabel(/^Gasto estimado por dia: /); await chart.waitFor();
+  assert.ok((await chart.locator('path').count()) >= 1, 'o gráfico é uma linha');
+  assert.match(await chart.getAttribute('aria-label'), /US\$ \d/);
+  await seen('Nenhuma resposta nesta semana');
+  for (const name of ['Atlas', 'Clara', 'Nico']) assert.ok(await page.getByText(name, { exact: true }).count() >= 1, `${name} aparece no gasto`);
+  const spend = await page.getByText(/^US\$ \d/).allInnerTexts(); assert.ok(spend.length >= 3, 'valores em dólar na página');
+  const box = await page.getByText('Gasto nos últimos 7 dias', { exact: true }).first().boundingBox(); const side = await page.getByText('Precisa de você', { exact: true }).first().boundingBox();
+  assert.ok(box.x < side.x && side.x > 700, 'o gasto ocupa a área principal e as listas ficam ao lado');
   await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.'); await railStays();
   await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.');
   // The plans' limits are the AI's own symbol in a ring, not names.

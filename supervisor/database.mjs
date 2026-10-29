@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { costOf } from '../lib/pricing.mjs';
 import { validateProfile, browserMode, TOOL_DEFINITIONS, toolArguments } from './tool-policy.mjs';
 import { validateBackup, mergeBotLists, deleteLocalBot } from '../mobile/local.js';
 
@@ -17,6 +18,7 @@ const preview = message => message && { id: message.id, role: message.role, stat
   ...(message.attachments?.length ? { attachments: message.attachments.slice(0, 1).map(item => ({ name: item.name })) } : {}) };
 
 const blank = () => ({ input: 0, cached: 0, output: 0, turns: 0 });
+const money = () => ({ today: 0, week: 0, month: 0 });
 // Token counts as the IA reported them for one reply (Codex turn.completed, Claude result.usage).
 function tokens(usage) {
   if (!usage || typeof usage !== 'object') return null;
@@ -260,18 +262,19 @@ export class Database {
     this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'limits.' + provider, JSON.stringify({ plan: typeof limits.plan === 'string' ? limits.plan.slice(0, 30) : null, windows, checkedAt: now() }));
   }
   limits() { return Object.fromEntries(['codex', 'claude'].map(provider => [provider, JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', 'limits.' + provider)?.value || 'null')]).filter(([, value]) => value)); }
-  /** Tokens per bot (today, 7 and 30 days) and per day for the last week, from the replies' usage. */
+  /** Tokens per bot (today, 7 and 30 days) and per day for the last week, from the replies' usage; `cost` is the API-equivalent estimate in USD. */
   usage(days = 7) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString(); const day = new Date(); day.setHours(0, 0, 0, 0);
     const week = new Date(day.getTime() - (days - 1) * 86400000);
-    const bots = {}; const daily = new Map();
-    for (const row of this.all('SELECT bot_id,provider,input,cached,output,created_at FROM usage WHERE created_at>=?', since)) {
+    const bots = {}; const daily = new Map(); const dailyCost = new Map();
+    for (const row of this.all('SELECT bot_id,provider,model,input,cached,output,created_at FROM usage WHERE created_at>=?', since)) {
       const at = Date.parse(row.created_at); const add = (target) => { target.input += row.input; target.cached += row.cached; target.output += row.output; target.turns += 1; };
-      const entry = bots[row.bot_id] ||= { today: blank(), week: blank(), month: blank(), provider: row.provider };
-      add(entry.month); if (at >= week.getTime()) add(entry.week); if (at >= day.getTime()) add(entry.today);
-      if (at >= week.getTime()) { const key = new Date(at - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 10); add(daily.get(key) || daily.set(key, blank()).get(key)); }
+      const cost = costOf(row);
+      const entry = bots[row.bot_id] ||= { today: blank(), week: blank(), month: blank(), provider: row.provider, cost: money() };
+      add(entry.month); entry.cost.month += cost; if (at >= week.getTime()) { add(entry.week); entry.cost.week += cost; } if (at >= day.getTime()) { add(entry.today); entry.cost.today += cost; }
+      if (at >= week.getTime()) { const key = new Date(at - new Date(at).getTimezoneOffset() * 60000).toISOString().slice(0, 10); add(daily.get(key) || daily.set(key, blank()).get(key)); dailyCost.set(key, (dailyCost.get(key) || 0) + cost); }
     }
-    const series = [...Array(days)].map((_, index) => { const date = new Date(week.getTime() + index * 86400000); const key = new Date(date - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); return { date: key, ...(daily.get(key) || blank()) }; });
+    const series = [...Array(days)].map((_, index) => { const date = new Date(week.getTime() + index * 86400000); const key = new Date(date - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); return { date: key, ...(daily.get(key) || blank()), cost: dailyCost.get(key) || 0 }; })
     return { bots, days: series, limits: this.limits() };
   }
   get(sql, ...args) { return this.db.prepare(sql).get(...args); }

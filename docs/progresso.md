@@ -1219,3 +1219,13 @@ Pedido do usuário: "Regras da carteira" e "Novo cartão" eram caixas padrão do
 
 ### Entrega da 0.44.3
 APK ARM64 offline `dist/apk/mybots-v74.apk` e `.sha256`, **versionCode 74 / 0.44.3**, 44.344.339 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v74](https://github.com/AugustodoBRT/Mybots/releases/tag/v74), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
+
+## 29/10/2026 — 0.44.4 (versionCode 75): navegador do celular, leitura de páginas antigas e fórmulas em documentos
+Achados do usuário e de um bot dele numa tarefa real (SIGAA, resolução de lista em PDF/Word).
+- **Botão Assumir fora da tela no celular**: com uma página aberta, a moldura do navegador (proporção 1:1,6) ocupava a tela inteira e o Assumir ficava abaixo, sem rolagem. A moldura agora tem metade da altura da tela (`BotBrowserPanel`), e o Assumir e o campo de mensagem ficam visíveis (conferido no emulador).
+- **`browser_read`, `browser_find` e `browser_screenshot` falhavam com `Value [] … JSONArray` no SIGAA**: o portal usa Prototype.js, que dá `toJSON` a arrays, textos e números, e o `JSON.stringify` devolve texto dentro de texto (`"\"[]\""`). Os scripts do app agora rodam sem esses `toJSON` e os devolvem depois (`plain` em `BotBrowser.kt`: `js`, coleta de campos protegidos e login). **Não testado numa página real com Prototype.js** (só compilado e o painel conferido); o SIGAA do usuário é o teste.
+- **Fórmulas LaTeX nos arquivos**: `supervisor/math.mjs` lê LaTeX (frações, raízes, potências e índices, letras gregas, operadores, somatórios, integrais, texto e acentos) e o `file_create` gera fórmula de verdade: HTML/PDF com fração empilhada, Word com **equações nativas** (OMML) e `.txt` em Unicode. `$5 e $10` continua sendo dinheiro. O chat segue lendo fórmulas como texto (`keepMath` só nos arquivos).
+- **HTML bruto** passado ao `file_create`: PDF e HTML mantêm a página (sem `<script>` e `on…=`), Word, Excel e CSV recebem o texto da página em vez de tags escapadas.
+- **PDF com tempo esgotado**: a WebView do PDF agora é medida, posicionada e retomada (`resumeTimers`, `onResume`) antes de imprimir; era a suspeita de a impressão não começar com o app em segundo plano. **Não confirmado** (sem reproduzir).
+- **Não feito**: gráfico do Markdown como figura no Word/PDF-do-Word (o Word recebe a tabela de dados; exigiria rasterizar a figura ou montar um gráfico nativo), e `email_search` (é falta de conta de e-mail conectada). Próximo: transmitir o navegador do celular para o PC (abas, ampliar, assumir).
+- `npm test` 311/311 (`creator-math.test.mjs` novo).

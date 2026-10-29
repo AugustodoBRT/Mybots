@@ -92,6 +92,9 @@ internal object DeviceFiles {
         web.settings.javaScriptEnabled = false
         web.settings.blockNetworkLoads = true
         web.settings.allowFileAccess = false; web.settings.allowContentAccess = false
+        // A WebView nobody shows still has to lay out and run, or the printing never starts (the app in the background, the screen off).
+        web.resumeTimers(); web.onResume()
+        val width = (context.resources.displayMetrics.density * 595).toInt(); web.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)); web.layout(0, 0, width, web.measuredHeight.coerceAtLeast(1))
         web.webViewClient = object : WebViewClient() {
           var started = false
           override fun onPageFinished(view: WebView, url: String?) {

@@ -1,5 +1,6 @@
 import { deflateRawSync } from 'node:zlib';
 import { parseBlocks, parseInline, plainText } from '../mobile/markdown.js';
+import { splitMath, texHtml, texOmml, texText, MATH_CSS } from './math.mjs';
 
 // Files a bot makes from the Markdown it writes: PDF (HTML laid out by the phone), Word, Excel, CSV, Markdown,
 // HTML and plain text. Office files are written as their XML parts in a ZIP, without any library.
@@ -61,7 +62,7 @@ export function chartSvg(spec, width = 640, height = 320) {
 }
 
 // ---- HTML (also the source of PDFs).
-const inlineHtml = text => parseInline(text).map(run => {
+const inlineRuns = text => parseInline(text).map(run => {
   let value = xml(run.text).replace(/\n/g, '<br>');
   if (run.code) value = `<code>${value}</code>`;
   if (run.bold) value = `<strong>${value}</strong>`;
@@ -69,9 +70,11 @@ const inlineHtml = text => parseInline(text).map(run => {
   if (run.href) value = `<a href="${xml(run.href)}">${value}</a>`;
   return value;
 }).join('');
+// Formulas ($x^2$, $$…$$, \( … \), \[ … \]) are taken out first, so their _ and * are not read as Markdown.
+const inlineHtml = text => splitMath(text).map(piece => piece.math ? texHtml(piece.math, piece.display) : inlineRuns(piece.text)).join('');
 
 export function toHtml(markdown, title) {
-  const body = parseBlocks(markdown).map(block => {
+  const body = parseBlocks(markdown, { keepMath: true }).map(block => {
     if (block.type === 'heading') return `<h${block.level}>${inlineHtml(block.text)}</h${block.level}>`;
     if (block.type === 'paragraph') return `<p>${inlineHtml(block.text)}</p>`;
     if (block.type === 'list') return `<${block.ordered ? `ol start="${block.start}"` : 'ul'}>${block.items.map(item => `<li>${inlineHtml(item)}</li>`).join('')}</${block.ordered ? 'ol' : 'ul'}>`;
@@ -92,6 +95,7 @@ th, td { border: 1px solid #9aa0aa; padding: 4pt 6pt; text-align: left; vertical
 code { font-family: monospace; background: #f2f3f5; padding: 0 2pt; } pre { background: #f2f3f5; padding: 8pt; white-space: pre-wrap; }
 blockquote { border-left: 3pt solid #9aa0aa; margin: 0 0 8pt; padding-left: 8pt; color: #444; }
 figure { margin: 8pt 0 12pt; page-break-inside: avoid; } a { color: #1a56c4; }
+${MATH_CSS}
 </style></head><body>
 ${body}
 </body></html>`;
@@ -116,18 +120,20 @@ export function zip(files) {
 }
 
 // ---- Word.
-const runsDocx = (text, extra = {}) => parseInline(text).map(run => {
+const textRuns = (text, extra = {}) => parseInline(text).map(run => {
   const style = [run.bold || extra.bold ? '<w:b/>' : '', run.italic ? '<w:i/>' : '', run.code ? '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>' : '', run.href ? '<w:color w:val="1A56C4"/><w:u w:val="single"/>' : ''].join('');
   const content = (run.href && run.text !== run.href ? `${run.text} (${run.href})` : run.text).split('\n').map(line => `<w:t xml:space="preserve">${xml(line)}</w:t>`).join('<w:br/>');
   return `<w:r>${style ? `<w:rPr>${style}</w:rPr>` : ''}${content}</w:r>`;
 }).join('');
+// Formulas become native Word equations.
+const runsDocx = (text, extra = {}) => splitMath(text).map(piece => piece.math ? texOmml(piece.math, piece.display) : textRuns(piece.text, extra)).join('');
 const paragraphDocx = (text, { style, indent, prefix = '', bold } = {}) => `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${indent ? `<w:ind w:left="${indent}" w:hanging="300"/>` : ''}</w:pPr>${prefix ? `<w:r><w:t xml:space="preserve">${xml(prefix)}</w:t></w:r>` : ''}${runsDocx(text, { bold })}</w:p>`;
 const tableDocx = (header, rows) => {
   const cell = (text, head) => `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>${head ? '<w:shd w:val="clear" w:color="auto" w:fill="EEF1F6"/>' : ''}</w:tcPr>${paragraphDocx(text, { bold: head })}</w:tc>`;
   return `<w:tbl><w:tblPr><w:tblStyle w:val="Tabela"/><w:tblW w:w="5000" w:type="pct"/></w:tblPr>${[header, ...rows].map((row, index) => `<w:tr>${row.map(text => cell(text, index === 0)).join('')}</w:tr>`).join('')}</w:tbl><w:p/>`;
 };
 export function toDocx(markdown, title) {
-  const body = parseBlocks(markdown).map(block => {
+  const body = parseBlocks(markdown, { keepMath: true }).map(block => {
     if (block.type === 'heading') return paragraphDocx(block.text, { style: `Titulo${Math.min(block.level, 3)}` });
     if (block.type === 'paragraph') return paragraphDocx(block.text);
     if (block.type === 'list') return block.items.map((item, index) => paragraphDocx(item, { indent: 600, prefix: block.ordered ? `${block.start + index}.\t` : '•\t' })).join('');
@@ -145,7 +151,7 @@ export function toDocx(markdown, title) {
     ['docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xml(title)}</dc:title><dc:creator>MyBots</dc:creator></cp:coreProperties>`],
     ['word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
     ['word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:lang w:val="pt-BR"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${heading('Titulo1', 'heading 1', 36)}${heading('Titulo2', 'heading 2', 30)}${heading('Titulo3', 'heading 3', 25)}<w:style w:type="paragraph" w:styleId="Citacao"><w:name w:val="Quote"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="400"/></w:pPr><w:rPr><w:i/><w:color w:val="555555"/></w:rPr></w:style><w:style w:type="table" w:styleId="Tabela"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:color="9AA0AA"/><w:left w:val="single" w:sz="4" w:color="9AA0AA"/><w:bottom w:val="single" w:sz="4" w:color="9AA0AA"/><w:right w:val="single" w:sz="4" w:color="9AA0AA"/><w:insideH w:val="single" w:sz="4" w:color="9AA0AA"/><w:insideV w:val="single" w:sz="4" w:color="9AA0AA"/></w:tblBorders><w:tblCellMar><w:left w:w="100" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>`],
-    ['word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`]
+    ['word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`]
   ]);
 }
 
@@ -193,16 +199,28 @@ export function toCsv(markdown) {
 }
 
 /** Builds a file from Markdown. `pdf(html)` turns HTML into PDF bytes on the phone. */
+const looksHtml = content => /^\s*(<!doctype html|<html[\s>]|<head[\s>]|<body[\s>])/i.test(content);
+const safeHtml = content => content.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '');
+/** A whole HTML page written by a bot, as Markdown-like text for the formats that cannot show HTML (Word, Excel, text). */
+export function htmlToMarkdown(html) {
+  return safeHtml(html).replace(/<(style|head|title)[\s\S]*?<\/\1>/gi, '').replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (m, level, text) => `\n\n${'#'.repeat(Number(level))} ${text}\n\n`)
+    .replace(/<li[^>]*>/gi, '\n- ').replace(/<\/(p|div|tr|ul|ol|table|section|article)>/gi, '\n\n').replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]>/gi, ' | ')
+    .replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Builds a file from Markdown (a whole HTML page is kept as it is for PDF and HTML). `pdf(html)` turns HTML into PDF bytes on the phone. */
 export async function create({ name, format, content }, { pdf }) {
   const base = name.replace(/\.(pdf|docx|xlsx|csv|md|txt|html?)$/i, '');
   const file = `${base}.${format}`;
+  const html = looksHtml(content);
+  if (html && !['pdf', 'html', 'md'].includes(format)) content = htmlToMarkdown(content);
   let bytes;
-  if (format === 'pdf') bytes = await pdf(toHtml(content, base));
+  if (format === 'pdf') bytes = await pdf(html ? safeHtml(content) : toHtml(content, base));
   else if (format === 'docx') bytes = toDocx(content, base);
   else if (format === 'xlsx') bytes = toXlsx(content);
   else if (format === 'csv') bytes = Buffer.from(toCsv(content), 'utf8');
-  else if (format === 'html') bytes = Buffer.from(toHtml(content, base), 'utf8');
-  else if (format === 'txt') bytes = Buffer.from(plainText(content) + '\n', 'utf8');
+  else if (format === 'html') bytes = Buffer.from(html ? safeHtml(content) : toHtml(content, base), 'utf8');
+  else if (format === 'txt') bytes = Buffer.from(splitMath(plainText(content)).map(piece => piece.math ? texText(piece.math) : piece.text).join('') + '\n', 'utf8');
   else bytes = Buffer.from(content.endsWith('\n') ? content : content + '\n', 'utf8');
   return { name: file, mime: FORMATS[format], bytes };
 }

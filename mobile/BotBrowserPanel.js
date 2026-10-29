@@ -2,7 +2,7 @@ import { textEdit, protectEdit } from './browser-input';
 import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, termuxAvailable, walletRules, walletFreeze } from './termux';
 import { C, F, Icon, themed } from './theme';
 
@@ -413,6 +413,7 @@ function fitted(frame, room) {
 }
 
 export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc, side, onFile, color }) {
+  const { height: windowHeight } = useWindowDimensions();
   const [page, setPage] = useState(browser?.pages?.[bot.id] || null);
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -451,7 +452,8 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     {page?.url && page.url !== 'about:blank' ? <TabStrip tabs={[{ tab: 1, title: page.title, url: page.url, icon: page.icon, active: true }]} enabled={false} /> : null}
     <AddressRow url={page?.url} enabled={assumed} back={page?.back} forward={page?.forward} onBack={() => act('back')} onForward={() => act('forward')} onReload={() => act('reload')} placeholder="Ainda não abriu nenhuma página." />
     {downloads ? <BrowserDownloads bot={bot} call={call} onFile={onFile} onClose={() => setDownloads(false)} /> : null}
-    <View style={[styles.frame, (assumed || side) && styles.fullFrame, assumed && styles.frameAssumed]}>
+    {/* the page leaves room for the button below it: on a tall phone the frame alone filled the screen and Assumir fell off the end */}
+    <View style={[styles.frame, (assumed || side) && styles.fullFrame, assumed && styles.frameAssumed, !assumed && !side && { aspectRatio: undefined, height: Math.round(windowHeight * 0.5) }]}>
       <BotBrowserView botId={bot.id} separate={!shared} interactive={assumed} style={StyleSheet.absoluteFill} onPage={event => { setPage(event.nativeEvent); if (event.nativeEvent.action) showAction(event.nativeEvent.action); }} />
       <BotCursor action={action} color={color || C.accent} />
       <StepCaption action={action} />

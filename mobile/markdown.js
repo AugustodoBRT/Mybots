@@ -90,8 +90,10 @@ function withoutTex(text) {
     .replace(/\$([^$\n]+?)\$/g, (match, body) => mathish(body) ? texToText(body) : match)).join('');
 }
 
-export function parseBlocks(text) {
-  const lines = withoutTex(String(text || '').replace(/\r\n?/g, '\n')).split('\n');
+/** `keepMath`: leave the formulas as LaTeX (the files typeset them as real formulas); the chat reads them as text. */
+export function parseBlocks(text, { keepMath = false } = {}) {
+  const clean = String(text || '').replace(/\r\n?/g, '\n');
+  const lines = (keepMath ? clean : withoutTex(clean)).split('\n');
   const blocks = []; let paragraph = [];
   const flush = () => { if (paragraph.length) { blocks.push({ type: 'paragraph', text: paragraph.join('\n') }); paragraph = []; } };
   for (let i = 0; i < lines.length; i++) {

@@ -169,11 +169,19 @@ internal object BotBrowser {
     return result.get().getOrThrow()
   }
 
+  /**
+   * Some pages (old portals with Prototype.js) give arrays, strings and numbers their own `toJSON`, so JSON.stringify returns text
+   * inside text ("\"[]\"" instead of "[]") and the answer cannot be read. The app's scripts run without those, and the page gets them back.
+   */
+  private fun plain(script: String) = "(() => { const saved = [Array, String, Number, Boolean, Object].map(c => [c, Object.getOwnPropertyDescriptor(c.prototype, 'toJSON')]); " +
+    "for (const [c, d] of saved) if (d) { try { delete c.prototype.toJSON; } catch (e) {} } try { return (${script.trim().trimEnd(';')}); } " +
+    "finally { for (const [c, d] of saved) if (d) { try { Object.defineProperty(c.prototype, 'toJSON', d); } catch (e) {} } } })()"
+
   private fun js(context: Context, botId: String, script: String, timeoutMs: Long = 10_000): JSONObject {
     collectCardSecrets(context, botId)
     val value = AtomicReference<String?>()
     val done = CountDownLatch(1)
-    onMain { tab(context, botId).web.evaluateJavascript(script.replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })) { value.set(it); done.countDown() } }
+    onMain { tab(context, botId).web.evaluateJavascript(plain(script.replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() }))) { value.set(it); done.countDown() } }
     if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) throw IllegalStateException("A página não respondeu. Tente browser_wait e leia de novo.")
     collectCardSecrets(context, botId)
     val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null }
@@ -222,7 +230,7 @@ internal object BotBrowser {
         for (const frame of doc.querySelectorAll('iframe')) if (frame.contentDocument) visit(frame.contentDocument);
       } catch {} }; visit(document); return JSON.stringify(all); })()"""
         .replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })
-      tab.web.evaluateJavascript(collect) { value.set(it); done.countDown() }
+      tab.web.evaluateJavascript(plain(collect)) { value.set(it); done.countDown() }
     }
     if (!done.await(10, TimeUnit.SECONDS)) throw IllegalStateException("Não consegui verificar os campos protegidos da página.")
     val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null }
@@ -363,7 +371,7 @@ internal object BotBrowser {
           val saved = PasswordVault.forPage(context, botId, tab.web.url)
             ?: throw IllegalStateException("Não há senha salva para este site e este bot. Peça para a pessoa salvar em Ajustes → Senhas (ou entrar uma vez pelo Assumir) ou use browser_ask_user.")
           val input = JSONObject().put("u", saved.optString("username")).put("p", saved.optString("password"))
-          tab.web.evaluateJavascript("($LOGIN_JS)($input)") { value.set(it); done.countDown() }
+          tab.web.evaluateJavascript(plain("($LOGIN_JS)($input)")) { value.set(it); done.countDown() }
         }
         if (!done.await(10_000, TimeUnit.MILLISECONDS)) throw IllegalStateException("A página não respondeu.")
         val text = try { JSONTokener(value.get() ?: "null").nextValue() as? String } catch (_: Exception) { null } ?: throw IllegalStateException("A página ainda não carregou. Use browser_wait.")

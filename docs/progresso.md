@@ -1293,3 +1293,7 @@ Pergunta do usuário: parece que os bots Codex não enxergam imagens?
 - **Agora**: as imagens (PNG, JPEG, WebP, GIF, até 10 MB, até 4) da sua mensagem vão **junto da pergunta** ao Codex (`--image`, em `chatArguments`/`runReply`; `queue.mjs` escolhe as imagens da mensagem): o modelo as vê na hora, sem ferramenta, e o Codex reduz as grandes. Testado com o Codex real (`-i arquivo -` com o prompt no stdin: descreveu "círculo laranja centralizado sobre fundo preto") e com um teste do supervisor (a mensagem com imagem chega à execução com o caminho guardado; arquivo que não é imagem não vai).
 - **Não muda**: bots do **Claude** e bots Codex que rodam no **computador** leem a imagem com `attachment_read` (até 5 MB), como antes; as imagens que o próprio bot gera não são reenviadas a ele.
 - `npm test` 316/316.
+
+### Entrega da 0.46.1
+APK ARM64 offline `dist/apk/mybots-v81.apk` e `.sha256`, **versionCode 81 / 0.46.1**, 44.366.859 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v81](https://github.com/AugustodoBRT/Mybots/releases/tag/v81), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
+Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o mesmo nome `images` duas vezes em `runReply` quebrava toda resposta de bot Codex); a suíte o pegou (5 testes), corrigi antes de publicar e refiz o APK. A etapa de entrega agora para se `npm test` falhar.

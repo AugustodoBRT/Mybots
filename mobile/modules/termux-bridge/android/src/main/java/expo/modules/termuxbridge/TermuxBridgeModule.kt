@@ -211,6 +211,13 @@ class TermuxBridgeModule : Module() {
       Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
       Prop("input") { view: BotFrameView, value: String? -> view.input(value) }
     }
+    View(FaceView::class) {
+      Prop("tones") { view: FaceView, value: String? -> view.setTones(value) }
+      Prop("grid") { view: FaceView, value: List<Int>? -> view.setGrid(value) }
+      Prop("text") { view: FaceView, value: Boolean? -> view.setText(value == true) }
+      Prop("fade") { view: FaceView, value: Float? -> view.setFade(value ?: 1f) }
+      Prop("frame") { view: FaceView, value: String? -> view.setFrame(value) }
+    }
     Function("browserInput") { botId: String, value: String -> BotFrameView.send(botId, value) }
     Function("browserPresentation") { on: Boolean ->
       appContext.currentActivity?.let { activity ->

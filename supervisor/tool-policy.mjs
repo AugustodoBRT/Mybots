@@ -1,5 +1,6 @@
 import { routineArguments } from '../mobile/routine-text.js';
 import { safeUrl } from './browser.mjs';
+import { PIECES } from '../lib/face.mjs';
 export const TOOL_DEFINITIONS = [
   { name: 'memory.read', label: 'Ler memória', description: 'Lê somente as lembranças deste bot.', readOnly: true },
   { name: 'memory.write', label: 'Salvar memória', description: 'Guarda ou atualiza uma lembrança deste bot.' },
@@ -89,7 +90,16 @@ export function validFolders(list) {
 export { browserMode } from '../mobile/local.js';
 import { BROWSER_MODES } from '../mobile/local.js';
 import agentSkills from '../lib/agent-skills.cjs';
+// A bot's face: a seed, an optional color and optional pinned pieces (head, tex, eye, mouth, top).
+export function validFace(face) {
+  if (!face || typeof face !== 'object' || Array.isArray(face)) return false;
+  if (typeof face.seed !== 'string' || !face.seed.trim() || face.seed.length > 40 || /[\u0000-\u001f]/.test(face.seed)) return false;
+  if (face.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(face.color)) return false;
+  if (face.pieces !== undefined && (!face.pieces || typeof face.pieces !== 'object' || Object.entries(face.pieces).some(([part, value]) => !PIECES[part] || !PIECES[part].includes(value)))) return false;
+  return Object.keys(face).every(key => ['seed', 'color', 'pieces'].includes(key));
+}
 export function validateProfile(data) {
+  if (data.face !== undefined && !validFace(data.face)) throw new Error('Escolha um rosto válido.');
   if (data.gpu !== undefined && typeof data.gpu !== 'boolean') throw new Error('Escolha se o bot usa a placa de vídeo.');
   if (data.skills !== undefined && (!agentSkills.validSkills(data.skills) || data.skills.some(item => SENSITIVE.test(item.path) || item.path.split('/').filter(Boolean).length < 3))) throw new Error('Use até 20 skills, cada uma uma pasta do computador (nunca a pasta pessoal inteira nem pastas de senhas e chaves).');
   if (data.browserMode !== undefined && ![...BROWSER_MODES, 'own'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');

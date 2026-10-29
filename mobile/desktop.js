@@ -10,8 +10,14 @@ export const noHandle = desktop ? { display: 'none' } : {};
 // A wide window keeps the phone's layout as one centered column, sheets included.
 export const column = desktop ? { width: '100%', maxWidth: 820, marginHorizontal: 'auto' } : {};
 if (desktop) {
-  document.title = 'MyBots'; document.body.style.backgroundColor = '#090B10';
-  const style = document.createElement('style');
-  style.textContent = '::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:#2A3140;border-radius:5px}';
+  document.title = 'MyBots'; document.body.style.backgroundColor = '#000000';
+  const style = document.createElement('style'); style.id = 'mybots-scroll';
+  style.textContent = '::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:#37373F;border-radius:5px}';
   document.head.appendChild(style);
+}
+// The window's page background and scrollbar follow the theme (the app's own views are repainted by React).
+export function paintPage(colors) {
+  if (!desktop) return;
+  document.body.style.backgroundColor = colors.bg; document.documentElement.style.colorScheme = colors.dark ? 'dark' : 'light';
+  const style = document.getElementById('mybots-scroll'); if (style) style.textContent = `::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:${colors.line2};border-radius:5px}`;
 }

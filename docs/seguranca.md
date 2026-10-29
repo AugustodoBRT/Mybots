@@ -320,3 +320,10 @@ A carteira guarda até 10 cartões no cofre do Android. **Quais bots podem pagar
 - **Modelo reserva**: só para conversa privada e para a outra IA. A troca usa o mesmo bot (nível, concessões, "Sempre perguntar"), e as opções de execução são recalculadas pelo provedor que responde (o Codex só ganha terminal no Termux se o Livre não o mantiver na lista de perguntas). Claude in Chrome vira navegador compartilhado na reserva. A sessão da IA reserva nunca é gravada e a do bot é apagada para recomeçar do histórico salvo. Uso e limites são lançados no provedor que respondeu.
 - **Busca**: índice FTS5 local no banco do supervisor (mesmo conteúdo que já estava nas conversas); consulta tratada como palavras, sem sintaxe FTS.
 - **Corrigir rumo**: instrução da pessoa (pelo app ou PC pareado) que para a tarefa em andamento; entra no prompt como instrução da pessoa, não como conteúdo externo.
+
+## Rostos e aparência (v63, parte 1)
+
+- **O rosto é só desenho.** `bot.face` (semente, cor, peças) é validado no supervisor (`validFace`: semente até 40 letras sem caracteres de controle, cor `#rrggbb`, peças só da lista conhecida, nenhum outro campo). Nada do que o modelo escreve vira rosto sem passar por essa validação (`team.create_bot` continua só com cor e avatar antigos).
+- **Widget, atalhos de compartilhar e notificações** recebem um quadro parado do rosto, gerado no supervisor (`lib/face.mjs`) e pintado pelo Kotlin (`FacePainter`). O quadro tem só caracteres, cores e opacidades; não leva texto de conversa. O resumo do widget continua só pelo `127.0.0.1` com o token do pareamento.
+- **Aparência (escuro, claro, sistema)** é uma preferência da pessoa guardada em `metadata` (`person.theme`), editável só por `person.update`; o PC pareado a lê junto com o resto do estado.
+

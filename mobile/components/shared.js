@@ -1,6 +1,7 @@
 import { useStore } from '../state/useStore';
 import { selectHome, selectBots, selectShareTargets } from '../state/store';
-import { C, Icon } from '../theme';
+import { C, Icon, HUES, hueOf } from '../theme';
+import { stillOf } from '../../lib/face.mjs';
 import BotAvatar from '../BotAvatar';
 import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
 import { styles } from '../styles';
@@ -13,7 +14,7 @@ import { desktop } from '../desktop';
 
 export const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
 
-export const COLORS = { green: C.mint, blue: C.sky, purple: C.lilac, orange: C.peach };
+export const COLORS = HUES;
 
 export const COLOR_NAMES = { green: 'Verde', blue: 'Azul', purple: 'Lilás', orange: 'Laranja' };
 
@@ -62,13 +63,13 @@ export const seenText = (presence, short = false) => {
 
 export const offline = (data, botId) => data?.presence?.[botId]?.online === false;
 
-export const HUE_OF = bot => ({ green: C.mint, blue: C.sky, purple: C.lilac, orange: C.peach })[bot?.color] || C.mint;
+export const HUE_OF = hueOf;
 
 export function PrimaryButton({ title, onPress, disabled, compact = false, style, icon, tone = 'mint' }) {
   const ghost = tone === 'ghost';
   return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled}
     style={({ pressed }) => [styles.primaryButton, compact && styles.compactButton, ghost && styles.ghostButton, disabled && styles.buttonDisabled, pressed && !disabled && styles.pressed, style]}>
-    {icon ? <Icon name={icon} size={compact ? 17 : 19} color={ghost ? C.text : C.mintInk} stroke={2.2} /> : null}
+    {icon ? <Icon name={icon} size={compact ? 17 : 19} color={ghost ? C.text : C.accentInk} stroke={2.2} /> : null}
     <Text style={[styles.primaryButtonText, compact && styles.compactButtonText, ghost && styles.ghostButtonText]}>{title}</Text>
   </Pressable>;
 }
@@ -81,17 +82,17 @@ export function useStickyScroll() {
 }
 
 export function ToEndButton({ onPress }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel="Ir para as mensagens mais novas" onPress={onPress} style={({ pressed }) => [styles.toEnd, pressed && styles.pressed]}><Icon name="down" size={20} color={C.mint} stroke={2.2} /></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel="Ir para as mensagens mais novas" onPress={onPress} style={({ pressed }) => [styles.toEnd, pressed && styles.pressed]}><Icon name="down" size={20} color={C.accent} stroke={2.2} /></Pressable>;
 }
 
 export function IconButton({ icon, label, onPress, active, disabled, tint = C.text2, size = 42 }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} hitSlop={6}
     style={({ pressed }) => [styles.iconButton, { width: size, height: size, borderRadius: size * 0.36 }, active && styles.iconButtonActive, pressed && styles.pressed, disabled && styles.buttonDisabled]}>
-    <Icon name={icon} size={size * 0.5} color={active ? C.mint : tint} />
+    <Icon name={icon} size={size * 0.5} color={active ? C.accent : tint} />
   </Pressable>;
 }
 
-export function Dots({ color = C.mint }) {
+export function Dots({ color = C.accent }) {
   const values = useRef([0, 1, 2].map(() => new Animated.Value(0))).current;
   useEffect(() => {
     const loop = Animated.loop(Animated.stagger(160, values.map(value => Animated.sequence([
@@ -104,7 +105,7 @@ export function Dots({ color = C.mint }) {
 
 export function SheetHeader({ title, subtitle, onClose, icon }) {
   return <View style={styles.sheetHeader}>
-    {icon ? <View style={styles.sheetIcon}><Icon name={icon} size={20} color={C.mint} /></View> : null}
+    {icon ? <View style={styles.sheetIcon}><Icon name={icon} size={20} color={C.accent} /></View> : null}
     <View style={{ flex: 1 }}><Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>{subtitle ? <Text style={styles.sheetSubtitle} numberOfLines={3}>{subtitle}</Text> : null}</View>
     {onClose ? <IconButton icon="close" label="Fechar" onPress={onClose} size={38} /> : null}
   </View>;
@@ -278,37 +279,7 @@ export function BotCard({ bot, busy, waiting, presence, routines = 0, items = 0,
   </Pressable>;
 }
 
-export function TodayStrip({ data, onActivity }) {
-  const items = (data?.pendingItems || []).filter(item => item.state === 'open');
-  const nextDue = items.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
-  const approvals = data?.approvals?.length || 0;
-  const working = (data?.active || []).filter(id => !offline(data, id)).length;
-  const tiles = [
-    approvals ? { key: 'a', icon: 'hand', tone: C.amber, label: approvals > 1 ? `${approvals} decisões` : '1 decisão', detail: 'esperando você' } : null,
-    nextDue ? { key: 'd', icon: 'calendar', tone: C.peach, label: nextDue.title, detail: `prazo ${nextDue.dueLabel || nextDue.due}` } : null,
-    data?.nextRoutineAt ? { key: 'r', icon: 'bolt', tone: C.sky, label: 'Próxima rotina', detail: new Date(data.nextRoutineAt).toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) } : null,
-    items.length ? { key: 'i', icon: 'list', tone: C.lilac, label: `${items.length} ${items.length > 1 ? 'pendências' : 'pendência'}`, detail: 'abertas' } : null,
-    working ? { key: 'w', icon: 'spark', tone: C.mint, label: `${working} ${working > 1 ? 'bots' : 'bot'} agora`, detail: 'trabalhando' } : null
-  ].filter(Boolean);
-  if (!tiles.length) return <View style={styles.calm}><Icon name="check" size={16} color={C.mint} /><Text style={styles.calmText}>Tudo em dia. Nenhuma decisão ou prazo por perto.</Text></View>;
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.todayScroll} contentContainerStyle={styles.today}>
-    {tiles.map(tile => <Pressable key={tile.key} accessibilityRole="button" onPress={onActivity} style={({ pressed }) => [styles.todayTile, pressed && styles.pressed]}>
-      <View style={[styles.todayIcon, { backgroundColor: tile.tone + '1F' }]}><Icon name={tile.icon} size={17} color={tile.tone} /></View>
-      <View style={{ flexShrink: 1 }}><Text style={styles.todayLabel} numberOfLines={1}>{tile.label}</Text><Text style={styles.todayDetail} numberOfLines={1}>{tile.detail}</Text></View>
-    </Pressable>)}
-  </ScrollView>;
-}
-
 export function greeting() { const hour = new Date().getHours(); return hour < 5 ? 'Boa noite' : hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'; }
-
-export function NavBar({ mode, onActivity, onMaintenance, onConnection, onMode, onWallet, attention }) {
-  const items = [['bots', 'Bots', null, true], ['activity', mode === 'phone' ? 'Atividade' : 'Conexão', mode === 'phone' ? onActivity : onConnection], ...(onWallet ? [['wallet', 'Carteira', onWallet]] : []), ['settings', 'Ajustes', mode === 'phone' ? onMaintenance : onMode]];
-  return <View style={styles.bottomNav}>{items.map(([icon, label, onPress, active]) =>
-    <Pressable key={icon} accessibilityRole="button" accessibilityState={{ selected: Boolean(active) }} onPress={onPress || undefined} style={[styles.navItem, active && styles.navItemActive]}>
-      <View><Icon name={icon} size={21} color={active ? C.mint : C.muted} />{icon === 'activity' && attention ? <View style={styles.navBadge} /> : null}</View>
-      <Text style={active ? styles.navTextActive : styles.navText}>{label}</Text>
-    </Pressable>)}</View>;
-}
 
 export const UPDATE_STEPS = { downloading: 'Baixando', installing: 'Conferindo e instalando…', confirm: 'Confirme a instalação na janela do Android.', permission: 'Permita "Instalar apps desconhecidos" para o MyBots e toque em Atualizar de novo.' };
 
@@ -319,12 +290,12 @@ export function UpdateCard({ update, onInstall, onDismiss, compact = false }) {
   const body = (info.notes || '').replace(/\r/g, '').trim();
   return <View style={styles.updateCard}>
     <View style={styles.updateHead}>
-      <View style={styles.updateIcon}><Icon name="download" size={18} color={C.mint} /></View>
+      <View style={styles.updateIcon}><Icon name="download" size={18} color={C.accent} /></View>
       <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{info.latestName || 'Nova versão'} disponível</Text>
         <Text style={styles.optionDetail}>Você está na {info.currentName}{info.size ? ` · ${formatSize(info.size)}` : ''}. Conversas e bots continuam.</Text></View>
       {!compact && !busy ? <Pressable accessibilityRole="button" accessibilityLabel="Lembrar depois" hitSlop={10} onPress={onDismiss}><Icon name="close" size={16} color={C.faint} /></Pressable> : null}
     </View>
-    {body ? <Pressable accessibilityRole="button" onPress={() => setNotes(value => !value)} style={styles.updateNotesToggle}><Text style={styles.updateNotesLink}>{notes ? 'Esconder novidades' : 'Ver novidades'}</Text><Icon name={notes ? 'back' : 'down'} size={13} color={C.mint} /></Pressable> : null}
+    {body ? <Pressable accessibilityRole="button" onPress={() => setNotes(value => !value)} style={styles.updateNotesToggle}><Text style={styles.updateNotesLink}>{notes ? 'Esconder novidades' : 'Ver novidades'}</Text><Icon name={notes ? 'back' : 'down'} size={13} color={C.accent} /></Pressable> : null}
     {notes ? <View style={styles.updateNotes}><RichText text={body} textStyle={styles.updateNotesText} /></View> : null}
     {step?.state === 'downloading' ? <View style={styles.updateBar}><View style={[styles.updateFill, { width: `${Math.max(3, step.percent || 0)}%` }]} /></View> : null}
     {step ? <Text style={[styles.optionDetail, step.state === 'error' && { color: C.red }]}>{step.state === 'error' ? step.message : step.state === 'downloading' ? `${UPDATE_STEPS.downloading} · ${step.percent >= 0 ? step.percent + '%' : formatSize(step.done || 0)}` : UPDATE_STEPS[step.state] || ''}</Text> : null}
@@ -368,12 +339,12 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
       <View style={styles.sideHead}>
         <View style={styles.brandRow}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={30} tile={false} /><Text style={[styles.brand, { fontSize: 21 }]}>mybots</Text></View>
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          <IconButton icon="plus" label="Novo bot" onPress={onCreate} size={34} tint={C.mint} />
+          <IconButton icon="plus" label="Novo bot" onPress={onCreate} size={34} tint={C.accent} />
           <IconButton icon="settings" label="Ajustes" onPress={onMaintenance} size={34} />
         </View>
       </View>
       <View style={styles.sideSearch}><Icon name="search" size={15} color={C.faint} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Buscar bot ou sala" placeholderTextColor={C.faint} style={styles.sideSearchInput} selectionColor={C.mint} /></View>
+        <TextInput value={query} onChangeText={setQuery} placeholder="Buscar bot ou sala" placeholderTextColor={C.faint} style={styles.sideSearchInput} selectionColor={C.accent} /></View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
         {rooms.length || (data.bots || []).length >= 2 ? <>
           <View style={styles.sideSection}><Text style={styles.sideSectionText}>SALAS</Text>
@@ -383,7 +354,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
             const working = members.filter(bot => room.active?.includes(bot.id));
             const who = latest?.role === 'user' ? 'Você' : members.find(bot => bot.id === latest?.botId)?.name;
             return <SideRow key={room.id} selected={room.id === roomId} onPress={() => onRoom(room.id)} label={`Abrir a sala ${room.name}`} face={<RoomFaces bots={members} size={36} />}
-              title={room.name} time={latest ? shortTime(latest.createdAt) : ''} working={working.length > 0} tone={working.length ? C.mint : null}
+              title={room.name} time={latest ? shortTime(latest.createdAt) : ''} working={working.length > 0} tone={working.length ? C.accent : null}
               line={working.length ? `${working.map(bot => bot.name).join(', ')} respondendo` : latest ? `${who || 'Bot'}: ${plain(latest.text)}` : members.map(bot => bot.name).join(', ')} />;
           })}
         </> : null}
@@ -392,7 +363,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
         {bots.map(bot => {
           const line = botLine(bot, data); const presence = data.presence?.[bot.id];
           return <SideRow key={bot.id} selected={bot.id === selected} onPress={() => onOpen(bot.id)} label={`Conversar com ${bot.name}`}
-            face={<Avatar bot={bot} size={40} state={line.state} animated={line.state !== 'idle'} />} dot={bot.home === 'pc' || bot.home === 'any' ? (presence?.online === false ? C.faint : C.mint) : null}
+            face={<Avatar bot={bot} size={40} state={line.state} animated={line.state !== 'idle'} />} dot={bot.home === 'pc' || bot.home === 'any' ? (presence?.online === false ? C.faint : C.accent) : null}
             title={bot.name} time={latestOf(bot) ? shortTime(bot.updatedAt) : ''} line={line.text} tone={line.tone} working={line.state === 'working'} />;
         })}
         {!bots.length && !needle ? <Text style={styles.sideEmpty}>Nenhum bot ainda. Toque em + para criar o primeiro.</Text> : null}
@@ -417,7 +388,6 @@ export function DeskWelcome({ data, error, onRespond, approvalBusy, onCreate, on
     <Text style={styles.tagline}>{bots.length ? `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}${working ? ` · ${working} trabalhando agora` : ''}` : 'Seu pequeno time pessoal começa aqui.'}</Text>
     {error ? <Notice text={error} onRetry={onConnection} /> : null}
     {error && !bots.length ? <DesktopPair call={call} /> : null}
-    {bots.length ? <TodayStrip data={data} onActivity={() => {}} /> : null}
     {(data.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
     <View style={styles.deskHint}>
       <View style={styles.emptyCrew}>{(bots.length ? bots.slice(0, 4) : [{ id: 'a', name: 'orbit', avatar: 'orbit', color: 'green' }, { id: 'b', name: 'spark', avatar: 'spark', color: 'purple' }, { id: 'c', name: 'cat', avatar: 'cat', color: 'orange' }]).map((bot, index) => <View key={bot.id} style={{ marginTop: index % 2 ? 16 : 0 }}><Avatar bot={bot} size={index === 0 ? 70 : 58} /></View>)}</View>
@@ -466,9 +436,9 @@ export function ModeSheet({ visible, mode, onClose, onSelect }) {
         <View style={styles.sheetHandle} />
         <SheetHeader title="Onde o MyBots roda?" subtitle="Escolha onde as IAs trabalham e onde as conversas ficam salvas." onClose={onClose} />
         {options.map(([value, title, detail, icon]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: mode === value }} onPress={() => onSelect(value)} style={[styles.modeOption, styles.rowOption, mode === value && styles.optionChosen]}>
-          <View style={styles.rowIcon}><Icon name={icon} size={19} color={mode === value ? C.mint : C.muted} /></View>
+          <View style={styles.rowIcon}><Icon name={icon} size={19} color={mode === value ? C.accent : C.muted} /></View>
           <View style={{ flex: 1 }}><Text style={[styles.optionLabel, mode === value && styles.optionLabelChosen]}>{title}</Text><Text style={styles.optionDetail}>{detail}</Text></View>
-          {mode === value ? <Icon name="check" size={18} color={C.mint} stroke={2.4} /> : null}
+          {mode === value ? <Icon name="check" size={18} color={C.accent} stroke={2.4} /> : null}
         </Pressable>)}
       </Pressable>
     </Pressable>
@@ -558,7 +528,7 @@ export function TermuxApiStatus() {
 export function RemoteAccess({ tailscale }) {
   return <View style={{ marginTop: 10 }}>
     <Text style={styles.optionDetail}>{tailscale ? 'Tailscale detectado no PC. Para conectar de qualquer lugar, mantenha o Tailscale ligado nos dois aparelhos, na mesma conta.' : 'Sem Tailscale detectado no PC. No mesmo Wi-Fi, o celular procura o computador sozinho. Para usar de qualquer lugar, instale o Tailscale nos dois aparelhos e entre na mesma conta.'}</Text>
-    {!tailscale ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://tailscale.com/download')} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>Instalar Tailscale</Text></Pressable> : null}
+    {!tailscale ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://tailscale.com/download')} style={styles.stopButton}><Text style={[styles.stopText, { color: C.accent }]}>Instalar Tailscale</Text></Pressable> : null}
   </View>;
 }
 
@@ -602,9 +572,9 @@ export function DesktopPair({ call, compact = false }) {
     {qr ? <View style={styles.pairQr}><View accessibilityLabel="QR para parear o celular"><SvgXml xml={qr.svg} width={260} height={260} /></View>
       <Text style={styles.limitMeta}>Esperando o celular ler…</Text></View> : null}
     <View style={{ flexDirection: 'row', gap: 14, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : show} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : show} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR'}</Text></Pressable>
     </View>
-    {note ? <Text style={[styles.optionDetail, /pareado/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
+    {note ? <Text style={[styles.optionDetail, /pareado/.test(note) ? { color: C.accent } : { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 
@@ -634,15 +604,15 @@ export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry 
     <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>
     <RemoteAccess tailscale={computer?.tailscale} />
     {computer?.paired ? <View style={styles.passwordRow}>
-      <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.mint : C.faint} /></View>
+      <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.accent : C.faint} /></View>
       <View style={{ flex: 1 }}><Text style={styles.limitName}>{state}</Text>{computer.error && computer.state !== 'online' ? <Text style={[styles.limitMeta, { color: C.amber }]}>{computer.error}</Text> : null}</View>
     </View> : <Text style={styles.optionDetail}>Com o computador ligado, os bots que vivem nele ficam online e respondem de lá, usando o Claude ou o Codex do computador. No computador, rode node pc/node.mjs pair e leia o QR que aparecer.</Text>}
     <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={scan} style={styles.stopButton}><Icon name="laptop" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{computer?.paired ? 'Parear de novo' : 'Conectar computador'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={scan} style={styles.stopButton}><Icon name="laptop" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{computer?.paired ? 'Parear de novo' : 'Conectar computador'}</Text></Pressable>
       {computer?.paired && computer.state !== 'online' ? <Pressable accessibilityRole="button" onPress={() => onRetry().catch(() => {})} style={styles.stopButton}><Icon name="refresh" size={13} color={C.muted} /><Text style={styles.stopText}>Tentar agora</Text></Pressable> : null}
       {computer?.paired ? <Pressable accessibilityRole="button" onPress={forget} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Esquecer</Text></Pressable> : null}
     </View>
-    {note ? <Text style={[styles.optionDetail, /conectado/.test(note) ? { color: C.mint } : /Conectando/.test(note) ? null : { color: C.amber }]}>{note}</Text> : null}
+    {note ? <Text style={[styles.optionDetail, /conectado/.test(note) ? { color: C.accent } : /Conectando/.test(note) ? null : { color: C.amber }]}>{note}</Text> : null}
     <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
       <View style={styles.scanner}>
         <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanning ? read : undefined} />
@@ -696,7 +666,7 @@ export function WalletPanel({ bots = [] }) {
   return <View>
     <Text style={styles.optionDetail}>{frozen ? 'Carteira congelada: nenhum bot paga. ' : `Carteira ativa. ${rules.perMonth ? `Gasto no mês: ${reais(spent)} de ${reais(rules.perMonth)}. ` : ''}`}Os cartões ficam só neste celular; os bots veem apenas o final.</Text>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={native(walletRulesEditor)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{frozen ? 'Regras e descongelar' : 'Regras de gasto'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={native(walletRulesEditor)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.accent }]}>{frozen ? 'Regras e descongelar' : 'Regras de gasto'}</Text></Pressable>
       {!frozen ? <Pressable accessibilityRole="button" onPress={native(walletFreeze)} style={styles.stopButton}><Icon name="stop" size={13} color={C.amber} /><Text style={[styles.stopText, { color: C.amber }]}>Congelar carteira</Text></Pressable> : null}
     </View>
     {cards.map(card => {
@@ -705,19 +675,19 @@ export function WalletPanel({ bots = [] }) {
         <Pressable accessibilityRole="button" accessibilityLabel={`Bots do cartão final ${card.last4}`} onPress={() => setOpen(open === card.id ? null : card.id)}><WalletCardArt card={card} frozen={frozen} /></Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
           <Text style={[styles.optionDetail, { flex: 1 }]}>{names.length ? `Usado por: ${names.join(', ')}` : 'Nenhum bot pode usar este cartão ainda.'}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setOpen(open === card.id ? null : card.id)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.mint }]}>{open === card.id ? 'Fechar' : 'Escolher bots'}</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => setOpen(open === card.id ? null : card.id)} style={styles.stopButton}><Text style={[styles.stopText, { color: C.accent }]}>{open === card.id ? 'Fechar' : 'Escolher bots'}</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`Apagar o cartão final ${card.last4}`} disabled={busy} onPress={() => remove(card)} style={styles.stopButton}><Icon name="trash" size={13} color={C.faint} /></Pressable>
         </View>
         {open === card.id ? <View style={{ marginTop: 8 }}>
           <Text style={styles.optionDetail}>Só os bots marcados podem pagar com este cartão, sempre dentro das regras de gasto.</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {bots.length ? bots.map(bot => { const on = card.bots.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} disabled={busy} onPress={() => toggle(card, bot.id)} style={[styles.stopButton, on && { borderColor: C.mint + '90', backgroundColor: C.mint + '18' }]}><Icon name={on ? 'check' : 'plus'} size={13} color={on ? C.mint : C.faint} /><Text style={[styles.stopText, on && { color: C.mint }]}>{bot.name}</Text></Pressable>; }) : <Text style={styles.optionDetail}>Crie um bot para liberar o cartão.</Text>}
+            {bots.length ? bots.map(bot => { const on = card.bots.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} disabled={busy} onPress={() => toggle(card, bot.id)} style={[styles.stopButton, on && { borderColor: C.accent + '90', backgroundColor: C.accent + '18' }]}><Icon name={on ? 'check' : 'plus'} size={13} color={on ? C.accent : C.faint} /><Text style={[styles.stopText, on && { color: C.accent }]}>{bot.name}</Text></Pressable>; }) : <Text style={styles.optionDetail}>Crie um bot para liberar o cartão.</Text>}
           </View>
         </View> : null}
       </View>;
     })}
     <Pressable accessibilityRole="button" disabled={busy} onPress={native(cardEditor)} style={{ minHeight: cards.length ? 96 : 150, width: '100%', maxWidth: 380, alignSelf: 'center', borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.line2, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 }}>
-      <Icon name="plus" size={22} color={C.mint} /><Text style={[styles.optionLabel, { color: C.mint }]}>{cards.length ? 'Adicionar outro cartão' : 'Adicionar cartão'}</Text><Text style={[styles.optionDetail, { textAlign: 'center', paddingHorizontal: 24 }]}>De preferência um cartão virtual do seu banco, com limite próprio.</Text>
+      <Icon name="plus" size={22} color={C.accent} /><Text style={[styles.optionLabel, { color: C.accent }]}>{cards.length ? 'Adicionar outro cartão' : 'Adicionar cartão'}</Text><Text style={[styles.optionDetail, { textAlign: 'center', paddingHorizontal: 24 }]}>De preferência um cartão virtual do seu banco, com limite próprio.</Text>
     </Pressable>
     {note ? <Text style={[styles.optionDetail, { color: C.amber, marginTop: 8 }]}>{note}</Text> : null}
     {purchases.length ? <Text style={[styles.optionLabel, { marginTop: 18 }]}>Extrato</Text> : null}
@@ -766,19 +736,19 @@ export function PasswordsPanel({ bots }) {
     <Text style={styles.optionLabel}>Senhas de sites</Text>
     <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste celular e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
     {list.map(item => <View key={item.id} style={styles.passwordRow}>
-      <View style={styles.rowIcon}><Icon name="key" size={17} color={C.mint} /></View>
+      <View style={styles.rowIcon}><Icon name="key" size={17} color={C.accent} /></View>
       <View style={{ flex: 1 }}><Text style={styles.limitName} numberOfLines={1}>{item.host}</Text><Text style={styles.limitMeta} numberOfLines={1}>{item.username || 'sem usuário'} · {names(item.bots)}</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel={`Apagar a senha de ${item.host}`} hitSlop={10} onPress={() => remove(item)}><Icon name="trash" size={17} color={C.faint} /></Pressable>
     </View>)}
     {form ? <View style={{ marginTop: 6 }}>
       {form.importing ? <Text style={styles.optionDetail}>No Chrome: Gerenciador de senhas → Configurações → Exportar senhas, e escolha o arquivo aqui. Também aceita CSV do Firefox, Bitwarden e 1Password. Só entram logins de sites (http/https); um site e usuário já salvo fica com a senha nova.</Text> : <>
-      <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />
-      <TextInput style={styles.formInput} placeholder="Usuário (CPF, matrícula ou e-mail)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} value={form.username || ''} onChangeText={value => field('username', value)} />
-      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} /></>}
+      <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />
+      <TextInput style={styles.formInput} placeholder="Usuário (CPF, matrícula ou e-mail)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.username || ''} onChangeText={value => field('username', value)} />
+      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} /></>}
       <Text style={[styles.limitMeta, { marginTop: 10 }]}>Quais bots podem usar</Text>
       <View style={styles.shareFiles}>
         {[{ id: null, name: 'Todos' }, ...bots].map(bot => { const all = !form.bots?.length; const on = bot.id ? form.bots?.includes(bot.id) : all; return <Pressable key={bot.id || 'all'} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
-          onPress={() => field('bots', bot.id ? (on ? form.bots.filter(id => id !== bot.id) : [...(form.bots || []), bot.id]) : [])} style={[styles.botChoice, on && styles.botChoiceOn]}><Text style={[styles.botChoiceText, on && { color: C.mint }]}>{bot.name}</Text></Pressable>; })}
+          onPress={() => field('bots', bot.id ? (on ? form.bots.filter(id => id !== bot.id) : [...(form.bots || []), bot.id]) : [])} style={[styles.botChoice, on && styles.botChoiceOn]}><Text style={[styles.botChoiceText, on && { color: C.accent }]}>{bot.name}</Text></Pressable>; })}
       </View>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
         <Pressable accessibilityRole="button" onPress={() => setForm(null)} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Cancelar</Text></Pressable>
@@ -786,10 +756,10 @@ export function PasswordsPanel({ bots }) {
           : <PrimaryButton compact icon="check" title={busy ? 'Salvando…' : 'Salvar senha'} disabled={busy || !form.site || !form.password} onPress={save} style={{ flex: 1.4 }} />}
       </View>
     </View> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Adicionar senha</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({ importing: true }); }} style={styles.stopButton}><Icon name="download" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Importar CSV</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={styles.stopButton}><Icon name="plus" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Adicionar senha</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({ importing: true }); }} style={styles.stopButton}><Icon name="download" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Importar CSV</Text></Pressable>
     </View>}
-    {note ? <Text style={[styles.optionDetail, /salva|importada/.test(note) ? { color: C.mint } : { color: C.amber }]}>{note}</Text> : null}
+    {note ? <Text style={[styles.optionDetail, /salva|importada/.test(note) ? { color: C.accent } : { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 
@@ -797,14 +767,14 @@ export function PasswordOfferCard({ offer, bot, onAnswer }) {
   const [busy, setBusy] = useState(false);
   const answer = async scope => { setBusy(true); try { await onAnswer(scope); } finally { setBusy(false); } };
   return <View style={[styles.updateCard, { marginTop: 4 }]}>
-    <View style={styles.updateHead}><View style={styles.updateIcon}><Icon name="key" size={18} color={C.mint} /></View>
+    <View style={styles.updateHead}><View style={styles.updateIcon}><Icon name="key" size={18} color={C.accent} /></View>
       <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Salvar a senha de {offer.host}?</Text>
         <Text style={styles.optionDetail}>{offer.username ? `Usuário ${offer.username}. ` : ''}Assim {bot.name} entra sozinho da próxima vez. A IA nunca vê a senha.</Text></View></View>
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => answer('dismiss')} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Agora não</Text></Pressable>
       <PrimaryButton compact icon="check" title={`Para ${bot.name}`} disabled={busy} onPress={() => answer('bot')} style={{ flex: 1.3 }} />
     </View>
-    <Pressable accessibilityRole="button" disabled={busy} onPress={() => answer('all')} style={styles.alwaysButton}><Text style={[styles.alwaysText, { color: C.mint }]}>Salvar para todos os bots</Text></Pressable>
+    <Pressable accessibilityRole="button" disabled={busy} onPress={() => answer('all')} style={styles.alwaysButton}><Text style={[styles.alwaysText, { color: C.accent }]}>Salvar para todos os bots</Text></Pressable>
   </View>;
 }
 
@@ -818,11 +788,11 @@ export function WidgetRow() {
     catch (error) { setNote(nativeMessage(error)); }
   };
   return <View style={[styles.modeOption, styles.rowOption]}>
-    <View style={styles.rowIcon}><Icon name="bots" size={19} color={C.mint} /></View>
+    <View style={styles.rowIcon}><Icon name="bots" size={19} color={C.accent} /></View>
     <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Widget na tela inicial</Text>
       <Text style={styles.optionDetail}>{status?.placed ? `${status.placed > 1 ? status.placed + ' widgets' : 'Um widget'} na tela inicial, com seus bots ao vivo.` : 'Seus bots animados na tela inicial: quem trabalha, quem espera você e o próximo prazo.'}</Text>
       {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}</View>
-    {status?.canPin !== false ? <Pressable accessibilityRole="button" onPress={add} style={styles.stopButton}><Icon name="plus" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>{status?.placed ? 'Outro' : 'Adicionar'}</Text></Pressable> : null}
+    {status?.canPin !== false ? <Pressable accessibilityRole="button" onPress={add} style={styles.stopButton}><Icon name="plus" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{status?.placed ? 'Outro' : 'Adicionar'}</Text></Pressable> : null}
   </View>;
 }
 
@@ -837,9 +807,25 @@ export function PersonName({ name, onSave }) {
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>Seu nome</Text>
     <Text style={styles.optionDetail}>Aparece na saudação da tela inicial, que muda com o horário: bom dia, boa tarde e boa noite.</Text>
-    <TextInput accessibilityLabel="Seu nome" style={styles.formInput} placeholder="Como quer ser chamado?" placeholderTextColor="#6F7787" maxLength={40}
-      autoCapitalize="words" autoCorrect={false} returnKeyType="done" value={value} onChangeText={setValue} onBlur={save} onSubmitEditing={save} selectionColor={C.mint} />
+    <TextInput accessibilityLabel="Seu nome" style={styles.formInput} placeholder="Como quer ser chamado?" placeholderTextColor={C.faint} maxLength={40}
+      autoCapitalize="words" autoCorrect={false} returnKeyType="done" value={value} onChangeText={setValue} onBlur={save} onSubmitEditing={save} selectionColor={C.accent} />
     {state ? <Text style={[styles.optionDetail, state.length > 6 && state !== 'saving' && { color: C.amber }]}>{state === 'saving' ? 'Salvando…' : state === 'saved' ? 'Salvo.' : state}</Text> : null}
+  </View>;
+}
+
+// Dark, light or whatever the system says; the change is applied on the spot.
+export const THEME_CHOICES = [['dark', 'Escuro'], ['light', 'Claro'], ['system', 'Seguir o sistema']];
+export function ThemeChoice({ value = 'dark', onSave }) {
+  const [busy, setBusy] = useState(false);
+  const pick = async next => { if (next === value || busy) return; setBusy(true); try { await onSave(next); } catch {} finally { setBusy(false); } };
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>Aparência</Text>
+    <Text style={styles.optionDetail}>Escuro usa preto de verdade, que poupa bateria em telas OLED. A mudança vale na hora.</Text>
+    <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+      {THEME_CHOICES.map(([key, label]) => <Pressable key={key} accessibilityRole="radio" accessibilityState={{ selected: value === key }} onPress={() => pick(key)}
+        style={[styles.stopButton, { paddingHorizontal: 14, paddingVertical: 10 }, value === key && { borderColor: C.accent, backgroundColor: C.accent + '22' }]}>
+        <Text style={[styles.stopText, { fontSize: 13.5 }, value === key && { color: C.accent }]}>{label}</Text></Pressable>)}
+    </View>
   </View>;
 }
 
@@ -916,7 +902,7 @@ export function UsagePanel({ usage, bots, connections, onRefresh }) {
   const days = usage?.days || []; const peak = Math.max(1, ...days.map(day => day.input + day.output));
   const total = rows.reduce((sum, row) => sum + row.week.input + row.week.output, 0);
   const refreshButton = provider => <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => refresh(provider)} style={styles.stopButton}>
-    {busy === provider ? <ActivityIndicator size="small" color={C.mint} /> : <Icon name="refresh" size={13} color={C.mint} />}<Text style={[styles.stopText, { color: C.mint }]}>{busy === provider ? 'Consultando' : 'Consultar agora'}</Text></Pressable>;
+    {busy === provider ? <ActivityIndicator size="small" color={C.accent} /> : <Icon name="refresh" size={13} color={C.accent} />}<Text style={[styles.stopText, { color: C.accent }]}>{busy === provider ? 'Consultando' : 'Consultar agora'}</Text></Pressable>;
   return <>
     {!limits.length && !rows.length && !missing.length ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Uso</Text><Text style={styles.optionDetail}>Depois das primeiras respostas aparecem aqui os tokens de cada bot e quanto do limite da sua assinatura já foi usado.</Text></View> : null}
     {missing.map(provider => <View key={provider} style={styles.modeOption}>
@@ -927,7 +913,7 @@ export function UsagePanel({ usage, bots, connections, onRefresh }) {
     </View>)}
     {limits.map(([provider, item]) => <View key={provider} style={styles.modeOption}>
       <Text style={styles.optionLabel}>{PLAN_NAMES[provider]}{item.plan ? ` ${item.plan[0].toUpperCase()}${item.plan.slice(1)}` : ''} · limite da assinatura</Text>
-      {item.windows.map(window => { const tone = window.used >= 90 ? C.red : window.used >= 70 ? C.amber : C.mint; return <View key={window.key} style={styles.limitRow}>
+      {item.windows.map(window => { const tone = window.used >= 90 ? C.red : window.used >= 70 ? C.amber : C.accent; return <View key={window.key} style={styles.limitRow}>
         <View style={styles.limitHead}><Text style={styles.limitName}>{WINDOW_NAMES[window.key] || window.key}</Text><Text style={[styles.limitValue, { color: tone }]}>{window.used}% usado</Text></View>
         <View style={styles.updateBar}><View style={[styles.updateFill, { width: `${Math.max(2, window.used)}%`, backgroundColor: tone }]} /></View>
         <Text style={styles.limitMeta}>{resetLabel(window.resetsAt)}</Text>
@@ -997,9 +983,9 @@ export function EmailConnection({ email, busy, onAction }) {
     <Text style={styles.optionLabel}>E-mail · {EMAIL_STATUS[email?.status] || 'Desconectado'}</Text>
     <Text style={styles.optionDetail}>{email?.configured ? `${email.address}${email.lastSync ? ` · sincronizado ${new Date(email.lastSync).toLocaleString('pt-BR')}` : ''}\n${email.message || ''}` : 'Os bots podem buscar e ler e-mails (somente leitura) quando você permitir no perfil de cada um.'}</Text>
     {form ? <View style={{ gap: 8, marginTop: 10 }}>
-      <TextInput style={styles.formInput} placeholder="seu@gmail.com" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={form.address} onChangeText={value => field('address', value)} />
-      <TextInput style={styles.formInput} placeholder="Senha de app (16 letras)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password} onChangeText={value => field('password', value)} />
-      {!known && form.address?.includes('@') ? <TextInput style={styles.formInput} placeholder="Servidor IMAP (ex.: imap.seuprovedor.com)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} value={form.host} onChangeText={value => field('host', value)} /> : null}
+      <TextInput style={styles.formInput} placeholder="seu@gmail.com" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={form.address} onChangeText={value => field('address', value)} />
+      <TextInput style={styles.formInput} placeholder="Senha de app (16 letras)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password} onChangeText={value => field('password', value)} />
+      {!known && form.address?.includes('@') ? <TextInput style={styles.formInput} placeholder="Servidor IMAP (ex.: imap.seuprovedor.com)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.host} onChangeText={value => field('host', value)} /> : null}
       <Text style={styles.optionDetail}>No Gmail: Conta Google → Segurança → Verificação em duas etapas → Senhas de app. Use essa senha, nunca a senha normal. Ela fica cifrada no celular.</Text>
       <PrimaryButton title={busy ? 'Conectando…' : 'Conectar'} disabled={busy || !form.address || !form.password} onPress={() => { onAction('email.configure', { address: form.address, password: form.password, ...(form.host ? { host: form.host } : {}) }); setForm(null); }} />
       <Pressable onPress={() => setForm(null)} style={styles.closeSheet}><Text style={styles.closeSheetText}>Cancelar</Text></Pressable>
@@ -1058,10 +1044,10 @@ export function AppConnections({ apps = [], busy, onAction }) {
       </View>
     </View>)}
     {form ? <View style={{ gap: 8, marginTop: 10 }}>
-      <TextInput style={styles.formInput} placeholder="Nome (ex.: Composio)" placeholderTextColor="#6F7787" value={form.name} onChangeText={value => field('name', value)} maxLength={40} />
-      <TextInput style={styles.formInput} placeholder="Endereço MCP (https://…)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.url} onChangeText={value => field('url', value)} />
-      <TextInput style={styles.formInput} placeholder="Cabeçalho da chave (ex.: x-api-key)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} value={form.headerName} onChangeText={value => field('headerName', value)} />
-      <TextInput style={styles.formInput} placeholder="Chave da API (opcional)" placeholderTextColor="#6F7787" autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.headerValue} onChangeText={value => field('headerValue', value)} />
+      <TextInput style={styles.formInput} placeholder="Nome (ex.: Composio)" placeholderTextColor={C.faint} value={form.name} onChangeText={value => field('name', value)} maxLength={40} />
+      <TextInput style={styles.formInput} placeholder="Endereço MCP (https://…)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.url} onChangeText={value => field('url', value)} />
+      <TextInput style={styles.formInput} placeholder="Cabeçalho da chave (ex.: x-api-key)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.headerName} onChangeText={value => field('headerName', value)} />
+      <TextInput style={styles.formInput} placeholder="Chave da API (opcional)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.headerValue} onChangeText={value => field('headerValue', value)} />
       <Text style={styles.optionDetail}>No Composio: crie a conta, conecte os apps que quiser (Gmail, Calendar…), gere um servidor MCP e copie o endereço e a chave da API. A chave fica cifrada no celular e nunca é mostrada aos bots.</Text>
       <PrimaryButton title={busy ? 'Conectando…' : 'Conectar app'} disabled={busy || !form.name?.trim() || !form.url?.trim()} onPress={() => { onAction('app.add', { name: form.name, url: form.url.trim(), headerName: form.headerName?.trim() || undefined, headerValue: form.headerValue || undefined }); setForm(null); }} />
       <Pressable onPress={() => setForm(null)} style={styles.closeSheet}><Text style={styles.closeSheetText}>Cancelar</Text></Pressable>
@@ -1148,27 +1134,28 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
       <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>
     </View>
     : <TextInput ref={inputRef} accessibilityLabel={accessibilityLabel} value={value} onChangeText={setValue} editable={editable}
-      placeholder={placeholder} placeholderTextColor={C.faint} multiline maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.mint}
+      placeholder={placeholder} placeholderTextColor={C.faint} multiline maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.accent}
       // On the computer, Enter sends and Shift+Enter breaks the line.
       onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />}
     <View style={styles.composerRow}>
       {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" disabled={voice.busy} onPress={dictation.cancel} style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}><Icon name="close" size={20} color={C.text2} /></Pressable>
         : onAttach ? <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={attachDisabled} onPress={onAttach} style={({ pressed }) => [styles.composerTool, attachDisabled && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable> : null}
       <View style={{ flex: 1 }} />
-      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.mintInk} stroke={2.6} /></Pressable>
+      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.accentInk} stroke={2.6} /></Pressable>
         : <>
           {dictation.available ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={!editable} onPress={dictation.start} style={({ pressed }) => [styles.composerTool, !editable && styles.sendDisabled, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable> : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.mintInk : C.muted} stroke={2.6} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.accentInk : C.muted} stroke={2.6} /></Pressable>
         </>}
     </View>
   </View>;
 }
 
 export function RoomFaces({ bots, size = 40 }) {
-  const shown = bots.slice(0, 3);
-  return <View style={{ width: size + (shown.length - 1) * size * 0.42, height: size }}>
-    {shown.map((bot, index) => <View key={bot.id} style={{ position: 'absolute', left: index * size * 0.42, top: 0, zIndex: 10 - index, borderRadius: size * 0.3, borderWidth: 2, borderColor: C.bg }}>
-      <Avatar bot={bot} size={size - 4} animated={false} /></View>)}
+  // Up to three faces overlapping, always in the same width so the text beside them lines up.
+  const shown = bots.slice(0, 3), step = size * 0.5;
+  return <View style={{ width: size + 2 * step, height: size }}>
+    {shown.map((bot, index) => <View key={bot.id} style={{ position: 'absolute', left: index * step, top: 0, zIndex: 10 - index }}>
+      <Avatar bot={bot} size={size} animated={false} /></View>)}
   </View>;
 }
 
@@ -1187,7 +1174,7 @@ export function RoomCard({ room, bots, onPress }) {
     <RoomFaces bots={members} size={44} />
     <View style={styles.botCardCopy}>
       <View style={styles.botNameRow}><Text style={styles.botCardName} numberOfLines={1}>{room.name}</Text><Text style={styles.botTime}>{members.length} bots</Text>{room.unread ? <Text style={styles.unread}>{room.unread > 99 ? '99+' : room.unread}</Text> : null}</View>
-      {working.length ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: C.mint }]} numberOfLines={1}>{working.join(', ')} {working.length > 1 ? 'respondendo' : 'respondendo'}</Text><Dots /></View>
+      {working.length ? <View style={styles.botWorking}><Text style={[styles.botPreview, { color: C.accent }]} numberOfLines={1}>{working.join(', ')} {working.length > 1 ? 'respondendo' : 'respondendo'}</Text><Dots /></View>
         : <Text style={styles.botPreview} numberOfLines={1}>{latest ? `${who || 'Bot'}: ${plain(latest.text) || (latest.status === 'error' ? 'não conseguiu responder' : '')}` : members.map(bot => bot.name).join(', ')}</Text>}
     </View>
   </Pressable>;
@@ -1203,13 +1190,13 @@ export function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
       <SheetHeader title={room ? 'Editar sala' : 'Nova sala'} subtitle="Uma conversa com vários bots. Sem @, todos respondem; com @Nome, só quem você chamar." onClose={onClose} />
       <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.sheetSection}>NOME</Text>
-        <TextInput accessibilityLabel="Nome da sala" style={styles.formInput} placeholder="Ex.: Faculdade e estágio" placeholderTextColor="#6F7787" maxLength={40} value={name} onChangeText={setName} selectionColor={C.mint} />
+        <TextInput accessibilityLabel="Nome da sala" style={styles.formInput} placeholder="Ex.: Faculdade e estágio" placeholderTextColor={C.faint} maxLength={40} value={name} onChangeText={setName} selectionColor={C.accent} />
         <Text style={styles.sheetSection}>BOTS DA SALA · {picked.length}</Text>
         {bots.map(bot => { const on = picked.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setPicked(old => on ? old.filter(id => id !== bot.id) : [...old, bot.id])}
           style={({ pressed }) => [styles.modeOption, styles.rowOption, on && styles.optionChosen, pressed && styles.pressed]}>
           <Avatar bot={bot} size={40} animated={false} />
           <View style={{ flex: 1 }}><Text style={[styles.optionLabel, on && styles.optionLabelChosen]} numberOfLines={1}>{bot.name}</Text><Text style={styles.optionDetail} numberOfLines={1}>{plain(bot.instructions || '') || 'Sem descrição'}</Text></View>
-          {on ? <Icon name="check" size={18} color={C.mint} stroke={2.4} /> : null}
+          {on ? <Icon name="check" size={18} color={C.accent} stroke={2.4} /> : null}
         </Pressable>; })}
         <Text style={styles.optionDetail}>Cada bot responde com as próprias permissões e não vê a memória nem as conversas privadas dos outros. Bots podem chamar uns aos outros com @, até 3 rodadas por mensagem sua.</Text>
         {error ? <Text style={[styles.optionDetail, { color: C.red }]}>{error}</Text> : null}
@@ -1227,6 +1214,7 @@ export function useLiveCallback(handler) {
 
 export function ShareTargets() {
   const targets = useStore(selectShareTargets); const key = JSON.stringify(targets);
-  useEffect(() => { if (termuxAvailable) publishShareTargets(targets)?.catch(() => {}); }, [key]);
+  // Each shortcut's icon is a still frame of the bot's face, made here and painted natively.
+  useEffect(() => { if (termuxAvailable) publishShareTargets(targets.map(bot => ({ ...bot, still: stillOf(bot, 'idle', 192, 'dark') })))?.catch(() => {}); }, [key]);
   return null;
 }

@@ -33,7 +33,7 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 
 | | |
 |---|---|
-| 🤖 **Bots com cara e jeito próprios** | Nome, personalidade, aparência animada (Órbita, Pixel, Felino, Faísca), modelo e nível de raciocínio por bot. |
+| 🤖 **Bots com cara e jeito próprios** | Nome, personalidade, **rosto de caracteres** (cada bot tem o seu, gerado do nome: parado, trabalhando com fumaça, esperando você, dormindo, com erro, concluído e, de vez em quando, "do mal"), cor, modelo e nível de raciocínio por bot. Tema escuro (preto de verdade), claro ou o do sistema, com troca na hora; menu lateral com Conversas, Atividade, Carteira, Rotinas, Negociações e Ajustes. |
 | 💬 **Conversa de verdade** | Abertura com cache local, histórico virtualizado que mantém o ponto de leitura, fila de mensagens enquanto o bot trabalha, ditado por voz, anexos (texto, imagem, PDF, Word, Excel, PowerPoint), tabelas, gráficos e fórmulas na resposta. |
 | 📤 **Compartilhar com o bot** | De qualquer app, em "Compartilhar → MyBots", ou direto no bot pelo Direct Share do Android. Links, textos e até 5 arquivos chegam ao campo de mensagem para você revisar antes de enviar. |
 | 💻 **PC encontrado automaticamente** | Depois de pareado, o celular procura o PC no mesmo Wi-Fi quando o endereço muda. Para conectar entre redes diferentes, há orientação para usar o Tailscale. |

@@ -47,7 +47,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       <RoomFaces bots={members} size={40} />
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{room.name}</Text>
-        {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.mint }]} numberOfLines={1}>{working.map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
+        {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.accent }]} numberOfLines={1}>{working.map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
           : <Text style={styles.chatSubtitle} numberOfLines={1}>{members.map(bot => bot.name).join(', ')}</Text>}
       </View>
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
@@ -80,7 +80,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       {error ? <Text style={styles.composerError}>{error}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mentionBar} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
         {members.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Chamar ${bot.name}`} onPress={() => mention(bot)} style={({ pressed }) => [styles.mentionChip, named.includes(bot) && styles.mentionChipOn, pressed && styles.pressed]}>
-          <Avatar bot={bot} size={22} animated={false} tile={false} /><Text style={[styles.mentionText, named.includes(bot) && { color: C.mint }]}>@{bot.name}</Text></Pressable>)}
+          <Avatar bot={bot} size={22} animated={false} tile={false} /><Text style={[styles.mentionText, named.includes(bot) && { color: C.accent }]}>@{bot.name}</Text></Pressable>)}
       </ScrollView>
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}

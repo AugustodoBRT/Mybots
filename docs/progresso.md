@@ -1046,3 +1046,39 @@ Seção v62 do `PLANO-V54.md`, na ordem combinada com o usuário: ações na men
 APK ARM64 offline `dist/apk/mybots-v64.apk` e `.sha256`, **versionCode 64 / 0.40.0**, 44.150.980 bytes. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `21c511a67efc348f8980e5fa0b62f4f501a71f56375dbb1489c787926f2d2889`. Nenhuma permissão nova pedida ao Android (o receptor das ações da notificação não é exportado).
 
 Release pública [v64](https://github.com/AugustodoBRT/Mybots/releases/tag/v64) (0.40.0), a mais recente, com APK e `.sha256`; o APK baixado da Release é idêntico ao local. Commit `aacba32`, sem coautoria de IA. **PC atualizado depois da Release**: `scripts/build-desktop.sh` em **28/10/2026 às ~18:12 (Brasília)**; `mybots-pc` **active**. Provas e capturas em `.build-tools/emulator-state/v62/`. O diretório `output/` preexistente ficou fora dos commits.
+
+## 29/10/2026 — v63 parte 1 (0.41.0, versionCode 65): fundação e rostos
+
+Seção v63 do `PLANO-V54.md`, parte 1, com o plano aprovado pelo usuário antes de codar. A v62 foi aceita pelo usuário no início da sessão.
+
+**Gerador** — `lib/face.mjs`, sem DOM: o código do `laboratorio-de-bots.html` (aba Rostos) foi portado sem mudar o resultado; `tests/face.test.mjs` extrai o código do próprio HTML e compara **célula a célula** (12 sementes × 7 estados × 6 instantes). `makeFace(semente, peças)`: a esquisitice vem da semente (não há barra); peças fixas (cabeça, textura, olhos, boca, topo) mudam só o campo escolhido. Também: `encodeFrame` (quadro em texto, 6 caracteres por célula), `stillOf` (quadro parado calmo, sem piscar nem sorrir) e `layout` (a cabeça cabe numa caixa quadrada; caracteres de verdade só com célula ≥ 8 px).
+
+**Risco técnico** (provas em `.build-tools/emulator-state/v63a/`: `medicoes.txt`, `medir.sh`). Emulador Android 16 x86 com vídeo por software, tela de teste temporária (removida) que rola sozinha; linha de base: 1 bot, atraso médio do JS 9 ms.
+
+| 30 bots, 54 px | atraso médio | ticks lentos |
+|---|---|---|
+| nativo, parados | 9,0 ms | 0 |
+| nativo, 8 animados | 9,6 ms | 1 |
+| nativo, 30 animados | 17,3 ms | 38 |
+| SVG, 8 animados | 10,4 ms | 13 |
+| SVG, 30 animados | 22,5 ms | 37 (77% dos quadros ruins) |
+| `Text` por linha, 30 animados | 34 ms | pico de 409 ms; 91 quadros desenhados |
+
+Rosto grande (330 px): os três ficam na linha de base no JS. **Escolha**: view nativa Kotlin (`FaceView`/`FacePainter`) que só pinta o quadro em texto de `lib/face.mjs`; até 8 rostos animam por vez a 8 quadros por segundo (`FaceArt.js`), o resto da lista usa um quadro calmo guardado; respeita "reduzir movimento". No PC (web) fica o SVG até a parte 3. Fonte monoespaçada só com os caracteres usados: `BotGlyphs.ttf` (25 KB, convertida do woff2 do laboratório). Com os 30 bots reais do emulador, rolar a Home deu mediana de 38 ms por quadro (23% de quadros ruins pelo critério do Android): é o piso do emulador sem GPU, da mesma ordem das medições com 1 bot; **não foi medido em celular real**.
+
+**Widget, atalhos e notificação**: o supervisor gera um quadro parado (`stillOf`) e o Kotlin só pinta. O resumo do widget (`/device/widget`) leva `still` (112 px), `big` (192 px) e `brand`; os atalhos de compartilhar recebem o quadro do JS; os avisos dos bots levam `face` e usam o rosto como imagem da notificação (`notificacao-rosto.png`). `BotFace.kt` (avatar antigo) foi apagado. A animação em quadros do widget saiu: agora é um quadro parado, como combinado.
+
+**Tema** — `mobile/palettes.js` (sem React, testável) e `theme.js`: escuro com preto `#000000` de verdade, claro quente e laranja `#FF9F1C` (escuro) / `#A85600` (claro) como única cor de destaque; `C.mint` sumiu (186 usos viraram `C.accent`; os de "tudo certo" viraram `C.good`). `C` é reescrito no lugar por `setTheme` e os estilos são recriados (`themed()`), então a troca vale na hora, sem reiniciar (comprovado no emulador, `home-claro.png`). A preferência (Escuro, Claro, Seguir o sistema; padrão Escuro) fica em `person.theme` no supervisor e aparece em Ajustes > Aparência. No PC, `document.body` e a barra de rolagem seguem o tema (`paintPage`). Android: tema da janela claro/escuro (`values-night`), `userInterfaceStyle` automático.
+
+**`bot.face`** — `{ seed, color, pieces }`, validado no supervisor (`validFace`), sem tabela nova; bots antigos usam o nome como semente e as 4 cores antigas continuam. `BotAvatar` virou o rosto em todo lugar (lista, chat, salas, Ajustes, atividade, widget, atalhos, notificações). No perfil: 8 cores e "Sortear outro rosto" no lugar das 4 formas (o seletor de peças fica para a parte 2).
+
+**Telas** — Home nova (menu, marca, chip de modo, saudação com resumo, aprovações, Salas, Seus bots em linhas planas com rosto e estado em palavras, barra de comando flutuante), gaveta lateral (Conversas, Atividade, Carteira, Rotinas, Negociações, Ajustes; ponto laranja quando algo espera), listas de Rotinas e Negociações que levam ao perfil do bot na aba certa (`initialTab`), e `@bot tarefa` na busca (abre a conversa com o texto no campo; não envia sozinho). A barra de abas e a faixa "Hoje" saíram. Conversa e sala mantêm todas as ações (rosto, cores e balão do usuário mudaram). Listas de ações antes e depois: `acoes-antes.md` e `acoes-depois.md`; nada sumiu, a faixa "Hoje" virou texto e a aprovação continua na Home (a regra "aparece uma vez" fica para a parte 2, junto com a tela de aprovação).
+
+### Testes
+- Suíte inteira (`npm test`): **286 de 286** (eram 270; 16 novos), zero falhas e zero ignorados. Novos: `face.test.mjs` (6: idêntico ao laboratório, determinismo, cada peça muda só o que deve, 7 estados, "do mal" sozinho, tons nos dois temas), `face-bot.test.mjs` (6: validação do rosto, criar/atualizar/recusar, cores antigas, quadro parado do widget e da notificação, cabeça cabe na caixa, resumo do widget) e `theme.test.mjs` (4: escolha do tema, preto de verdade, contraste AA 4,5:1 de todos os textos sobre todas as superfícies nos dois temas, rostos com 3:1). O teste de contraste achou dois problemas reais (cinza fraco no escuro, laranja claro no claro), corrigidos. `usage.test.mjs` cobre `person.update` com tema.
+- Emulador (Android 16 x86, `.build-tools/emulator-state/v63a/`): Home escura e clara (`home-final.png`, `home-claro.png`), gaveta, Rotinas, conversa com o rosto animando, `@Teste cheque o prazo` → conversa com o texto no campo (`busca-tarefa.png`, `tarefa-no-chat.png`), segurar a mensagem (`segurar.png`), notificação de rotina com o rosto e o botão Responder (`notificacao-rosto.png`).
+- **Não testado**: tela Negociações; botão Reenviar e fila na tela nova; resposta ao vivo com o rosto novo; widget e atalhos de compartilhar no launcher (a geração do quadro está em testes e o Kotlin compilou, mas não vi o widget na tela); janela do PC com o rosto em SVG (só compilada pela exportação web); tema Seguir o sistema (a regra tem teste, não mexi no tema do Android); rostos em celular real e desempenho real; aparelho com "reduzir movimento".
+- Limites conhecidos: no tema claro as cores de tipo de arquivo (PDF, DOC…) e dos gráficos continuam as do escuro (não passam por AA); rótulos em maiúsculas com espaçamento ainda existem em Ajustes, Atividade e perfil (parte 2); a faixa de aprovação aparece na Home e no chat.
+
+### Entrega da v63 parte 1
+APK ARM64 offline `dist/apk/mybots-v65.apk` e `.sha256`, **versionCode 65 / 0.41.0**, 44.238.812 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `b715b6be042ef724fec16e17c3ffbd30c37281b023af5ecfce5ddb0bc2b2f30c`. Nenhuma permissão nova pedida ao Android. Capturas em `docs/screenshots/v63a-*.png` e provas em `.build-tools/emulator-state/v63a/`.

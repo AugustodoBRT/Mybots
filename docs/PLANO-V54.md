@@ -151,7 +151,7 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 - **Modelo reserva** quando o limite da assinatura acaba (Codex ↔ Claude), com a conversa mantida.
 - **Ações na mensagem** (segurar): copiar, responder citando, fixar e reenviar.
 
-## v63 — Design novo: rostos de caracteres, celular e PC
+## v63 — Design novo: rostos de caracteres, celular e PC (parte 1 concluída na 0.41.0)
 
 Pedido do usuário em 28/10/2026: o app faz muita coisa, mas o design é fraco e "cinza e verde" (`C.mint` em tudo). O PC é o app do celular esticado (`desktop.js` centraliza tudo numa coluna de 820 px). A direção já foi decidida com o usuário (protótipos no Stitch e no laboratório de bots); esta seção é o que implementar. **O Stitch serve só de base**: as telas dele têm erros (listados abaixo), então a implementação corrige e adapta ao que o app já faz.
 
@@ -194,12 +194,14 @@ Inspiração de estrutura (não de visual): um app calmo e espaçoso, com uma co
 
 ### Como fazer (ordem; uma entrega por vez, com aceite)
 
-**Parte 1 (0.41.0, versionCode 65): fundação e rostos.**
+**Parte 1 (0.41.0, versionCode 65): fundação e rostos — concluída na v65.**
 1. **Gerador de rostos puro** em `lib/face.mjs` (sem DOM, sem canvas): `makeFace(seed, pieces)` e `frameFace(face, estado, tempo)` devolvendo a grade de células. Porte o código do laboratório, **sem mudar o resultado**, e teste: mesma semente gera o mesmo rosto, cada peça muda só o que deve, os estados existem.
 2. **Risco técnico, resolver primeiro**: como desenhar esses rostos animados no React Native sem pesar a lista (candidatos: linhas de `Text` com a fonte monoespaçada para o rosto grande, `react-native-svg` ou pixels em Canvas/Skia para os pequenos, quadro pré-desenhado para a lista). Faça um teste curto no emulador com 30 bots na lista e na conversa, meça e escolha. Para o widget e a notificação, o Kotlin (`BotFace.kt`) precisa de um quadro parado: decidir se vem de um bitmap gerado pelo JS ou de uma versão em Kotlin.
 3. Tokens de tema (`theme.js`: escuro OLED, claro, seguir o sistema; no PC também `document.body` e a barra de rolagem), troca sem reiniciar. Acabar com `C.mint` como cor de tudo.
 4. Rosto no perfil do bot (`bot.face`), no `BotAvatar`, e em todos os lugares onde o avatar antigo aparece (lista, chat, salas, widget, notificações).
 5. Home, conversa e menu lateral novos (com fila, segurar a mensagem, busca, rascunho ao vivo).
+
+**Decisão da parte 1 sobre o risco técnico (medida no emulador, 30 bots):** os rostos são pintados por uma view nativa em Kotlin (`FaceView`), alimentada por um quadro em texto de `lib/face.mjs`; animam no máximo 8 por vez, a 8 quadros por segundo, e o resto da lista usa um quadro calmo guardado. `Text` por linha (pico de 409 ms) e SVG (77% dos quadros ruins) foram descartados. Widget, atalhos e notificações recebem um quadro parado do supervisor e o `FacePainter` do Kotlin só pinta. No PC (web) fica o SVG até a parte 3, que pode trocar por canvas. Detalhes em `docs/progresso.md`.
 
 **Parte 2 (0.42.0, versionCode 66): o resto do celular** (aprovação, criar bot sortear/montar, perfil, carteira, atividade, ajustes reorganizados).
 

@@ -82,4 +82,4 @@ export const selectConversation = (key, isRoom = false) => ({ data, chats, draft
 
 export const selectBots = ({ data }) => data?.bots || [];
 export const selectShareTargets = state => [...selectBots(state)].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
-  .map(({ id, name, color, avatar }) => ({ id, name, color: color || 'green', avatar: avatar || '' }));
+  .map(({ id, name, color, avatar, face }) => ({ id, name, color: color || 'green', avatar: avatar || '', ...(face ? { face } : {}) }));

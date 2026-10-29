@@ -1,14 +1,30 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
+import { PALETTES, resolveTheme, FACE_COLORS, HUES, botColor } from './palettes';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 
-// MyBots design tokens. A quiet, deep background; each bot's color appears only where it matters
-// (who is working, what needs you), the way agent apps signal state with light instead of text.
-export const C = {
-  bg: '#090B10', bg2: '#0D1016', surface: '#12161E', surface2: '#181D27', elevated: '#1E2430',
-  line: '#232937', line2: '#2F3747', text: '#F3F5F9', text2: '#C9CFDA', muted: '#8B94A6', faint: '#5E6779',
-  mint: '#7EE2B8', mintInk: '#0F2A1F', sky: '#8AB6FF', lilac: '#C2A5FF', peach: '#FFB38A', amber: '#FFC86E', amberInk: '#2E2210', red: '#FF8E8E'
-};
-export const HUES = { green: C.mint, blue: C.sky, purple: C.lilac, orange: C.peach };
+// MyBots design tokens. Two themes (true OLED black and a warm light one) behind one object: `C` is rewritten in place by
+// setTheme, so a component reads C.text at render and the whole tree repaints on a change without restarting the app.
+// One accent (orange); a bot's own color lives only in its face.
+export { PALETTES, resolveTheme, FACE_COLORS, HUES };
+export const C = { ...PALETTES.dark };
+let themeName = 'dark', themeVersion = 0; const listeners = new Set();
+export const currentTheme = () => themeName;
+// Applies 'dark' or 'light' (anything else is dark). Safe to call on every render: nothing changes when it is already applied.
+export function setTheme(name) {
+  const next = name === 'light' ? 'light' : 'dark';
+  if (next === themeName) return false;
+  themeName = next; themeVersion++; Object.assign(C, PALETTES[next]); listeners.forEach(fn => fn());
+  return true;
+}
+export const onTheme = fn => { listeners.add(fn); return () => listeners.delete(fn); };
+// StyleSheet.create that is rebuilt the first time it is read after a theme change.
+export function themed(factory) {
+  let version = -1, sheet;
+  return new Proxy({}, { get(_, key) { if (version !== themeVersion) { sheet = StyleSheet.create(factory()); version = themeVersion; } return sheet[key]; } });
+}
+// The colors a bot can wear are in lib/face.mjs (a face's color is one of them); the old names still map to them.
+export const hueOf = botColor;
 export const F = {
   r: 'PlusJakartaSans_400Regular', m: 'PlusJakartaSans_500Medium', s: 'PlusJakartaSans_600SemiBold',
   b: 'PlusJakartaSans_700Bold', x: 'PlusJakartaSans_800ExtraBold'
@@ -21,6 +37,7 @@ const ICONS = {
   activity: [['polyline', { points: '3 12.5 7 12.5 10 5 14 19 17 12.5 21 12.5' }]],
   settings: [['path', { d: 'M4 6.5h16M4 12h16M4 17.5h16' }], ['circle', { cx: 9, cy: 6.5, r: 2.2, solid: true }], ['circle', { cx: 15.5, cy: 12, r: 2.2, solid: true }], ['circle', { cx: 7.5, cy: 17.5, r: 2.2, solid: true }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
+  menu: [['path', { d: 'M4 7h16M4 12h16M4 17h16' }]],
   wallet: [['rect', { x: 3, y: 5.5, width: 18, height: 13, rx: 2.8 }], ['path', { d: 'M3 10h18M7 14.5h3.2' }]],
   back: [['polyline', { points: '15 18 9 12 15 6' }]],
   right: [['polyline', { points: '9 6 15 12 9 18' }]],

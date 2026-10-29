@@ -108,6 +108,10 @@ test('the person\'s name for the greeting is saved, cleaned and can be cleared; 
   assert.equal((await app.rpc('state.get')).person.name, 'Augusto Silva');
   await assert.rejects(app.rpc('person.update', { name: 'x'.repeat(41) }), /40 letras/);
   assert.deepEqual(await app.rpc('person.update', { name: '' }), { name: '' });
+  // The look is kept next to the name; a name-only update leaves it alone.
+  assert.deepEqual(await app.rpc('person.update', { theme: 'light' }), { name: '', theme: 'light' });
+  assert.deepEqual(await app.rpc('person.update', { name: 'Ana' }), { name: 'Ana', theme: 'light' });
+  await assert.rejects(app.rpc('person.update', { theme: 'roxo' }), /escuro, claro/);
   await app.rpc('state.get');
   assert.equal((await app.rpc('limits.refresh', { provider: 'codex' })).codex.plan, 'plus');
   await assert.rejects(app.rpc('limits.refresh', { provider: 'claude' }), /não está conectado/);

@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
 import Svg, { Rect, Line, Polyline, Circle, Path, Text as SvgText } from 'react-native-svg';
 import { parseBlocks, parseInline } from './markdown';
-import { C, F, Icon } from './theme';
+import { C, F, Icon, themed } from './theme';
 
 // Bot replies: Markdown with tables and charts, drawn with the same reader the supervisor uses for files.
-const COLORS = [C.sky, C.peach, C.mint, '#F58AB0', C.lilac, '#62CFD9'];
+const chartColors = () => [C.sky, C.peach, C.accent, '#F58AB0', C.lilac, '#62CFD9'];
 const number = value => Number.isInteger(value) ? String(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
 function Inline({ text, style, cache }) {
@@ -34,11 +34,11 @@ export function Chart({ spec }) {
       const r = Math.min(70, (height - top) / 2 - 6), cx = r + 8, cy = top + (height - top) / 2; let angle = -Math.PI / 2;
       return values.map((value, index) => {
         const sweep = value / total * Math.PI * 2; const end = angle + sweep;
-        const shape = sweep >= Math.PI * 2 - 1e-6 ? <Circle key={'s' + index} cx={cx} cy={cy} r={r} fill={COLORS[index % COLORS.length]} />
-          : <Path key={'s' + index} d={`M${cx},${cy} L${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)} A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${cx + r * Math.cos(end)},${cy + r * Math.sin(end)} Z`} fill={COLORS[index % COLORS.length]} stroke="#1E2129" />;
+        const shape = sweep >= Math.PI * 2 - 1e-6 ? <Circle key={'s' + index} cx={cx} cy={cy} r={r} fill={chartColors()[index % chartColors().length]} />
+          : <Path key={'s' + index} d={`M${cx},${cy} L${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)} A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${cx + r * Math.cos(end)},${cy + r * Math.sin(end)} Z`} fill={chartColors()[index % chartColors().length]} stroke="#1E2129" />;
         angle = end;
-        return [shape, <Rect key={'k' + index} x={2 * r + 22} y={top + 6 + index * 18} width={10} height={10} fill={COLORS[index % COLORS.length]} />,
-          <SvgText key={'t' + index} x={2 * r + 37} y={top + 15 + index * 18} fill="#D8DCE5" fontSize="11">{`${spec.labels[index].slice(0, 16)} · ${Math.round(value / total * 100)}%`}</SvgText>];
+        return [shape, <Rect key={'k' + index} x={2 * r + 22} y={top + 6 + index * 18} width={10} height={10} fill={chartColors()[index % chartColors().length]} />,
+          <SvgText key={'t' + index} x={2 * r + 37} y={top + 15 + index * 18} fill={C.text2} fontSize="11">{`${spec.labels[index].slice(0, 16)} · ${Math.round(value / total * 100)}%`}</SvgText>];
       });
     }
     const legend = spec.series.length > 1 || spec.series[0].name;
@@ -49,11 +49,11 @@ export function Chart({ spec }) {
     for (let step = 0; step <= 4; step++) {
       const value = min + span * step / 4;
       parts.push(<Line key={'g' + step} x1={left} x2={right} y1={y(value)} y2={y(value)} stroke="#3A3F4B" />,
-        <SvgText key={'v' + step} x={left - 4} y={y(value) + 4} fill="#8F99AB" fontSize="9" textAnchor="end">{number(Math.round(value * 10) / 10)}</SvgText>);
+        <SvgText key={'v' + step} x={left - 4} y={y(value) + 4} fill={C.muted} fontSize="9" textAnchor="end">{number(Math.round(value * 10) / 10)}</SvgText>);
     }
-    spec.labels.forEach((label, index) => parts.push(<SvgText key={'l' + index} x={left + slot * (index + 0.5)} y={bottom + 12} fill="#B5BFCE" fontSize="9" textAnchor="middle">{label.length > 9 ? label.slice(0, 8) + '…' : label}</SvgText>));
+    spec.labels.forEach((label, index) => parts.push(<SvgText key={'l' + index} x={left + slot * (index + 0.5)} y={bottom + 12} fill={C.text2} fontSize="9" textAnchor="middle">{label.length > 9 ? label.slice(0, 8) + '…' : label}</SvgText>));
     spec.series.forEach((series, si) => {
-      const color = COLORS[si % COLORS.length];
+      const color = chartColors()[si % chartColors().length];
       if (spec.type === 'bar') {
         const bar = slot * 0.7 / spec.series.length;
         series.data.forEach((value, index) => parts.push(<Rect key={`b${si}-${index}`} x={left + slot * index + slot * 0.15 + bar * si} y={Math.min(y(value), y(0))} width={bar} height={Math.abs(y(0) - y(value))} fill={color} rx={2} />));
@@ -63,7 +63,7 @@ export function Chart({ spec }) {
           ...points.map(([px, py], index) => <Circle key={`c${si}-${index}`} cx={px} cy={py} r={3} fill={color} />));
       }
       if (legend) parts.push(<Rect key={'k' + si} x={left + si * 96} y={height - 12} width={10} height={10} fill={color} />,
-        <SvgText key={'n' + si} x={left + 14 + si * 96} y={height - 3} fill="#D8DCE5" fontSize="10">{(series.name || `Série ${si + 1}`).slice(0, 14)}</SvgText>);
+        <SvgText key={'n' + si} x={left + 14 + si * 96} y={height - 3} fill={C.text2} fontSize="10">{(series.name || `Série ${si + 1}`).slice(0, 14)}</SvgText>);
     });
     return parts;
   };
@@ -127,16 +127,16 @@ export function FileCard({ file, busy, onPress }) {
   </Pressable>;
 }
 
-const s = StyleSheet.create({
+const s = themed(() => ({
   rich: { gap: 9 },
   bold: { fontFamily: F.b }, italic: { fontStyle: 'italic' }, link: { color: C.sky, textDecorationLine: 'underline' },
-  code: { fontFamily: 'monospace', backgroundColor: '#FFFFFF12', fontSize: 13.5 },
-  heading: { fontFamily: F.x, fontSize: 16.5, letterSpacing: -0.3, marginTop: 2 }, h1: { fontSize: 19 }, marker: { color: C.mint, fontFamily: F.b },
+  code: { fontFamily: 'monospace', backgroundColor: C.text + '14', fontSize: 13.5 },
+  heading: { fontFamily: F.x, fontSize: 16.5, letterSpacing: -0.3, marginTop: 2 }, h1: { fontSize: 19 }, marker: { color: C.accent, fontFamily: F.b },
   quote: { borderLeftWidth: 3, borderLeftColor: C.line2, paddingLeft: 10, color: C.text2, fontStyle: 'italic' },
-  codeBlock: { fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, color: '#DCE6F0', backgroundColor: '#05070A', padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line },
+  codeBlock: { fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, color: C.text, backgroundColor: C.bg2, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line },
   rule: { height: 1, backgroundColor: C.line2, marginVertical: 4 },
   tableScroll: { flexGrow: 0 }, table: { borderWidth: 1, borderColor: C.line2, borderRadius: 14, overflow: 'hidden' },
-  row: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.line }, headRow: { backgroundColor: C.elevated, borderTopWidth: 0 }, stripe: { backgroundColor: '#FFFFFF05' },
+  row: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.line }, headRow: { backgroundColor: C.elevated, borderTopWidth: 0 }, stripe: { backgroundColor: C.text + '08' },
   cell: { minWidth: 76, maxWidth: 230, paddingHorizontal: 11, paddingVertical: 9, borderRightWidth: 1, borderRightColor: C.line },
   cellText: { color: C.text, fontFamily: F.r, fontSize: 13.5, lineHeight: 19 },
   chart: { alignSelf: 'stretch', minWidth: 220, backgroundColor: C.surface, borderRadius: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line },
@@ -146,4 +146,4 @@ const s = StyleSheet.create({
   fileBadge: { borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, gap: 0 },
   fileExt: { fontFamily: F.x, fontSize: 8.5, letterSpacing: 0.4, marginTop: -2 },
   fileIcon: { fontSize: 22 }, fileName: { color: C.text, fontFamily: F.b, fontSize: 13.5 }, fileMeta: { color: C.muted, fontFamily: F.m, fontSize: 11.5, marginTop: 2 }
-});
+}));

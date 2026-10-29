@@ -16,14 +16,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * The home-screen widget: the most recent bots with their faces alive (breathing and blinking; glancing around while
  * they work; the antenna blinking amber while they wait for the person), the latest message and the next deadline.
- * Faces are drawn by BotFace and played as frames by a ViewFlipper, which the launcher animates on its own.
+ * Faces are still frames made by lib/face.mjs in the supervisor and painted by FacePainter.
  * Data comes from the supervisor's /device/widget long-poll, so the widget follows the bots with the app closed.
  */
 class MyBotsWidget : AppWidgetProvider() {
@@ -39,7 +36,6 @@ class MyBotsWidget : AppWidgetProvider() {
 
 internal object WidgetSync {
   // Frames per loop; fewer when a launcher refuses the full animation (RemoteViews travel through Binder).
-  @Volatile private var frameCount = 12
   @Volatile private var thread: Thread? = null
 
   fun ids(context: Context): IntArray = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, MyBotsWidget::class.java))
@@ -82,37 +78,19 @@ internal object WidgetSync {
     return PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
   }
 
-  /** The face's animation as frames: one loop of about 2.2 s, like BotAvatar in the app. */
-  private fun frames(bot: JSONObject, size: Int): List<Bitmap> {
-    val state = bot.optString("state", "idle")
-    val count = frameCount
-    return (0 until count).map { i ->
-      val t = i / count.toFloat()
-      val lift = ((1 - cos(2 * PI * t)) / 2).toFloat()
-      val pose = when (state) {
-        "working" -> BotFace.Pose(lift = lift, look = sin(2 * PI * t).toFloat(), glow = (0.6 + 0.4 * sin(4 * PI * t)).toFloat())
-        "waiting" -> BotFace.Pose(lift = lift * 0.4f, glow = if (i % (count / 2).coerceAtLeast(1) < count / 5 + 1) 1f else 0f)
-        // Its computer is off: eyes closed, a slow shallow breath.
-        "sleeping" -> BotFace.Pose(lift = lift * 0.5f, blink = 0.12f)
-        // A blink near the end of each loop.
-        else -> BotFace.Pose(lift = lift, blink = if (count > 4 && i == count - 3) 0.12f else if (count > 4 && i == count - 2) 0.55f else 1f)
-      }
-      BotFace.draw(size, bot.optString("color"), bot.optString("avatar"), bot.optString("id"), state, pose)
-    }
-  }
-
+  /** The bot's face as one still frame, made by lib/face.mjs in the supervisor ("still" for the list, "big" for the single size). */
   private fun face(context: Context, views: RemoteViews, bot: JSONObject, size: Int) {
     views.removeAllViews(R.id.mybots_widget_face)
-    for (frame in frames(bot, size)) {
-      views.addView(R.id.mybots_widget_face, RemoteViews(context.packageName, R.layout.mybots_widget_frame).apply { setImageViewBitmap(R.id.mybots_widget_frame, frame) })
-    }
+    val still = bot.optJSONObject(if (size > 150) "big" else "still") ?: return
+    val bitmap = FacePainter.bitmap(context, still.optString("frame"), still.optString("tones"), still.optInt("cols"), still.optInt("rows"), size, still.optBoolean("text"))
+    views.addView(R.id.mybots_widget_face, RemoteViews(context.packageName, R.layout.mybots_widget_frame).apply { setImageViewBitmap(R.id.mybots_widget_frame, bitmap) })
   }
 
   private fun summary(context: Context) = try { JSONObject(prefs(context).getString("summary", null) ?: "{}") } catch (_: Exception) { JSONObject() }
 
   private fun list(context: Context, data: JSONObject, rows: Int): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.mybots_widget)
-    views.setImageViewBitmap(R.id.mybots_widget_logo, BotFace.draw(66, "green", "orbit", null, tile = false))
+    data.optJSONObject("brand")?.let { views.setImageViewBitmap(R.id.mybots_widget_logo, FacePainter.bitmap(context, it.optString("frame"), it.optString("tones"), it.optInt("cols"), it.optInt("rows"), 66, it.optBoolean("text"))) }
     open(context, null, 0)?.let { views.setOnClickPendingIntent(R.id.mybots_widget_header, it) }
     val bots = data.optJSONArray("bots") ?: JSONArray()
     val approvals = data.optInt("approvals"); val open = data.optInt("openItems")
@@ -125,7 +103,7 @@ internal object WidgetSync {
     badge?.let {
       views.setTextViewText(R.id.mybots_widget_badge, it)
       views.setInt(R.id.mybots_widget_badge, "setBackgroundResource", if (approvals > 0) R.drawable.mybots_widget_pill_amber else R.drawable.mybots_widget_pill)
-      views.setTextColor(R.id.mybots_widget_badge, if (approvals > 0) 0xFFFFC86E.toInt() else 0xFF7EE2B8.toInt())
+      views.setTextColor(R.id.mybots_widget_badge, if (approvals > 0) 0xFFFFC86E.toInt() else 0xFFFF9F1C.toInt())
     }
     views.removeAllViews(R.id.mybots_widget_list)
     views.setViewVisibility(R.id.mybots_widget_empty, if (bots.length() == 0) View.VISIBLE else View.GONE)
@@ -136,7 +114,7 @@ internal object WidgetSync {
       face(context, row, bot, 112)
       row.setTextViewText(R.id.mybots_widget_name, bot.optString("name"))
       row.setTextViewText(R.id.mybots_widget_preview, bot.optString("preview"))
-      row.setTextColor(R.id.mybots_widget_preview, when (bot.optString("state")) { "waiting" -> 0xFFFFC86E.toInt(); "working" -> BotFace.hue(bot.optString("color")); else -> 0xFF8B94A6.toInt() })
+      row.setTextColor(R.id.mybots_widget_preview, when (bot.optString("state")) { "waiting" -> 0xFFFFC86E.toInt(); "working" -> 0xFFFF9F1C.toInt(); else -> 0xFF8B94A6.toInt() })
       open(context, bot.optString("id"), 100 + index)?.let { row.setOnClickPendingIntent(R.id.mybots_widget_bot, it) }
       views.addView(R.id.mybots_widget_list, row)
     }
@@ -151,14 +129,14 @@ internal object WidgetSync {
     val bot = data.optJSONArray("bots")?.optJSONObject(0)
     if (bot == null) {
       views.setTextViewText(R.id.mybots_widget_name, "MyBots"); views.setTextViewText(R.id.mybots_widget_preview, "Abra para conectar")
-      face(context, views, JSONObject().put("color", "green").put("avatar", "orbit"), 192)
+      data.optJSONObject("brand")?.let { face(context, views, JSONObject().put("big", it), 192) }
       open(context, null, 1)?.let { views.setOnClickPendingIntent(R.id.mybots_widget_root, it) }
       return views
     }
     face(context, views, bot, 192)
     views.setTextViewText(R.id.mybots_widget_name, bot.optString("name"))
     views.setTextViewText(R.id.mybots_widget_preview, when (bot.optString("state")) { "waiting" -> "Esperando você"; "working" -> "Trabalhando…"; else -> bot.optString("preview") })
-    views.setTextColor(R.id.mybots_widget_preview, when (bot.optString("state")) { "waiting" -> 0xFFFFC86E.toInt(); "working" -> BotFace.hue(bot.optString("color")); else -> 0xFF8B94A6.toInt() })
+    views.setTextColor(R.id.mybots_widget_preview, when (bot.optString("state")) { "waiting" -> 0xFFFFC86E.toInt(); "working" -> 0xFFFF9F1C.toInt(); else -> 0xFF8B94A6.toInt() })
     open(context, bot.optString("id"), 2)?.let { views.setOnClickPendingIntent(R.id.mybots_widget_root, it) }
     return views
   }
@@ -176,10 +154,7 @@ internal object WidgetSync {
         if (width in 1..219) single(context, data) else list(context, data, if (height >= 220) 3 else 2)
       }
       try { manager.updateAppWidget(id, views) }
-      catch (_: Exception) {
-        // Too much for this launcher: try again with a lighter animation, down to a still face.
-        if (frameCount > 1) { frameCount = if (frameCount > 6) 6 else 1; render(context, intArrayOf(id)) }
-      }
+      catch (_: Exception) { /* A launcher that refuses this widget must never break the app. */ }
     }
   }
 }

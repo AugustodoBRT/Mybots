@@ -17,7 +17,7 @@ export function sameMessage(a, b) {
   // Length is the fast path; compare text too so corrections of equal length still appear.
   if (x.id !== y.id || x.status !== y.status || x.text?.length !== y.text?.length || x.text !== y.text) return false;
   for (const key of new Set([...Object.keys(x), ...Object.keys(y)])) if (x[key] !== y[key]) return false;
-  return ['id', 'name', 'avatar', 'color'].every(key => a.bot?.[key] === b.bot?.[key]) && a.models === b.models &&
+  return ['id', 'name', 'avatar', 'color'].every(key => a.bot?.[key] === b.bot?.[key]) && JSON.stringify(a.bot?.face) === JSON.stringify(b.bot?.face) && a.models === b.models &&
     (x.status !== 'error' || a.busy === b.busy) && a.onRetry === b.onRetry && a.onFile === b.onFile &&
     (x.attachments || []).every(file => (a.fileBusy === file.id) === (b.fileBusy === file.id));
 }

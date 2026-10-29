@@ -15,7 +15,7 @@ export function QueuePanel({ queued, running, paused, onPause, onCancel, onSteer
     <View style={styles.queueHead}>
       <Text style={styles.queueTitle}>{paused ? 'Fila pausada' : 'Fila'}{queued.length ? ` · ${queued.length} esperando` : ''}</Text>
       {running ? <Pressable accessibilityRole="button" accessibilityLabel="Corrigir rumo" onPress={() => setSteering(value => !value)} style={styles.queueAction}><Icon name="reply" size={14} color={C.sky} /><Text style={styles.queueActionText}>Corrigir rumo</Text></Pressable> : null}
-      {queued.length || paused ? <Pressable accessibilityRole="button" accessibilityLabel={paused ? 'Retomar a fila' : 'Pausar a fila'} onPress={() => onPause(!paused)} style={styles.queueAction}><Icon name={paused ? 'right' : 'pause'} size={14} color={paused ? C.mint : C.amber} /><Text style={styles.queueActionText}>{paused ? 'Retomar' : 'Pausar'}</Text></Pressable> : null}
+      {queued.length || paused ? <Pressable accessibilityRole="button" accessibilityLabel={paused ? 'Retomar a fila' : 'Pausar a fila'} onPress={() => onPause(!paused)} style={styles.queueAction}><Icon name={paused ? 'right' : 'pause'} size={14} color={paused ? C.accent : C.amber} /><Text style={styles.queueActionText}>{paused ? 'Retomar' : 'Pausar'}</Text></Pressable> : null}
     </View>
     {steering ? <View style={styles.queueSteer}>
       <TextInput accessibilityLabel="Instrução para a tarefa em andamento" style={styles.queueInput} value={text} onChangeText={setText} placeholder="O que ele deve fazer diferente?" placeholderTextColor={C.faint} multiline maxLength={2000} />

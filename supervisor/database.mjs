@@ -235,13 +235,22 @@ export class Database {
       else { this.appendMessage(task.bot_id, message); this.putBot({ ...this.bot(task.bot_id), updatedAt: stamp }); }
     });
   }
-  /** How the person wants to be called (home-screen greeting). */
-  person() { return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '' }; }
-  setPerson({ name } = {}) {
-    if (typeof name !== 'string' || name.length > 40 || /[\u0000-\u001f]/.test(name)) throw new Error('Use um nome de até 40 letras.');
-    const clean = name.trim().replace(/\s+/g, ' ');
-    if (clean) this.run("INSERT INTO metadata VALUES('person.name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", clean);
-    else this.run("DELETE FROM metadata WHERE key='person.name'");
+  /** How the person wants to be called (home-screen greeting) and the look they chose (dark, light or the system's). */
+  person() {
+    const theme = this.get("SELECT value FROM metadata WHERE key='person.theme'")?.value;
+    return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '', ...(theme ? { theme } : {}) };
+  }
+  setPerson({ name, theme } = {}) {
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.length > 40 || /[\u0000-\u001f]/.test(name)) throw new Error('Use um nome de até 40 letras.');
+      const clean = name.trim().replace(/\s+/g, ' ');
+      if (clean) this.run("INSERT INTO metadata VALUES('person.name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", clean);
+      else this.run("DELETE FROM metadata WHERE key='person.name'");
+    }
+    if (theme !== undefined) {
+      if (!['dark', 'light', 'system'].includes(theme)) throw new Error('Escolha escuro, claro ou o do sistema.');
+      this.run("INSERT INTO metadata VALUES('person.theme',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", theme);
+    }
     return this.person();
   }
   /** The plan's usage windows (5 hours, week) as the IA last reported them. */
@@ -495,7 +504,7 @@ export class Database {
       (data.instructions !== undefined && (typeof data.instructions !== 'string' || data.instructions.length > 2000)) ||
       !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
     const stamp = now();
-    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
+    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', ...(data.face ? { face: data.face } : {}), autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
     this.transaction(() => { this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
     return bot;
   }
@@ -503,7 +512,7 @@ export class Database {
     const bot = this.requireBot(id);
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','autonomy','access','home','folders','browserMode','skills','gpu']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','face','autonomy','access','home','folders','browserMode','skills','gpu']) if (changes[field] !== undefined) updated[field] = changes[field];
     // The reserve model for when the subscription's limit ends (null removes it); only another provider's makes sense.
     if (changes.fallback !== undefined) { if (changes.fallback === null) delete updated.fallback; else updated.fallback = { provider: changes.fallback.provider, model: changes.fallback.model, reasoningEffort: changes.fallback.reasoningEffort }; }
     if (updated.fallback && updated.fallback.provider === (updated.provider || 'codex')) delete updated.fallback;

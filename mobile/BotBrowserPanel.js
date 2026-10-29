@@ -4,7 +4,7 @@ import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator } from 'react-native';
 import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, termuxAvailable, walletRules, walletFreeze } from './termux';
-import { C, F, Icon } from './theme';
+import { C, F, Icon, themed } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
 export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
@@ -99,7 +99,7 @@ function BotCursor({ action, color }) {
 }
 function StepCaption({ action }) {
   if (!action?.caption) return null;
-  return <View pointerEvents="none" style={styles.caption}><Icon name="bots" size={13} color={C.mint} /><Text style={styles.captionText} numberOfLines={1}>{action.caption}</Text></View>;
+  return <View pointerEvents="none" style={styles.caption}><Icon name="bots" size={13} color={C.accent} /><Text style={styles.captionText} numberOfLines={1}>{action.caption}</Text></View>;
 }
 
 const formatSize = size => size >= 1048576 ? `${(size / 1048576).toFixed(1).replace('.', ',')} MB` : size >= 1024 ? `${Math.round(size / 1024)} KB` : `${size} bytes`;
@@ -118,18 +118,18 @@ export function BrowserDownloads({ bot, call, onFile, onClose }) {
     } catch (e) { setNote(e.message); } finally { setBusy(null); }
   };
   return <Modal visible transparent animationType="slide" onRequestClose={onClose}><View style={styles.sheetBack}><View style={styles.sheet}>
-    <View style={styles.sheetHead}><Icon name="download" size={18} color={C.mint} /><Text style={styles.sheetTitle}>Downloads do navegador</Text>
+    <View style={styles.sheetHead}><Icon name="download" size={18} color={C.accent} /><Text style={styles.sheetTitle}>Downloads do navegador</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Fechar downloads" hitSlop={8} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable></View>
     <Text style={styles.hint}>Arquivos que o navegador de {bot.name} baixou. Os do celular já são arquivos do bot; os do computador ficam em ~/.mybots-pc/downloads até você abrir ou enviar.</Text>
-    {list === null ? <ActivityIndicator color={C.mint} style={{ marginVertical: 18 }} /> : null}
+    {list === null ? <ActivityIndicator color={C.accent} style={{ marginVertical: 18 }} /> : null}
     {list && !list.files.length ? <Text style={[styles.hint, { marginVertical: 14 }]}>Nenhum download ainda.</Text> : null}
     {list?.pcError ? <Text style={styles.error}>{list.pcError}</Text> : null}
     {note ? <Text style={[styles.hint, { color: C.text2 }]}>{note}</Text> : null}
     <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8 }}>{(list?.files || []).map(file => <View key={file.id} style={styles.download}>
       <Icon name="file" size={18} color={C.text2} />
       <View style={{ flex: 1 }}><Text style={styles.title} numberOfLines={1}>{file.name}</Text><Text style={styles.url}>{formatSize(file.size)} · {file.where === 'pc' ? 'no computador' : 'no celular'} · {formatTime(file.at)}</Text></View>
-      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, false)} style={styles.key}>{busy === file.id ? <ActivityIndicator color={C.mint} size="small" /> : <Text style={styles.keyText}>Abrir</Text>}</Pressable>
-      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, true)} style={styles.key}>{busy === file.id + ':send' ? <ActivityIndicator color={C.mint} size="small" /> : <Text style={styles.keyText}>Enviar ao bot</Text>}</Pressable>
+      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, false)} style={styles.key}>{busy === file.id ? <ActivityIndicator color={C.accent} size="small" /> : <Text style={styles.keyText}>Abrir</Text>}</Pressable>
+      <Pressable accessibilityRole="button" disabled={Boolean(busy)} onPress={() => act(file, true)} style={styles.key}>{busy === file.id + ':send' ? <ActivityIndicator color={C.accent} size="small" /> : <Text style={styles.keyText}>Enviar ao bot</Text>}</Pressable>
     </View>)}</ScrollView>
   </View></View></Modal>;
 }
@@ -351,18 +351,18 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
   const tabs = tabbar?.tabs || frame?.tabs || [];
   return <BrowserSurface assumed={assumed} control={control} inline={side}><View style={[styles.panel, (assumed || side) && styles.fullPanel, side && styles.sidePanel]}>
     <View style={styles.bar}>
-      <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.mint : C.muted} /></View>
+      <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.accent : C.muted} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.title} numberOfLines={1}>{browserName(bot)} · computador</Text>
         <Text style={styles.url} numberOfLines={1}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Você está no controle. O bot espera.' : browserMode(bot) === 'shared' ? 'Logins do navegador do computador, valem para os bots dele.' : 'Ao vivo do computador.'}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Downloads do navegador" hitSlop={6} onPress={() => { setDownloads(true); setNotice(null); }} style={[styles.tool, notice && styles.toolOn]}><Icon name="download" size={17} color={notice ? C.mint : C.text2} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Downloads do navegador" hitSlop={6} onPress={() => { setDownloads(true); setNotice(null); }} style={[styles.tool, notice && styles.toolOn]}><Icon name="download" size={17} color={notice ? C.accent : C.text2} /></Pressable>
       {!assumed && !side ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable> : null}
     </View>
     <TabStrip tabs={tabs} enabled={assumed} onSwitch={tab => send({ type: 'tab', tab })} onClose={tab => send({ type: 'tab_close', tab })} onNew={() => send({ type: 'tab_new' })} />
     <AddressRow url={frame?.url} enabled={assumed} back={tabbar ? tabbar.back : true} forward={tabbar?.forward} onBack={() => send({ type: 'back' })} onForward={() => send({ type: 'forward' })} onReload={() => send({ type: 'reload' })} onOpen={url => send({ type: 'open', url })}
       placeholder={state === 'closed' ? 'Fechado' : assumed ? 'Toque aqui para digitar um endereço.' : 'Ainda não abriu nenhuma página.'} />
-    {notice ? <Pressable accessibilityRole="button" onPress={() => { setDownloads(true); setNotice(null); }} style={styles.notice}><Icon name="download" size={14} color={C.mint} /><Text style={[styles.hint, { flex: 1, color: C.text2 }]} numberOfLines={1}>{notice.name} baixado · ver downloads</Text></Pressable> : null}
+    {notice ? <Pressable accessibilityRole="button" onPress={() => { setDownloads(true); setNotice(null); }} style={styles.notice}><Icon name="download" size={14} color={C.accent} /><Text style={[styles.hint, { flex: 1, color: C.text2 }]} numberOfLines={1}>{notice.name} baixado · ver downloads</Text></Pressable> : null}
     {downloads ? <BrowserDownloads bot={bot} call={call} onFile={onFile} onClose={() => setDownloads(false)} /> : null}
     <View style={[styles.live, assumed || side ? styles.fullFrame : { aspectRatio: frame ? frame.width / frame.height : 1.6 }, assumed && styles.frameAssumed]}
       onLayout={event => { const layout = event.nativeEvent.layout; area.current = layout; setAreaSize({ width: layout.width, height: layout.height }); const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
@@ -370,16 +370,16 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
       <View pointerEvents="none" style={fitted(frame, areaSize)} onLayout={event => { size.current = event.nativeEvent.layout; }}>
       {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; extras(data); if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
         : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o navegador do bot no computador…'}</Text></View>}
-        {frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]}><BotCursor action={action} color={color || C.mint} /></View> : null}
+        {frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]}><BotCursor action={action} color={color || C.accent} /></View> : null}
       </View>
       <StepCaption action={action} />
-      {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.mint,backgroundColor:'#54E8B344' }} /> : null}
-      {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.mint }} /> : null}
+      {circle ? <View pointerEvents="none" style={{ position:'absolute',left:circle.x-18,top:circle.y-18,width:36,height:36,borderRadius:18,borderWidth:2,borderColor:C.accent,backgroundColor:'#54E8B344' }} /> : null}
+      {loading ? <View pointerEvents="none" accessibilityLabel="Carregando página" style={{ position:'absolute',left:0,top:0,height:3,width:'65%',backgroundColor:C.accent }} /> : null}
       {slow ? <View pointerEvents="none" style={styles.closed}><Text style={styles.watchingText}>Conexão lenta</Text></View> : null}
       {frame && state === 'closed' ? <View style={styles.closed}><Text style={styles.watchingText}>Navegador fechado</Text></View> : null}
       {!assumed && frame ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
-    {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.mint} /><Text style={[styles.hint, { color: C.mint }]}>Abrir o navegador de novo</Text></Pressable> : null}
+    {state === 'closed' ? <Pressable accessibilityRole="button" onPress={reopen} style={styles.reopen}><Icon name="refresh" size={14} color={C.accent} /><Text style={[styles.hint, { color: C.accent }]}>Abrir o navegador de novo</Text></Pressable> : null}
     {assumed ? <View style={styles.floatingControls} onLayout={event => { bar.current = event.nativeEvent.layout; }}>
       <Pressable accessibilityRole="button" onPress={() => setZoom({ scale: 1, translateX: 0, translateY: 0, rotation: 0 })}><Text style={styles.hint}>Zoom {Math.round(zoom.scale * 100)}% · Redefinir</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => { const next = !desktop; setDesktop(next); send({ type: 'viewport', width: viewport?.cssWidth || 360, height: viewport?.cssHeight || 640, deviceScaleFactor: PixelRatio.get(), desktop: next }); }}><Text style={styles.hint}>{desktop ? 'Ver como celular' : 'Ver como computador'}</Text></Pressable>
@@ -393,7 +393,7 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
     <WalletFreeze />
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
-      <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
+      <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.accent : C.accentInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
   </View></BrowserSurface>;
 }
@@ -437,7 +437,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
   const shared = browserMode(bot) !== 'separate';
   return <BrowserSurface assumed={assumed} control={control} inline={side}><View style={[styles.panel, (assumed || side) && styles.fullPanel, side && styles.sidePanel]}>
     <View style={styles.bar}>
-      <View style={styles.lock}><Icon name="phone" size={16} color={assumed ? C.mint : C.muted} /></View>
+      <View style={styles.lock}><Icon name="phone" size={16} color={assumed ? C.accent : C.muted} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.title} numberOfLines={1}>{shared ? 'Navegador compartilhado' : `Navegador de ${bot.name}`} · celular</Text>
         <Text style={styles.url} numberOfLines={1}>{assumed ? 'Você está no controle. O bot espera.' : page?.loading ? 'Carregando…' : shared ? 'Logins do navegador do celular, valem para os bots dele.' : 'Só deste bot.'}</Text>
@@ -450,7 +450,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     {downloads ? <BrowserDownloads bot={bot} call={call} onFile={onFile} onClose={() => setDownloads(false)} /> : null}
     <View style={[styles.frame, (assumed || side) && styles.fullFrame, assumed && styles.frameAssumed]}>
       <BotBrowserView botId={bot.id} separate={!shared} interactive={assumed} style={StyleSheet.absoluteFill} onPage={event => { setPage(event.nativeEvent); if (event.nativeEvent.action) showAction(event.nativeEvent.action); }} />
-      <BotCursor action={action} color={color || C.mint} />
+      <BotCursor action={action} color={color || C.accent} />
       <StepCaption action={action} />
       {!assumed ? <View pointerEvents="none" style={styles.watching}><Icon name="info" size={12} color={C.text2} /><Text style={styles.watchingText}>Só olhando</Text></View> : null}
     </View>
@@ -460,12 +460,12 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     {info && !info.isolated ? <Text style={styles.hint}>Este celular não tem perfis de navegador (Android System WebView antigo): quando um bot com Navegador separado navega, os logins do navegador compartilhado são apagados. Atualize o “Android System WebView”.</Text> : null}
     <WalletFreeze />
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
-      <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.mint : C.mintInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
+      <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.accent : C.accentInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
     </Pressable>
   </View></BrowserSurface>;
 }
 
-const styles = StyleSheet.create({
+const styles = themed(() => ({
   fullscreen: { flex: 1, backgroundColor: C.surface, paddingTop: StatusBar.currentHeight || 24, paddingBottom: 12 },
   floatingControls: { position:'absolute',bottom:74,left:14,right:14,padding:10,borderRadius:18,gap:6,backgroundColor:C.surface+'F0',borderWidth:1,borderColor:C.line2 },
   fullPanel: { flex: 1, margin: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, borderRadius: 0 },
@@ -480,13 +480,13 @@ const styles = StyleSheet.create({
   nav: { width: 32, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   addressBox: { flex: 1, minHeight: 34, justifyContent: 'center', borderRadius: 11, paddingHorizontal: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   addressText: { color: C.text2, fontFamily: F.m, fontSize: 12.5 },
-  addressInput: { flex: 1, minHeight: 34, borderRadius: 11, paddingHorizontal: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.mint, color: C.text, fontFamily: F.m, fontSize: 13 },
+  addressInput: { flex: 1, minHeight: 34, borderRadius: 11, paddingHorizontal: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent, color: C.text, fontFamily: F.m, fontSize: 13 },
   highlight: { position: 'absolute', borderWidth: 2, borderRadius: 4 },
   cursor: { position: 'absolute', width: 22, height: 22, marginLeft: -11, marginTop: -11, borderRadius: 11, borderWidth: 2, backgroundColor: '#FFFFFFCC', alignItems: 'center', justifyContent: 'center' },
   cursorDot: { width: 8, height: 8, borderRadius: 4 },
   caption: { position: 'absolute', left: 8, top: 8, right: 8, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#090B10E6' },
   captionText: { flexShrink: 1, color: C.text, fontFamily: F.b, fontSize: 12 },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.mint + '66' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent + '66' },
   sheetBack: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000AA' },
   sheet: { padding: 16, paddingBottom: 26, gap: 10, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, width: '100%', maxWidth: 720, alignSelf: 'center' },
   sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 9 }, sheetTitle: { flex: 1, color: C.text, fontFamily: F.x, fontSize: 16 },
@@ -504,24 +504,24 @@ const styles = StyleSheet.create({
   title: { color: C.text, fontFamily: F.b, fontSize: 13.5 }, url: { color: C.muted, fontFamily: F.m, fontSize: 11.5, marginTop: 1 },
   tool: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surface2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line },
   frame: { aspectRatio: 0.625, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
-  frameAssumed: { borderColor: C.mint },
+  frameAssumed: { borderColor: C.accent },
   live: { width: '100%', borderRadius: 14, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: C.line2 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: C.surface2 },
   closed: { position: 'absolute', left: 8, top: 8, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, backgroundColor: '#090B10D9' },
   reopen: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
   address: { minHeight: 40, borderRadius: 12, paddingHorizontal: 12, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, color: C.text, fontFamily: F.m, fontSize: 13.5 },
-  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, toolOn: { borderColor: C.mint },
+  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, toolOn: { borderColor: C.accent },
   keys: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, key: { minWidth: 44, height: 34, paddingHorizontal: 10, borderRadius: 10, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   keyText: { color: C.text2, fontFamily: F.b, fontSize: 12.5 },
   stopKey: { flexDirection: 'row', gap: 6, backgroundColor: C.red, borderColor: C.red, paddingHorizontal: 16 }, phoneShot: { width: '62%', alignSelf: 'center', borderRadius: 14, backgroundColor: '#0B0F15' },
   watching: { position: 'absolute', right: 8, bottom: 8, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 10, backgroundColor: '#090B10D9' },
   watchingText: { color: C.text2, fontFamily: F.b, fontSize: 10.5 },
   hint: { color: C.muted, fontFamily: F.m, fontSize: 11.5, lineHeight: 17 }, error: { color: C.red, fontFamily: F.m, fontSize: 12 },
-  control: { minHeight: 48, flexDirection: 'row', gap: 8, borderRadius: 16, backgroundColor: C.mint, alignItems: 'center', justifyContent: 'center' }, controlText: { color: C.mintInk, fontFamily: F.x, fontSize: 14.5 },
-  controlBack: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.mint }, controlBackText: { color: C.mint },
+  control: { minHeight: 48, flexDirection: 'row', gap: 8, borderRadius: 16, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' }, controlText: { color: C.accentInk, fontFamily: F.x, fontSize: 14.5 },
+  controlBack: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent }, controlBackText: { color: C.accent },
   helpCard: { padding: 16, borderRadius: 22, borderWidth: 1, borderColor: C.sky + '55', backgroundColor: '#111925', gap: 7 },
   helpHead: { flexDirection: 'row', alignItems: 'center', gap: 9 }, helpIcon: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.sky + '1C' },
   helpEyebrow: { color: C.sky, fontFamily: F.x, fontSize: 10, letterSpacing: 1.4 }, helpTitle: { color: C.text, fontFamily: F.x, fontSize: 16.5, marginTop: 2 },
   helpBody: { color: C.text2, fontFamily: F.m, fontSize: 14, lineHeight: 21 }, helpHint: { color: C.muted, fontFamily: F.m, fontSize: 12, lineHeight: 17 },
   helpButton: { minHeight: 48, flexDirection: 'row', gap: 8, borderRadius: 16, backgroundColor: C.sky, alignItems: 'center', justifyContent: 'center', marginTop: 6 }, helpButtonText: { color: '#0F1D2E', fontFamily: F.x, fontSize: 14 }
-});
+}));

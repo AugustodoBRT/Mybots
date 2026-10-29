@@ -70,7 +70,8 @@ internal object ShareIntake {
     val shortcuts = bots.take(max).mapIndexedNotNull { index, bot ->
       val id = bot["id"] as? String ?: return@mapIndexedNotNull null
       val name = (bot["name"] as? String)?.take(40) ?: return@mapIndexedNotNull null
-      val face = BotFace.draw(192, bot["color"] as? String, bot["avatar"] as? String, id)
+      val still = bot["still"] as? Map<*, *> ?: return@mapIndexedNotNull null
+      val face = FacePainter.bitmap(context, still["frame"] as? String ?: "", still["tones"] as? String, (still["cols"] as? Number)?.toInt() ?: 0, (still["rows"] as? Number)?.toInt() ?: 0, 192, still["text"] == true)
       ShortcutInfoCompat.Builder(context, "bot-$id").setShortLabel(name).setLongLabel(name)
         .setIcon(IconCompat.createWithAdaptiveBitmap(padded(face)))
         .setIntent(Intent(launch).setAction(Intent.ACTION_VIEW).putExtra("mybotsBotId", id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -85,7 +86,7 @@ internal object ShareIntake {
   // Adaptive icons crop the outer third; the face sits in the safe zone over the app's dark background.
   private fun padded(face: android.graphics.Bitmap): android.graphics.Bitmap {
     val size = 288; val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(bitmap); canvas.drawColor(0xFF12161E.toInt())
+    val canvas = android.graphics.Canvas(bitmap); canvas.drawColor(0xFF000000.toInt())
     canvas.drawBitmap(face, null, android.graphics.RectF(48f, 48f, 240f, 240f), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
     return bitmap
   }

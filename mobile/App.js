@@ -2,12 +2,12 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { appStore, selectShell } from './state/store';
 import { useStore } from './state/useStore';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
-import { View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { SearchSheet } from './components/Search';
-import { desktop, column } from './desktop';
+import { desktop, column, paintPage } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
@@ -16,7 +16,7 @@ import { browserFrames, browserEvents } from './BotBrowserPanel';
 import { createTermuxBackup } from './backup';
 import { RoomScreen } from './screens/Room';
 import { ChatScreen } from './screens/Chat';
-import { C, Icon } from './theme';
+import { C, Icon, setTheme, resolveTheme } from './theme';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FileBadge, formatSize } from './RichMessage';
@@ -48,6 +48,10 @@ export default function App() {
 
 function AppMain() {
   const data = useStore(selectShell);
+  // The look (dark, light or the system's) is applied before anything below renders; a change repaints the tree through `key`.
+  const systemScheme = useColorScheme();
+  const look = resolveTheme(data?.person?.theme, systemScheme); setTheme(look);
+  useEffect(() => { paintPage({ bg: C.bg, line2: C.line2, dark: look === 'dark' }); }, [look]);
   const { setData, setChats } = appStore;
   const [apiToken, setApiToken] = useState('');
   const [apiBase, setApiBase] = useState(DEFAULT_API_URL);
@@ -69,7 +73,7 @@ function AppMain() {
   const [sending, setSending] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
-  const [profileId, setProfileId] = useState(null);
+  const [profileId, setProfileId] = useState(null); const [profileTab, setProfileTab] = useState(null);
   const [approvalBusy, setApprovalBusy] = useState(null);
   const [modeVisible, setModeVisible] = useState(false);
   const [maintenanceVisible, setMaintenanceVisible] = useState(false);
@@ -638,24 +642,24 @@ function AppMain() {
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
-          onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => setProfileId(bot.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
+          onBack={wide ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
           onPhoneStop={async () => { await Promise.resolve(phoneStopNow()).catch(() => {}); await supervisor.current.call('phone.stop', {}); await loadSupervisorState(); }}
           onPhoneControl={desktop ? null : async who => { await supervisor.current.call('phone.control', { who }); await loadSupervisorState(); }} /> : null;
-  return <View style={[styles.app, desktop && !wide && column]}>
+  return <View key={look} style={[styles.app, desktop && !wide && column]}>
     <ShareTargets />
-    <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    <StatusBar barStyle={look === 'light' ? 'dark-content' : 'light-content'} backgroundColor={C.bg} />
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : wide ? <DesktopShell data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
-          onProfile={target => setProfileId(target.id)} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
+          onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView}</DesktopShell>
       : roomView || chatView || <HomeScreen onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={target => setProfileId(target.id)} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
+            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
@@ -663,11 +667,11 @@ function AppMain() {
         <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>{confirm.buttons.map(button => <Pressable key={button.text} accessibilityRole="button" onPress={() => { setConfirm(null); button.onPress?.(); }}
           style={[button.style === 'cancel' ? styles.denyButton : styles.confirmButton, { flex: 1 }, button.style === 'destructive' && { backgroundColor: C.red + '22', borderColor: C.red + '66' }]}>
-          <Text style={[styles.denyText, button.style === 'destructive' && { color: C.red }, !button.style && { color: C.mint }]}>{button.text}</Text></Pressable>)}</View>
+          <Text style={[styles.denyText, button.style === 'destructive' && { color: C.red }, !button.style && { color: C.accent }]}>{button.text}</Text></Pressable>)}</View>
       </View></View>
     </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
-    {data && <BotProfile visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
+    {data && <BotProfile initialTab={profileTab} visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
@@ -715,6 +719,7 @@ function AppMain() {
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
           {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
             <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
+          {mode === 'phone' ? <ThemeChoice value={data?.person?.theme || 'dark'} onSave={async theme => { await supervisor.current.call('person.update', { theme }); await loadSupervisorState(); }} /> : null}
           {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
           {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>COMPUTADOR</Text><ComputerPanel computer={data?.computer} nodes={data?.nodes}
             onPair={async link => { const result = await supervisor.current.call('computer.pair', { link }); await loadSupervisorState(); return result; }}
@@ -740,10 +745,10 @@ function AppMain() {
           {termuxAvailable ? <><Text style={styles.sheetSection}>ATUALIZAÇÕES</Text>
             {update?.info?.available ? <UpdateCard compact update={update} onInstall={installUpdate} />
               : <View style={[styles.modeOption, styles.rowOption]}>
-                <View style={styles.rowIcon}><Icon name="check" size={19} color={C.mint} /></View>
+                <View style={styles.rowIcon}><Icon name="check" size={19} color={C.good} /></View>
                 <View style={{ flex: 1 }}><Text style={styles.optionLabel}>MyBots {update?.info?.currentName || ''}</Text>
                   <Text style={[styles.optionDetail, update?.error && { color: C.amber }]}>{update?.checking ? 'Procurando…' : update?.error || (update?.info ? 'Você está na versão mais nova.' : 'O app procura versões novas sozinho ao abrir.')}</Text></View>
-                <Pressable accessibilityRole="button" disabled={update?.checking} onPress={() => checkUpdate(true)} style={styles.stopButton}><Icon name="refresh" size={13} color={C.mint} /><Text style={[styles.stopText, { color: C.mint }]}>Procurar</Text></Pressable>
+                <Pressable accessibilityRole="button" disabled={update?.checking} onPress={() => checkUpdate(true)} style={styles.stopButton}><Icon name="refresh" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Procurar</Text></Pressable>
               </View>}</> : null}
           {desktop ? null : <><Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
           <View style={styles.modeOption}><Text selectable style={styles.optionDetail}>{maintenanceText}</Text></View>
@@ -760,7 +765,7 @@ function AppMain() {
             const result = await supervisor.current.call('environment.get');
             setMaintenanceText(`${device}\n\n${result.report}`);
           })} />
-          <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.mint} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable></>}
+          <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.accent} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable></>}
         </ScrollView>
       </View></View>
     </Modal>
@@ -773,7 +778,7 @@ function AppMain() {
         </ScrollView>
       </View></View>
     </Modal>
-    <SearchSheet visible={searchVisible} call={(method, params) => supervisor.current.call(method, params)} bots={data?.bots || []} rooms={data?.rooms || []} onClose={() => setSearchVisible(false)}
+    <SearchSheet visible={searchVisible} call={(method, params) => supervisor.current.call(method, params)} bots={data?.bots || []} rooms={data?.rooms || []} onClose={() => setSearchVisible(false)} onTask={(target, text) => { setRoomId(null); setSelected(target.id); setDraft(text); }}
       onOpen={item => { if (item.kind === 'room') { setRoomId(item.ownerId); setSelected(null); } else { setSelected(item.ownerId); setRoomId(null); setDraft(''); } }} />
     <Modal transparent visible={activityVisible} animationType="slide" onRequestClose={() => setActivityVisible(false)}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
@@ -785,7 +790,7 @@ function AppMain() {
           {mode === 'phone' ? <Text style={styles.sheetSection}>FUNCIONAMENTO</Text> : null}
           {mode === 'phone' ? <View style={styles.modeOption}>
             <Text style={styles.optionLabel}>Interrupções · {(data?.interruptions || []).length ? `${data.interruptions.filter(item => Date.now() - Date.parse(item.created_at) < 7 * 86400000).length} nos últimos 7 dias` : 'nenhuma registrada'}</Text>
-            {(data?.interruptions || []).slice(0, 5).map(item => <View key={item.id} style={styles.interruption}><Icon name={item.kind === 'supervisor_restarted' ? 'refresh' : 'pause'} size={14} color={item.kind === 'supervisor_restarted' ? C.mint : C.amber} /><Text style={[styles.optionDetail, { flex: 1, marginTop: 0 }]}>{item.detail}</Text></View>)}
+            {(data?.interruptions || []).slice(0, 5).map(item => <View key={item.id} style={styles.interruption}><Icon name={item.kind === 'supervisor_restarted' ? 'refresh' : 'pause'} size={14} color={item.kind === 'supervisor_restarted' ? C.accent : C.amber} /><Text style={[styles.optionDetail, { flex: 1, marginTop: 0 }]}>{item.detail}</Text></View>)}
             {!(data?.interruptions || []).length ? <Text style={styles.optionDetail}>Quando o celular pausar ou parar o supervisor, aparece aqui quando foi e como ele voltou.</Text> : null}
           </View> : null}
           {(data?.approvals || []).length ? <Text style={styles.sheetSection}>DECISÕES</Text> : null}
@@ -799,7 +804,7 @@ function AppMain() {
           </View>)}
           <Text style={styles.sheetSection}>HISTÓRICO</Text>
           <View style={styles.timeline}>{(data?.activity || []).slice(0, 40).map(item => <View key={item.id} style={styles.timelineRow}>
-            <View style={[styles.timelineDot, /fail|denied|late|error/.test(item.kind) && { backgroundColor: C.red }, /approval/.test(item.kind) && { backgroundColor: C.amber }, /done|created|accepted|reminder|downloaded/.test(item.kind) && { backgroundColor: C.mint }]} />
+            <View style={[styles.timelineDot, /fail|denied|late|error/.test(item.kind) && { backgroundColor: C.red }, /approval/.test(item.kind) && { backgroundColor: C.amber }, /done|created|accepted|reminder|downloaded/.test(item.kind) && { backgroundColor: C.accent }]} />
             <View style={{ flex: 1 }}><Text style={styles.timelineText}>{item.detail}</Text><Text style={styles.timelineMeta}>{data.bots.find(bot => bot.id === item.bot_id)?.name ? `${data.bots.find(bot => bot.id === item.bot_id).name} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text></View>
           </View>)}</View>
         </ScrollView>
@@ -813,11 +818,11 @@ function AppMain() {
         {(desktop ? [['open', 'Abrir', 'No programa padrão do computador (fica salvo em Downloads).', 'open'], ['save', 'Salvar em Downloads', 'Na pasta Downloads do computador.', 'download']]
           : [['open', 'Abrir', 'Num app do celular que abra este tipo de arquivo.', 'open'], ['share', 'Compartilhar', 'WhatsApp, Drive, e-mail ou outro app.', 'share'], ['save', 'Salvar em Downloads', 'Fica na pasta Download/MyBots.', 'download']]).map(([action, title, detail, icon]) =>
           <Pressable key={action} accessibilityRole="button" disabled={Boolean(fileBusy)} onPress={() => fileAct(fileSheet, action)} style={({ pressed }) => [styles.modeOption, styles.rowOption, fileBusy && { opacity: 0.5 }, pressed && styles.pressed]}>
-            <View style={styles.rowIcon}><Icon name={icon} size={19} color={C.mint} /></View>
+            <View style={styles.rowIcon}><Icon name={icon} size={19} color={C.accent} /></View>
             <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{title}</Text><Text style={styles.optionDetail}>{detail}</Text></View>
-            {fileBusy === fileSheet?.id ? <ActivityIndicator color={C.mint} /> : <Icon name="right" size={16} color={C.faint} />}
+            {fileBusy === fileSheet?.id ? <ActivityIndicator color={C.accent} /> : <Icon name="right" size={16} color={C.faint} />}
           </Pressable>)}
-        {fileNote ? <View style={styles.fileNote}><Icon name={/Salvo/.test(fileNote) ? 'check' : 'info'} size={16} color={/Salvo/.test(fileNote) ? C.mint : C.amber} /><Text selectable style={styles.fileNoteText}>{fileNote}</Text></View> : null}
+        {fileNote ? <View style={styles.fileNote}><Icon name={/Salvo/.test(fileNote) ? 'check' : 'info'} size={16} color={/Salvo/.test(fileNote) ? C.accent : C.amber} /><Text selectable style={styles.fileNoteText}>{fileNote}</Text></View> : null}
       </View></View>
     </Modal>
     {data && !share?.botId ? <ShareSheet share={share} bots={data.bots || []} phone={mode === 'phone'} onPick={pickShare} onClose={() => setShare(null)} /> : null}

@@ -183,8 +183,12 @@ internal object BotNotifier {
     @Suppress("DEPRECATION")
     val builder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(context, CHANNEL) else Notification.Builder(context))
       .setSmallIcon(R.drawable.mybots_notification).setContentTitle(title).setContentText(text)
-      .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setColor(0xFF9ED8B9.toInt())
+      .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setColor(0xFFFF9F1C.toInt())
     if (tap != null) builder.setContentIntent(tap)
+    // The bot's face (a still frame from the supervisor) is the notification's picture.
+    item.optJSONObject("face")?.let { still ->
+      try { builder.setLargeIcon(FacePainter.bitmap(context, still.optString("frame"), still.optString("tones"), still.optInt("cols"), still.optInt("rows"), 128, still.optBoolean("text"))) } catch (_: Exception) { }
+    }
     val notificationId = tag.hashCode()
     val approvalId = item.optString("approvalId"); val actionHash = item.optString("actionHash"); val botId = item.optString("botId")
     // Aprovar/Recusar answer one pending approval, once and never "sempre"; they ask for the unlocked phone. The supervisor

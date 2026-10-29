@@ -3,22 +3,22 @@
     "name": "MyBots",
     "slug": "mybots",
     "scheme": "mybots",
-    "version": "0.40.0",
+    "version": "0.41.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "plugins": [
       "./plugins/withTermuxBridge.cjs",
       "expo-font"
     ],
     "android": {
       "package": "com.mybots.app",
-      "versionCode": 64
+      "versionCode": 65
     },
     "icon": "./assets/brand/icon.png",
     "splash": {
       "image": "./assets/brand/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#090B10"
+      "backgroundColor": "#000000"
     }
   }
 }

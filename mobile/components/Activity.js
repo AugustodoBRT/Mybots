@@ -50,3 +50,12 @@ export function ActivityColumns({ data, call, reload, cancelTask, completeItem }
     </ScrollView>
   </View>;
 }
+
+/** Atividade as a whole page next to the computer's icon bar. */
+export function ActivityPage({ data, ...columns }) {
+  return <View style={{ flex: 1, paddingHorizontal: 32, paddingTop: 26 }}>
+    <Text style={{ color: C.text, fontFamily: F.x, fontSize: 28, letterSpacing: -0.8 }}>Atividade</Text>
+    <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 15, marginTop: 4, marginBottom: 18 }}>{`${data?.supervisorConnected ? 'Celular conectado' : 'Celular fora de alcance'} · último sinal ${data?.heartbeat ? new Date(data.heartbeat).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'não confirmado'}`}</Text>
+    <ActivityColumns data={data} {...columns} />
+  </View>;
+}

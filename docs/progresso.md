@@ -1129,3 +1129,15 @@ APK ARM64 offline `dist/apk/mybots-v67.apk` e `.sha256`, **versionCode 67 / 0.43
 Release pública [v67](https://github.com/AugustodoBRT/Mybots/releases/tag/v67) (0.43.0), a mais recente, com APK e `.sha256`; o APK baixado da Release é idêntico ao local. Commit `654cea5`, sem coautoria de IA. **PC atualizado depois da Release**: `scripts/build-desktop.sh` em **29/10/2026 às 03:15 (Brasília)**; `mybots-pc` **active** (PID 164592); a interface instalada contém a janela nova. Emulador e daemons do Gradle encerrados; o diretório `output/` e as pastas `personagens-*` preexistentes ficaram fora dos commits.
 
 A v63 (design novo) está completa nas três partes (0.41.0, 0.42.0 e 0.43.0).
+
+## 29/10/2026 — 0.43.1 (versionCode 68): páginas inteiras e símbolos das IAs na janela do PC
+
+Pedido do usuário depois de usar a 0.43.0: as opções da barra da esquerda (Atividade, Rotinas, Negociações, Ajustes) abriam numa janelinha, e as telas ficavam espremidas; o certo é preencher a janela e manter a barra à esquerda para navegar. Os limites das IAs no pé da barra quase não se viam, e não precisavam do nome: só o símbolo do Codex ou do Claude.
+
+- **Páginas inteiras** (`DesktopShell.js`, `page`/`onPage`/`pages`): clicar num ícone troca a janela toda (a lista de conversas sai) e a barra fica; o ícone da página aberta fica marcado e **Conversas** volta. Ajustes (`SettingsSheet inline`, categorias à esquerda e o conteúdo ao lado), Atividade (`ActivityPage`, três colunas na largura da janela) e Rotinas e Negociações (`inline` em `Lists.js`) deixaram de ser diálogos no PC; no celular continuam folhas.
+- **Limites**: o anel ficou maior (46 px) com o símbolo da IA dentro (a rosácea do Codex e o sol de raios do Claude, desenhados em SVG) e a porcentagem livre embaixo; fica vermelho abaixo de 15%. A barra ganhou largura (64 px) e os ícones ficaram maiores.
+- **Testes**: suíte inteira (`npm test`) **295 de 295**, zero falhas e zero ignorados. `desktop-window.test.mjs` agora confere que as páginas ocupam a janela (a lista some, não há botão de fechar, o conteúdo começa além da coluna de categorias, a terceira coluna da Atividade usa a largura), que a barra continua em todas, que Rotinas e Negociações abrem, que o limite aparece como "Codex: N% livre" sem o nome escrito e que Conversas volta.
+- **Não testado**: o símbolo do Claude (o roteiro só tem limites do Codex); a janela instalada de verdade; telas de celular (nada mudou nelas além do código compartilhado).
+
+### Entrega da 0.43.1
+APK ARM64 offline `dist/apk/mybots-v68.apk` e `.sha256`, **versionCode 68 / 0.43.1**, 44.295.204 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `03d7a82183f526c787a2844fe4d0d65c7b63bb047af7ff3c9c497384f0217d48`. Nenhuma permissão nova pedida ao Android.

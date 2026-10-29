@@ -13,7 +13,8 @@ import { createSupervisor } from '../supervisor/index.mjs';
 const run = promisify(execFile);
 const hasChrome = existsSync('/usr/bin/google-chrome-stable');
 const selection = { model: 'test', reasoningEffort: 'low' };
-const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }] };
+const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }],
+  limits: async () => ({ plan: 'plus', windows: [{ key: 'five_hour', used: 32, resetsAt: Date.now() + 3600000 }] }) };
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png' };
 
 // The computer's window, for real: the exported web app in Chrome, talking to a real supervisor with fake bots.
@@ -68,18 +69,26 @@ test('janela do PC: lista, abas, Ctrl+K, Ctrl+N, Ajustes em duas colunas, Ativid
   // Ctrl+N starts the new bot; Esc/close leaves.
   await page.keyboard.press('Control+n'); await seen('Passo 1 de 3 · Rosto'); await page.getByLabel('Cancelar').first().click();
 
-  // Ajustes: categories on the left, the open one on the right; the phone-only ones are not offered here.
-  await page.getByLabel('Ajustes').first().click(); await seen('Conta e IA', { state: 'visible' });
+  // Ajustes, Atividade, Rotinas and Negociações are whole pages beside the icon bar (not dialogs): the bar stays, the list goes.
+  const railStays = async () => { for (const label of ['Conversas', 'Atividade', 'Rotinas', 'Negociações', 'Ajustes']) await page.getByLabel(label, { exact: true }).first().waitFor({ state: 'visible' }); };
+  await page.getByLabel('Ajustes', { exact: true }).first().click(); await seen('Conta e IA', { state: 'visible' }); await railStays();
+  assert.equal(await page.getByLabel('Conversar com Atlas').count(), 0, 'a lista de conversas sai da frente');
+  assert.equal(await page.getByLabel('Fechar os ajustes').count(), 0, 'não é um diálogo com botão de fechar');
   assert.equal(await page.getByText('Senhas e carteira').count(), 0);
   for (const label of ['Bots', 'Celular', 'Sobre']) await page.getByLabel(new RegExp(`^${label}\\.`)).first().waitFor();
-  await seen('Aparência'); await page.getByLabel('Fechar os ajustes').first().click(); await seen('Aparência', { state: 'hidden' });
+  await seen('Aparência');
+  const settingsBox = await page.getByText('Aparência', { exact: true }).first().boundingBox(); assert.ok(settingsBox.x > 300, 'o conteúdo ocupa o espaço ao lado das categorias');
 
-  // Atividade in three columns.
-  await page.getByLabel('Atividade').first().click();
+  await page.getByLabel('Atividade', { exact: true }).first().click(); await railStays();
   for (const heading of ['Precisa de você', 'Em andamento', 'Concluído hoje']) await seen(heading);
-  // Esc may arrive before the dialog has finished mounting on a busy machine; press it again until the dialog is gone.
-  for (let attempt = 0; attempt < 6 && await page.getByText('Concluído hoje', { exact: true }).count(); attempt++) { await page.keyboard.press('Escape'); await page.waitForTimeout(1500); }
-  await seen('Concluído hoje', { state: 'hidden' });
+  const columns = await Promise.all(['Precisa de você', 'Em andamento', 'Concluído hoje'].map(text => page.getByText(text, { exact: true }).first().boundingBox()));
+  assert.ok(columns[2].x > 900, 'a terceira coluna usa a largura da janela');
+  await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.'); await railStays();
+  await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.');
+  // The plans' limits are the AI's own symbol in a ring, not names.
+  await page.getByLabel(/^Codex: \d+% livre$/).first().waitFor();
+  assert.equal(await page.getByText('Codex', { exact: true }).count(), 0, 'sem o nome escrito');
+  await page.getByLabel('Conversas', { exact: true }).first().click(); await page.getByLabel('Conversar com Atlas').first().waitFor();
 
   // Narrow window: the list keeps only the faces and still opens conversations.
   await page.setViewportSize({ width: 860, height: 800 });

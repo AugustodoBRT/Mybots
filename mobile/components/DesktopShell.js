@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, PanResponder, useWindowDimensions, Modal } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path, Ellipse, G } from 'react-native-svg';
 import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
 import { C, Icon, F, themed, hueOf } from '../theme';
@@ -11,11 +11,11 @@ import FaceArt from '../FaceArt';
 
 const s = themed(() => ({
   desk: { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
-  rail: { width: 56, alignItems: 'center', paddingVertical: 12, gap: 4, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg },
-  railItem: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  rail: { width: 64, alignItems: 'center', paddingVertical: 12, gap: 4, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg },
+  railItem: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   railOn: { backgroundColor: C.surface2 }, railHover: { backgroundColor: C.surface },
   dot: { position: 'absolute', top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg },
-  ringText: { color: C.muted, fontFamily: F.m, fontSize: 9.5, marginTop: 1 },
+  ringText: { color: C.muted, fontFamily: F.m, fontSize: 11, marginTop: 1 },
   list: { backgroundColor: C.bg2, borderRightWidth: 1, borderRightColor: C.line },
   listHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
   listTitle: { color: C.text, fontFamily: F.x, fontSize: 21, letterSpacing: -0.6 },
@@ -54,13 +54,21 @@ const s = themed(() => ({
   menuItem: { paddingVertical: 9, paddingHorizontal: 16 }, menuText: { color: C.text, fontFamily: F.m, fontSize: 14 }
 }));
 
-// A small ring: how much of a plan's window is still free.
-function Ring({ label, left }) {
-  const r = 11, c = 2 * Math.PI * r, shown = Math.max(0, Math.min(100, left));
-  return <View accessible accessibilityLabel={`${label}: ${Math.round(shown)}% livre`} style={{ alignItems: 'center', marginVertical: 3 }}>
-    <Svg width={30} height={30} viewBox="0 0 30 30"><Circle cx="15" cy="15" r={r} stroke={C.line2} strokeWidth="3" fill="none" />
-      <Circle cx="15" cy="15" r={r} stroke={shown < 15 ? C.red : C.accent} strokeWidth="3" fill="none" strokeLinecap="round" strokeDasharray={`${(c * shown) / 100} ${c}`} transform="rotate(-90 15 15)" /></Svg>
-    <Text style={s.ringText}>{label}</Text>
+// The AI's own mark inside a ring that shows how much of the plan's window is still free (no names, just the symbol).
+const CLAUDE_RAYS = Array.from({ length: 8 }, (_, i) => { const angle = (i * Math.PI) / 4, outer = i % 2 ? 6.2 : 8.4; return `M${10 + Math.cos(angle) * 2.6} ${10 + Math.sin(angle) * 2.6}L${10 + Math.cos(angle) * outer} ${10 + Math.sin(angle) * outer}`; }).join('');
+function AiMark({ provider, left }) {
+  const r = 18, c = 2 * Math.PI * r, shown = Math.max(0, Math.min(100, left)), low = shown < 15;
+  const name = provider === 'claude' ? 'Claude' : 'Codex';
+  return <View accessible accessibilityRole="image" accessibilityLabel={`${name}: ${Math.round(shown)}% livre`} style={{ alignItems: 'center', marginVertical: 5 }}>
+    <Svg width={46} height={46} viewBox="0 0 46 46">
+      <Circle cx="23" cy="23" r={r} stroke={C.line2} strokeWidth="3.5" fill="none" />
+      <Circle cx="23" cy="23" r={r} stroke={low ? C.red : C.accent} strokeWidth="3.5" fill="none" strokeLinecap="round" strokeDasharray={`${(c * shown) / 100} ${c}`} transform="rotate(-90 23 23)" />
+      <G transform="translate(13 13)">
+        {provider === 'claude' ? <Path d={CLAUDE_RAYS} stroke="#D97757" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+          : [0, 1, 2, 3, 4, 5].map(i => <Ellipse key={i} cx="10" cy="4.6" rx="2.3" ry="4.2" stroke={C.text} strokeWidth="1.5" fill="none" transform={`rotate(${i * 60} 10 10)`} />)}
+      </G>
+    </Svg>
+    <Text style={s.ringText}>{Math.round(shown)}%</Text>
   </View>;
 }
 
@@ -155,11 +163,11 @@ function Welcome({ data, error, onRespond, approvalBusy, onCreate, onNewRoom, on
  * The computer's window: a narrow bar of icons, the list of conversations (one line each), the open conversation in the middle
  * with tabs on top, and a side panel that stays closed until asked. Ctrl+K searches, Ctrl+N creates a bot, Esc closes.
  */
-export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, children }) {
+export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, children }) {
   const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions(); const compact = width < 900;
   const [listWidth, setListWidth] = useState(300); const [panel, setPanel] = useState(false); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
-  const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false); const [menu, setMenu] = useState(null); const [browserOpen, setBrowserOpen] = useState(false);
+  const [menu, setMenu] = useState(null); const [browserOpen, setBrowserOpen] = useState(false);
   const [rooms, setRooms] = useState(true); const [tabs, setTabs] = useState([]); const trail = useRef({ past: [], future: [], moving: false });
   const bots = useMemo(() => [...(data.bots || [])].filter(bot => !bot.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [data.bots]);
   const roomList = data.rooms || [];
@@ -192,18 +200,21 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
   const limit = provider => { const window = data.usage?.limits?.[provider]?.windows?.find(item => item.key === 'five_hour') || data.usage?.limits?.[provider]?.windows?.[0]; return window ? 100 - window.used : null; };
-  const rail = [['bots', 'Conversas', null, true], ['activity', 'Atividade', onActivity, false, waiting > 0], ['bolt', 'Rotinas', () => setRoutinesOpen(true), false], ['hand', 'Negociações', () => setNegotiationsOpen(true), false]];
+  const openPage = key => { setPanel(false); onPage(key); };
+  const rail = [['bots', 'Conversas', () => onPage(null), page === null], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
   const faceOf = tab => tab.kind === 'room' ? <Icon name="bots" size={16} color={C.muted} /> : <Avatar bot={bots.find(item => item.id === tab.id) || { name: '?' }} size={20} animated={false} />;
   return <View style={s.desk}>
     <View style={s.rail}>
-      {rail.map(([icon, label, onPress, on, dot]) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress || (() => onHome?.())} style={({ hovered }) => [s.railItem, hovered && s.railHover, on && s.railOn]}>
+      {rail.map(([icon, label, onPress, on, dot]) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress} style={({ hovered }) => [s.railItem, hovered && s.railHover, on && s.railOn]}>
         <Icon name={icon} size={22} color={on ? C.accent : C.muted} />{dot ? <View style={s.dot} /> : null}</Pressable>)}
       <View style={{ flex: 1 }} />
-      {limit('claude') != null ? <Ring label="Claude" left={limit('claude')} /> : null}{limit('codex') != null ? <Ring label="Codex" left={limit('codex')} /> : null}
+      {limit('claude') != null ? <AiMark provider="claude" left={limit('claude')} /> : null}{limit('codex') != null ? <AiMark provider="codex" left={limit('codex')} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="Ajuda e atalhos" onPress={() => setHelp(true)} style={({ hovered }) => [s.railItem, hovered && s.railHover]}><Icon name="info" size={22} color={C.muted} /></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Ajustes" onPress={onMaintenance} style={({ hovered }) => [s.railItem, hovered && s.railHover]}><Icon name="settings" size={22} color={C.muted} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Ajustes" accessibilityState={{ selected: page === 'settings' }} onPress={() => openPage('settings')} style={({ hovered }) => [s.railItem, hovered && s.railHover, page === 'settings' && s.railOn]}><Icon name="settings" size={22} color={page === 'settings' ? C.accent : C.muted} /></Pressable>
     </View>
+    {page ? <View style={{ flex: 1, minWidth: 0 }}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
+      : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View> : <>
     <View style={[s.list, { width: compact ? 72 : listWidth }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
         <View style={s.listHead}><Text style={s.listTitle}>Conversas</Text><View style={{ flexDirection: 'row', gap: 6 }}><IconButton icon="plus" label="Novo bot (Ctrl+N)" onPress={onCreate} size={34} tint={C.accent} /></View></View>
@@ -242,11 +253,10 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
       </View> : null}
       <View style={{ flex: 1 }}>{current ? children : <Welcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
-    {panel ? <TodayPanel data={data} onOpen={id => { setPanel(false); onOpen(id); }} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={onActivity} onClose={() => setPanel(false)} /> : null}
+    </>}
+    {panel && !page ? <TodayPanel data={data} onOpen={id => { setPanel(false); onOpen(id); }} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} onClose={() => setPanel(false)} /> : null}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
     <Help visible={help} onClose={() => setHelp(false)} />
-    <RoutinesSheet visible={routinesOpen} routines={data.routines || []} bots={data.bots || []} onClose={() => setRoutinesOpen(false)} onOpen={onProfile} />
-    <NegotiationsSheet visible={negotiationsOpen} negotiations={data.negotiations || []} bots={data.bots || []} onClose={() => setNegotiationsOpen(false)} onOpen={onProfile} />
     {menu ? <Modal transparent visible animationType="none" onRequestClose={() => setMenu(null)}><Pressable style={{ flex: 1 }} onPress={() => setMenu(null)} onContextMenu={event => { event?.preventDefault?.(); setMenu(null); }}>
       <View style={[s.menu, { left: menu.x, top: menu.y }]}>
         {[['Abrir a conversa', () => onOpen(menu.bot.id)], ['Perfil do bot', () => onProfile(menu.bot)]].map(([label, act]) => <Pressable key={label} accessibilityRole="menuitem" onPress={() => { setMenu(null); act(); }} style={({ hovered }) => [s.menuItem, hovered && s.rowHover]}><Text style={s.menuText}>{label}</Text></Pressable>)}

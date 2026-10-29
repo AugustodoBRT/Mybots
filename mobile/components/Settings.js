@@ -25,7 +25,7 @@ const s = themed(() => ({
  * Ajustes by category: a list with search; a category opens its own page (and Senhas has a page of its own, a long list).
  * `a` carries what App knows (data, handlers); each category only arranges the existing panels.
  */
-export function SettingsSheet({ visible, onClose, a }) {
+export function SettingsSheet({ visible, inline, onClose, a }) {
   const { data, mode } = a; const phone = mode === 'phone';
   const [page, setPage] = useState(null); const [query, setQuery] = useState(''); const [passwords, setPasswords] = useState(null);
   useEffect(() => { if (!visible) { setPage(null); setQuery(''); } }, [visible]);
@@ -102,7 +102,7 @@ export function SettingsSheet({ visible, onClose, a }) {
     return null;
   };
   const back = page === 'passwords' ? 'secrets' : null;
-  const wide = Boolean(desktop) && useWindowDimensions().width >= 860;
+  const wide = inline || (Boolean(desktop) && useWindowDimensions().width >= 860);
   // On the computer the categories stay on the left and the open one fills the right.
   const active = wide && !page ? 'account' : page;
   const activeCategory = categories.find(item => item.key === active);
@@ -117,14 +117,12 @@ export function SettingsSheet({ visible, onClose, a }) {
   </Pressable>);
   const pane = active === 'passwords' ? <PasswordsScreen bots={bots} onChanged={setPasswords} />
     : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{body(active)}</ScrollView>;
-  return <Modal transparent visible={visible} animationType="slide" onRequestClose={() => (page && !wide ? setPage(back) : onClose())}>
-    <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall, wide && { maxWidth: 1040, width: '100%', alignSelf: 'center' }]}>
-      <View style={styles.sheetHandle} />
+  const inner = <>
       {wide ? <View style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
         <View style={{ width: 300 }}><Text style={[s.title, { flex: 0, marginBottom: 14 }]}>Ajustes</Text>{search}<ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView></View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={s.header}>{active === 'passwords' ? <IconButton icon="back" label="Voltar a Senhas e carteira" onPress={() => setPage('secrets')} size={42} /> : null}<Text style={s.title} numberOfLines={1}>{title}</Text><IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} /></View>
-          {pane}</View>
+          <View style={s.header}>{active === 'passwords' ? <IconButton icon="back" label="Voltar a Senhas e carteira" onPress={() => setPage('secrets')} size={42} /> : null}<Text style={s.title} numberOfLines={1}>{title}</Text>{inline ? null : <IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} />}</View>
+          <View style={{ flex: 1, maxWidth: 920 }}>{pane}</View></View>
       </View> : <>
         <View style={s.header}>
           {page ? <IconButton icon="back" label="Voltar aos ajustes" onPress={() => setPage(back)} size={42} /> : null}
@@ -133,6 +131,12 @@ export function SettingsSheet({ visible, onClose, a }) {
         </View>
         {page ? pane : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{search}{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView>}
       </>}
+  </>;
+  if (inline) return <View style={{ flex: 1, paddingHorizontal: 32, paddingTop: 26, paddingBottom: 12 }}>{inner}</View>;
+  return <Modal transparent visible={visible} animationType="slide" onRequestClose={() => (page && !wide ? setPage(back) : onClose())}>
+    <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall, wide && { maxWidth: 1040, width: '100%', alignSelf: 'center' }]}>
+      <View style={styles.sheetHandle} />
+      {inner}
     </View></View>
   </Modal>;
 }

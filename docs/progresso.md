@@ -1242,3 +1242,6 @@ Pedidos do usuário: ver imagens direto no chat como no WhatsApp, os modelos pod
 - **Fila e linha do tempo**: o painel "Fila" só aparece com mais de uma instrução na fila (ou pausada); a linha do tempo do navegador só aparece quando o navegador está aberto.
 - `npm test` 313/313 (`generated-images.test.mjs` novo e casos a mais em `creator-math.test.mjs`).
 - **Ainda não feito**: gráfico do Markdown como figura no Word (o Word recebe a tabela); transmitir o navegador do celular para o PC (abas, ampliar, assumir), pedido do usuário.
+
+### Entrega da 0.45.0
+APK ARM64 offline `dist/apk/mybots-v76.apk` e `.sha256`, **versionCode 76 / 0.45.0**, 44.355.607 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v76](https://github.com/AugustodoBRT/Mybots/releases/tag/v76), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.

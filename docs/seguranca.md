@@ -334,3 +334,8 @@ A carteira guarda até 10 cartões no cofre do Android. **Quais bots podem pagar
 - **Uma decisão aparece uma vez por tela**: a Atividade mostra só o contador de decisões esperando; Aprovar e Recusar ficam na Home e na conversa do bot, como antes. Nenhuma regra de aprovação mudou.
 - **`@bot tarefa` na busca** só abre a conversa com o texto no campo; não envia nem dá permissão.
 
+## Janela do computador (v67)
+
+- **Anexos pela janela** seguem o mesmo caminho de sempre (`chat.send` com `attachments` pelo canal autenticado do nó até o supervisor do celular), só que agora o botão ＋ e o arrastar-e-soltar existem na janela: até 5 arquivos e 2,5 MB, lidos no navegador da própria janela (`localhost` do nó) e nunca de uma página de fora. Nada novo passa pela IA além do que a pessoa anexa.
+- **Atalhos e menus** (Ctrl+K, Ctrl+N, botão direito) só mudam a tela; nenhuma aprovação, senha ou cartão ganhou caminho novo. O painel **Aprovações** mostra os mesmos cartões Aprovar/Recusar de antes, com as mesmas verificações no supervisor.
+

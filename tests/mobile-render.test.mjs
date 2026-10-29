@@ -13,7 +13,7 @@ test('Message keeps the native rendering snapshot from before memoization', () =
 
 test('extracted screens and app have no loose references', () => {
   const parser = require('@babel/parser'), traverse = require('@babel/traverse').default;
-  const globals = new Set(['undefined','console','setTimeout','clearTimeout','setInterval','clearInterval','fetch','AbortController','globalThis','process','window','navigator','URL','WebSocket','requestAnimationFrame','cancelAnimationFrame','__DEV__']);
+  const globals = new Set(['undefined','require','console','setTimeout','clearTimeout','setInterval','clearInterval','fetch','AbortController','globalThis','process','window','navigator','URL','WebSocket','FileReader','requestAnimationFrame','cancelAnimationFrame','__DEV__']);
   for (const file of ['App.js','styles.js','components/shared.js','components/Message.js','components/MessageActions.js','components/QueuePanel.js','components/Search.js','screens/Chat.js','screens/Room.js','screens/Home.js']) {
     const ast = parser.parse(readFileSync(new URL('../mobile/' + file, import.meta.url), 'utf8'), { sourceType: 'module', plugins: ['jsx'] }); const missing = new Set();
     traverse(ast, { ReferencedIdentifier(path) { if (!path.scope.hasBinding(path.node.name) && !globals.has(path.node.name)) missing.add(path.node.name); } });

@@ -7,7 +7,7 @@ import { useLiveCallback } from './shared';
 
 /** A row of the conversation that opens the message actions when held; pinned messages carry a small mark. */
 export function Actionable({ message, onHold, children }) {
-  return <Pressable accessible={false} delayLongPress={350} onLongPress={() => onHold(message)}>
+  return <Pressable accessible={false} delayLongPress={350} onLongPress={() => onHold(message)} onContextMenu={event => { event?.preventDefault?.(); onHold(message); }}>
     {message.pinned ? <View style={styles.pinnedMark}><Icon name="pin" size={12} color={C.amber} /><Text style={styles.pinnedMarkText}>Fixada</Text></View> : null}
     {children}
   </Pressable>;

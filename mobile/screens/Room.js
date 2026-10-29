@@ -11,6 +11,7 @@ import { C, Icon } from '../theme';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
+import { readingColumn } from '../desktop';
 
 function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const openFile = useLiveCallback(onFile);
@@ -54,7 +55,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
     </View>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
     <View style={styles.messagesWrap}>
-    <FlatList ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
+    <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
       onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
@@ -76,7 +77,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       </View>} />
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
-    <View style={styles.composerArea}>
+    <View style={[styles.composerArea, readingColumn]}>
       {error ? <Text style={styles.composerError}>{error}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mentionBar} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
         {members.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Chamar ${bot.name}`} onPress={() => mention(bot)} style={({ pressed }) => [styles.mentionChip, named.includes(bot) && styles.mentionChipOn, pressed && styles.pressed]}>

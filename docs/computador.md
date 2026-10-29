@@ -200,3 +200,13 @@ Uma oferta acima do teto (ou abaixo do mínimo), fora do canal, de outro bot ou 
 - **Fila**: no chat, o cartão **Fila** lista o que espera (X cancela o item), **Pausar/Retomar** segura o que ainda não começou e **Corrigir rumo** interrompe a tarefa em andamento e manda a sua instrução na frente, na mesma sessão. A pausa não segura a correção. Só em conversa privada.
 - **Modelo reserva**: no perfil, **Se o limite acabar**. Quando a assinatura acaba, a mesma mensagem é respondida pela outra IA, com o histórico, e a mensagem mostra "Reserva". O bot continua com o mesmo nível, concessões e lista "Sempre perguntar"; a sessão da outra IA não é guardada. Só em conversa privada.
 - **Notificação**: respostas de bots têm **Responder** (a resposta vira mensagem para o bot) e pedidos de aprovação têm **Aprovar/Recusar** (uma vez, sem "sempre"). Pagamento, senha, código, terminal, instalar habilidade, arquivo saindo, controle do computador, negociação e textos longos só abrem o app.
+
+## A janela do computador (v67)
+
+- **Estrutura**: uma barra estreita de ícones (Conversas, Atividade, Rotinas, Negociações; embaixo os limites do plano em anéis, Ajuda e Ajustes), a lista de conversas (uma linha por bot ou sala, com o rosto e o estado), a conversa no meio e, só quando você pede, um painel à direita. A carteira e as senhas ficam no celular, então a janela não as mostra.
+- **Abas**: cada conversa aberta ganha uma aba, com voltar e avançar; o modelo do bot, **Abrir navegador** (o navegador ao vivo do bot), **Perfil** e **Aprovações** ficam no alto. O painel **Aprovações** reúne as decisões, as pendências, as próximas rotinas e o que os bots fizeram.
+- **Teclado**: **Ctrl+K** busca e troca de bot ou sala (setas e Enter); **Ctrl+N** cria um bot; **Esc** fecha a janela, o painel ou o menu que estiver aberto. **Botão direito** num bot abre o menu do bot; numa mensagem, copiar, citar, fixar e reenviar.
+- **Janela estreita** (menos de 900 px): a lista recolhe e mostra só os rostos.
+- **Arrastar a divisória** entre a lista e a conversa muda a largura da lista.
+- **Anexos**: o botão ＋ ou arrastar arquivos para a janela anexa até 5 arquivos e 2,5 MB por mensagem (o canal até o celular é pequeno; para arquivos maiores use o celular).
+- **Ajustes** abrem em duas colunas (categorias à esquerda). **Atividade** abre em três colunas: Precisa de você, Em andamento e Concluído hoje.

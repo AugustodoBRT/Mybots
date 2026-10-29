@@ -151,7 +151,7 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 - **Modelo reserva** quando o limite da assinatura acaba (Codex ↔ Claude), com a conversa mantida.
 - **Ações na mensagem** (segurar): copiar, responder citando, fixar e reenviar.
 
-## v63 — Design novo: rostos de caracteres, celular e PC (partes 1 e 2 concluídas nas 0.41.0 e 0.42.0)
+## v63 — Design novo: rostos de caracteres, celular e PC (concluída nas 0.41.0, 0.42.0 e 0.43.0)
 
 Pedido do usuário em 28/10/2026: o app faz muita coisa, mas o design é fraco e "cinza e verde" (`C.mint` em tudo). O PC é o app do celular esticado (`desktop.js` centraliza tudo numa coluna de 820 px). A direção já foi decidida com o usuário (protótipos no Stitch e no laboratório de bots); esta seção é o que implementar. **O Stitch serve só de base**: as telas dele têm erros (listados abaixo), então a implementação corrige e adapta ao que o app já faz.
 
@@ -205,7 +205,7 @@ Inspiração de estrutura (não de visual): um app calmo e espaçoso, com uma co
 
 **Parte 2 (0.42.0, versionCode 66): o resto do celular — concluída na v66.** (aprovação, criar bot sortear/montar, perfil, carteira, atividade, ajustes reorganizados).
 
-**Parte 3 (0.43.0, versionCode 67): PC** (estrutura acima).
+**Parte 3 (0.43.0, versionCode 67): PC** (estrutura acima) — concluída na v67.
 
 Cada parte segue a seção 1 do `PLANO-V47.md` (testes, emulador, entrega, docs) e termina com APK, Release e atualização do PC, esperando o aceite antes da seguinte.
 

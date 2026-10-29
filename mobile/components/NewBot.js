@@ -6,6 +6,10 @@ import { ACCESS, HOMES, useKeyboardRoom } from '../BotProfile';
 import { BOT_TEMPLATES } from '../bot-templates';
 import { FacePicker } from './FacePicker';
 import { botColor } from '../../lib/face.mjs';
+import { desktop } from '../desktop';
+
+// On the computer the steps stay in a column about as wide as a phone.
+const column = desktop ? { width: '100%', maxWidth: 680, alignSelf: 'center' } : {};
 
 const STEPS = ['Rosto', 'Jeito e acesso', 'Primeira mensagem'];
 const GREETINGS = ['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'];
@@ -62,12 +66,12 @@ export function NewBot({ visible, models, defaultSelection, connections, nodes =
   const ready = [name.trim().length > 0, Boolean(selection.model), true];
   return <Modal visible={visible} animationType="slide" onRequestClose={() => (step ? setStep(step - 1) : onClose())}>
     <View style={[s.backdrop, { paddingBottom: keyboard }]}>
-      <View style={s.head}>
+      <View style={[s.head, column]}>
         <IconButton icon={step ? 'back' : 'close'} label={step ? 'Voltar ao passo anterior' : 'Cancelar'} onPress={() => (step ? setStep(step - 1) : onClose())} size={42} />
         <View style={{ flex: 1 }}><Text style={s.title}>Novo bot</Text><Text style={s.step}>Passo {step + 1} de 3 · {STEPS[step]}</Text></View>
       </View>
-      <View style={s.bar}>{STEPS.map((label, index) => <View key={label} style={[s.barPart, index <= step && { backgroundColor: C.accent }]} />)}</View>
-      <ScrollView ref={scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <View style={[s.bar, column]}>{STEPS.map((label, index) => <View key={label} style={[s.barPart, index <= step && { backgroundColor: C.accent }]} />)}</View>
+      <ScrollView ref={scroll} contentContainerStyle={[s.content, column]} keyboardShouldPersistTaps="handled">
         {step === 0 ? <>
           <Text style={s.label}>Nome</Text>
           <TextInput accessibilityLabel="Nome do bot" value={name} onChangeText={setName} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.accent} style={s.input} />

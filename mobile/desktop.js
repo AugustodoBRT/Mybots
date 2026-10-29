@@ -21,3 +21,12 @@ export function paintPage(colors) {
   document.body.style.backgroundColor = colors.bg; document.documentElement.style.colorScheme = colors.dark ? 'dark' : 'light';
   const style = document.getElementById('mybots-scroll'); if (style) style.textContent = `::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:${colors.line2};border-radius:5px}`;
 }
+
+// Small messages between the window's shell and the open conversation (for example "open the browser panel").
+const listeners = new Map();
+export const desktopBus = {
+  on(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); return () => listeners.get(name).delete(fn); },
+  emit(name, value) { listeners.get(name)?.forEach(fn => fn(value)); }
+};
+// Conversation text and the message field stay in a calm column of about 760 px.
+export const readingColumn = desktop ? { width: '100%', maxWidth: 760, alignSelf: 'center' } : {};

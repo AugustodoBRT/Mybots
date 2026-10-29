@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, View, ScrollView, Text, Pressable, TextInput } from 'react-native';
+import { Modal, View, ScrollView, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
 import { termuxAvailable, passwordsList } from '../termux';
@@ -102,27 +102,37 @@ export function SettingsSheet({ visible, onClose, a }) {
     return null;
   };
   const back = page === 'passwords' ? 'secrets' : null;
-  const title = page === 'passwords' ? 'Senhas guardadas' : current ? current.title : 'Ajustes';
-  return <Modal transparent visible={visible} animationType="slide" onRequestClose={() => (page ? setPage(back) : onClose())}>
-    <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
+  const wide = Boolean(desktop) && useWindowDimensions().width >= 860;
+  // On the computer the categories stay on the left and the open one fills the right.
+  const active = wide && !page ? 'account' : page;
+  const activeCategory = categories.find(item => item.key === active);
+  const title = active === 'passwords' ? 'Senhas guardadas' : activeCategory ? activeCategory.title : 'Ajustes';
+  const search = <View style={s.search}><Icon name="search" size={18} color={C.faint} />
+    <TextInput accessibilityLabel="Buscar nos ajustes" style={s.searchInput} value={query} onChangeText={setQuery} placeholder="Buscar nos ajustes" placeholderTextColor={C.faint} autoCorrect={false} /></View>;
+  const rows = shown.map(category => <Pressable key={category.key} accessibilityRole="button" accessibilityLabel={`${category.title}. ${category.summary}`} accessibilityState={{ selected: wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) }} onPress={() => setPage(category.key)}
+    style={({ pressed, hovered }) => [s.row, wide && { paddingHorizontal: 12, borderRadius: 12, borderBottomWidth: 0, paddingVertical: 12 }, wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) && { backgroundColor: C.surface2 }, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
+    <Icon name={category.icon} size={22} color={C.muted} />
+    <View style={{ flex: 1 }}><Text style={s.rowTitle}>{category.title}</Text><Text style={s.rowSummary} numberOfLines={2}>{category.summary}</Text></View>
+    {wide ? null : <Icon name="right" size={16} color={C.faint} />}
+  </Pressable>);
+  const pane = active === 'passwords' ? <PasswordsScreen bots={bots} onChanged={setPasswords} />
+    : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{body(active)}</ScrollView>;
+  return <Modal transparent visible={visible} animationType="slide" onRequestClose={() => (page && !wide ? setPage(back) : onClose())}>
+    <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall, wide && { maxWidth: 1040, width: '100%', alignSelf: 'center' }]}>
       <View style={styles.sheetHandle} />
-      <View style={s.header}>
-        {page ? <IconButton icon="back" label="Voltar aos ajustes" onPress={() => setPage(back)} size={42} /> : null}
-        <Text style={s.title} numberOfLines={1}>{title}</Text>
-        <IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} />
-      </View>
-      {page === 'passwords' ? <PasswordsScreen bots={bots} onChanged={setPasswords} />
-        : page ? <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{body(page)}</ScrollView>
-        : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-          <View style={s.search}><Icon name="search" size={18} color={C.faint} />
-            <TextInput accessibilityLabel="Buscar nos ajustes" style={s.searchInput} value={query} onChangeText={setQuery} placeholder="Buscar nos ajustes" placeholderTextColor={C.faint} autoCorrect={false} /></View>
-          {shown.map(category => <Pressable key={category.key} accessibilityRole="button" accessibilityLabel={`${category.title}. ${category.summary}`} onPress={() => setPage(category.key)} style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
-            <Icon name={category.icon} size={22} color={C.muted} />
-            <View style={{ flex: 1 }}><Text style={s.rowTitle}>{category.title}</Text><Text style={s.rowSummary} numberOfLines={2}>{category.summary}</Text></View>
-            <Icon name="right" size={16} color={C.faint} />
-          </Pressable>)}
-          {!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}
-        </ScrollView>}
+      {wide ? <View style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
+        <View style={{ width: 300 }}><Text style={[s.title, { flex: 0, marginBottom: 14 }]}>Ajustes</Text>{search}<ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView></View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={s.header}>{active === 'passwords' ? <IconButton icon="back" label="Voltar a Senhas e carteira" onPress={() => setPage('secrets')} size={42} /> : null}<Text style={s.title} numberOfLines={1}>{title}</Text><IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} /></View>
+          {pane}</View>
+      </View> : <>
+        <View style={s.header}>
+          {page ? <IconButton icon="back" label="Voltar aos ajustes" onPress={() => setPage(back)} size={42} /> : null}
+          <Text style={s.title} numberOfLines={1}>{title}</Text>
+          <IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} />
+        </View>
+        {page ? pane : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{search}{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView>}
+      </>}
     </View></View>
   </Modal>;
 }

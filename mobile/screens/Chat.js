@@ -3,9 +3,9 @@ import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { termuxAvailable, pickFile } from '../termux';
-import { desktop } from '../desktop';
+import { desktop, desktopBus, readingColumn } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
@@ -14,6 +14,16 @@ import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { QueuePanel } from '../components/QueuePanel';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
+
+// The computer's window attaches files from the browser (button or drop). The channel to the phone is small, so a message
+// carries up to 5 files and 2,5 MB.
+const WINDOW_LIMIT = 2.5 * 1024 * 1024;
+const readWebFile = file => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, data: String(reader.result).split(',')[1] || '' });
+  reader.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+  reader.readAsDataURL(file);
+});
 
 function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const retryMessage = useLiveCallback(onRetry);
@@ -51,12 +61,34 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     onIncoming();
   }, [incoming]);
   useEffect(() => { if (assumed) setBrowserOpen(true); }, [assumed]);
+  // The window's shell can open or close this conversation's browser panel ("Abrir navegador").
+  useEffect(() => desktopBus.on('browser', () => setBrowserOpen(value => !value)), []);
+  useEffect(() => { desktopBus.emit('browser-state', { botId: bot.id, open: browserOpen || assumed }); }, [browserOpen, assumed, bot.id]);
   // Tablets and the computer's window: the browser sits beside the conversation instead of above it.
   const [width, setWidth] = useState(0);
   const showBrowser = browsing && (browserOpen || assumed), side = showBrowser && width >= 820;
   // While the bot works, new messages still go out and wait their turn (phone mode).
   const typing = phone ? sending || saving : busy;
   const canSend = !typing && (draft.trim() || files.length) && selection?.model;
+  const addWebFiles = async list => {
+    setComposerError('');
+    try {
+      const picked = Array.from(list || []); if (!picked.length) return;
+      if (files.length + picked.length > 5) throw new Error('Uma mensagem leva até 5 arquivos.');
+      if (files.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, item) => sum + item.size, 0) > WINDOW_LIMIT) throw new Error('No computador, os anexos de uma mensagem podem somar até 2,5 MB. Para arquivos maiores, use o celular.');
+      const read = await Promise.all(picked.map(readWebFile)); setFiles(old => [...old, ...read].slice(0, 5));
+    } catch (e) { setComposerError(e.message); }
+  };
+  const pickWebFile = () => { const input = globalThis.document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => addWebFiles(input.files); input.click(); };
+  // Dropping files anywhere in the window attaches them to the open conversation.
+  const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles;
+  useEffect(() => {
+    if (!desktop) return undefined;
+    const over = event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); };
+    const drop = event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
+    globalThis.addEventListener('dragover', over); globalThis.addEventListener('drop', drop);
+    return () => { globalThis.removeEventListener('dragover', over); globalThis.removeEventListener('drop', drop); };
+  }, []);
   const attach = async () => {
     setComposerError('');
     try {
@@ -84,8 +116,8 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
             <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
-      {browsing ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
-      <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />
+      {browsing && !desktop ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
+      {desktop ? null : <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />}
     </View>
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
@@ -95,7 +127,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
     <View style={styles.messagesWrap}>
-    <FlatList ref={scroll} style={styles.messages} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
+    <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
       onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
@@ -133,7 +165,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       </View>} />
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
-    <View style={styles.composerArea}>
+    <View style={[styles.composerArea, readingColumn]}>
       {error ? <Text style={styles.composerError}>Confira a conexão antes de enviar.</Text> : null}
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
@@ -141,7 +173,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       <Composer value={draft} setValue={setDraft} editable={!typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
         onSend={async () => { if (await onSend(draft, files)) { setFiles([]); toEnd(); } }} accessibilityLabel="Sua mensagem"
         placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
-        onAttach={phone ? attach : null} attachDisabled={typing || files.length >= 5} />
+        onAttach={phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
     </View>
     </KeyboardAvoidingView>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />

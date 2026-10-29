@@ -82,23 +82,28 @@ internal object DeviceFiles {
   }
 
   // ---- Writing PDFs: the supervisor's HTML, laid out by an offscreen WebView without network or scripts.
+  // Kept while a PDF is being made: a WebView nobody shows and nothing holds can be collected, taking its renderer with it.
+  @Volatile private var pdfView: WebView? = null
   fun pdfCreate(context: Context, html: String): JSONObject {
     val out = File.createTempFile("mybots-write", ".pdf", context.cacheDir)
     val error = AtomicReference<String?>(null)
     val done = CountDownLatch(1)
     main.post {
       try {
-        val web = WebView(context.applicationContext)
+        val web = WebView(context.applicationContext); pdfView = web; android.util.Log.i("mybots-pdf", "webview criada")
         web.settings.javaScriptEnabled = false
         web.settings.blockNetworkLoads = true
         web.settings.allowFileAccess = false; web.settings.allowContentAccess = false
         // A WebView nobody shows still has to lay out and run, or the printing never starts (the app in the background, the screen off).
         web.resumeTimers(); web.onResume()
+        // Not shown on any screen, its renderer process would be taken as not needed and killed at once: ask Android to keep it.
+        if (android.os.Build.VERSION.SDK_INT >= 26) web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         val width = (context.resources.displayMetrics.density * 595).toInt(); web.measure(android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)); web.layout(0, 0, width, web.measuredHeight.coerceAtLeast(1))
         web.webViewClient = object : WebViewClient() {
           var started = false
+          override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean { android.util.Log.i("mybots-pdf", "renderer gone crash=${detail.didCrash()}"); error.set("O navegador do celular que monta o PDF foi encerrado pelo sistema. Tente de novo."); done.countDown(); return true }
           override fun onPageFinished(view: WebView, url: String?) {
-            if (started) return; started = true
+            if (started) return; started = true; android.util.Log.i("mybots-pdf", "pagina carregada")
             MyBotsPdfWriter.write(view.createPrintDocumentAdapter("MyBots"), out) { failure -> error.set(failure); done.countDown(); main.post { view.destroy() } }
           }
         }
@@ -110,7 +115,7 @@ internal object DeviceFiles {
       error.get()?.let { throw IllegalStateException(it) }
       if (out.length() == 0L) throw IllegalStateException("O PDF saiu vazio.")
       return JSONObject().put("data", Base64.encodeToString(out.readBytes(), Base64.NO_WRAP))
-    } finally { out.delete() }
+    } finally { out.delete(); main.post { pdfView?.destroy(); pdfView = null } }
   }
 
   // ---- Downloads from a bot's browser.

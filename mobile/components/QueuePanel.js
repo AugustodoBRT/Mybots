@@ -6,7 +6,8 @@ import { C, Icon } from '../theme';
 /** The bot's line: what waits (each item can be cancelled), pause and resume, and "Corrigir rumo" for the turn in progress. */
 export function QueuePanel({ queued, running, paused, onPause, onCancel, onSteer }) {
   const [steering, setSteering] = useState(false); const [text, setText] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  if (!queued.length && !running && !paused) return null;
+  // Only when there is a line to show: a single instruction being worked on needs no panel (the "Pensando" card says it).
+  if (!queued.length && !paused) return null;
   const steer = async () => {
     if (!text.trim() || busy) return; setBusy(true); setError('');
     try { await onSteer(text.trim()); setText(''); setSteering(false); } catch (failure) { setError(failure.message || 'Não deu para enviar.'); } finally { setBusy(false); }

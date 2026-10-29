@@ -122,12 +122,14 @@ export const texText = src => treeText(parseTex(src));
 const MATH = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<![\s\\])\$(?!\d)/g;
 /** Text → pieces: { text } or { math, display }. */
 export function splitMath(text) {
+  // A model that writes \frac or \beta inside a JSON string without doubling the backslash hands over a form feed or a backspace instead: put them back.
+  text = String(text).replace(/\x0c/g, '\\f').replace(/\x08/g, '\\b').replace(/\x0b/g, '\\v');
   const out = []; let last = 0;
   for (const match of String(text).matchAll(MATH)) {
     const tex = match[1] ?? match[2] ?? match[3] ?? match[4]; const display = match[1] !== undefined || match[2] !== undefined;
     if (!display && /^[\d.,\s]+$/.test(tex)) continue;
     if (match.index > last) out.push({ text: text.slice(last, match.index) });
-    out.push({ math: tex.trim(), display }); last = match.index + match[0].length;
+    out.push({ math: tex.replace(/\t/g, '\\t').replace(/\r/g, '\\r').trim(), display }); last = match.index + match[0].length;
   }
   if (last < text.length) out.push({ text: text.slice(last) });
   return out;

@@ -27,3 +27,10 @@ test('Word gets native equations and a whole HTML page given as content is kept 
   const word = await create({ name: 'a', format: 'docx', content: page }, { pdf: async () => Buffer.alloc(0) });
   assert.doesNotMatch(docxText(word.bytes), /&lt;h1|alert/);
 });
+
+test('a formula whose backslashes a model lost to JSON escapes (form feed, backspace, tab) is put back, and a chart may name its numbers values', async () => {
+  const lost = 'Raiz $\x0crac{1}{2}$ e $\x08eta + 2\times 3$.';
+  const html = toHtml(lost, 't');
+  assert.match(html, /class="mf"/); assert.match(html, /β/); assert.match(html, /×/);
+  assert.match(toHtml('```chart\n{"type":"bar","labels":["A","B"],"series":[{"name":"s","values":[3,5]}]}\n```', 't'), /<rect[^>]*height="[1-9]/);
+});

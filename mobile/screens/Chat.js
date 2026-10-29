@@ -146,7 +146,8 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
       {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id]) ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
-      {browserCall ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}
+      {/* the steps of the bot's browser belong to the browser: they show only while it is open */}
+      {browserCall && showBrowser ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {asleep && running ? <View style={styles.thinking}><Avatar bot={bot} size={34} state="sleeping" tile={false} />
         <View style={styles.thinkingCard}>

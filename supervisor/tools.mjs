@@ -757,6 +757,13 @@ export class Tools {
     });
   }
   /** The files a turn sent, handed to its reply once (and forgotten). */
+  /** Pictures the model drew (see generatedImages in lib/codex-runner.cjs) join the files that go with the reply, shown as images in the chat. */
+  adoptImages(botId, taskId, images) {
+    if (!this.attachments || !images?.length) return;
+    const list = this.outgoing.get(taskId) || [];
+    for (const image of images.slice(0, Math.max(0, 10 - list.length))) { try { list.push(this.attachments.store(botId, image)); this.db.record('file_created', `Imagem criada: ${image.name}.`, botId, taskId); } catch {} }
+    this.outgoing.set(taskId, list);
+  }
   takeOutgoing(taskId) { const list = this.outgoing.get(taskId) || []; this.outgoing.delete(taskId); return list; }
   /** Aprovar/Recusar on the notification: one time only (never "sempre"), and not for the decisions that open the app. */
   noticeDecision(id, actionHash, approved) {

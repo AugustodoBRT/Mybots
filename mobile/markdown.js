@@ -14,7 +14,7 @@ export function chartSpec(source) {
   const labels = Array.isArray(value.labels) ? value.labels.slice(0, 50).map(label => String(label).slice(0, 40)) : null;
   const series = Array.isArray(value.series) ? value.series.slice(0, 6) : Array.isArray(value.data) ? [{ name: '', data: value.data }] : null;
   if (!labels?.length || !series?.length) return null;
-  const clean = series.map(item => ({ name: String(item?.name || '').slice(0, 40), data: labels.map((_, index) => Number(item?.data?.[index])).map(number => Number.isFinite(number) ? number : 0) }));
+  const clean = series.map(item => ({ name: String(item?.name || '').slice(0, 40), data: labels.map((_, index) => Number((item?.data ?? item?.values ?? item?.y)?.[index])).map(number => Number.isFinite(number) ? number : 0) }));
   return { type: value.type, title: typeof value.title === 'string' ? value.title.slice(0, 100) : '', labels, series: value.type === 'pie' ? clean.slice(0, 1) : clean };
 }
 

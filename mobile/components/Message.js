@@ -5,6 +5,8 @@ import { styles } from '../styles';
 import { Icon, C } from '../theme';
 import { claudeName, findModel, EFFORT_NAMES, Avatar, tokensLabel } from './shared';
 import { FileChip, FileCard, RichText } from '../RichMessage';
+import { ImageBubble } from './ImageBubble';
+import { isPicture } from '../attachment-images';
 
 export function MessageView({ message, bot, models, onRetry, busy, onFile, fileBusy, group = false }) {
   const routine = message.origin === 'routine';
@@ -23,7 +25,7 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     <Icon name="alert" size={16} color={C.red} /><Text style={styles.messageErrorText}>{message.error || 'A resposta não foi concluída.'}</Text>
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRetry(message.text, message)} style={styles.retryButton}><Icon name="refresh" size={14} color={C.text} /><Text style={styles.retryText}>Tentar de novo</Text></Pressable>
   </View>;
-  const files = message.attachments?.length ? <View style={styles.messageFiles}>{message.attachments.map(file => user ? <FileChip key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} /> : <FileCard key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} />)}</View> : null;
+  const files = message.attachments?.length ? <View style={styles.messageFiles}>{message.attachments.map(file => isPicture(file) ? <ImageBubble key={file.id} file={file} onPress={onFile} /> : user ? <FileChip key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} /> : <FileCard key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} />)}</View> : null;
   if (user) return <View style={[styles.messageRow, styles.userMessageRow]}>
     <View style={[styles.messageBubble, styles.userBubble]}>
       {files}

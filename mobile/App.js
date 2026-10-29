@@ -18,6 +18,7 @@ import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalSt
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
+import { setImageReader } from './attachment-images';
 import { createTermuxBackup } from './backup';
 import { RoomScreen } from './screens/Room';
 import { ChatScreen } from './screens/Chat';
@@ -379,6 +380,14 @@ function AppMain() {
   }, [mode, loadSupervisorState, refreshPhone]);
   useEffect(() => () => { clearTimeout(eventRefresh.current); supervisor.current.close(); }, []);
 
+  // Pictures in the conversation are read through the same file call as Open / Share / Save (in 3 MB parts).
+  useEffect(() => {
+    setImageReader(async file => {
+      let offset = 0, data = '';
+      do { const part = await supervisor.current.call('file.read', { id: file.id, offset }); data += part.chunk; offset = part.next; } while (offset !== null);
+      return `data:${file.mime};base64,${data}`;
+    });
+  }, []);
   const fileAct = async (file, action) => {
     setFileBusy(file.id); setFileNote('');
     // On the computer the node saves the file in ~/Downloads and opens it with the default app.

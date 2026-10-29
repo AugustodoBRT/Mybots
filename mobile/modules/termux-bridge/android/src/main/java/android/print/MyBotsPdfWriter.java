@@ -23,12 +23,13 @@ public final class MyBotsPdfWriter {
       .build();
     adapter.onLayout(null, attributes, null, new PrintDocumentAdapter.LayoutResultCallback() {
       @Override public void onLayoutFinished(PrintDocumentInfo info, boolean changed) {
+        android.util.Log.i("mybots-pdf", "paginado");
         final ParcelFileDescriptor descriptor;
         try {
           descriptor = ParcelFileDescriptor.open(out, ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE | ParcelFileDescriptor.MODE_READ_WRITE);
         } catch (Exception error) { done.finished("Não consegui criar o arquivo PDF."); return; }
         adapter.onWrite(new PageRange[] { PageRange.ALL_PAGES }, descriptor, new CancellationSignal(), new PrintDocumentAdapter.WriteResultCallback() {
-          @Override public void onWriteFinished(PageRange[] pages) { close(descriptor); done.finished(null); }
+          @Override public void onWriteFinished(PageRange[] pages) { android.util.Log.i("mybots-pdf", "escrito"); close(descriptor); done.finished(null); }
           @Override public void onWriteFailed(CharSequence error) { close(descriptor); done.finished("Falha ao gerar o PDF: " + error); }
           @Override public void onWriteCancelled() { close(descriptor); done.finished("A geração do PDF foi cancelada."); }
         });

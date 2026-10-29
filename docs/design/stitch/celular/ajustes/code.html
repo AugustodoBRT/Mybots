@@ -1,0 +1,365 @@
+<!DOCTYPE html><html class="dark" lang="pt-BR"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_tab" name="shell-type"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&amp;family=Plus+Jakarta+Sans:wght@400;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{width:100vw;margin:0;padding:0;background-color:#131315;}body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "surface-container": "#201f21", "tertiary-fixed-dim": "#27e0a9", "on-background": "#e5e1e4", "surface-variant": "#353437", "surface-container-high": "#2a2a2c", "on-surface": "#e5e1e4", "primary": "#ffc68b", "secondary-container": "#006be3", "primary-fixed-dim": "#ffb86b", "secondary-fixed": "#d8e2ff", "on-tertiary-fixed-variant": "#00513b", "surface-tint": "#ffb86b", "on-primary": "#492900", "inverse-primary": "#895100", "on-primary-fixed": "#2c1700", "on-error-container": "#ffdad6", "on-secondary-fixed-variant": "#004494", "on-error": "#690005", "secondary-fixed-dim": "#adc6ff", "on-tertiary-fixed": "#002116", "error": "#ffb4ab", "inverse-surface": "#e5e1e4", "tertiary": "#3aeab3", "on-primary-container": "#683c00", "on-secondary-container": "#f2f4ff", "on-secondary-fixed": "#001a41", "inverse-on-surface": "#313032", "outline": "#a28d7a", "surface-container-highest": "#353437", "surface-dim": "#131315", "tertiary-container": "#00cd99", "surface": "#131315", "surface-bright": "#39393b", "background": "#131315", "primary-container": "#ff9f1c", "tertiary-fixed": "#54fdc4", "on-primary-fixed-variant": "#683d00", "secondary": "#adc6ff", "on-tertiary": "#003827", "error-container": "#93000a", "on-surface-variant": "#dac2ae", "primary-fixed": "#ffdcbc", "on-tertiary-container": "#00513a", "outline-variant": "#544434", "surface-container-low": "#1c1b1d", "surface-container-lowest": "#0e0e10", "on-secondary": "#002e69" }, "borderRadius": { "DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px" }, "spacing": { "space-lg": "1.5rem", "space-md": "1rem", "space-xs": "0.25rem", "space-xl": "2rem", "space-sm": "0.5rem", "gutter": "1rem", "margin": "1.25rem" }, "fontFamily": { "body-lg": ["Plus Jakarta Sans"], "headline-sm": ["Plus Jakarta Sans"], "body-sm": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "label-mono-sm": ["Inter"], "label-caps": ["Inter"], "body-md": ["Plus Jakarta Sans"], "label-pill": ["Inter"], "display-hero": ["Plus Jakarta Sans"] }, "fontSize": { "body-lg": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "400" }], "headline-sm": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-md": ["22px", { "lineHeight": "28px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "headline-lg": ["30px", { "lineHeight": "36px", "letterSpacing": "-0.025em", "fontWeight": "700" }], "label-mono-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "label-caps": ["11px", { "lineHeight": "14px", "letterSpacing": "0.06em", "fontWeight": "700" }], "body-md": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.005em", "fontWeight": "400" }], "label-pill": ["13px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }], "display-hero": ["38px", { "lineHeight": "44px", "letterSpacing": "-0.03em", "fontWeight": "700" }] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-background font-body-md text-on-surface flex flex-col min-h-screen" style="background-color: rgb(0, 0, 0);"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]" style="background-color: rgba(0, 0, 0, 0.85); backdrop-filter: blur(20px);"><div class="h-16 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-[0_0_12px_rgba(255,159,28,0.8)]"></div><h1 class="font-headline-sm text-headline-sm text-on-surface font-semibold tracking-tight">Ajustes</h1></div><div class="flex items-center"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-28 bg-background" style="background-color: rgb(0, 0, 0);"><div class="flex flex-col w-full px-margin pb-10">
+<!-- Search Field (Tactile Frosted Surface) -->
+<div class="relative w-full mt-space-sm mb-space-lg">
+<div class="w-full flex items-center bg-surface-container-high rounded-full px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.5)] focus-within:ring-2 focus-within:ring-primary-container transition-all">
+<span class="material-symbols-outlined text-outline mr-3 text-[20px]">search</span>
+<input class="w-full bg-transparent border-0 outline-none text-on-surface font-body-md text-body-md placeholder:text-outline/70 placeholder:font-body-md" id="settingsSearch" placeholder="Buscar configurações, bots ou permissões..." type="text">
+<button aria-label="Limpar busca" class="hidden text-outline hover:text-on-surface p-1 transition-colors" id="clearSearch" type="button">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+</div>
+<!-- Bot Squad Sync Status (Delight Micro-Card) -->
+<div class="w-full bg-surface-container-low rounded-lg p-space-md mb-space-lg flex items-center justify-between shadow-sm relative overflow-hidden">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-surface-container-highest flex-shrink-0">
+<span class="w-2.5 h-2.5 rounded-full bg-primary-container shadow-[0_0_10px_rgba(255,159,28,0.9)] animate-pulse"></span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Núcleo Neural Ativo</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">5 companheiros sincronizados em tempo real</span>
+</div>
+</div>
+<div class="px-2.5 py-1 rounded-full bg-primary-container/15 flex items-center gap-1 flex-shrink-0">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+<span class="font-label-caps text-label-caps text-primary-container tracking-wider">OLED SEGURO</span>
+</div>
+</div>
+<!-- Group: Conta e IA -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Conta e IA</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<!-- Item 1 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">account_circle</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Perfil pessoal</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Augusto · augusto@mybots.ai</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+<!-- Item 2 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">hub</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Chaves de API &amp; Modelos vinculados</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Anthropic (Claude 3.5), OpenAI (GPT-4o)</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+<!-- Item 3 -->
+<div class="settings-item w-full flex items-center justify-between p-3.5 rounded-md text-left">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary text-[20px]">notifications_active</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Notificações &amp; Alertas no celular</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Prioridade alta para ações autônomas</span>
+</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+<input checked="" class="sr-only peer toggle-input" type="checkbox">
+<div class="w-12 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Group: Bots -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Bots</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<!-- Item 1 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">shield_person</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Autonomia global &amp; Travas de segurança</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Confirmação obrigatória para transações financeiras</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+<!-- Item 2 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">psychology</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Comportamento adaptativo &amp; Memória cruzada</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Compartilhamento de contexto entre Atlas e Clara</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Group: Dispositivos -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Dispositivos</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<!-- Item 1: Celular -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">smartphone</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Celular</span>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-body-sm text-body-sm text-tertiary truncate">Android 14 · Conectado</span>
+</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+<!-- Item 2: Computador -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-outline text-[20px]">laptop_mac</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Computador</span>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">MacBook Pro · Standby</span>
+</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Group: Senhas e carteira (Featured Row Highlight) -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Senhas e carteira</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<!-- Special Highlight Row -->
+<button class="settings-item w-full flex items-center justify-between p-4 rounded-md bg-gradient-to-r from-surface-container-high via-surface-container to-surface-container-high hover:from-surface-container hover:to-surface-container-highest transition-all text-left group shadow-[0_4px_16px_rgba(255,159,28,0.06)]" id="passwordsDrawerBtn" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary-container text-[22px]">key</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold truncate">Senhas guardadas</span>
+<span class="px-2 py-0.5 rounded-full bg-primary-container text-on-primary-container font-label-caps text-label-caps font-bold">COFRE</span>
+</div>
+<span class="font-body-sm text-body-sm text-primary truncate">312 senhas · 4 bots com acesso</span>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary-container group-hover:translate-x-1 transition-transform text-[22px]">arrow_forward</span>
+</div>
+</button>
+<!-- Standard Item -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">credit_card</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Cartões e formas de pagamento</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">2 cartões salvos para checkout autônomo</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Group: Dados e Segurança -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Dados e Segurança</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">lock_reset</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Backup criptografado local e nuvem</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Chave biométrica hardware-backed (AES-256)</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Group: Sobre -->
+<section class="settings-group mb-space-lg">
+<h2 class="font-label-caps text-label-caps text-outline uppercase tracking-wider px-2 mb-2">Sobre</h2>
+<div class="bg-surface-container-low rounded-lg p-1.5 flex flex-col gap-1 shadow-sm">
+<!-- Item 1 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">info</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Sobre o MyBots</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Versão 1.2.4 (Build 8904 - Estável)</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+<!-- Item 2 -->
+<button class="settings-item w-full flex items-center justify-between p-3.5 rounded-md hover:bg-surface-container transition-colors text-left group" type="button">
+<div class="flex items-center gap-3.5 min-w-0">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center flex-shrink-0 group-hover:bg-primary-container/20 transition-colors">
+<span class="material-symbols-outlined text-primary text-[20px]">policy</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-headline-sm text-on-surface truncate">Termos de uso e sandbox local</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Execução isolada de código e diretrizes</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface text-[20px] transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Interactive Feedback Pill Modal (Vault View Mockup Triggered by Password Button) -->
+<div class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-md p-4 transition-opacity duration-300" id="vaultModal">
+<div class="w-full max-w-md bg-surface-container rounded-lg p-space-lg flex flex-col gap-4 shadow-2xl">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container text-[24px]">key</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Cofre de Senhas</h3>
+</div>
+<button class="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center text-outline hover:text-on-surface" id="closeVaultBtn" type="button">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+        Acesso biométrico confirmado. Você possui 312 credenciais gerenciadas. Os bots <strong class="text-on-surface">Atlas, Clara, Maya</strong> e <strong class="text-on-surface">Sora</strong> têm permissões ativas de autopreenchimento seguro.
+      </p>
+<div class="bg-surface-container-lowest rounded-md p-3 flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-outline">Status do Cofre</span>
+<span class="font-label-caps text-label-caps text-tertiary">DESBLOQUEADO LOCALMENTE</span>
+</div>
+<button class="w-full py-3.5 rounded-full bg-primary-container text-on-primary-container font-headline-sm text-headline-sm font-semibold text-center hover:opacity-95 transition-opacity" id="confirmVaultClose" type="button">
+        Concluir
+      </button>
+</div>
+</div>
+<!-- Empty Search Result State -->
+<div class="hidden flex-col items-center justify-center py-12 text-center" id="emptySearchState">
+<div class="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center mb-3">
+<span class="material-symbols-outlined text-outline text-[28px]">search_off</span>
+</div>
+<span class="font-headline-sm text-headline-sm text-on-surface mb-1">Nenhum ajuste encontrado</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant max-w-xs">
+      Tente buscar por termos como "chaves", "senhas", "macbook" ou "segurança".
+    </span>
+</div>
+</div>
+<script>
+  (function () {
+    const searchInput = document.getElementById('settingsSearch');
+    const clearBtn = document.getElementById('clearSearch');
+    const groups = document.querySelectorAll('.settings-group');
+    const emptyState = document.getElementById('emptySearchState');
+    const vaultBtn = document.getElementById('passwordsDrawerBtn');
+    const vaultModal = document.getElementById('vaultModal');
+    const closeVaultBtn = document.getElementById('closeVaultBtn');
+    const confirmVaultClose = document.getElementById('confirmVaultClose');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function (e) {
+        const query = e.target.value.toLowerCase().trim();
+        let totalVisible = 0;
+
+        if (query.length > 0) {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+
+        groups.forEach(group => {
+          const items = group.querySelectorAll('.settings-item');
+          let groupHasVisible = false;
+
+          items.forEach(item => {
+            const text = item.textContent.toLowerCase();
+            if (text.includes(query)) {
+              item.style.display = 'flex';
+              groupHasVisible = true;
+              totalVisible++;
+            } else {
+              item.style.display = 'none';
+            }
+          });
+
+          if (groupHasVisible) {
+            group.style.display = 'block';
+          } else {
+            group.style.display = 'none';
+          }
+        });
+
+        if (totalVisible === 0 && query.length > 0) {
+          emptyState.classList.remove('hidden');
+          emptyState.classList.add('flex');
+        } else {
+          emptyState.classList.add('hidden');
+          emptyState.classList.remove('flex');
+        }
+      });
+    }
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        searchInput.value = '';
+        clearBtn.classList.add('hidden');
+        groups.forEach(group => {
+          group.style.display = 'block';
+          group.querySelectorAll('.settings-item').forEach(item => {
+            item.style.display = 'flex';
+          });
+        });
+        emptyState.classList.add('hidden');
+        emptyState.classList.remove('flex');
+        searchInput.focus();
+      });
+    }
+
+    function toggleVault(show) {
+      if (!vaultModal) return;
+      if (show) {
+        vaultModal.classList.remove('hidden');
+      } else {
+        vaultModal.classList.add('hidden');
+      }
+    }
+
+    if (vaultBtn) {
+      vaultBtn.addEventListener('click', () => toggleVault(true));
+    }
+    if (closeVaultBtn) {
+      closeVaultBtn.addEventListener('click', () => toggleVault(false));
+    }
+    if (confirmVaultClose) {
+      confirmVaultClose.addEventListener('click', () => toggleVault(false));
+    }
+  })();
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/85 backdrop-blur-xl shadow-[0_-4px_24px_rgba(0,0,0,0.4)]" data-active-classes="text-primary-container" style="background-color: rgba(0, 0, 0, 0.9); backdrop-filter: blur(20px); border-top: 1px solid rgba(255, 255, 255, 0.05);"><div class="flex justify-around items-center h-16 px-space-sm"><a class="flex flex-col items-center justify-center w-14 h-14 text-on-surface-variant hover:text-on-surface transition-colors" data-path="carteira" href="#"><span class="material-symbols-outlined text-[24px]">account_balance_wallet</span><span class="font-label-caps text-label-caps mt-space-xs">Carteira</span></a><a class="flex flex-col items-center justify-center w-14 h-14 text-on-surface-variant hover:text-on-surface transition-colors" data-path="atividade" href="#"><span class="material-symbols-outlined text-[24px]">monitoring</span><span class="font-label-caps text-label-caps mt-space-xs">Atividade</span></a><a aria-current="page" class="flex flex-col items-center justify-center w-14 h-14 transition-colors text-primary-container" data-path="ajustes" href="#"><span class="material-symbols-outlined text-[24px]">tune</span><span class="font-label-caps text-label-caps mt-space-xs">Ajustes</span></a></div></nav>
+
+</body></html>

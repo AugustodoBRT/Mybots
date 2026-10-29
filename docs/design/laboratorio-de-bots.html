@@ -1,0 +1,664 @@
+<title>Laboratório de bots</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&display=swap">
+<style>
+@font-face { font-family: "BotGlyphs"; src: url(data:font/woff2;base64,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) format("woff2"); font-display: block; }
+/* Layout: one working bench. A sticky control strip on top, a big living specimen beside its trait sheet,
+   then three rows of comparisons (evolution, states, team) and a draw-lots grid. Dark-first, OLED black. */
+:root {
+  --bg: #000000; --surface: #0E0E0D; --surface2: #171715; --line: #262522; --fg: #ECE8DF; --muted: #8E8A80;
+  --accent: #FFA52E; --accent-ink: #1A1000;
+  --f-ui: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-glyph: "BotGlyphs", ui-monospace, "JetBrains Mono", monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #F7F4EE; --surface: #FFFFFF; --surface2: #EFEBE2; --line: #DDD7CA; --fg: #1D1B17; --muted: #6E695E;
+  --accent: #B35F00; --accent-ink: #FFFFFF; color-scheme: light; } }
+:root[data-theme="light"] {
+  --bg: #F7F4EE; --surface: #FFFFFF; --surface2: #EFEBE2; --line: #DDD7CA; --fg: #1D1B17; --muted: #6E695E;
+  --accent: #B35F00; --accent-ink: #FFFFFF; color-scheme: light; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-ui); font-size: 15px; line-height: 1.5;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 64px; }
+main { max-width: 1120px; margin-inline: auto; display: grid; gap: 44px; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.1; margin: 0; letter-spacing: -0.02em; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 19px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 62ch; margin-top: 10px; }
+.sec-head { display: grid; gap: 4px; margin-bottom: 16px; }
+.sec-head p { color: var(--muted); max-width: 66ch; }
+.tag { font-family: var(--f-glyph); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding: 10px max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.group > label, .group > .lab { font-size: 12px; color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 2px; gap: 2px; }
+.seg button { font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 0; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { font: inherit; font-size: 13px; font-weight: 500; color: var(--accent-ink); background: var(--accent); border: 0; padding: 7px 14px; border-radius: 9px; cursor: pointer; }
+.btn.ghost { background: var(--surface); color: var(--fg); border: 1px solid var(--line); }
+input[type="text"] { font: inherit; font-size: 14px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; width: 130px; }
+.swatches { display: flex; gap: 6px; }
+.sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; }
+.sw[aria-pressed="true"] { border-color: var(--fg); }
+
+.bench { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 28px; align-items: stretch; }
+@media (max-width: 760px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; display: grid; place-items: center; padding: 22px; min-height: 360px; }
+.dial { display: grid; gap: 10px; align-content: start; }
+.dial-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.dial-name { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.dial-val { font-family: var(--f-glyph); color: var(--muted); font-size: 13px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
+.stops { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.traits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-top: 8px; border-top: 1px solid var(--line); }
+.trait { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.trait:nth-child(odd) { padding-right: 14px; }
+.trait:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--line); }
+.trait span:first-child { color: var(--muted); }
+.trait span:last-child { font-family: var(--f-glyph); text-align: right; }
+
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.cell { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 10px 12px; display: grid; gap: 8px; justify-items: center; align-content: end; }
+.cell .slot { height: 170px; display: grid; place-items: center; }
+.cell .cap { font-size: 13px; font-weight: 500; }
+.cell .sub { font-size: 12px; color: var(--muted); margin-top: -6px; }
+.cell.pick { cursor: pointer; }
+.cell.pick:hover { border-color: var(--muted); }
+.cell.pick .slot { height: 120px; }
+
+.team { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 6px 16px; }
+.team-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.team-row:last-child { border-bottom: 0; }
+.team-row .who { font-weight: 700; font-size: 16px; }
+.team-row .st { font-size: 13px; margin-left: 8px; font-weight: 500; }
+.team-row .pv { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-row .tm { color: var(--muted); font-size: 12px; font-family: var(--f-glyph); }
+.team-row .av { display: grid; place-items: center; height: 56px; }
+.sizes { display: flex; align-items: flex-end; gap: 26px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px 22px; }
+.sizes figure { margin: 0; display: grid; gap: 8px; justify-items: center; }
+.sizes figcaption { font-family: var(--f-glyph); font-size: 12px; color: var(--muted); }
+.note { color: var(--muted); font-size: 13px; max-width: 70ch; }
+canvas { display: block; max-width: 100%; }
+.stage.tall { min-height: 520px; }
+.row.wide { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.cell .slot.f { height: auto; min-height: 150px; }
+.view { display: grid; gap: 44px; }
+.view[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<main>
+  <header>
+    <div class="tag">MYBOTS · PERSONAGENS</div>
+    <h1>Laboratório de bots</h1>
+    <p class="lede">Cada bot é feito de caracteres e nasce de um nome. Quanto mais esquisito, mais monstro. Rostos são a direção principal; os bichos da primeira versão ficam na outra aba.</p>
+  </header>
+  <div class="bar" role="toolbar" aria-label="Controles">
+    <div class="group"><span class="lab">Estilo</span><div class="seg" id="viewSeg"><button type="button" data-v="face" aria-pressed="true">Rostos</button><button type="button" data-v="creature" aria-pressed="false">Bichos</button></div></div>
+    <div class="group"><span class="lab">Estado</span><div class="seg" id="stateSeg"></div></div>
+    <div class="group"><label for="seed">Nome</label><input type="text" id="seed" value="Clara" maxlength="24" autocomplete="off" spellcheck="false"><button class="btn" id="roll" type="button">Sortear</button></div>
+    <div class="group"><span class="lab">Cor</span><div class="swatches" id="swatches"></div></div>
+    <div class="group"><span class="lab">Fundo</span><div class="seg" id="themeSeg"><button type="button" data-t="dark" aria-pressed="true">Escuro</button><button type="button" data-t="light" aria-pressed="false">Claro</button></div></div>
+    <div class="group"><button class="btn ghost" id="pause" type="button" aria-pressed="false">Pausar</button></div>
+  </div>
+  <div id="views"></div>
+</main>
+<script>
+(() => {
+const W = 21, H = 13, CX = 10, TOP = 3;
+const lerp = (a, b, t) => a + (b - a) * t, clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const pick = (arr, r) => arr[Math.floor(r * arr.length) % arr.length];
+function hashStr(s) { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const h2 = (x, y, z = 0) => { let h = Math.imul(x + 1, 374761393) ^ Math.imul(y + 7, 668265263) ^ Math.imul(z + 13, 2147483647); h = Math.imul(h ^ h >>> 13, 1274126177); return ((h ^ h >>> 16) >>> 0) / 4294967296; };
+
+const FAM = ['blob', 'drop', 'tri', 'box', 'tall', 'wide', 'ghost'];
+const FAMNAME = { blob: 'bolha', drop: 'gota', tri: 'triângulo', box: 'caixa', tall: 'alto', wide: 'largo', ghost: 'fantasma' };
+const STATES = [['idle', 'Parado'], ['working', 'Trabalhando'], ['waiting', 'Esperando'], ['sleep', 'Dormindo'], ['error', 'Erro'], ['done', 'Concluído']];
+const STATE_LABEL = Object.fromEntries(STATES);
+const COLORS = [['#8FA6FF', 'Pervinca'], ['#34C9A8', 'Água'], ['#B58CFF', 'Violeta'], ['#FFB27A', 'Pêssego'], ['#FF8FB1', 'Rosa'], ['#B7C86A', 'Oliva'], ['#F2C14E', 'Sol'], ['#FF7B67', 'Coral']];
+
+/* ---------- build one bot from a name and a weirdness (0..1) ---------- */
+function makeForm(R, w, v, famIdxA) {
+  const r = i => R[(i + (v ? 31 : 0)) % 80];
+  let fi = Math.floor(R[0] * 7);
+  if (v) fi = (famIdxA + 1 + Math.floor(R[50] * 6)) % 7;
+  const fam = FAM[fi];
+  let bw = Math.round(lerp(10, 16, clamp(w * 0.8 + r(1) * 0.3, 0, 1))), bh = Math.round(lerp(5, 8, clamp(w * 0.7 + r(2) * 0.4, 0, 1)));
+  if (fam === 'tall') { bw -= 3; bh = Math.min(8, bh + 1); } if (fam === 'wide') { bw += 3; bh = Math.max(4, bh - 1); } if (fam === 'tri') bw += 3;
+  bw = clamp(bw, 8, 19); bh = clamp(bh, 4, 8);
+  const rows = [];
+  const aL = Math.round((r(3) - 0.5) * 2 * w * w * 2), aR = Math.round((r(4) - 0.5) * 2 * w * w * 2);
+  for (let i = 0; i < bh; i++) {
+    const u = (i + 0.5) / bh; let hw;
+    switch (fam) {
+      case 'blob': hw = (bw / 2) * Math.sqrt(1 - Math.pow(2 * u - 1, 2)); break;
+      case 'drop': hw = (bw / 2) * (u < 0.72 ? Math.pow(u / 0.72, 0.85) * 0.95 + 0.05 : Math.sqrt(Math.max(0, 1 - Math.pow((u - 0.72) / 0.28, 2))) * 0.97 + 0.03); break;
+      case 'tri': hw = (bw / 2) * (0.15 + 0.85 * u); break;
+      case 'box': hw = (i === 0 || i === bh - 1) ? bw / 2 - 1 : bw / 2; break;
+      case 'tall': hw = (bw / 2) * Math.pow(Math.max(0, 1 - Math.pow(2 * u - 1, 2)), 0.35); break;
+      case 'wide': hw = (bw / 2) * Math.pow(Math.max(0, 1 - Math.pow(2 * u - 1, 2)), 0.6); break;
+      default: hw = u < 0.65 ? (bw / 2) * Math.sqrt(1 - Math.pow(1 - u / 0.65, 2)) : bw / 2;
+    }
+    const hi = Math.max(0, Math.round(hw - 0.5));
+    const jl = w > 0.5 ? Math.round((r(10 + i) - 0.5) * 2 * (w - 0.4) * 2) : 0, jr = w > 0.5 ? Math.round((r(20 + i) - 0.5) * 2 * (w - 0.4) * 2) : 0;
+    let l = CX - (hi + aL + jl), rr = CX + hi + aR + jr; l = clamp(l, 1, CX); rr = clamp(rr, CX, W - 2);
+    rows.push({ l, r: rr });
+  }
+  return { fam, fi, rows, bw, bh };
+}
+
+function makeCreature(seed, w) {
+  const rnd = mulberry(hashStr(seed)); const R = Array.from({ length: 80 }, rnd);
+  const A = makeForm(R, w, 0), B = makeForm(R, w, 1, A.fi);
+  const eyeCute = ['●', '◉', '•', '▪', '⊙', '○'], eyeWild = ['◉', '⊙', '◎', '■', '○', '●'];
+  const face = {
+    eye: pick(eyeCute, R[5]), wild: pick(eyeWild, R[23]), d: 2 + (R[6] > 0.5 ? 1 : 0),
+    t3: 0.38 + R[7] * 0.15, t5: 0.6 + R[8] * 0.1, stalk: R[9] > 0.4, stalkOff: R[11] > 0.5 ? 2 : -2,
+    cuteMouth: pick(['‿', 'u', 'ω', '‿'], R[12]), cheeks: w < 0.45 && R[13] > 0.35,
+    top: pick(['antenna', 'ears', 'sprout', 'none', 'antenna'], R[14]),
+    arm: 1 + Math.floor(w * 2.2 + R[15] * 0.4), asym: R[21] > 0.5, noLeft: w > 0.8 && R[22] > 0.6,
+    legs: w < 0.3 ? 2 : w < 0.6 ? 2 + Math.floor(R[16] * 2) : 3 + Math.floor(R[16] * 3), tent: w > 0.5,
+    parts: Math.floor(w * 5.5), fill: pick(['dots', 'soft', 'soft'], R[17]),
+    blink: 2600 + R[18] * 2600, blinkOff: R[19] * 5000, dbl: R[20] < 0.3,
+    horns: w > 0.46, spikes: w > 0.7, longAnt: w > 0.85
+  };
+  const bot = { kind: 'creature', seed, w, R, A, B, face }; bot.crop = computeCrop(bot); bot.cropTight = bot.crop; return bot;
+}
+
+/* ---------- draw one frame into a grid of cells {c, k, a} ---------- */
+function drawForm(bot, F, state, t) {
+  const g = Array.from({ length: H }, () => Array(W).fill(null));
+  const put = (x, y, c, k, a) => { x = Math.round(x); y = Math.round(y); if (x < 0 || x >= W || y < 0 || y >= H) return; g[y][x] = { c, k, a: a == null ? 1 : a }; };
+  const free = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && x < W && y >= 0 && y < H && !g[y][x]; };
+  const { face, w, R } = bot; const sleep = state === 'sleep', work = state === 'working';
+  const dy = sleep ? 1 : 0;
+  const inf = work && Math.sin(t / 520) > 0.35 ? 1 : 0;
+  const n = F.rows.length;
+  const rows = F.rows.map((rw, i) => ({ l: clamp(rw.l - (inf && i > 0 && i < n - 1 ? 1 : 0), 0, W - 1), r: clamp(rw.r + (inf && i > 0 && i < n - 1 ? 1 : 0), 0, W - 1) }));
+  const Y = i => TOP + i + dy;
+  const bucket = Math.floor(t / 380);
+  // body: edge and fill
+  for (let i = 0; i < n; i++) for (let x = rows[i].l; x <= rows[i].r; x++) {
+    const upOut = !(i > 0 && x >= rows[i - 1].l && x <= rows[i - 1].r), downOut = !(i < n - 1 && x >= rows[i + 1].l && x <= rows[i + 1].r);
+    const lOut = x === rows[i].l, rOut = x === rows[i].r;
+    if (upOut || downOut || lOut || rOut) {
+      let c;
+      if (upOut && lOut) c = '╭'; else if (upOut && rOut) c = '╮'; else if (downOut && lOut) c = '╰'; else if (downOut && rOut) c = '╯';
+      else if (upOut || downOut) c = '─';
+      else if (lOut) { c = (i < n - 1 && rows[i + 1].l < rows[i].l) ? '╱' : (i > 0 && rows[i - 1].l < rows[i].l) ? '╲' : '│'; }
+      else { c = (i < n - 1 && rows[i + 1].r > rows[i].r) ? '╲' : (i > 0 && rows[i - 1].r > rows[i].r) ? '╱' : '│'; }
+      if (w > 0.55 && h2(x, i, 3) < (w - 0.4) * 1.1) c = upOut ? pick(['▲', '╳'], h2(x, i, 4)) : downOut ? pick(['▼', '╳'], h2(x, i, 5)) : lOut ? pick(['◀', '╲'], h2(x, i, 6)) : pick(['▶', '╱'], h2(x, i, 7));
+      put(x, Y(i), c, 'edge');
+    } else {
+      let c = null; const nz = h2(x, i, 11);
+      if (w < 0.28) c = face.fill === 'hollow' ? null : face.fill === 'dots' ? '·' : '░';
+      else if (w < 0.55) c = nz < 0.8 ? '▒' : '░';
+      else if (w < 0.8) c = nz < 0.4 ? '▓' : nz < 0.75 ? '▒' : '░';
+      else c = pick(['▓', '▒', '░', '▚', '▞', ' '], nz);
+      if (sleep && c) c = '░';
+      if (c && h2(x, i, 100 + bucket) < w * 0.05) c = pick(['░', '▒', '·'], h2(x, i, 200 + bucket));
+      if (c && c !== ' ') put(x, Y(i), c, 'fill');
+    }
+  }
+  // The face sits on the first row wide enough for two eyes, near the top third.
+  let fr0 = -1; for (let i = Math.max(1, Math.floor(F.bh * 0.25)); i < n - 1; i++) if (rows[i].r - rows[i].l >= 2 * face.d + 2) { fr0 = i; break; }
+  if (fr0 < 0) { fr0 = 1; for (let i = 1; i < n - 1; i++) if (rows[i].r - rows[i].l > rows[fr0].r - rows[fr0].l) fr0 = i; }
+  const er = TOP + fr0 + dy;
+  const rowAt = y => rows[clamp(y - TOP - dy, 0, n - 1)];
+  const inside = (x, y) => { const q = rowAt(y); return x >= q.l + 1 && x <= q.r - 1 ? x : clamp(x, q.l + 1, Math.max(q.l + 1, q.r - 1)); };
+  // eyes
+  const cyc = (t + face.blinkOff) % face.blink;
+  const blinking = cyc < 130 || (face.dbl && cyc > 260 && cyc < 380);
+  const tt = state === 'done' ? t % 3600 : 0;
+  let eyeG = face.eye, wildG = face.wild;
+  if (blinking && !sleep) { eyeG = '─'; wildG = '─'; }
+  if (sleep) { eyeG = '─'; wildG = '─'; }
+  if (state === 'error') { eyeG = '×'; wildG = '×'; }
+  if (state === 'done' && tt >= 1400) { eyeG = '^'; wildG = '^'; }
+  const look = work ? [0, -1, 0, 1][Math.floor(t / 600) % 4] : 0;
+  const ek = state === 'error' ? 'warn' : 'eye';
+  put(inside(CX - face.d + look, er), er, eyeG, ek); put(inside(CX + face.d + look, er), er, eyeG, ek);
+  if (w > face.t3) put(CX + look, er - 1, wildG, ek);
+  if (w > face.t5) { const q = rowAt(er + 1); put(clamp(CX - face.d - 1, q.l + 1, q.r - 1) + look, er + 1, wildG, ek); put(clamp(CX + face.d + 1, q.l + 1, q.r - 1) + look, er + 1, wildG, ek); }
+  if (w > 0.82) for (let k = 0; k < 3; k++) { const q = rowAt(TOP + 1 + dy + k); if (q.r - q.l > 3) put(q.l + 1 + Math.floor(R[40 + k] * (q.r - q.l - 1)), TOP + 1 + k + dy, blinking || sleep ? '─' : pick(['·', '∙', '○'], R[44 + k]), 'eye'); }
+  if (w > 0.72 && face.stalk) { const sx = CX + face.stalkOff; put(sx, TOP - 1 + dy, '│', 'edge'); put(sx, TOP - 2 + dy, eyeG === '─' ? '─' : '◉', ek); }
+  // cheeks
+  if (face.cheeks && !sleep && state !== 'error') { const q = rowAt(er + 1); put(clamp(CX - face.d - 1, q.l + 1, q.r - 1), er + 1, '°', 'acc'); put(clamp(CX + face.d + 1, q.l + 1, q.r - 1), er + 1, '°', 'acc'); }
+  // mouth
+  const mr = Math.min(er + 2, TOP + n - 2 + dy), mq = rowAt(mr), room = Math.max(1, mq.r - mq.l - 1);
+  const teeth = (len, flip) => Array.from({ length: len }, (_, i) => (i + flip) % 2 ? '▲' : '▼').join('');
+  let base = w < 0.2 ? face.cuteMouth : w < 0.45 ? '╰─╯' : w < 0.7 ? '▼▲▼' : w < 0.88 ? '▼▲▼▲▼' : '█▼▲▼▲▼█';
+  let mouth = base;
+  if (sleep) mouth = w < 0.45 ? 'u' : '───';
+  else if (state === 'waiting') mouth = w < 0.45 ? 'o' : 'O';
+  else if (state === 'error') mouth = w < 0.45 ? '~' : '~~~';
+  else if (state === 'done') mouth = w < 0.45 ? '‿' : base;
+  else if (work) mouth = w < 0.45 ? ['‿', 'u', '‿'][Math.floor(t / 260) % 3] : teeth(base.length, Math.floor(t / 260) % 2);
+  if (mouth.length > room) mouth = mouth.slice(0, room % 2 ? room : room - 1) || mouth[0];
+  for (let j = 0; j < mouth.length; j++) put(CX - Math.floor(mouth.length / 2) + j, mr, mouth[j], state === 'error' ? 'warn' : 'eye');
+  // top features
+  const firstCover = x => { for (let i = 0; i < n; i++) if (x >= rows[i].l && x <= rows[i].r) return i; return 0; };
+  const pulse = Math.floor(t / 450) % 2;
+  let hasBulb = false;
+  if (face.top === 'antenna' || face.longAnt) {
+    hasBulb = face.top === 'antenna';
+  }
+  if (face.top === 'antenna') {
+    if (sleep) put(CX + 1, TOP - 1 + dy, '◦', 'dim');
+    else { put(CX, TOP - 1, '│', 'edge'); put(CX, TOP - 2, work ? (Math.floor(t / 300) % 2 ? '◉' : '●') : '●', state === 'waiting' ? (pulse ? 'warn' : 'acc') : 'acc'); }
+  } else if (face.top === 'ears') {
+    const ex = Math.max(2, Math.floor((rows[Math.min(1, n - 1)].r - rows[Math.min(1, n - 1)].l) / 2) - 1);
+    for (const x of [CX - ex, CX + ex]) { const i = firstCover(x); if (sleep) put(x, Y(i) - 1, '·', 'dim'); else put(x, Y(i) - 1, '▲', 'edge'); }
+  } else if (face.top === 'sprout') { put(CX, Y(0) - 1, sleep ? '·' : 'ψ', sleep ? 'dim' : 'good'); }
+  if (face.horns && !sleep) {
+    put(rows[0].l, TOP - 1, '╲', 'edge'); put(rows[0].r, TOP - 1, '╱', 'edge');
+    if (w > 0.7) { put(rows[0].l - 1, TOP - 2, '╲', 'edge'); put(rows[0].r + 1, TOP - 2, '╱', 'edge'); }
+  }
+  if (face.spikes && !sleep) for (let x = rows[0].l; x <= rows[0].r; x += 2) if (free(x, TOP - 1)) put(x, TOP - 1, '▲', 'edge');
+  if (face.longAnt && !sleep) { const ax = CX + 3; put(ax, TOP - 1, '│', 'edge'); put(ax, TOP - 2, '│', 'edge'); put(ax, TOP - 3, state === 'waiting' && pulse ? '*' : '+', 'acc'); }
+  if (state === 'waiting' && face.top !== 'antenna') put(CX, TOP - 1, '!', pulse ? 'warn' : 'acc');
+  // arms
+  const ar = er + 1, aq = rowAt(ar), leftUp = Math.floor(t / 260) % 2 === 0;
+  if (!sleep && state !== 'error') {
+    const lenL = face.noLeft ? 0 : face.arm + (w > 0.6 && face.asym ? 1 : 0), lenR = face.arm - (w > 0.6 && face.asym && face.arm > 1 ? 1 : 0);
+    for (let k = 0; k < lenL; k++) { let c = '─'; if (k === 0) c = state === 'done' ? '╲' : work ? (leftUp ? '╲' : '─') : '─'; put(aq.l - 1 - k, ar - (k === 0 && c === '╲' ? 1 : 0), c, 'edge'); }
+    for (let k = 0; k < lenR; k++) { let c = '─'; if (k === 0) c = state === 'done' ? '╱' : work ? (leftUp ? '─' : '╱') : state === 'waiting' ? (Math.floor(t / 400) % 2 ? '╱' : '─') : '─'; put(aq.r + 1 + k, ar - (k === 0 && c === '╱' ? 1 : 0), c, 'edge'); }
+  }
+  // legs
+  if (!sleep) {
+    const by = Y(n - 1), bq = rows[n - 1]; const nl = clamp(face.legs, 1, Math.max(1, bq.r - bq.l - 1));
+    const xs = [...new Set(Array.from({ length: nl }, (_, k) => Math.round(lerp(bq.l + 1, bq.r - 1, nl === 1 ? 0.5 : k / (nl - 1)))))];
+    const fr = Math.floor(t / (work ? 200 : 700)) % 2;
+    xs.forEach((x, k) => {
+      if (face.tent) { put(x, by + 1, '│', 'edge'); put(x, by + 2, (k + fr) % 2 ? '╯' : '╰', 'edge'); }
+      else put(x, by + 1, (k % 2) === fr ? '▃' : '▂', 'edge');
+    });
+  }
+  // satellites
+  if (w > 0.3 && !sleep) {
+    const np = face.parts, cy = TOP + F.bh / 2 + dy, rx = F.bw / 2 + 2.5, ry = F.bh / 2 + 1.6;
+    for (let i = 0; i < np; i++) {
+      const ang = t / (work ? 700 : 1500 + i * 260) * (i % 2 ? -1 : 1) + i * 6.283 / np;
+      const px = CX + rx * Math.cos(ang), py = cy + ry * Math.sin(ang);
+      if (free(px, py)) put(px, py, pick(['·', '∙', '◦', '*', '+'], R[30 + i] * Math.min(1, w + 0.2)), i % 2 ? 'dim' : 'acc');
+    }
+  }
+  // state overlays
+  if (sleep) for (let k = 0; k < 3; k++) { const ph = ((t / 3200) + k / 3) % 1; const zx = CX + Math.floor(F.bw / 2) + 1 + ph * 2, zy = TOP + dy - ph * 4; if (free(zx, zy)) put(zx, zy, k % 2 ? 'Z' : 'z', 'dim', clamp(1.15 - ph, 0, 1)); }
+  if (state === 'done') {
+    if (tt < 1400) put(CX, TOP - (face.top === 'antenna' ? 2 : 1), '✓', 'good');
+    [[-F.bw / 2 - 2, 0], [F.bw / 2 + 2, 1], [CX - 5 + 7, -2]].forEach(([dx, dyy], i) => { if (Math.floor(t / 300 + i) % 2 === 0 && free(CX + dx, TOP + dyy)) put(CX + dx, TOP + dyy, '*', 'acc'); });
+  }
+  if (state === 'error') {
+    const burst = t % 900 < 220;
+    for (let y = 0; y < H; y++) { const s = burst && h2(y, Math.floor(t / 110), 9) < 0.35 ? (h2(y, Math.floor(t / 110), 10) > 0.5 ? 1 : -1) : 0; if (s) { const row = g[y].slice(); for (let x = 0; x < W; x++) g[y][x] = row[x - s] || null; } }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x] && (g[y][x].k === 'edge' || g[y][x].k === 'fill') && h2(x, y, Math.floor(t / 150)) < 0.07) g[y][x].k = 'warn';
+  }
+  if (work) { const sc = (t / 70) % (W + 2 * H + 8) - 4; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const c = g[y][x]; if (c && (c.k === 'edge' || c.k === 'fill') && Math.abs(x + y * 2 - sc) <= 1.2) c.k = 'bright'; } }
+  return g;
+}
+function frameCreature(bot, state, t) {
+  if (state !== 'working') return drawForm(bot, bot.A, state, t);
+  const P = 4800, tt = t % P; let p;
+  if (tt < 2000) p = 0; else if (tt < 2500) p = (tt - 2000) / 500; else if (tt < 4300) p = 1; else p = 1 - (tt - 4300) / 500;
+  const a = drawForm(bot, bot.A, state, t); if (p <= 0) return a;
+  const b = drawForm(bot, bot.B, state, t); if (p >= 1) return b;
+  return a.map((row, y) => row.map((c, x) => h2(x, y, 7) < p ? b[y][x] : c));
+}
+function computeCrop(bot) {
+  let x0 = W, x1 = -1, y0 = H, y1 = -1;
+  for (const s of ['idle','working','sleep','done','waiting']) for (const t of [0, 700, 1500, 2300, 3100, 3900]) {
+    const g = frameCreature(bot, s, t); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x] && g[y][x].c !== ' ') { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  }
+  return { x0: Math.max(0, x0 - 1), x1: Math.min(W - 1, x1 + 1), y0: Math.max(0, y0 - 0), y1: Math.min(H - 1, y1 + 0) };
+}
+
+
+/* =====================================================================
+   FACES: a big head made of many characters. The head is a shape (circle, squircle, ghost...), lit like a dome and
+   written with a texture of characters (letters, 0/1, hatching, dither). Eyes and mouth are solid, bright and sit in
+   a cleared socket, so they read at a glance. From time to time the face turns evil on its own.
+   ===================================================================== */
+const FW = 70, FH = 40, FCX = 35, FCY = 25;
+const RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+const TIDY = ' .:-=+*#%@';
+const LETTERS = 'ZOXqkNBjPEMW8GRDQ';
+const FSTATES = [['idle', 'Parado'], ['working', 'Trabalhando'], ['waiting', 'Esperando'], ['sleep', 'Dormindo'], ['error', 'Erro'], ['done', 'Concluído'], ['evil', 'Do mal']];
+const SHAPENAME = { circle: 'círculo', squircle: 'quadrado redondo', rbox: 'caixa', bell: 'sino', ghost: 'fantasma', blob: 'bolha', drop: 'gota', skull: 'caveira', tall: 'alto', spiky: 'espinhoso' };
+const TEXNAME = { tidy: 'rampa limpa', ramp: 'letras', binary: '0 e 1', dither: 'pontilhado', hatch: 'hachura', noise: 'ruído de letras' };
+const EYENAME = { dot: 'bolinha', oval: 'oval', rect: 'barra', cut: 'quadrado cortado', ring: 'anel' };
+
+function makeFace(seed, w) {
+  const rnd = mulberry(hashStr(seed + '#rosto')); const R = Array.from({ length: 80 }, rnd);
+  const cute = ['circle', 'squircle', 'rbox', 'bell', 'ghost', 'squircle'], mid = ['blob', 'drop', 'skull', 'ghost', 'bell', 'tall'], wild = ['spiky', 'skull', 'blob', 'drop', 'tall'];
+  const fam = w < 0.3 ? pick(cute, R[0]) : w < 0.62 ? pick([...cute, ...mid], R[0]) : pick([...mid, ...wild], R[0]);
+  let rx = lerp(22, 28, R[1]), ry = lerp(10.5, 12.5, R[2]);
+  if (fam === 'tall') { rx *= 0.78; ry = 12.8; } if (fam === 'ghost') ry = 11.8; if (fam === 'bell') ry = 11.8;
+  const texPool = w < 0.3 ? ['tidy', 'dither', 'ramp', 'tidy'] : w < 0.65 ? ['ramp', 'hatch', 'dither', 'binary'] : ['binary', 'noise', 'hatch', 'ramp'];
+  const eyePool = w < 0.35 ? ['dot', 'oval', 'rect', 'cut', 'ring', 'dot', 'rect'] : ['ring', 'rect', 'oval', 'cut', 'dot', 'ring'];
+  const mouthPool = w < 0.25 ? ['smile', 'cat', 'flat', 'smile', 'o'] : w < 0.6 ? ['smile', 'lens', 'cat', 'teeth'] : ['teeth', 'sharp', 'lens', 'sharp'];
+  const earPool = w < 0.5 ? ['cat', 'bear', 'none', 'antenna', 'pods', 'none', 'cat'] : ['none', 'antenna', 'pods', 'cat', 'none'];
+  const face = {
+    fam, rx, ry, cy: FCY - (fam === 'ghost' || fam === 'bell' ? 1 : 0), nsp: 6 + Math.floor(R[13] * 4), p1: R[14] * 6.28, p2: R[15] * 6.28, skew: (R[16] - 0.5) * w * 0.5,
+    tex: pick(texPool, R[17]), eye: pick(eyePool, R[3]), eb: Math.round(lerp(2, 3.4, R[4])), ed: Math.round(lerp(8, 13, R[5])), neon: R[6] > 0.45,
+    mouth: pick(mouthPool, R[7]), mw: Math.round(lerp(5, 9, R[18])), ears: pick(earPool, R[8]),
+    horns: w > 0.42 + R[19] * 0.1, brow: w > 0.5, cheeks: w < 0.5 && R[10] > 0.3, freckles: R[12] > 0.7 && w < 0.5, stitches: w > 0.55 && R[9] > 0.4,
+    t3: 0.45 + R[20] * 0.15, t5: 0.75 + R[21] * 0.1, smoke: R[11] > 0.55 || w > 0.7,
+    evilPeriod: lerp(14000, 7000, w) + R[22] * 4000, evilOff: R[23] * 9000, grinPeriod: 5200 + R[24] * 3000, grinOff: R[25] * 5000,
+    blink: 2600 + R[26] * 2600, blinkOff: R[27] * 5000, dbl: R[28] < 0.3, sx: R[29] > 0.5 ? 7 : -7
+  };
+  const bot = { kind: 'face', seed, w, R, face };
+  const g1 = frameFace(bot, 'idle', 0), g2 = frameFace(bot, 'working', 400), g3 = frameFace(bot, 'sleep', 0);
+  let x0 = FW, x1 = -1, y0 = FH, y1 = -1;
+  for (const g of [g1, g2, g3]) for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) { const c = g[y][x]; if (c && !c.s) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+  bot.cropTight = { x0: Math.max(0, x0 - 1), x1: Math.min(FW - 1, x1 + 1), y0: Math.max(0, y0 - 1), y1: Math.min(FH - 1, y1 + 1) };
+  bot.crop = { ...bot.cropTight, y0: Math.max(0, bot.cropTight.y0 - 9) };
+  return bot;
+}
+
+// Shape of the head: returns [rho, dx, dy], rho <= 1 inside (dx, dy normalized to the head's radii).
+function headRho(F, x, y, rx, ry, cy, cx, t) {
+  let dx = (x - cx) / rx, dy = (y - cy) / ry; dx += F.skew * dy;
+  const sup = (n) => Math.pow(Math.pow(Math.abs(dx), n) + Math.pow(Math.abs(dy), n), 1 / n);
+  let rho;
+  switch (F.fam) {
+    case 'squircle': rho = sup(3.4); break;
+    case 'rbox': rho = sup(6); break;
+    case 'ghost': rho = dy < 0 ? sup(2.2) : Math.max(Math.abs(dx) * 0.999, dy / (1 + 0.07 * Math.sin(x * 0.5 + t / 350))); break;
+    case 'bell': rho = dy < 0 ? sup(2.6) : sup(9); break;
+    case 'drop': { const k = 0.62 + 0.38 * (dy + 1) / 2; dx /= k; rho = Math.hypot(dx, dy); break; }
+    case 'skull': { if (dy > 0.25) dx /= 1 - 0.38 * (dy - 0.25) / 0.75; rho = sup(2.5); break; }
+    case 'blob': { const th = Math.atan2(dy, dx); rho = Math.hypot(dx, dy) / (1 + 0.12 * Math.sin(3 * th + F.p1 + t / 1400) + 0.09 * Math.sin(5 * th + F.p2)); break; }
+    case 'spiky': { const th = Math.atan2(dy, dx); rho = Math.hypot(dx, dy) / (1 + 0.16 * Math.abs(Math.sin(F.nsp * th / 2 + F.p1)) - 0.06); break; }
+    default: rho = Math.hypot(dx, dy);
+  }
+  return [rho, dx, dy];
+}
+
+const LIGHT = (() => { const l = [-0.45, -0.6, 0.66], m = Math.hypot(...l); return l.map(v => v / m); })();
+function texChar(style, L, x, y, rimmed) {
+  const hh = h2(x, y, 31);
+  if (rimmed) return [style === 'dither' ? '▓' : style === 'binary' ? (hh < 0.5 ? '1' : '0') : style === 'tidy' ? '@' : pick(['#', '@', '8', '%', 'W', 'M'], hh), 1];
+  switch (style) {
+    case 'tidy': { const i = Math.min(9, Math.floor(L * 10)); return [TIDY[i], i / 9]; }
+    case 'ramp': { const i = clamp(Math.floor((L + (hh - 0.5) * 0.12) * RAMP.length), 0, RAMP.length - 1); return [RAMP[i], i / (RAMP.length - 1)]; }
+    case 'binary': return L < 0.18 ? [' ', 0] : hh < 0.07 ? ['.', 0.4] : [hh < 0.53 ? '1' : '0', 0.3 + 0.7 * L];
+    case 'dither': return L < 0.2 ? [' ', 0] : L < 0.4 ? ['░', L] : L < 0.62 ? [(x + y) % 2 ? '░' : '▒', L] : L < 0.82 ? [(x + y) % 2 ? '▒' : '▓', L] : ['▓', L];
+    case 'hatch': return L < 0.15 ? [' ', 0] : L < 0.3 ? ['.', L] : L < 0.45 ? [':', L] : L < 0.62 ? ['/', L] : L < 0.75 ? [(x + y) % 3 ? '/' : '\\', L] : L < 0.88 ? ['X', L] : ['#', L];
+    default: return L < 0.28 ? [pick(['.', ':', ',', ';', "'"], hh), 0.25 + L * 0.5] : [LETTERS[Math.floor(hh * LETTERS.length)], 0.3 + 0.7 * L];
+  }
+}
+
+function eyeShape(style, dx, dy, a, b, side, angry) {
+  // returns 0 outside, 1 fill, 2 highlight
+  const ex = dx / a, ey = dy / b;
+  let inside;
+  switch (style) {
+    case 'rect': inside = Math.pow(Math.abs(ex), 6) + Math.pow(Math.abs(ey), 6) <= 1; break;
+    case 'cut': inside = Math.pow(Math.abs(ex), 8) + Math.pow(Math.abs(ey), 8) <= 1 && !(ex > 0 && ey < 0 && ex - ey > 1.25); break;
+    case 'ring': { const o = ex * ex + ey * ey; inside = o <= 1 && (o >= 0.32 || (Math.abs(ex) < 0.28 && Math.abs(ey) < 0.34)); break; }
+    default: inside = ex * ex + ey * ey <= 1;
+  }
+  if (!inside) return 0;
+  if (angry && dy < -b * 0.45 + (b * 0.95) * ((-side * dx) / a + 1) / 2) return 0;
+  if (style !== 'ring' && ex < -0.2 && ey < -0.25 && ex > -0.75 && ey > -0.8 && !angry) return 2;
+  return 1;
+}
+
+function frameFace(bot, state, t) {
+  const g = Array.from({ length: FH }, () => Array(FW).fill(null));
+  const put = (x, y, c, k, a, extra) => { x = Math.round(x); y = Math.round(y); if (x < 0 || x >= FW || y < 0 || y >= FH) return; g[y][x] = { c, k, a: a == null ? 1 : a, f: true, ...extra }; };
+  const clear = (x, y) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < FW && y >= 0 && y < FH) g[y][x] = null; };
+  const { face: F, w, R } = bot;
+  const sleep = state === 'sleep', work = state === 'working', waiting = state === 'waiting', err = state === 'error', done = state === 'done';
+  // evil: asked for, or by itself from time to time (while idle or working)
+  const calm = state === 'idle' || work;
+  const eph = (t + F.evilOff) % F.evilPeriod;
+  const evil = state === 'evil' || (calm && t > 3000 && eph < 1500);
+  const grin = !evil && state === 'idle' && ((t + F.grinOff) % F.grinPeriod) < 900;
+  const happy = done || grin;
+  const cx = FCX + (evil ? (Math.floor(t / 70) % 2 ? 1 : -1) : 0), cy = F.cy + (sleep ? 1 : 0);
+  const sc = 1 + (sleep ? 0.015 * Math.sin(t / 800) : 0.01 * Math.sin(t / 1100));
+  const rx = F.rx * sc, ry = F.ry * sc, top = Math.round(cy - ry);
+  const dimA = sleep ? 0.55 : 1;
+  // ---- accessories behind the head
+  if (F.ears === 'cat') for (const s of [-1, 1]) { const ex = cx + s * rx * 0.62, h = 6; for (let yy = top - h + 2; yy <= top + 2; yy++) { const half = (yy - (top - h + 2)) / h * 5.2; for (let xx = Math.round(ex - half); xx <= Math.round(ex + half); xx++) { const edge = Math.abs(xx - ex) > half - 1.1 || yy === top - h + 2; const inner = !edge && Math.abs(xx - ex) < half - 2.2 && yy > top - h + 4; put(xx, yy, inner ? '▒' : edge ? '#' : texChar(F.tex, 0.5, xx, yy)[0], inner ? 'blush' : edge ? 'rim' : 'tex', 0.9 * dimA); } } }
+  if (F.ears === 'bear') for (const s of [-1, 1]) { const ex = cx + s * rx * 0.66, ey = top + 1; for (let yy = ey - 4; yy <= ey + 2; yy++) for (let xx = Math.round(ex - 8); xx <= Math.round(ex + 8); xx++) { const o = ((xx - ex) / 7) ** 2 + ((yy - ey) / 3.6) ** 2; if (o <= 1) put(xx, yy, o > 0.62 ? '#' : texChar(F.tex, 0.55, xx, yy)[0], o > 0.62 ? 'rim' : 'tex', 0.9 * dimA); } }
+  if (F.ears === 'pods') for (const s of [-1, 1]) { const ex = cx + s * (rx + 2.5), ey = cy; for (let yy = Math.round(ey - 6); yy <= ey + 6; yy++) for (let xx = Math.round(ex - 6); xx <= ex + 6; xx++) { const o = ((xx - ex) / 5) ** 2 + ((yy - ey) / 5.6) ** 2; if (o <= 1) put(xx, yy, o > 0.6 ? '▓' : (xx + yy) % 2 ? '▒' : '░', o > 0.6 ? 'rim' : 'tex', 0.85 * dimA); } }
+  if (F.horns && !sleep) for (const s of [-1, 1]) for (let i = 0; i < 9; i++) { const yy = top + 1 - i, xx = cx + s * (rx * 0.5 + i * 1.7 - (i > 5 ? (i - 5) * 2.4 : 0)); const ch = i > 5 ? (s > 0 ? '\\' : '/') : (s > 0 ? '/' : '\\'); put(xx, yy, ch, 'rim', 1); put(xx + s, yy, ch === '/' ? '/' : '\\', 'rim', 1); if (i < 3) put(xx - s, yy, '#', 'rim', 1); }
+  if (F.ears === 'antenna') { for (let i = 1; i <= 4; i++) put(cx, top - i + 1, '|', 'rim', 1); put(cx, top - 5, '@', waiting && Math.floor(t / 450) % 2 ? 'warn' : 'acc', 1); put(cx - 1, top - 5, '(', 'acc', 0.8); put(cx + 1, top - 5, ')', 'acc', 0.8); }
+  // ---- head
+  const x0 = Math.max(0, Math.floor(cx - rx * 1.3) - 2), x1 = Math.min(FW - 1, Math.ceil(cx + rx * 1.3) + 2), y0 = Math.max(0, Math.floor(cy - ry * 1.3) - 1), y1 = Math.min(FH - 1, Math.ceil(cy + ry * 1.3) + 3);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const [rho, dx, dy] = headRho(F, x, y, rx, ry, cy, cx, t); if (rho > 1) continue;
+    const z = Math.sqrt(Math.max(0, 1 - rho * rho)), nx = dx * 0.9, ny = dy * 0.9, m = Math.hypot(nx, ny, z) || 1;
+    let L = clamp(0.34 + 0.8 * Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + z * LIGHT[2]) / m) + (h2(x, y, 5) - 0.5) * 0.1, 0, 1);
+    const rim = rho > 0.9;
+    const [c, d] = texChar(F.tex, L, x, y, rim);
+    if (c === ' ') continue;
+    put(x, y, c, rim ? (evil ? 'warn' : 'rim') : 'tex', (rim ? 1 : clamp(0.42 + 0.58 * d, 0.3, 1)) * dimA);
+  }
+  // ---- eyes
+  const gaze = work ? [0, -3, 0, 3][Math.floor(t / 500) % 4] : (Math.floor(t / 1700) % 5 === 0 ? (Math.floor(t / 1700) % 2 ? 2 : -2) : 0);
+  const cyc = (t + F.blinkOff) % F.blink, blinking = cyc < 120 || (F.dbl && cyc > 240 && cyc < 360);
+  const ey0 = cy - 2 + (sleep ? 1 : 0), eb = F.eb + (waiting ? 1 : 0) - (evil ? 0 : 0);
+  const eyeCols = { dot: 2, oval: 1.4, rect: 0.95, cut: 2.1, ring: 2.1 };
+  let style = F.eye, ea = eb * (eyeCols[style] || 2.2), erb = eb;
+  const ek = evil || err ? 'warn' : F.neon ? 'neon' : 'eye';
+  const eyes = [[-1, cx - F.ed + gaze], [1, cx + F.ed + gaze]];
+  for (const [side, ex] of eyes) {
+    // socket: a dark area around the eye so it pops
+    const sa = ea + 1.7, sb = erb + 1;
+    for (let yy = Math.floor(ey0 - sb); yy <= ey0 + sb; yy++) for (let xx = Math.floor(ex - sa); xx <= ex + sa; xx++) if (((xx - ex) / sa) ** 2 + ((yy - ey0) / sb) ** 2 <= 1) clear(xx, yy);
+    let cells = [];
+    if (sleep) for (let xx = Math.round(ex - ea * 0.9); xx <= ex + ea * 0.9; xx++) cells.push([xx, Math.round(ey0 + 1), 1]);
+    else if (blinking && !evil) for (let xx = Math.round(ex - ea); xx <= ex + ea; xx++) cells.push([xx, Math.round(ey0), 1]);
+    else if (happy) for (let xx = Math.round(ex - ea); xx <= ex + ea; xx++) { const u = (xx - ex) / ea; for (const th of [0, 1]) cells.push([xx, Math.round(ey0 + erb * 0.5 - (1 - u * u) * erb * 1.0 + th), 1]); }
+    else if (err) for (let yy = Math.floor(ey0 - erb); yy <= ey0 + erb; yy++) for (let xx = Math.floor(ex - ea * 0.8); xx <= ex + ea * 0.8; xx++) { const ux = Math.abs(xx - ex) / (ea * 0.8), uy = Math.abs(yy - ey0) / erb; if (Math.abs(ux - uy) < 0.28) cells.push([xx, yy, 1]); }
+    else {
+      const useStyle = evil ? (style === 'ring' ? 'oval' : style) : style, aa = evil ? ea * 1.05 : ea, bb = evil ? erb * 0.95 : erb;
+      for (let yy = Math.floor(ey0 - bb - 1); yy <= ey0 + bb + 1; yy++) for (let xx = Math.floor(ex - aa - 1); xx <= ex + aa + 1; xx++) { const s = eyeShape(useStyle, xx - ex, yy - ey0, aa, bb, side, evil); if (s) cells.push([xx, yy, s]); }
+    }
+    for (const [xx, yy, s] of cells) put(xx, yy, '█', s === 2 && !evil ? 'hi' : ek, 1);
+    if (evil) { // heavy brow over each eye
+      for (let i = -Math.round(ea) - 1; i <= Math.round(ea) + 1; i++) { const yy = ey0 - erb - 1 + Math.round(((-side * i) / ea + 1) * 1.6); put(ex + i, yy, '▀', 'warn', 1); put(ex + i, yy - 1, '▀', 'warn', 0.8); }
+    }
+  }
+  // third and extra eyes
+  if (w > F.t3 && !sleep) { const ex = cx + gaze * 0.5, ey = ey0 - eb - 4, a = 3, b = 1.6; for (let yy = Math.floor(ey - 3); yy <= ey + 3; yy++) for (let xx = Math.floor(ex - 8); xx <= ex + 8; xx++) { const o = ((xx - ex) / 5.5) ** 2 + ((yy - ey) / 2.4) ** 2; if (o <= 1) clear(xx, yy); } for (let yy = Math.floor(ey - b); yy <= ey + b; yy++) for (let xx = Math.floor(ex - a); xx <= ex + a; xx++) if (((xx - ex) / a) ** 2 + ((yy - ey) / b) ** 2 <= 1) put(xx, yy, '█', ek, 1); }
+  if (w > F.t5 && !sleep) for (const s of [-1, 1]) { const ex = cx + s * rx * 0.66, ey = cy + 4; for (let yy = Math.floor(ey - 2); yy <= ey + 2; yy++) for (let xx = Math.floor(ex - 5); xx <= ex + 5; xx++) if (((xx - ex) / 5) ** 2 + ((yy - ey) / 2.2) ** 2 <= 1) clear(xx, yy); for (let yy = ey - 1; yy <= ey + 1; yy++) for (let xx = ex - 2; xx <= ex + 2; xx++) if (((xx - ex) / 2) ** 2 + ((yy - ey) / 1) ** 2 <= 1) put(xx, yy, '█', ek, 1); }
+  // cheeks and freckles
+  if (F.cheeks && !evil && !err) for (const s of [-1, 1]) { const bx = cx + s * (F.ed + 6), by = ey0 + eb + 4; for (let yy = by - 1; yy <= by + 1; yy++) for (let xx = bx - 4; xx <= bx + 4; xx++) if (((xx - bx) / 4) ** 2 + ((yy - by) / 1.4) ** 2 <= 1) put(xx, yy, '▒', 'blush', 0.9 * dimA); }
+  if (F.freckles) for (const s of [-1, 1]) for (let k = 0; k < 4; k++) put(cx + s * (F.ed + 2 + (k % 2) * 3), ey0 + eb + 3 + Math.floor(k / 2) * 2, '·', 'eye', 0.7);
+  // ---- mouth
+  const my = Math.round(cy + ry * 0.48 + (sleep ? 0 : 0)), mw = F.mw;
+  let ms = F.mouth;
+  if (evil) ms = 'evil'; else if (happy) ms = w > 0.45 ? 'teeth' : 'open'; else if (sleep) ms = 'tiny'; else if (waiting) ms = 'o'; else if (err) ms = 'wavy'; else if (work) ms = Math.floor(t / 700) % 3 === 2 ? 'o' : 'flat';
+  const lens = (a, b, topCurve, teethTop, teethBottom, tongue) => {
+    for (let dx = -a; dx <= a; dx++) { const u = dx / a, yT = my - Math.round(topCurve * u * u), yB = yT + Math.max(1, Math.round(b * Math.pow(Math.max(0, 1 - u * u), 0.7)) + 1);
+      for (let yy = yT; yy <= yB; yy++) clear(cx + dx, yy);
+      put(cx + dx, yT - 1, '▄', evil ? 'warn' : 'eye', 1);
+      if (teethTop && (dx % 2 === 0)) put(cx + dx, yT, '▼', 'tooth', 1); if (teethBottom && ((dx + 1) % 4 === 0)) put(cx + dx, yB, '▲', 'tooth', 1);
+      if (tongue && Math.abs(dx) <= a * 0.45) put(cx + dx, yB, '█', 'tongue', 1); }
+  };
+  if (ms === 'smile') for (let dx = -mw; dx <= mw; dx++) { const u = dx / mw; put(cx + dx, my + 1 - Math.round(2.4 * u * u), '▄', 'eye', 1); if (Math.abs(dx) === mw) put(cx + dx, my - 2, '▀', 'eye', 1); }
+  else if (ms === 'flat') for (let dx = -Math.round(mw * 0.7); dx <= mw * 0.7; dx++) put(cx + dx, my, '▄', 'eye', 1);
+  else if (ms === 'cat') for (let dx = -mw; dx <= mw; dx++) { const lobe = (Math.abs(dx) - mw * 0.5) / (mw * 0.5); put(cx + dx, my - 1 + Math.round(1.4 * (1 - lobe * lobe)), '▄', 'eye', 1); }
+  else if (ms === 'o' || ms === 'tiny') { const a = ms === 'o' ? 3.5 : 2, b = ms === 'o' ? 2 : 1; for (let yy = my - 2; yy <= my + 2; yy++) for (let xx = Math.floor(cx - 5); xx <= cx + 5; xx++) { const o = ((xx - cx) / a) ** 2 + ((yy - my) / b) ** 2; if (o <= 1.6) clear(xx, yy); if (o <= 1.6 && o > 0.7) put(xx, yy, '▓', 'eye', 1); } }
+  else if (ms === 'wavy') for (let dx = -mw; dx <= mw; dx++) put(cx + dx, my + (Math.floor((dx + t / 90) / 2) % 2 ? 0 : 1), '▄', 'warn', 1);
+  else if (ms === 'open') lens(mw, 3, 1, false, false, true);
+  else if (ms === 'lens') lens(mw + 2, 3, 1, false, false, false);
+  else if (ms === 'teeth') lens(mw + 4, 3, 1, true, false, false);
+  else if (ms === 'sharp') lens(mw + 6, 4, 2, true, true, false);
+  else if (ms === 'evil') lens(mw + 9, 4, 3, true, true, false);
+  // ---- extras: brow ridge, stitches
+  if (F.brow && !evil && w > 0.6) for (const [side, ex] of eyes) for (let i = -Math.round(ea); i <= ea; i++) put(ex + i, ey0 - eb - 2, '▀', 'rim', 0.9);
+  if (F.stitches) for (let i = 0; i < 6; i++) { const yy = top + 4 + i * 2, xx = cx + rx * 0.5; put(xx - 1, yy, '\\', 'eye', 0.8); put(xx, yy, '|', 'eye', 0.8); put(xx + 1, yy, '/', 'eye', 0.8); }
+  // ---- smoke
+  const smoking = work || (F.smoke && !sleep && !err) || sleep;
+  if (smoking) {
+    const nW = work ? 3 : sleep ? 3 : 2, P = work ? 3000 : 4200, sy = top - 1;
+    for (let i = 0; i < nW; i++) {
+      const ph = ((t / P) + i / nW) % 1, yy = sy - 2 - ph * 8, xx = cx + F.sx + Math.sin(ph * 9 + i * 2.1) * 3 * (ph + 0.2);
+      if (sleep) { const z = (i + Math.floor(t / P)) % 2 ? 'Z' : 'z'; put(xx, yy, z, 'smoke', clamp(1.2 - ph, 0, 1), { s: true }); put(xx + 1, yy + 1, z === 'Z' ? 'z' : '.', 'smoke', clamp(1 - ph, 0, 1), { s: true }); continue; }
+      // a puff of smoke: a small cloud of characters that grows and thins as it rises
+      const rr = 0.9 + ph * 2.4;
+      for (let py = -Math.ceil(rr); py <= Math.ceil(rr); py++) for (let px = -Math.ceil(rr * 2.2); px <= Math.ceil(rr * 2.2); px++) {
+        const dd = Math.hypot(px / 2.2, py) / rr; if (dd > 1) continue; const hh = h2(Math.round(xx) + px, Math.round(yy) + py, 77);
+        if (dd > 0.55 && hh < 0.35 + ph * 0.3) continue;
+        put(xx + px, yy + py, dd < 0.4 ? 'O' : dd < 0.75 ? (hh < 0.5 ? 'o' : '0') : (hh < 0.5 ? '.' : '~'), 'smoke', clamp((1 - ph) * (1 - dd * 0.5) * 1.1, 0, 1), { s: true });
+      }
+    }
+  }
+  // ---- state overlays
+  if (waiting) { const p = Math.floor(t / 450) % 2; for (const [i, ch] of ['(', '!', ')'].entries()) put(cx - 1 + i, top - 5, ch, p ? 'warn' : 'acc', 1, { s: true }); }
+  if (done) [[-rx - 3, -3], [rx + 3, -1], [rx * 0.4, -top + 3 - 4]].forEach(([dx, dyy], i) => { if (Math.floor(t / 300 + i) % 2 === 0) put(cx + dx, cy + dyy + (i === 2 ? top - 3 : 0), '*', 'acc', 1, { s: true }); });
+  if (err) {
+    const burst = t % 900 < 240;
+    for (let y = 0; y < FH; y++) { const s = burst && h2(y, Math.floor(t / 110), 9) < 0.3 ? (h2(y, Math.floor(t / 110), 10) > 0.5 ? 2 : -2) : 0; if (s) { const row = g[y].slice(); for (let x = 0; x < FW; x++) g[y][x] = row[x - s] || null; } }
+    for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) { const c = g[y][x]; if (c && (c.k === 'tex' || c.k === 'rim') && h2(x, y, Math.floor(t / 130)) < 0.05) c.k = 'warn'; }
+  }
+  if (work) { const scn = (t / 45) % (FW + 2 * FH); for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) { const c = g[y][x]; if (c && (c.k === 'tex' || c.k === 'rim') && Math.abs(x + y * 1.4 - scn) <= 1.6) c.k = 'bright'; } }
+  return g;
+}
+
+/* ---------- render ---------- */
+let mode = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark', color = COLORS[1][0], paused = false, T0 = performance.now(), frozenT = 0;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const mix = (hex, to, a) => { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const A = p(hex), B = p(to); return '#' + A.map((v, i) => Math.round(lerp(v, B[i], a)).toString(16).padStart(2, '0')).join(''); };
+const PAL = {
+  dark: { eye: '#F3EFE6', hi: '#FFFFFF', acc: '#FFB23F', warn: '#FF4A3D', good: '#7BD88F', tooth: '#F6F2E8', tongue: '#FF7A9A', smoke: '#C2BEB2', fill: 0.3, dim: 0.5 },
+  light: { eye: '#1D1B17', hi: '#F7F4EE', acc: '#B86100', warn: '#D1301F', good: '#2E8B4A', tooth: '#FFFFFF', tongue: '#D9486D', smoke: '#5E5A52', fill: 0.34, dim: 0.5 }
+};
+function tone(k, c) {
+  const P = PAL[mode], base = mode === 'dark' ? c : mix(c, '#000000', 0.28), hiC = mode === 'dark' ? mix(c, '#FFFFFF', 0.6) : mix(c, '#000000', 0.55);
+  switch (k) {
+    case 'edge': case 'rim': case 'tex': return [base, 1]; case 'fill': return [base, P.fill]; case 'bright': return [hiC, 1]; case 'dim': return [base, P.dim];
+    case 'neon': return [hiC, 1]; case 'blush': return [mix(base, mode === 'dark' ? '#FF7A9A' : '#D9486D', 0.65), 1];
+    case 'eye': case 'hi': case 'acc': case 'warn': case 'good': case 'tooth': case 'tongue': case 'smoke': return [P[k], 1]; default: return [P.good, 1];
+  }
+}
+const ALPHA = { '░': 0.5, '▒': 0.75, '·': 0.7, '∙': 0.8, '◦': 0.7 };
+const PART = { '▀': [0, 0, 1, 0.5], '▄': [0, 0.5, 1, 0.5], '▁': [0, 0.875, 1, 0.125], '▂': [0, 0.75, 1, 0.25], '▃': [0, 0.625, 1, 0.375], '▔': [0, 0, 1, 0.125], '▌': [0, 0, 0.5, 1], '▐': [0.5, 0, 0.5, 1] };
+const frameOf = (bot, state, t) => bot.kind === 'face' ? frameFace(bot, state, t) : frameCreature(bot, state, t);
+function render(cv, bot, state, t, size, col) {
+  const cr = size < 90 ? bot.cropTight : bot.crop, cols = cr.x1 - cr.x0 + 1, rows = cr.y1 - cr.y0 + 1, dpr = Math.min(2, devicePixelRatio || 1);
+  const cellH = size / rows, cellW = cellH * 0.4545, cw = Math.ceil(cellW * cols), ch = Math.ceil(size);
+  if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); cv.style.width = cw + 'px'; cv.style.height = ch + 'px'; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cw, ch);
+  const g = frameOf(bot, state, t), text = cellH >= 8, fs = cellH / 1.32;
+  if (text) { ctx.font = `${fs}px BotGlyphs, monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; }
+  for (let y = cr.y0; y <= cr.y1; y++) for (let x = cr.x0; x <= cr.x1; x++) {
+    const c = g[y][x]; if (!c || c.c === ' ') continue;
+    const [colr, al] = tone(c.k, col); ctx.globalAlpha = clamp(al * c.a * (text || c.f ? 1 : (ALPHA[c.c] || 1)), 0, 1); ctx.fillStyle = colr;
+    const px = (x - cr.x0) * cellW, py = (y - cr.y0) * cellH;
+    const block = c.c === '█' || PART[c.c];
+    if (text && !block) ctx.fillText(c.c, px + cellW / 2, py + cellH * 0.7727);
+    else { const q = PART[c.c] || [0, 0, 1, 1]; ctx.fillRect(Math.floor(px + q[0] * cellW), Math.floor(py + q[1] * cellH), Math.ceil(q[2] * cellW), Math.ceil(q[3] * cellH)); }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- page ---------- */
+const $ = id => document.getElementById(id);
+let state = 'idle', seedName = 'Clara', weird = 0.12, view = 'face';
+const NAMES = ['Atlas', 'Clara', 'Nico', 'Sora', 'Lia', 'Teo', 'Mimi', 'Bruma', 'Zeca', 'Pipa', 'Odo', 'Lume', 'Tita', 'Rufo', 'Nina', 'Kiko', 'Jade', 'Otto', 'Vera', 'Beto'];
+const levelName = v => v < 0.2 ? 'Fofo' : v < 0.4 ? 'Normal' : v < 0.6 ? 'Esquisito' : v < 0.8 ? 'Doido' : 'Monstro';
+const items = [];
+const botCache = new Map();
+const botFor = (kind, s, w) => { const k = kind + '|' + s + '|' + Math.round(w * 100); if (!botCache.has(k)) { if (botCache.size > 300) botCache.clear(); botCache.set(k, kind === 'face' ? makeFace(s, w) : makeCreature(s, w)); } return botCache.get(k); };
+function addCanvas(parent, root, kind, getBot, getState, size, getColor) { const cv = document.createElement('canvas'); parent.appendChild(cv); items.push({ cv, root, kind, getBot, getState, size, getColor }); return cv; }
+const stateFor = (kind, s) => kind === 'creature' && s === 'evil' ? 'idle' : s;
+
+function traitList(b) {
+  if (b.kind === 'face') {
+    const F = b.face, w = b.w, eyes = 2 + (w > F.t3 ? 1 : 0) + (w > F.t5 ? 2 : 0);
+    const topBits = [F.ears === 'cat' ? 'orelhas de gato' : F.ears === 'bear' ? 'orelhas de urso' : F.ears === 'pods' ? 'fones laterais' : F.ears === 'antenna' ? 'antena' : null, F.horns ? 'chifres' : null].filter(Boolean);
+    const extras = [F.cheeks ? 'bochechas' : null, F.freckles ? 'sardas' : null, F.stitches ? 'pontos' : null, F.brow && w > 0.6 ? 'sobrancelha pesada' : null, F.smoke ? 'fumaça' : null].filter(Boolean);
+    const mouthName = { smile: 'sorriso', cat: 'bico de gato', flat: 'reta', o: 'redonda', lens: 'aberta', teeth: 'com dentes', sharp: 'dentes afiados' };
+    return [['Cabeça', SHAPENAME[F.fam]], ['Textura', TEXNAME[F.tex]], ['Olhos', `${EYENAME[F.eye]} · ${eyes}`], ['Boca', mouthName[F.mouth]], ['Topo', topBits.join(', ') || 'liso'], ['Extras', extras.join(', ') || 'nenhum']];
+  }
+  const F = b.face, w = b.w; const eyes = 2 + (w > F.t3 ? 1 : 0) + (w > F.t5 ? 2 : 0) + (w > 0.82 ? 3 : 0) + (w > 0.72 && F.stalk ? 1 : 0);
+  const top = [F.top === 'antenna' ? 'antena' : F.top === 'ears' ? 'orelhas' : F.top === 'sprout' ? 'broto' : null, F.horns ? (w > 0.7 ? 'chifres duplos' : 'chifres') : null, F.spikes ? 'espinhos' : null, F.longAnt ? 'antena longa' : null].filter(Boolean);
+  return [['Corpo', FAMNAME[b.A.fam] + ' → ' + FAMNAME[b.B.fam]], ['Olhos', String(eyes)], ['Boca', w < 0.2 ? 'sorriso' : w < 0.45 ? 'sorriso largo' : w < 0.7 ? 'dentes' : w < 0.88 ? 'dentão' : 'bocarra'],
+    ['Topo', top.join(', ') || 'liso'], ['Pernas', (F.tent ? 'tentáculos ' : 'pés ') + F.legs], ['Satélites', String(F.parts)]];
+}
+
+const TEAM = [['Atlas', 0.15, 'working', 'trabalhando', 'Analisando histórico de preços e especificações do produto', '3m', '#8FA6FF'], ['Clara', 0.1, 'waiting', 'espera você', 'Aguardando sua autorização para comprar no Mercado Livre', '12m', '#34C9A8'],
+  ['Nico', 0.45, 'sleep', 'dormindo', 'Silenciou notificações de spam e organizou o e-mail', '45m', '#B58CFF'], ['Sora', 0.3, 'done', 'concluído', 'Contraproposta de R$ 420 enviada ao vendedor', '2h', '#FFB27A'],
+  ['Lia', 0.65, 'idle', 'parada', 'Lembrete da consulta de quinta às 14h30', '3h', '#FF8FB1'], ['Teo', 0.92, 'error', 'erro', 'O site pediu um desafio que só você pode resolver', '5h', '#B7C86A']];
+
+const roots = {};
+function buildView(kind) {
+  const root = document.createElement('div'); root.className = 'view'; roots[kind] = root; $('views').appendChild(root);
+  const face = kind === 'face', big = face ? 440 : 320, ST = face ? FSTATES : STATES;
+  const S = s => stateFor(kind, s);
+  root.innerHTML = `
+  <section aria-label="Esquisitice"><div class="sec-head"><h2>Esquisitice</h2><p>${face ? 'Arraste para ver o mesmo rosto mudar de espécie. De vez em quando ele fica do mal sozinho: espere alguns segundos no estado Parado, ou escolha "Do mal" lá em cima.' : 'Arraste para ver o mesmo bicho mudar de espécie. As características aparecem aos poucos, sempre na mesma ordem para o mesmo nome.'}</p></div>
+    <div class="bench"><div class="stage ${face ? 'tall' : ''}" data-r="stage"></div>
+      <div class="dial"><div class="dial-head"><div class="dial-name" data-r="name">Fofo</div><div class="dial-val" data-r="val">0</div></div>
+        <input type="range" data-r="range" min="0" max="100" value="${Math.round(weird * 100)}" aria-label="Esquisitice, de fofo a monstro">
+        <div class="stops"><span>Fofo</span><span>Normal</span><span>Esquisito</span><span>Doido</span><span>Monstro</span></div><div class="traits" data-r="traits"></div></div></div></section>
+  <section aria-label="Evolução"><div class="sec-head"><h2>O mesmo ${face ? 'rosto' : 'bicho'}, do fofo ao monstro</h2><p>Mesmo nome, cinco níveis, no estado escolhido lá em cima.</p></div><div class="row ${face ? 'wide' : ''}" data-r="evo"></div></section>
+  <section aria-label="Estados"><div class="sec-head"><h2>Estados</h2><p>${face ? 'Parado pisca e sorri de vez em quando. Trabalhando solta fumaça e olha para os lados. Esperando acende um aviso. Dormindo apaga e solta zês. Erro treme. Concluído abre um sorriso. Do mal mostra os dentes.' : 'Parado pisca. Trabalhando respira, olha para os lados e troca de forma. Esperando acende a antena. Dormindo apaga e solta um z. Erro treme. Concluído marca um visto.'}</p></div><div class="row ${face ? 'wide' : ''}" data-r="st"></div></section>
+  <section aria-label="Seu time"><div class="sec-head"><h2>Seu time</h2><p>Como ficam na lista da Home. Nomes e textos de exemplo.</p></div><div class="team" data-r="team"></div></section>
+  <section aria-label="Tamanhos"><div class="sec-head"><h2>Do grande ao pequeno</h2><p>Nos tamanhos pequenos as letras viram pixels e o rosto continua legível. Widget e notificação mostram um quadro parado.</p></div><div class="sizes" data-r="sizes"></div></section>
+  <section aria-label="Sorteio"><div class="sec-head"><h2>Sorteio</h2><p>Doze novos no nível de esquisitice escolhido. Toque em um para ver no laboratório.</p></div><div class="row ${face ? 'wide' : ''}" data-r="roll"></div></section>`;
+  const r = k => root.querySelector(`[data-r="${k}"]`);
+  const hero = () => botFor(kind, seedName, weird);
+  addCanvas(r('stage'), root, kind, hero, () => S(state), big, () => color);
+  r('range').oninput = e => { weird = e.target.value / 100; syncRanges(); };
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => { const c = document.createElement('div'); c.className = 'cell'; const s = document.createElement('div'); s.className = 'slot ' + (face ? 'f' : ''); c.appendChild(s);
+    addCanvas(s, root, kind, () => botFor(kind, seedName, v), () => S(state), face ? 230 : 164, () => color); c.insertAdjacentHTML('beforeend', `<div class="cap">${levelName(v)}</div><div class="sub">${Math.round(v * 100)}</div>`); r('evo').appendChild(c); });
+  ST.forEach(([k, label]) => { if (!face && k === 'evil') return; const c = document.createElement('div'); c.className = 'cell'; const s = document.createElement('div'); s.className = 'slot ' + (face ? 'f' : ''); c.appendChild(s);
+    addCanvas(s, root, kind, hero, () => k, face ? 288 : 164, () => color); c.insertAdjacentHTML('beforeend', `<div class="cap">${label}</div>`); r('st').appendChild(c); });
+  TEAM.forEach(([name, v, st, label, pv, tm, col]) => { const row = document.createElement('div'); row.className = 'team-row'; const av = document.createElement('div'); av.className = 'av'; row.appendChild(av);
+    addCanvas(av, root, kind, () => botFor(kind, name, v), () => st, 54, () => col);
+    row.insertAdjacentHTML('beforeend', `<div style="min-width:0"><div><span class="who">${name}</span><span class="st" style="color:${st === 'waiting' ? 'var(--accent)' : st === 'error' ? '#FF6A5C' : 'var(--muted)'}">${label}</span></div><div class="pv">${pv}</div></div><div class="tm">${tm}</div>`); r('team').appendChild(row); });
+  [[120, 'M'], [64, 'P'], [44, 'PP'], [28, 'XS']].forEach(([px]) => { const f = document.createElement('figure'); addCanvas(f, root, kind, hero, () => S(state), px, () => color); f.insertAdjacentHTML('beforeend', `<figcaption>${px}px</figcaption>`); r('sizes').appendChild(f); });
+  root._r = r; root._kind = kind; root._rollItems = [];
+  buildRoll(kind);
+}
+function buildRoll(kind) {
+  const root = roots[kind], r = root._r, face = kind === 'face';
+  root._rollItems.forEach(it => { const i = items.indexOf(it); if (i >= 0) items.splice(i, 1); }); root._rollItems = []; r('roll').innerHTML = '';
+  for (let i = 0; i < 12; i++) { const name = NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 900 + 100), col = COLORS[Math.floor(Math.random() * COLORS.length)][0];
+    const c = document.createElement('div'); c.className = 'cell pick'; c.tabIndex = 0; c.setAttribute('role', 'button'); c.setAttribute('aria-label', 'Ver ' + name + ' no laboratório'); const s = document.createElement('div'); s.className = 'slot ' + (face ? 'f' : ''); c.appendChild(s);
+    addCanvas(s, root, kind, () => botFor(kind, name, weird), () => 'idle', face ? 190 : 110, () => col); root._rollItems.push(items[items.length - 1]); c.insertAdjacentHTML('beforeend', `<div class="cap">${name}</div>`);
+    const choose = () => { seedName = name; color = col; $('seed').value = name; syncSwatches(); scrollTo({ top: 0, behavior: 'smooth' }); };
+    c.onclick = choose; c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } }; r('roll').appendChild(c); }
+}
+function syncRanges() { for (const k in roots) roots[k]._r('range').value = Math.round(weird * 100); }
+function syncSwatches() { [...$('swatches').children].forEach((x, i) => x.setAttribute('aria-pressed', COLORS[i][0] === color)); }
+
+// controls
+function buildStateSeg() { $('stateSeg').innerHTML = ''; (view === 'face' ? FSTATES : STATES).forEach(([k, label]) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.dataset.s = k; b.setAttribute('aria-pressed', k === state); b.onclick = () => { state = k; [...$('stateSeg').children].forEach(x => x.setAttribute('aria-pressed', x.dataset.s === k)); }; $('stateSeg').appendChild(b); }); }
+COLORS.forEach(([hex, name]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sw'; b.style.background = hex; b.title = name; b.setAttribute('aria-label', name); b.setAttribute('aria-pressed', hex === color); b.onclick = () => { color = hex; syncSwatches(); }; $('swatches').appendChild(b); });
+[...$('themeSeg').children].forEach(x => x.setAttribute('aria-pressed', x.dataset.t === mode));
+$('themeSeg').onclick = e => { const t = e.target.closest('button'); if (!t) return; mode = t.dataset.t; document.documentElement.dataset.theme = mode; [...$('themeSeg').children].forEach(x => x.setAttribute('aria-pressed', x === t)); };
+$('viewSeg').onclick = e => { const t = e.target.closest('button'); if (!t) return; view = t.dataset.v; [...$('viewSeg').children].forEach(x => x.setAttribute('aria-pressed', x === t)); for (const k in roots) roots[k].hidden = k !== view; if (view === 'creature' && state === 'evil') state = 'idle'; buildStateSeg(); };
+$('seed').oninput = e => { seedName = e.target.value.trim() || 'Clara'; };
+$('roll').onclick = () => { seedName = NAMES[Math.floor(Math.random() * NAMES.length)] + Math.floor(Math.random() * 90 + 10); $('seed').value = seedName; color = COLORS[Math.floor(Math.random() * COLORS.length)][0]; syncSwatches(); for (const k in roots) buildRoll(k); };
+$('pause').onclick = e => { paused = !paused; e.currentTarget.setAttribute('aria-pressed', paused); e.currentTarget.textContent = paused ? 'Continuar' : 'Pausar'; if (paused) frozenT = performance.now() - T0; else T0 = performance.now() - frozenT; };
+
+buildView('face'); buildView('creature'); roots.creature.hidden = true; buildStateSeg();
+let lastKey = '';
+function updateTraits() { const k = view + seedName + '|' + Math.round(weird * 100); if (k === lastKey) return; lastKey = k; const root = roots[view], b = botFor(view, seedName, weird), r = root._r;
+  r('traits').innerHTML = traitList(b).map(([a, v]) => `<div class="trait"><span>${a}</span><span>${v}</span></div>`).join(''); r('name').textContent = levelName(weird); r('val').textContent = Math.round(weird * 100); }
+let last = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - last < 62) return; last = now;
+  const t = reduce ? 0 : paused ? frozenT : now - T0;
+  updateTraits();
+  for (const it of items) if (!it.root.hidden) render(it.cv, it.getBot(), stateFor(it.kind, it.getState()), t, it.size, it.getColor());
+}
+(document.fonts && document.fonts.load ? document.fonts.load('12px BotGlyphs', '●─╭░▒▀▄').catch(() => {}) : Promise.resolve()).then(() => requestAnimationFrame(tick));
+})();
+</script>

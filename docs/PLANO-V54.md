@@ -151,37 +151,65 @@ Objetivo: a pessoa cria um cartão virtual (Nubank, Inter, C6 e outros bancos pe
 - **Modelo reserva** quando o limite da assinatura acaba (Codex ↔ Claude), com a conversa mantida.
 - **Ações na mensagem** (segurar): copiar, responder citando, fixar e reenviar.
 
-## v63 — Design novo: identidade própria, celular e PC
+## v63 — Design novo: rostos de caracteres, celular e PC
 
-Pedido do usuário em 28/10/2026: o app faz muita coisa, mas o design é fraco. Ele é "meio cinza, meio verde" (`C.mint` em tudo, sobre fundos azulados `#090B10`/`#12161E`), o robozinho dos bots (`BotAvatar.js`, `BotFace.kt`) não tem graça, as opções estão mal colocadas e o PC é só o app do celular esticado (`desktop.js` centraliza tudo numa coluna de 820 px). Objetivo: um visual **único e bonito**, que não pareça um template, com movimento e com o PC aproveitando a tela.
+Pedido do usuário em 28/10/2026: o app faz muita coisa, mas o design é fraco e "cinza e verde" (`C.mint` em tudo). O PC é o app do celular esticado (`desktop.js` centraliza tudo numa coluna de 820 px). A direção já foi decidida com o usuário (protótipos no Stitch e no laboratório de bots); esta seção é o que implementar. **O Stitch serve só de base**: as telas dele têm erros (listados abaixo), então a implementação corrige e adapta ao que o app já faz.
 
-**Antes de codar: discutir a identidade dos bots com o usuário.** Não implemente nenhum avatar antes disso. Leve 3 ou 4 direções com protótipo (uma página HTML ou artifact com as opções animadas lado a lado, nos dois temas) e deixe o usuário escolher ou misturar. Ponto de partida para a conversa, sem decidir nada:
-- formas abstratas vivas (uma "gota" ou orbe que respira, muda de forma e de cor conforme o estado);
-- personagens ilustrados gerados por semente (cada bot nasce único; a pessoa pode sortear de novo);
-- monograma ou glifo com animação (letra do nome em um selo que se mexe);
-- foto ou imagem escolhida pela pessoa, com moldura animada do estado por cima.
+**Material de referência (já no repositório, em `docs/design/`)**
+- `laboratorio-de-bots.html`: o gerador de rostos funcionando (abre no navegador; aba "Rostos"; a aba "Bichos" é a primeira ideia, descartada como principal). **É a especificação visual e de comportamento dos avatares.** O código está dentro do arquivo (`makeFace`, `frameFace`, `render`).
+- `stitch/celular/<tela>/code.html` e `render.png`: as 12 telas do celular geradas pelo Stitch (as `screen.png` originais vieram quebradas; os `render.png` foram gerados do HTML). `stitch/celular/DESIGN.md`: tokens do Stitch (laranja `#ff9f1c`, fundo `#131315`, Plus Jakarta Sans).
+- A tela de PC do Stitch ficou ruim; **não há base de PC aprovada**. Use a estrutura descrita abaixo.
 
-Em qualquer direção: o estado (trabalhando, esperando você, dormindo, erro) aparece no próprio avatar, também no widget (`MyBotsWidget.kt`) e nas notificações.
+### Decisões
 
-1. **Sistema visual novo** (`theme.js` vira tokens por tema):
-   - **Escuro com preto de verdade** (`#000` de fundo, superfícies quase pretas, bom em tela OLED) e **claro** de verdade, não um escuro invertido. Opção em Ajustes: Escuro, Claro, Seguir o sistema. O PC segue a mesma escolha, inclusive a barra de rolagem e o `document.body` (hoje fixo em `#090B10`).
-   - Paleta e tipografia novas, com personalidade. Acabar com o verde como cor de tudo: uma cor de destaque da marca e a cor de cada bot só onde ela importa.
-   - Ícones, cantos, sombras, espaçamento e estados (pressionado, desativado, carregando) revisados em todo o app.
-2. **Movimento**: transições entre telas, folhas e cartões que entram com mola, mensagem nova aparecendo com suavidade, avatar vivo, retorno ao tocar. Tudo leve (Reanimated na thread de UI, sem pesar na conversa da v56–v57) e respeitando "reduzir movimento" do sistema.
-3. **Ajustes reorganizados**: hoje é uma lista longa. Exemplo do problema: com as senhas importadas (`PasswordsPanel`), aparece a lista inteira e é preciso rolar muito para chegar às outras opções.
-   - Ajustes por **categorias** (Conta e IA, Bots, Celular, Computador, Senhas e carteira, Backup, Sobre), cada uma numa tela ou seção recolhível, com busca nos ajustes.
-   - Senhas: um resumo ("312 senhas · 4 bots com acesso") que abre uma tela própria com busca, agrupada por site e carregando aos poucos. O mesmo vale para qualquer lista que possa crescer (conexões, rotinas, pastas).
-   - Revisar também o perfil do bot (`BotProfile.js`): o que se usa muito fica no alto, o avançado fica recolhido.
-4. **PC com cara de PC** (`DesktopShell`, `desktop.js`):
-   - Layout próprio em vez da coluna centralizada: barra lateral recolhível, conversa e um painel lateral que muda conforme o contexto (navegador do bot ao vivo, perfil, Hoje e Atividade), com divisórias que dá para arrastar.
-   - Ajustes e perfil em páginas largas com navegação à esquerda, em vez de folhas de celular abertas no meio da tela.
-   - Atalhos de teclado (Ctrl+K para buscar e trocar de bot, Ctrl+N para um bot novo, Esc para fechar), hover, menus de clique direito, arrastar arquivos para a conversa.
-   - Aproveitar a largura: Atividade e pendências em colunas, navegador do bot ao lado da conversa sem espremer.
-5. **Telas principais redesenhadas**: Início, conversa, sala, Atividade, aprovações, navegador do bot, criação de bot e primeira abertura (onboarding).
+1. **Identidade dos bots = rostos de caracteres, só cabeça, sem corpo.** Cada rosto é uma grade de caracteres (70×40 células, fonte monoespaçada) com: cabeça (círculo, quadrado redondo, caixa, sino, fantasma, bolha, gota, caveira, alto, espinhoso), textura (rampa limpa, letras, 0 e 1, pontilhado, hachura, ruído de letras) com iluminação de cúpula, olhos sólidos num "buraco" escuro (bolinha, oval, barra, quadrado cortado, anel), boca (sorriso, bico de gato, reta, redonda, aberta, com dentes, dentes afiados), topo (orelhas de gato ou urso, fones laterais, antena, chifres) e extras (bochechas, sardas, pontos, sobrancelha pesada, terceiro olho, olhos extras, fumaça). Cada bot tem uma cor e uma **semente** (o nome, por padrão); a mesma semente gera sempre o mesmo rosto, no celular, no PC, no widget e nas notificações.
+2. **Criar o bot: sem barra "fofo ↔ monstro".** Duas formas: **Sortear** (um botão gera o rosto inteiro) e **Montar** (a pessoa escolhe peça por peça: cabeça, textura, olhos, boca, topo, cor, vendo o rosto mudar). O nível de "esquisitice" continua existindo por dentro (cada rosto tem o seu, vindo da semente e das peças) mas não aparece como controle. Guardar no perfil do bot (`bot.face`: semente, peças escolhidas, cor), sem tabela nova.
+3. **Estados no próprio rosto**: parado (pisca e de vez em quando sorri), trabalhando (solta fumaça, olha para os lados), esperando você (um "( ! )" âmbar), dormindo (olhos fechados, "z" subindo), erro (olhos X vermelhos, treme), concluído (sorriso aberto) e **"do mal"** (de repente e sozinho: vermelho, olhos bravos, dentes afiados, por ~1,5 s a cada 7–18 s). A **fumaça subindo** é um recurso pedido pelo usuário, não um efeito opcional.
+4. **Tamanhos**: com altura de célula ≥ 8 px desenha caracteres de verdade (rosto grande, perfil, criação do bot); abaixo disso desenha pixels (listas, ícones), com recorte justo da cabeça. Widget e notificação mostram um quadro parado do estado. Respeitar "reduzir movimento" (quadro parado).
+5. **Sistema visual**: fundo preto OLED de verdade e tema claro de verdade (opção Escuro, Claro, Seguir o sistema, no celular e no PC); uma cor de destaque (o laranja do Stitch) e a cor de cada bot só nos rostos. **Fim do verde `mint` como cor de tudo.** Manter a tipografia atual (Plus Jakarta Sans); os glifos dos rostos usam uma fonte monoespaçada embutida só com os caracteres usados (o laboratório já faz isso, ~10 KB).
+6. **O que NÃO fazer ("cara de IA")**, vale para tudo: faixa colorida só de um lado de cartão; rótulos e selos em MAIÚSCULAS com espaçamento largo ou com bolinha; cartão dentro de cartão; vários cartões iguais empilhados; gradientes em superfícies; vidro/blur; Inter/Roboto/Poppins; roxo, índigo ou verde-menta como cor de marca; emoji; texto de enchimento; **nenhum texto em inglês** (os títulos "Message Actions Overlay", "Transaction Approval", "Search Command Bar", "Chat Clara" do Stitch são erros). Texto sempre em português e em minúsculas normais.
+7. **Navegação do celular**: botão de menu no canto superior esquerdo abre uma gaveta (Conversas, Atividade, Carteira, Rotinas, Negociações, Ajustes) e a barra de comando flutuante ("Busque ou digite @ para dar uma tarefa") fica embaixo. **Sem barra de abas com ícones** (o Stitch recolocou uma em várias telas: remover).
+8. **Uma decisão aparece uma vez**: a aprovação fica no lugar em que acontece (no chat) e em outros lugares só vira um ponto laranja ou contador.
 
-**Como fazer**: começar pelo protótipo de direção visual (tema e avatar), conversar com o usuário e só depois aplicar. Trocar os tokens primeiro e depois tela por tela, para o app não ficar meio novo e meio velho por muito tempo.
+### Telas do celular (base: `stitch/celular/`)
 
-**Testes novos**: as telas principais nos dois temas, no celular e no PC, conferidas por capturas no emulador e na janela do PC (guardadas em `docs/screenshots/`); contraste mínimo AA nos textos; troca de tema sem reiniciar; "reduzir movimento" desliga as animações; lista com 1.000 senhas abre e rola sem travar e não empurra as outras opções; o avatar mostra cada estado; nenhuma função perdida (comparar a lista de ações de cada tela antes e depois).
+Home (a aprovada), conversa (com **Fila**, Pausar, Corrigir rumo, resposta aparecendo e fixadas), menu de segurar a mensagem, aprovação (e a mesma como notificação com Responder, Aprovar, Recusar), busca/barra de comando, criar bot (rosto: sortear/montar; personalidade e acesso com os 4 níveis; primeira mensagem), perfil do bot (abas Perfil, Rotinas, Negociar, Acesso, Memória, com "Se o limite acabar"), carteira, atividade, ajustes por categorias.
+
+Correções obrigatórias em relação às telas do Stitch: rostos **diferentes por bot** (o Stitch repetiu o mesmo fantasma rosa); sem faixa lateral nos cartões; sem rótulos em maiúsculas; sem barra de baixo; sem inglês; fila no chat; abas do perfil cabendo na largura; botão fixo não cobrindo o nível Médio; ajustes com as categorias Conta e IA, Bots, Celular, Computador, Senhas e carteira, Backup, Sobre (o Stitch trocou "Celular/Computador" por "Dispositivos"). **Nenhuma função atual pode sumir**: antes de mexer em cada tela, liste as ações que ela tem hoje e confira a lista depois.
+
+### Ajustes (reorganizar)
+
+Ajustes por **categorias**, cada uma numa tela ou seção recolhível, com busca. Senhas: um resumo ("312 senhas · 4 bots com acesso") que abre uma tela própria com busca, agrupada por site e carregando aos poucos; o mesmo vale para conexões, rotinas e pastas. Perfil do bot (`BotProfile.js`): o que se usa muito fica no alto, o avançado recolhido.
+
+### PC (não há base do Stitch; implementar por esta estrutura)
+
+Inspiração de estrutura (não de visual): um app calmo e espaçoso, com uma coluna principal larga.
+- **Barra de ícones** estreita (~56 px): Conversas, Atividade, Carteira, Rotinas, Negociações; embaixo os limites do plano em anéis pequenos (Claude, Codex), Ajuda e Ajustes.
+- **Coluna de conversas** (~300 px), só lista: busca, seções recolhíveis (por exemplo salas), **uma linha por conversa** (rosto com estado, nome, prévia de uma linha, hora, ponto de não lido). Sem cartões, sem saudação, sem aprovações. Embaixo, discreto: "Atualização pronta · Reiniciar".
+- **Conversa** como coluna principal, larga e centralizada (texto até ~760 px), respostas sem balão, a Fila logo acima do campo de mensagem, campo largo que aceita arrastar arquivos.
+- **Painel direito recolhido por padrão**, aberto por botões ("Abrir navegador", "Perfil", "Aprovações"): navegador ao vivo do bot (prévia, passos com visto e hora, Assumir, Parar), perfil, aprovações do dia. Divisórias que dá para arrastar.
+- **Abas no topo**, uma por conversa aberta, voltar e avançar, chip do modelo e botão do painel. Sem caminho técnico de sessão nem rodapé de desenvolvedor.
+- **Sem conversa aberta**: centro calmo com o rosto grande do bot, "Boa tarde, Augusto.", "3 trabalhando. 1 espera você.", a aprovação pendente como um bloco simples e três ações discretas.
+- **Ctrl+K** (buscar e trocar de bot, com dicas de teclado), Ctrl+N bot novo, Esc fecha, menu de clique direito na mensagem e no bot, hover. Ajustes e perfil em páginas largas com categorias à esquerda. Atividade em colunas ("Precisa de você", "Em andamento", "Concluído hoje"). Janela estreita (900 px) recolhe a coluna de conversas para só os rostos.
+
+### Como fazer (ordem; uma entrega por vez, com aceite)
+
+**Parte 1 (0.41.0, versionCode 65): fundação e rostos.**
+1. **Gerador de rostos puro** em `lib/face.mjs` (sem DOM, sem canvas): `makeFace(seed, pieces)` e `frameFace(face, estado, tempo)` devolvendo a grade de células. Porte o código do laboratório, **sem mudar o resultado**, e teste: mesma semente gera o mesmo rosto, cada peça muda só o que deve, os estados existem.
+2. **Risco técnico, resolver primeiro**: como desenhar esses rostos animados no React Native sem pesar a lista (candidatos: linhas de `Text` com a fonte monoespaçada para o rosto grande, `react-native-svg` ou pixels em Canvas/Skia para os pequenos, quadro pré-desenhado para a lista). Faça um teste curto no emulador com 30 bots na lista e na conversa, meça e escolha. Para o widget e a notificação, o Kotlin (`BotFace.kt`) precisa de um quadro parado: decidir se vem de um bitmap gerado pelo JS ou de uma versão em Kotlin.
+3. Tokens de tema (`theme.js`: escuro OLED, claro, seguir o sistema; no PC também `document.body` e a barra de rolagem), troca sem reiniciar. Acabar com `C.mint` como cor de tudo.
+4. Rosto no perfil do bot (`bot.face`), no `BotAvatar`, e em todos os lugares onde o avatar antigo aparece (lista, chat, salas, widget, notificações).
+5. Home, conversa e menu lateral novos (com fila, segurar a mensagem, busca, rascunho ao vivo).
+
+**Parte 2 (0.42.0, versionCode 66): o resto do celular** (aprovação, criar bot sortear/montar, perfil, carteira, atividade, ajustes reorganizados).
+
+**Parte 3 (0.43.0, versionCode 67): PC** (estrutura acima).
+
+Cada parte segue a seção 1 do `PLANO-V47.md` (testes, emulador, entrega, docs) e termina com APK, Release e atualização do PC, esperando o aceite antes da seguinte.
+
+### Testes novos
+
+Gerador determinístico e cobrindo todos os estados e peças; troca de tema sem reiniciar; "reduzir movimento" para a animação; contraste mínimo AA nos textos e nos rostos nos dois temas; lista com 30 bots e o chat com a animação rodando sem travar (medir); lista de ações de cada tela antes e depois, sem função perdida; lista de 1.000 senhas abre e rola sem travar e não empurra as outras opções; capturas das telas principais nos dois temas, no celular e no PC (guardar em `docs/screenshots/`); nenhuma string em inglês visível nas telas novas.
 
 ---
 

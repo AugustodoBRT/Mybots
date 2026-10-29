@@ -128,9 +128,9 @@ class TermuxBridgeModule : Module() {
       try { WalletGuard.setCardBots(context, cardId, bots.filter { it.matches(Regex("[0-9a-f-]{36}")) }) } finally { WalletEditorGate.close() }
       true
     }
-    AsyncFunction("cardEditor") { promise: Promise ->
+    AsyncFunction("cardEditor") { light: Boolean, promise: Promise ->
       val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para cadastrar o cartão.", null)
-      CardEditor.show(activity, promise)
+      CardEditor.show(activity, promise, light)
     }
     AsyncFunction("cardDelete") { id: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
@@ -140,9 +140,9 @@ class TermuxBridgeModule : Module() {
     AsyncFunction("walletFreeze") { WalletPay.freeze(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")); true }
     AsyncFunction("walletPurchases") { WalletPay.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
     AsyncFunction("walletDismiss") { id: String -> WalletPay.dismiss(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id); true }
-    AsyncFunction("walletRulesEditor") { promise: Promise ->
+    AsyncFunction("walletRulesEditor") { light: Boolean, promise: Promise ->
       val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para editar a carteira.", null)
-      WalletRulesEditor.show(activity, promise)
+      WalletRulesEditor.show(activity, promise, light)
     }
     AsyncFunction("passwordsList") { PasswordVault.list(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")) }
     AsyncFunction("passwordSave") { site: String, username: String, password: String, bots: List<String>? ->

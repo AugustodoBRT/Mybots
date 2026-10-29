@@ -60,38 +60,30 @@ internal object WalletRulesEditor {
   @Volatile var active = false
     private set
 
-  fun show(activity: Activity, promise: Promise) {
+  fun show(activity: Activity, promise: Promise, light: Boolean = false) {
     activity.runOnUiThread {
       if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread promise.reject("NO_ACTIVITY", "Abra o MyBots para editar a carteira.", null)
       if (active || CardEditor.active) return@runOnUiThread promise.reject("BUSY", "Outra edição protegida já está aberta.", null)
       val (current, generation) = WalletGuard.snapshot(activity.applicationContext)
-      val fields = LinearLayout(activity).apply {
-        orientation = LinearLayout.VERTICAL
-        val pad = (24 * resources.displayMetrics.density).toInt()
-        setPadding(pad, 0, pad, 0)
-      }
+      val ui = AppDialogUi(activity, light)
       fun amount(key: String): String = current.optLong(key, 0).takeIf { it > 0 }?.let { "${it / 100},${(it % 100).toString().padStart(2, '0')}" } ?: ""
-      fun field(label: String, value: String, type: Int): EditText = EditText(activity).apply {
-        hint = label; inputType = type
-        if (android.os.Build.VERSION.SDK_INT >= 26) imeOptions = imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-        setText(value); fields.addView(this)
-      }
       fun entries(key: String): String = current.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.optString(it) }.joinToString(", ") } ?: ""
-      val purchase = field("Máximo por compra (R$)", amount("perPurchase"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-      val day = field("Máximo por dia (R$)", amount("perDay"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-      val month = field("Máximo por mês (R$)", amount("perMonth"), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-      val allowed = field("Lojas permitidas (vazio = qualquer loja; domínios separados por vírgula)", entries("allowedStores"), InputType.TYPE_CLASS_TEXT)
-      val blocked = field("Lojas proibidas (domínios separados por vírgula)", entries("blockedStores"), InputType.TYPE_CLASS_TEXT)
-      val categories = field("Categorias permitidas (vazio = qualquer uma; separadas por vírgula)", entries("categories"), InputType.TYPE_CLASS_TEXT)
-      val frozen = CheckBox(activity).apply { text = "Carteira congelada"; isChecked = current.optBoolean("frozen", true); fields.addView(this) }
-      val dialog = AlertDialog.Builder(activity).setTitle("Regras da carteira")
-        .setMessage("As regras ficam só neste celular e nenhum bot consegue mudá-las. Os três limites valem sempre; lojas permitidas e categorias vazias liberam qualquer uma, e as lojas proibidas continuam barradas. Desmarque “Carteira congelada” para os bots poderem pagar.")
-        .setView(ScrollView(activity).apply { addView(fields) }).setNegativeButton("Cancelar") { _, _ -> }
-        .setPositiveButton("Salvar", null).create()
+      val money = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+      lateinit var purchase: EditText; lateinit var day: EditText; lateinit var month: EditText; lateinit var allowed: EditText; lateinit var blocked: EditText; lateinit var categories: EditText; lateinit var frozen: android.widget.Switch
       var settled = false
-      dialog.setOnDismissListener { active = false; WalletEditorGate.close(); if (!settled) { settled = true; promise.resolve(null) } }
-      dialog.setOnShowListener {
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+      lateinit var dialog: android.app.Dialog
+      dialog = ui.build("Regras da carteira", "As regras ficam só neste celular e nenhum bot consegue mudá-las.", "Salvar", false,
+        fill = { form ->
+          purchase = ui.field(form, "Máximo por compra (R$)", "0,00", amount("perPurchase"), money)
+          day = ui.field(form, "Máximo por dia (R$)", "0,00", amount("perDay"), money)
+          month = ui.field(form, "Máximo por mês (R$)", "0,00", amount("perMonth"), money)
+          allowed = ui.field(form, "Lojas permitidas", "Vazio libera qualquer loja; domínios separados por vírgula", entries("allowedStores"), InputType.TYPE_CLASS_TEXT)
+          blocked = ui.field(form, "Lojas proibidas", "Domínios separados por vírgula", entries("blockedStores"), InputType.TYPE_CLASS_TEXT)
+          categories = ui.field(form, "Categorias permitidas", "Vazio libera qualquer uma; separadas por vírgula", entries("categories"), InputType.TYPE_CLASS_TEXT)
+          frozen = ui.switchRow(form, "Carteira congelada", "Desligue para os bots poderem pagar.", current.optBoolean("frozen", true))
+          ui.note(form, "Os três limites valem sempre. Lojas permitidas e categorias vazias liberam qualquer uma, e as lojas proibidas continuam barradas.")
+        },
+        save = {
           try {
             fun cents(input: EditText): Long {
               val text = input.text.toString().trim().replace(',', '.')
@@ -111,12 +103,12 @@ internal object WalletRulesEditor {
             val rules = JSONObject().put("perPurchase", cents(purchase)).put("perDay", cents(day)).put("perMonth", cents(month))
               .put("allowedStores", JSONArray(allow)).put("blockedStores", JSONArray(block)).put("categories", JSONArray(cats))
             WalletGuard.saveFromEditor(activity.applicationContext, rules, frozen.isChecked, generation)
-            settled = true; promise.resolve(true); dialog.dismiss()
+            settled = true; promise.resolve(true); true
           } catch (error: Exception) {
-            Toast.makeText(activity, if (error is IllegalArgumentException) error.message ?: "Confira as regras." else "Não consegui salvar as regras da carteira.", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, if (error is IllegalArgumentException) error.message ?: "Confira as regras." else "Não consegui salvar as regras da carteira.", Toast.LENGTH_LONG).show(); false
           }
-        }
-      }
+        },
+        onClosed = { active = false; WalletEditorGate.close(); if (!settled) { settled = true; promise.resolve(null) } })
       if (!WalletEditorGate.open()) { promise.reject("BUSY", "Aguarde o controle do celular terminar.", null); return@runOnUiThread }
       active = true
       try { dialog.show() } catch (_: Exception) { active = false; WalletEditorGate.close(); promise.reject("DIALOG", "Não consegui abrir as regras da carteira.", null) }

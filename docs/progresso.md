@@ -1209,3 +1209,10 @@ Pedidos do usuário depois de usar a janela do PC:
 
 ### Entrega da 0.44.2
 APK ARM64 offline `dist/apk/mybots-v73.apk` e `.sha256`, **versionCode 73 / 0.44.2**, 44.344.267 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v73](https://github.com/AugustodoBRT/Mybots/releases/tag/v73), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`. Daqui em diante, cada tarefa termina com essa entrega (pedido do usuário).
+
+## 29/10/2026 — 0.44.3 (versionCode 74): telas protegidas da carteira no estilo do app
+Pedido do usuário: "Regras da carteira" e "Novo cartão" eram caixas padrão do Android, feias; queria no estilo do app.
+- Novo `AppDialog.kt` (`AppDialogUi`): caixa arredondada com as cores do app (escuro OLED ou claro, conforme o tema que a tela informa na chamada: `cardEditor(light)` e `walletRulesEditor(light)`), título grande, campos em caixas arredondadas com rótulo em cima, botões em pílula (Cancelar de contorno, Salvar em laranja) e interruptor para "Carteira congelada". Rola quando o teclado abre.
+- **Segurança igual à anterior**: continuam telas nativas (o que se digita não passa pelo JavaScript nem pela IA); o cartão mantém `FLAG_SECURE` (a tela não aparece em captura), sem sugestões, sem preenchimento automático, campos limpos ao fechar; a regra de que um editor não abre junto com outro (`WalletEditorGate`) e a validação de antes ficaram como estavam. Cartão: validade em três colunas (mês, ano, CVV).
+- Conferido no emulador: as duas telas. Para ver a do cartão desliguei o `FLAG_SECURE` só no APK de teste do emulador e religuei no código; o APK entregue o tem ligado.
+- `npm test` 309/309 (na primeira rodada três testes de Chrome real passaram do tempo com o emulador fechando e passaram sozinhos e na rodada seguinte). **Não testado**: tema claro dessas telas, salvar um cartão real e as regras no celular real.

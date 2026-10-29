@@ -1,4 +1,5 @@
 import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core';
+import { currentTheme } from './theme';
 
 let native;
 try { native = requireNativeModule('TermuxBridge'); } catch { /* Expo Go uses only the computer backend. */ }
@@ -33,11 +34,11 @@ export const requestWidget = () => native.requestWidget();
 // Saved site logins: kept in the app (Keystore); the bots' browser fills them, the model never sees them.
 export const walletCards = async () => JSON.parse(await native.walletCards());
 export const walletCardBots = (cardId, bots) => native.walletCardBots(cardId, bots);
-export const cardEditor = () => native.cardEditor();
+export const cardEditor = () => native.cardEditor(currentTheme() === 'light');
 export const cardDelete = id => native.cardDelete(id);
 export const walletRules = async () => JSON.parse(await native.walletRules());
 export const walletFreeze = () => native.walletFreeze();
-export const walletRulesEditor = () => native.walletRulesEditor();
+export const walletRulesEditor = () => native.walletRulesEditor(currentTheme() === 'light');
 export const walletPurchases = async () => JSON.parse(await native.walletPurchases());
 export const walletDismiss = id => native.walletDismiss(id);
 export const passwordsList = () => native.passwordsList();

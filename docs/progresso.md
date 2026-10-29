@@ -1283,3 +1283,6 @@ Pedido do usuário: no PC, ao abrir o navegador de um bot que roda no celular, v
 - Uma página só: o navegador do celular não tem várias abas (as abas ao vivo existem só no Chrome do computador); a aba mostrada é a única página.
 - Conferido: teste com celular simulado (`browser.test.mjs`), a janela (`desktop-window.test.mjs`) e **no emulador de verdade**: a tela volta como imagem; sem assumir, `phoneInput` é recusado; assumindo, clique, rolagem, tecla e recarregar chegam ao navegador; digitar sem campo em foco avisa. `npm test` 315/315.
 - **Não testado**: a janela instalada de verdade (clicar, rolar e digitar com o mouse e o teclado numa página real com campos), o desempenho num celular real e as pessoas com o app em segundo plano e a tela apagada (o app precisa estar ativo, como já era para o navegador do bot).
+
+### Entrega da 0.46.0
+APK ARM64 offline `dist/apk/mybots-v80.apk` e `.sha256`, **versionCode 80 / 0.46.0**, 44.366.563 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v80](https://github.com/AugustodoBRT/Mybots/releases/tag/v80), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.

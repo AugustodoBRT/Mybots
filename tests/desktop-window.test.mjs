@@ -104,5 +104,15 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.setViewportSize({ width: 860, height: 800 });
   await page.waitForFunction(() => !document.body.innerText.includes('Buscar bot ou sala'));
   await page.getByLabel('Conversar com Clara').first().click(); await page.getByRole('tab', { name: /Clara/ }).waitFor();
+
+  // A phone still running the previous supervisor sends no dollars: the page must not show a misleading zero.
+  const original = app.db.usage.bind(app.db);
+  app.db.usage = (...args) => { const usage = original(...args); for (const entry of Object.values(usage.bots)) delete entry.cost; usage.days = usage.days.map(({ cost, ...rest }) => rest); return usage; };
+  await page.setViewportSize({ width: 1440, height: 900 }); await page.reload();
+  await page.getByLabel('Atividade', { exact: true }).first().click(); await seen('Uso nos últimos 7 dias');
+  await page.getByText('O supervisor do celular ainda é de uma versão anterior', { exact: false }).first().waitFor();
+  assert.ok(await page.getByText(/^≈ US\$ \d/).count() >= 1, 'o valor de cada bot vira estimativa local');
+  assert.equal(await page.getByText('US$ 0,00', { exact: true }).count() < 4, true);
+  assert.match(await page.getByLabel(/^Uso em tokens por dia/).getAttribute('aria-label'), /mi/);
   assert.deepEqual(errors.filter(error => !/favicon|Failed to load resource/.test(error)), []);
 });

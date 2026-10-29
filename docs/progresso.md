@@ -1141,3 +1141,4 @@ Pedido do usuário depois de usar a 0.43.0: as opções da barra da esquerda (At
 
 ### Entrega da 0.43.1
 APK ARM64 offline `dist/apk/mybots-v68.apk` e `.sha256`, **versionCode 68 / 0.43.1**, 44.295.204 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs`: `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`. SHA-256 do APK: `03d7a82183f526c787a2844fe4d0d65c7b63bb047af7ff3c9c497384f0217d48`. Nenhuma permissão nova pedida ao Android.
+Release pública [v68](https://github.com/AugustodoBRT/Mybots/releases/tag/v68) (0.43.1), a mais recente, com APK e `.sha256`; o APK baixado da Release é idêntico ao local. Commit `eb70d2d`, sem coautoria de IA. **PC atualizado depois da Release**: `scripts/build-desktop.sh` em **29/10/2026 às 03:29 (Brasília)**; `mybots-pc` **active** (PID 181165); a interface instalada foi gerada às 03:28 e traz a janela nova. O diretório `output/` e as pastas `personagens-*` preexistentes ficaram fora dos commits.

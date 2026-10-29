@@ -1195,3 +1195,14 @@ Relatados pelo usuário com capturas do celular:
 - **"Linha do tempo do navegador" sempre presa no fim da conversa**: o cartão ficava para sempre com os passos da última tarefa. Agora só aparece enquanto o bot trabalha e até 15 minutos depois do último passo (`at` do passo).
 - **Teclado tampando o campo de mensagem**: reproduzido no emulador (API 36, edge to edge): o `KeyboardAvoidingView` da biblioteca deixava o campo abaixo do topo do teclado. Chat e Sala passaram a usar `keyboard.js` (`useKeyboardPad`): a tela põe padding igual a quanto o teclado avança sobre ela, medido pela posição real do teclado (a altura que o Android informa não inclui a barra de navegação). Conferido no emulador: o campo aparece inteiro acima do teclado.
 - `npm test` 309/309. **Não testado**: no celular real (o teclado dele é outro e a barra de navegação também), Sala com teclado e os formulários de Perfil/Novo bot (não mudaram).
+
+## 29/10/2026 — 0.44.2 (versionCode 73): janela do PC e conversa mais limpas
+Pedidos do usuário depois de usar a janela do PC:
+- **Rostos da lista no PC** com o mesmo tratamento do celular: feitos em 66 unidades com muitas partículas e reduzidos (`FaceArt` web), raio mínimo fino (`airyMinR` em `lib/mimo.mjs`, `minR` em `compute`), em vez das partículas grossas.
+- **Conversa privada sem foto nem nome** nas mensagens do bot (como no WhatsApp), no celular e no PC; foto e nome só em sala (`group` em `Message`). A hora, o modelo e os tokens continuam.
+- **Conversa na largura toda** no PC (sem a coluna centralizada de 760 px com duas barras pretas): a fala do bot fica à esquerda, a sua à direita.
+- **Um só botão na barra de abas** (ícone de barra lateral, com o número de aprovações) abre a **barra lateral direita "Opções"**: modelo e raciocínio, navegador do bot, perfil e permissões, aprovações e hoje.
+- **"Abrir navegador" não abria nada** no PC: o painel só existia se o bot já tivesse uma página aberta no computador. Agora o painel avisa que o navegador do bot não está aberto no computador (e que a página aparece ali quando ele abrir uma).
+- **Logos oficiais** do Claude e da OpenAI nos anéis de limite, no lugar dos SVGs desenhados (`mobile/brand.js`, do Simple Icons, CC0; as marcas são de Anthropic e OpenAI).
+- Testes: `message-tree.json` regenerado (a mensagem mudou de propósito); `desktop-window.test.mjs` usa o botão de opções e o aviso do navegador. `npm test` 309/309.
+- **Não testado**: o logo do Claude no anel (só havia o limite do Codex no teste), a janela do PC instalada e o chat privado no celular real.

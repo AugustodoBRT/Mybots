@@ -4,19 +4,7 @@
     "props": {
       "style": "messageRow",
       "children": [
-        {
-          "type": "Avatar",
-          "props": {
-            "bot": {
-              "id": "a",
-              "name": "A",
-              "color": "green"
-            },
-            "size": 30,
-            "animated": false,
-            "tile": false
-          }
-        },
+        null,
         {
           "type": "View",
           "props": {
@@ -30,13 +18,7 @@
                 "props": {
                   "style": "messageMeta",
                   "children": [
-                    {
-                      "type": "Text",
-                      "props": {
-                        "style": "messageSpeaker",
-                        "children": "A"
-                      }
-                    },
+                    null,
                     {
                       "type": "Text",
                       "props": {
@@ -165,19 +147,7 @@
     "props": {
       "style": "messageRow",
       "children": [
-        {
-          "type": "Avatar",
-          "props": {
-            "bot": {
-              "id": "a",
-              "name": "A",
-              "color": "green"
-            },
-            "size": 30,
-            "animated": false,
-            "tile": false
-          }
-        },
+        null,
         {
           "type": "View",
           "props": {
@@ -191,13 +161,7 @@
                 "props": {
                   "style": "messageMeta",
                   "children": [
-                    {
-                      "type": "Text",
-                      "props": {
-                        "style": "messageSpeaker",
-                        "children": "A"
-                      }
-                    },
+                    null,
                     {
                       "type": "Text",
                       "props": {
@@ -278,19 +242,7 @@
     "props": {
       "style": "messageRow",
       "children": [
-        {
-          "type": "Avatar",
-          "props": {
-            "bot": {
-              "id": "a",
-              "name": "A",
-              "color": "green"
-            },
-            "size": 30,
-            "animated": false,
-            "tile": false
-          }
-        },
+        null,
         {
           "type": "View",
           "props": {
@@ -304,13 +256,7 @@
                 "props": {
                   "style": "messageMeta",
                   "children": [
-                    {
-                      "type": "Text",
-                      "props": {
-                        "style": "messageSpeaker",
-                        "children": "A"
-                      }
-                    },
+                    null,
                     {
                       "type": "Text",
                       "props": {

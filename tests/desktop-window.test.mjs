@@ -52,10 +52,13 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   // A conversation opens in a tab; the toolbar and the closed side panel are there.
   await page.getByLabel('Conversar com Atlas').first().click();
   await page.getByRole('tab', { name: /Atlas/ }).waitFor();
-  for (const label of ['Abrir navegador', 'Perfil']) await seen(label);
-  assert.equal(await page.getByText('Aprovações e hoje').count(), 0, 'o painel direito começa fechado');
-  await page.getByText('Aprovações', { exact: false }).first().click(); await seen('Aprovações e hoje'); await page.keyboard.press('Escape');
-  assert.equal(await page.getByText('Aprovações e hoje').count(), 0, 'Esc fecha o painel');
+  await page.getByLabel('Opções da conversa').first().waitFor();
+  assert.equal(await page.getByText('Aprovações e hoje').count(), 0, 'a barra direita começa fechada');
+  // One button opens the right sidebar with the conversation's options; its rows lead to the model, browser, profile and what waits.
+  await page.getByLabel('Opções da conversa').first().click(); for (const label of ['Navegador do bot', 'Perfil e permissões', 'Aprovações e hoje']) await seen(label);
+  await page.getByText('Navegador do bot').first().click(); await seen('O navegador de Atlas não está aberto no computador.');
+  await page.getByText('Aprovações e hoje').first().click(); await seen('Esperando você'); await page.keyboard.press('Escape');
+  assert.equal(await page.getByText('Esperando você').count(), 0, 'Esc fecha a barra');
 
   // A file is attached from the window (button) and shown in the tray; one over the limit is refused with a clear message.
   const chooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();

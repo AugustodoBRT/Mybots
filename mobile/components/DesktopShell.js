@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, PanResponder, useWindowDimensions, Modal } from 'react-native';
-import Svg, { Circle, Path, Ellipse, G } from 'react-native-svg';
+import Svg, { Circle, Path, G } from 'react-native-svg';
 import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
+import { CLAUDE_MARK, OPENAI_MARK, CLAUDE_COLOR } from '../brand';
 import { C, Icon, F, themed, hueOf } from '../theme';
 import { desktopBus } from '../desktop';
 import { Avatar, RoomFaces, IconButton, Notice, ApprovalCard, DesktopPair, PrimaryButton, greeting, botLine, latestOf, latestInRoom, plain, shortTime, findModel, offline } from './shared';
@@ -36,6 +37,11 @@ const s = themed(() => ({
   chipText: { color: C.text2, fontFamily: F.m, fontSize: 12.5 },
   tool: { height: 32, paddingHorizontal: 11, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   toolText: { color: C.text2, fontFamily: F.m, fontSize: 13 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12 },
+  optionTitle: { color: C.text, fontFamily: F.b, fontSize: 14.5 },
+  optionNote: { color: C.muted, fontFamily: F.m, fontSize: 12.5, marginTop: 2 },
+  badge: { minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  badgeText: { color: '#000', fontFamily: F.x, fontSize: 10.5 },
   side: { width: 372, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
   sideTitle: { color: C.text, fontFamily: F.x, fontSize: 18, letterSpacing: -0.4 },
   group: { color: C.text2, fontFamily: F.b, fontSize: 14, marginTop: 18, marginBottom: 6 },
@@ -54,8 +60,7 @@ const s = themed(() => ({
   menuItem: { paddingVertical: 9, paddingHorizontal: 16 }, menuText: { color: C.text, fontFamily: F.m, fontSize: 14 }
 }));
 
-// The AI's own mark inside a ring that shows how much of the plan's window is still free (no names, just the symbol).
-const CLAUDE_RAYS = Array.from({ length: 8 }, (_, i) => { const angle = (i * Math.PI) / 4, outer = i % 2 ? 6.2 : 8.4; return `M${10 + Math.cos(angle) * 2.6} ${10 + Math.sin(angle) * 2.6}L${10 + Math.cos(angle) * outer} ${10 + Math.sin(angle) * outer}`; }).join('');
+// The AI's own logo (Claude or OpenAI) inside a ring that shows how much of the plan's window is still free (no names, just the symbol).
 function AiMark({ provider, left }) {
   const r = 18, c = 2 * Math.PI * r, shown = Math.max(0, Math.min(100, left)), low = shown < 15;
   const name = provider === 'claude' ? 'Claude' : 'Codex';
@@ -63,10 +68,7 @@ function AiMark({ provider, left }) {
     <Svg width={46} height={46} viewBox="0 0 46 46">
       <Circle cx="23" cy="23" r={r} stroke={C.line2} strokeWidth="3.5" fill="none" />
       <Circle cx="23" cy="23" r={r} stroke={low ? C.red : C.accent} strokeWidth="3.5" fill="none" strokeLinecap="round" strokeDasharray={`${(c * shown) / 100} ${c}`} transform="rotate(-90 23 23)" />
-      <G transform="translate(13 13)">
-        {provider === 'claude' ? <Path d={CLAUDE_RAYS} stroke="#D97757" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-          : [0, 1, 2, 3, 4, 5].map(i => <Ellipse key={i} cx="10" cy="4.6" rx="2.3" ry="4.2" stroke={C.text} strokeWidth="1.5" fill="none" transform={`rotate(${i * 60} 10 10)`} />)}
-      </G>
+      <G transform="translate(12.5 12.5) scale(0.84)"><Path d={provider === 'claude' ? CLAUDE_MARK : OPENAI_MARK} fill={provider === 'claude' ? CLAUDE_COLOR : C.text} /></G>
     </Svg>
     <Text style={s.ringText}>{Math.round(shown)}%</Text>
   </View>;
@@ -113,6 +115,23 @@ function Help({ visible, onClose }) {
 }
 
 // What waits for the person today (approvals first), then the next deadlines and routines and what the bots did.
+/** The one sidebar for a conversation's options: model, the bot's browser, profile and what waits for the person. */
+function OptionsPanel({ bot, model, waiting, browserOpen, onBrowser, onProfile, onToday, onClose }) {
+  const rows = [
+    bot && model ? ['bots', 'Modelo e raciocínio', model, onProfile] : null,
+    bot ? ['globe', 'Navegador do bot', browserOpen ? 'Aberto ao lado da conversa; toque para fechar' : 'Abre ao lado da conversa', onBrowser] : null,
+    bot ? ['user', 'Perfil e permissões', 'Nome, rosto, instruções e o que o bot pode fazer', onProfile] : null,
+    ['hand', 'Aprovações e hoje', waiting ? `${waiting} esperando você` : 'Nada esperando você', onToday]
+  ].filter(Boolean);
+  return <View style={s.side}>
+    <View style={[s.listHead, { paddingBottom: 4 }]}><Text style={s.sideTitle}>Opções</Text><IconButton icon="close" label="Fechar as opções" onPress={onClose} size={32} /></View>
+    <ScrollView contentContainerStyle={{ padding: 12, gap: 4 }}>
+      {rows.map(([icon, title, note, act]) => <Pressable key={title} accessibilityRole="button" onPress={act} style={({ hovered }) => [s.optionRow, hovered && s.rowHover]}>
+        <Icon name={icon} size={19} color={C.text2} /><View style={{ flex: 1 }}><Text style={s.optionTitle}>{title}</Text><Text style={s.optionNote} numberOfLines={2}>{note}</Text></View></Pressable>)}
+    </ScrollView>
+  </View>;
+}
+
 function TodayPanel({ data, onOpen, onRespond, approvalBusy, onComplete, onActivity, onClose }) {
   const name = id => data.bots?.find(bot => bot.id === id)?.name || '';
   const items = (data.pendingItems || []).filter(item => item.state === 'open').sort((a, b) => (a.due || '9').localeCompare(b.due || '9')).slice(0, 8);
@@ -166,7 +185,7 @@ function Welcome({ data, error, onRespond, approvalBusy, onCreate, onNewRoom, on
 export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, children }) {
   const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions(); const compact = width < 900;
-  const [listWidth, setListWidth] = useState(300); const [panel, setPanel] = useState(false); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
+  const [listWidth, setListWidth] = useState(300); const [panel, setPanel] = useState(false); const [options, setOptions] = useState(false); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(null); const [browserOpen, setBrowserOpen] = useState(false);
   const [rooms, setRooms] = useState(true); const [tabs, setTabs] = useState([]); const trail = useRef({ past: [], future: [], moving: false });
   const bots = useMemo(() => [...(data.bots || [])].filter(bot => !bot.deletedAt).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [data.bots]);
@@ -189,7 +208,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
     const listen = event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true); }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); onCreate(); }
-      else if (event.key === 'Escape') { setPalette(false); setMenu(null); setHelp(false); setPanel(false); }
+      else if (event.key === 'Escape') { setPalette(false); setMenu(null); setHelp(false); setPanel(false); setOptions(false); }
     };
     globalThis.addEventListener?.('keydown', listen); return () => globalThis.removeEventListener?.('keydown', listen);
   }, [onCreate]);
@@ -246,14 +265,14 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
             {faceOf(tab)}<Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{nameOf(tab)}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={`Fechar a aba de ${nameOf(tab)}`} onPress={() => closeTab(tab)} hitSlop={6}><Icon name="close" size={13} color={C.faint} /></Pressable></Pressable>; })}
         </ScrollView>
-        {model ? <Pressable accessibilityRole="button" accessibilityLabel="Modelo do bot; abre o perfil" onPress={() => onProfile(bot)} style={s.chip}><Text style={s.chipText}>{model}</Text></Pressable> : null}
-        {bot ? <Pressable accessibilityRole="button" onPress={() => desktopBus.emit('browser')} style={({ hovered }) => [s.tool, hovered && s.rowHover, browserOpen && s.tabOn]}><Icon name="globe" size={16} color={C.text2} /><Text style={s.toolText}>{browserOpen ? 'Fechar navegador' : 'Abrir navegador'}</Text></Pressable> : null}
-        {bot ? <Pressable accessibilityRole="button" onPress={() => onProfile(bot)} style={({ hovered }) => [s.tool, hovered && s.rowHover]}><Icon name="user" size={16} color={C.text2} /><Text style={s.toolText}>Perfil</Text></Pressable> : null}
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: panel }} onPress={() => setPanel(value => !value)} style={({ hovered }) => [s.tool, hovered && s.rowHover, panel && s.tabOn]}><Icon name="hand" size={16} color={waiting ? C.accent : C.text2} /><Text style={s.toolText}>Aprovações{waiting ? ` (${waiting})` : ''}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Opções da conversa" accessibilityState={{ expanded: options }} onPress={() => { setPanel(false); setOptions(value => !value); }} style={({ hovered }) => [s.tool, hovered && s.rowHover, options && s.tabOn]}>
+          <Icon name="sidebar" size={18} color={waiting && !options ? C.accent : C.text2} />{waiting ? <View style={s.badge}><Text style={s.badgeText}>{waiting}</Text></View> : null}</Pressable>
       </View> : null}
       <View style={{ flex: 1 }}>{current ? children : <Welcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
+    {options && !page ? <OptionsPanel bot={bot} model={model} waiting={waiting} browserOpen={browserOpen} onBrowser={() => desktopBus.emit('browser')} onProfile={() => { setOptions(false); onProfile(bot); }} onToday={() => { setOptions(false); setPanel(true); }} onClose={() => setOptions(false)} />
+      : null}
     {panel && !page ? <TodayPanel data={data} onOpen={id => { setPanel(false); onOpen(id); }} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} onClose={() => setPanel(false)} /> : null}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
     <Help visible={help} onClose={() => setHelp(false)} />

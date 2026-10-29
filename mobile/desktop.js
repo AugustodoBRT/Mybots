@@ -29,4 +29,4 @@ export const desktopBus = {
   emit(name, value) { listeners.get(name)?.forEach(fn => fn(value)); }
 };
 // Conversation text and the message field stay in a calm column of about 760 px.
-export const readingColumn = desktop ? { width: '100%', maxWidth: 760, alignSelf: 'center' } : {};
+export const readingColumn = desktop ? { width: '100%' } : {};

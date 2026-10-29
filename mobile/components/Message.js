@@ -6,7 +6,7 @@ import { Icon, C } from '../theme';
 import { claudeName, findModel, EFFORT_NAMES, Avatar, tokensLabel } from './shared';
 import { FileChip, FileCard, RichText } from '../RichMessage';
 
-export function MessageView({ message, bot, models, onRetry, busy, onFile, fileBusy }) {
+export function MessageView({ message, bot, models, onRetry, busy, onFile, fileBusy, group = false }) {
   const routine = message.origin === 'routine';
   const user = message.role === 'user' && !routine;
   const [expanded, setExpanded] = useState(false);
@@ -33,9 +33,9 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     </View>
   </View>;
   return <View style={styles.messageRow}>
-    <Avatar bot={bot} size={30} animated={false} tile={false} />
+    {group ? <Avatar bot={bot} size={30} animated={false} tile={false} /> : null}
     <View style={[styles.messageBubble, styles.assistantBubble]}>
-      <View style={styles.messageMeta}><Text style={styles.messageSpeaker}>{bot.name}</Text><Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
+      <View style={styles.messageMeta}>{group ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
       {files}
       <RichText id={message.id} text={message.text} textStyle={styles.messageText} />
       {error}

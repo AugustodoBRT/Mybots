@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, AccessibilityInfo, Platform } from 'react-native';
 import { MimoView } from './termux';
-import { Mimo, specFromFace, particleCount, moodFor } from '../lib/mimo.mjs';
+import { Mimo, specFromFace, particleCount, moodFor, airyMinR } from '../lib/mimo.mjs';
 import { paintFrame } from '../lib/mimo-canvas.mjs';
 import { currentTheme } from './theme';
 import { useBotMood } from './mood-director';
@@ -25,15 +25,16 @@ function WebFace({ spec, mood, size, light, on }) {
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return undefined;
     const dpr = Math.min(2, globalThis.devicePixelRatio || 1); canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
-    const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const small = size <= 150, m = sim.current = new Mimo(spec, { n: particleCount(size, true), fill: small ? 0.96 : 0.9, vfill: small ? 0.92 : 0.78 });
-    const paint = dt => paintFrame(ctx, m.compute(size, size, { light: live.current.light === 'light', energy: 0.6, dt }));
+    // like the phone: a small face is made at 66 units with many particles and shrunk, so its eyes and mouth stay clear
+    const ctx = canvas.getContext('2d'), small = size <= 150, V = small ? 66 : size; ctx.setTransform(dpr * size / V, 0, 0, dpr * size / V, 0, 0);
+    const m = sim.current = new Mimo(spec, { n: particleCount(size, true), fill: small ? 0.96 : 0.9, vfill: small ? 0.92 : 0.78 });
+    const paint = dt => { ctx.clearRect(0, 0, V, V); paintFrame(ctx, m.compute(V, V, { light: live.current.light === 'light', energy: 0.6, dt, minR: airyMinR(V) })); };
     if (!on) { m.snap(live.current.mood); paint(1); return undefined; }
     m.snap(live.current.mood); let raf = 0, last = 0;
     const loop = now => { raf = requestAnimationFrame(loop); if (now - last < 33) return; const dt = Math.min(0.05, (now - (last || now - 33)) / 1000); last = now; m.setMood(live.current.mood); m.update(dt); paint(dt); };
     raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
   }, [spec, size, on]);
-  useEffect(() => { const m = sim.current; if (m && !on) { m.snap(mood); m.compute(size, size, { light: light === 'light', dt: 1 }); const ctx = ref.current?.getContext('2d'); if (ctx) paintFrame(ctx, m.compute(size, size, { light: light === 'light', energy: 0.6, dt: 1 })); } }, [mood, light]);
+  useEffect(() => { const m = sim.current, canvas = ref.current; if (!m || on || !canvas) return; const ctx = canvas.getContext('2d'), V = size <= 150 ? 66 : size; m.snap(mood); ctx.clearRect(0, 0, V, V); paintFrame(ctx, m.compute(V, V, { light: light === 'light', energy: 0.6, dt: 1, minR: airyMinR(V) })); }, [mood, light]);
   return React.createElement('canvas', { ref, style: { width: size, height: size } });
 }
 

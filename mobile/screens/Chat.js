@@ -105,7 +105,9 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   const asleep = offline(data, bot.id);
   const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
-  const panel = showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
+  const noBrowser = desktop && browserOpen && !browsing;
+  const panel = noBrowser ? <View style={styles.browserNone}><Icon name="globe" size={22} color={C.muted} /><Text style={styles.browserNoneText}>O navegador de {bot.name} não está aberto no computador.</Text><Text style={styles.browserNoneHint}>Quando ele abrir uma página, ela aparece aqui para você acompanhar ou assumir.</Text><Pressable accessibilityRole="button" onPress={() => setBrowserOpen(false)} style={styles.stopButton}><Text style={styles.stopText}>Fechar</Text></Pressable></View>
+    : showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
   return <View style={styles.chatScreen} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}

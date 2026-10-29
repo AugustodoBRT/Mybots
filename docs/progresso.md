@@ -1271,3 +1271,6 @@ Pergunta do usuário: se um bot do Claude gerar um vídeo de 200 MB, ele não co
 - O bot não lê arquivo de mais de 50 MB com `attachment_read` (avisa que é para mandar com `file_send`).
 - Testes: `big-files.test.mjs` (60 MB: copia, lê em 20 partes, recusa `/etc/passwd`, `..` e link simbólico). `npm test` 314/314.
 - **Não feito**: (1) arquivo do **computador** (bot que roda no PC): o supervisor está no celular e o canal PC→celular manda o arquivo inteiro em uma mensagem; falta um envio em partes do PC para o celular; (2) **você mandar** arquivo grande para o bot (o limite de 10 MB por mensagem continua: o arquivo vai em base64 numa mensagem só); (3) não testei com um vídeo de verdade no celular real.
+
+### Entrega da 0.45.3
+APK ARM64 offline `dist/apk/mybots-v79.apk` e `.sha256`, **versionCode 79 / 0.45.3**, 44.358.623 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v79](https://github.com/AugustodoBRT/Mybots/releases/tag/v79), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.

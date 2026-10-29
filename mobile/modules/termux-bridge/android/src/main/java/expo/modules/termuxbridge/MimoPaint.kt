@@ -11,7 +11,11 @@ import android.graphics.Shader
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.TextureView
 import android.view.View
+import android.view.ViewGroup
+import android.graphics.SurfaceTexture
+import java.util.concurrent.Executors
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import kotlin.math.max
@@ -19,7 +23,7 @@ import kotlin.math.min
 
 /** Paints a computed particle frame (MimoSim) on an Android canvas whose units are dp. One drawCircle per particle, a color per bucket. */
 internal object MimoPaint {
-  private fun hsla(h: Double, s: Double, l: Double, a: Double): Int {
+  fun hsla(h: Double, s: Double, l: Double, a: Double): Int {
     val sat = s / 100; val lig = l / 100; val c = (1 - Math.abs(2 * lig - 1)) * sat; val hp = ((h % 360) + 360) % 360 / 60; val x = c * (1 - Math.abs(hp % 2 - 1)); val m = lig - c / 2
     val (r, g, b) = when { hp < 1 -> Triple(c, x, 0.0); hp < 2 -> Triple(x, c, 0.0); hp < 3 -> Triple(0.0, c, x); hp < 4 -> Triple(0.0, x, c); hp < 5 -> Triple(x, 0.0, c); else -> Triple(c, 0.0, x) }
     return Color.argb((a.coerceIn(0.0, 1.0) * 255).toInt(), ((r + m) * 255).toInt().coerceIn(0, 255), ((g + m) * 255).toInt().coerceIn(0, 255), ((b + m) * 255).toInt().coerceIn(0, 255))
@@ -51,7 +55,7 @@ internal object MimoStill {
   fun bitmap(context: Context, specJson: String, mood: String, count: Int, px: Int, dp: Double, light: Boolean): Bitmap {
     val bitmap = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap)
     val sim = MimoSim(MimoSpec.parse(specJson), count, mimoData(context), fill = if (dp <= 150) 0.96 else 0.9, vfill = if (dp <= 150) 0.92 else 0.78)
-    sim.snap(mood); val frame = sim.compute(dp, dp, light, 0.6, 1.0); canvas.scale((px / dp).toFloat(), (px / dp).toFloat()); MimoPaint.draw(canvas, frame); return bitmap
+    sim.minROverride = MimoSim.airyMinR(dp); sim.snap(mood); val frame = sim.compute(dp, dp, light, 0.6, 1.0); canvas.scale((px / dp).toFloat(), (px / dp).toFloat()); MimoPaint.draw(canvas, frame); return bitmap
   }
 }
 
@@ -68,7 +72,7 @@ class MimoView(context: Context, appContext: AppContext) : ExpoView(context, app
     if (spec != null && spec != specJson) { specJson = spec; rebuild = true }
     if (mood != null) this.mood = mood; if (light != null) this.light = light; if (energy != null) this.energy = energy; if (count != null && count != this.count) { this.count = count; rebuild = true }
     if (animated != null) this.animated = animated; if (fps != null) this.fps = max(5, min(60, fps))
-    if (rebuild) sim = null; dirty = true; invalidate()
+    if (rebuild) sim = null; dirty = true; syncGl(); invalidate()
   }
   fun setSpec(v: String?) = configure(v, null, null, null, null, null, null)
   fun setMood(v: String?) = configure(null, v, null, null, null, null, null)
@@ -78,18 +82,43 @@ class MimoView(context: Context, appContext: AppContext) : ExpoView(context, app
   fun setAnimated(v: Boolean?) = configure(null, null, null, null, null, v, null)
   fun setFps(v: Int?) = configure(null, null, null, null, null, null, v)
 
-  override fun onDetachedFromWindow() { handler.removeCallbacks(tick); super.onDetachedFromWindow() }
-  override fun onAttachedToWindow() { super.onAttachedToWindow(); dirty = true; invalidate() }
+
+  // Moving faces are drawn on the GPU (MimoGl, on a thread of its own); the Canvas drawing below stays as the still frame and the fallback.
+  private var texture: TextureView? = null; private var gl: MimoGl? = null; private var glShown = false; private var glBroken = false
+  private fun pushGl() { val d = resources.displayMetrics.density; gl?.update(specJson, mood, light, energy, count, width / d.toDouble(), height / d.toDouble()) }
+  private fun syncGl() {
+    val want = animated && !glBroken && width > 0 && height > 0 && specJson.isNotEmpty()
+    if (want && texture == null) {
+      val t = TextureView(context); t.isOpaque = false
+      t.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+          val g = MimoGl(st, mimoData(context), w, h, { glShown = true; invalidate() }, { glBroken = true; teardownGl(); invalidate() }); gl = g; pushGl(); g.start()
+        }
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean { gl?.stop(true); gl = null; return true }
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+      }
+      texture = t; addView(t, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    } else if (!want && texture != null) teardownGl()
+    else pushGl()
+  }
+  private fun teardownGl() { val g = gl; gl = null; g?.stop(true); texture?.let { removeView(it) }; texture = null; glShown = false }
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); syncGl() }
+  override fun onDetachedFromWindow() { handler.removeCallbacks(tick); teardownGl(); super.onDetachedFromWindow() }
+  override fun onAttachedToWindow() { super.onAttachedToWindow(); dirty = true; syncGl(); invalidate() }
   // Small faces are not simulated small: the body is made at 66 dp with many particles into a bitmap and the bitmap is shrunk
   // (a few dozen particles in 40 dp is noise; the same face shrunk keeps its eyes and mouth). Still ones are cached by look and expression.
   private var small: Bitmap? = null; private var smallCanvas: Canvas? = null; private val smooth = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
   private fun drawSmall(canvas: Canvas, w: Double, h: Double) {
     val side = min(w, h); val d = resources.displayMetrics.density; val dst = RectF(((w - side) / 2 * d).toFloat(), ((h - side) / 2 * d).toFloat(), ((w + side) / 2 * d).toFloat(), ((h + side) / 2 * d).toFloat())
-    if (!animated) {
-      val key = "$specJson|$mood|$light"; val bitmap = synchronized(cache) { cache[key] } ?: MimoStill.bitmap(context, specJson, mood, 1400, SMALL_PX, SMALL_DP, light).also { synchronized(cache) { cache.put(key, it) } }
+    if (!animated || texture != null) {
+      val px = (side * d * 2).toInt().coerceIn(96, 512); val key = "$specJson|$mood|$light|$px"; val bitmap = synchronized(cache) { cache[key] }
+      if (bitmap == null) { val spec = specJson; val m = mood; val l = light; val ctx = context
+        if (pending.add(key)) maker.execute { try { val b = MimoStill.bitmap(ctx, spec, m, STILL_COUNT, px, SMALL_DP, l); synchronized(cache) { cache.put(key, b) } } finally { pending.remove(key); postInvalidate() } }
+        return }
       canvas.drawBitmap(bitmap, null, dst, smooth); return
     }
-    var s = sim; if (s == null) { s = MimoSim(MimoSpec.parse(specJson), 1200, mimoData(context), fill = 0.96, vfill = 0.92); sim = s; s.snap(mood) }
+    var s = sim; if (s == null) { s = MimoSim(MimoSpec.parse(specJson), 1600, mimoData(context), fill = 0.96, vfill = 0.92); sim = s; s.snap(mood) }
     s.moodTo(mood); val now = SystemClock.uptimeMillis(); val dt = min(0.08, (now - (if (last == 0L) now else last)) / 1000.0); last = now
     val bitmap = small ?: Bitmap.createBitmap(SMALL_PX, SMALL_PX, Bitmap.Config.ARGB_8888).also { small = it; smallCanvas = Canvas(it) }
     s.update(dt); val f = s.compute(SMALL_DP, SMALL_DP, light, energy, dt); bitmap.eraseColor(0)
@@ -98,11 +127,12 @@ class MimoView(context: Context, appContext: AppContext) : ExpoView(context, app
   }
 
   override fun onDraw(canvas: Canvas) {
-    val d = resources.displayMetrics.density; val w = width / d.toDouble(); val h = height / d.toDouble(); if (w <= 0 || h <= 0 || specJson.isEmpty()) return
+    val d = resources.displayMetrics.density; val w = width / d.toDouble(); val h = height / d.toDouble(); if (w <= 0 || h <= 0 || specJson.isEmpty() || glShown) return
     if (min(w, h) <= SMALL_MAX) {
       val now = SystemClock.uptimeMillis(); drawSmall(canvas, w, h)
-      handler.removeCallbacks(tick); if (animated && isAttachedToWindow && visibility == View.VISIBLE) handler.postDelayed(tick, max(1L, 1000L / min(fps, 15) - (SystemClock.uptimeMillis() - now))); return
+      handler.removeCallbacks(tick); if (animated && texture == null && isAttachedToWindow && visibility == View.VISIBLE) handler.postDelayed(tick, max(1L, 1000L / min(fps, 15) - (SystemClock.uptimeMillis() - now))); return
     }
+    if (texture != null) return
     val small = min(w, h) <= 150; var s = sim
     if (s == null) { s = MimoSim(MimoSpec.parse(specJson), count, mimoData(context), fill = if (small) 0.96 else 0.9, vfill = if (small) 0.92 else 0.78); sim = s; dirty = true }
     s.moodTo(mood)
@@ -110,7 +140,7 @@ class MimoView(context: Context, appContext: AppContext) : ExpoView(context, app
     if (animated) { s.update(dt); frame = s.compute(w, h, light, energy, dt) }
     else if (dirty || frame == null) { s.snap(mood); frame = s.compute(w, h, light, energy, 1.0) }
     dirty = false; canvas.save(); canvas.scale(d, d); frame?.let { MimoPaint.draw(canvas, it) }; canvas.restore()
-    handler.removeCallbacks(tick); if (animated && isAttachedToWindow && visibility == View.VISIBLE) handler.postDelayed(tick, max(1L, 1000L / fps - (SystemClock.uptimeMillis() - now)))
+    handler.removeCallbacks(tick); if (animated && texture == null && isAttachedToWindow && visibility == View.VISIBLE) handler.postDelayed(tick, max(1L, 1000L / fps - (SystemClock.uptimeMillis() - now)))
   }
-  private companion object { const val SMALL_MAX = 90.0; const val SMALL_DP = 66.0; const val SMALL_PX = 168; val cache = object : android.util.LruCache<String, Bitmap>(80) {} }
+  private companion object { const val SMALL_MAX = 150.0; const val SMALL_DP = 66.0; const val SMALL_PX = 256; const val STILL_COUNT = 4500; val maker = Executors.newSingleThreadExecutor(); val pending = java.util.Collections.synchronizedSet(HashSet<String>()); val cache = object : android.util.LruCache<String, Bitmap>(80) {} }
 }

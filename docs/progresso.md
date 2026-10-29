@@ -1180,3 +1180,11 @@ Troca de estilo aprovada pelo usuário depois do laboratório de partículas (`d
 - Removidos: `lib/face.mjs`, `mobile/faces.js`, `FaceView.kt`, fonte `BotGlyphs.ttf`. Widget, notificação e atalhos de compartilhamento usam `MimoStill`.
 - **Testes:** `npm test` 309/309 (inclui paridade JavaScript × Kotlin do corpo, das cores e dos desenhos).
 - **Não testado:** expressões reagindo ao vivo no emulador (resposta ao vivo, erro, aprovação); tema claro no celular; animação dos pequenos em aparelho real; janela do PC instalada. Nada publicado ainda: APK ARM64 v71 e Release pendentes.
+
+### 0.44.0 — desenho na GPU (ajuste do mesmo dia)
+Pedido do usuário: qualidade de 7 mil partículas e animação "lisinha" de 60 fps. Pesquisa (pontos GL com posição no vértice rendem 10 mil ou mais partículas a 60 fps; o gargalo é preenchimento, então partículas menores ajudam) levou a:
+- **`MimoGl.kt`**: o rosto que se mexe é desenhado em OpenGL ES 2.0 (um ponto por partícula, bordas suaves no shader, sombra no chão), numa thread própria que simula e desenha a cada vsync (`Choreographer`); a tela do app não faz a conta. Contagens: 7.000 (≥250 dp), 5.500, 4.500, 4.000, 3.500, 3.000. Se o GL falhar, volta ao desenho de Canvas.
+- **Rostos parados** (lista, mensagens): imagem feita uma vez em segundo plano, com 4.500 partículas, no dobro do tamanho real, e guardada em cache.
+- **Partículas finas**: raio mínimo menor (0,55 em vez de 1,0–1,3), o "gordo" que o usuário notou.
+- Emulador (software): cabeçalho com 16 ms de mediana e p90 (vsync de 60 fps), 2% de quadros lentos, sem erro de EGL depois de esperar a thread ao destruir a superfície. **Não medido em celular real** (a GPU do emulador é por software).
+- Pendente: a janela do PC ainda usa o raio mínimo antigo e o canvas; conferir "Teste" com expressão de erro na lista (parece ser o estado real do bot, mas não verifiquei a causa).

@@ -54,6 +54,7 @@ internal class MimoData(json: String) {
 
 internal class MimoSpec(val seed: String, val hue: Double, val squar: Double, val sx: Double, val sy: Double, val sz: Double, val eyes: Int, val eyeStyle: String, val eyeGap: Double, val eyeY: Double, val mouth: String, val top: String, val blush: Boolean, val dot: Double) {
   companion object {
+    fun airyMinR(dpMin: Double) = 0.55 - 0.25 * ((dpMin - 150.0) / 180.0).coerceIn(0.0, 1.0)
     fun parse(json: String): MimoSpec { val o = JSONObject(json); return MimoSpec(o.getString("seed"), o.getDouble("hue"), o.getDouble("squar"), o.getDouble("sx"), o.getDouble("sy"), o.getDouble("sz"), o.getInt("eyes"), o.getString("eyeStyle"), o.getDouble("eyeGap"), o.getDouble("eyeY"), o.getString("mouth"), o.getString("top"), o.optBoolean("blush"), o.getDouble("dot")) }
   }
 }
@@ -62,6 +63,7 @@ internal class MimoParticles(val n: Int, val nb: Int) {
   val x = FloatArray(n); val y = FloatArray(n); val z = FloatArray(n); val bx = FloatArray(n); val by = FloatArray(n); val bz = FloatArray(n)
   val ph = FloatArray(n); val size = FloatArray(n); val speed = FloatArray(n); val ex = FloatArray(n); val ey = FloatArray(n); val ez = FloatArray(n); val light = FloatArray(n); val dust = ByteArray(n)
   companion object {
+    fun airyMinR(dpMin: Double) = 0.9 * Math.sqrt(min(1.0, dpMin / 330.0))
     private val cache = object : LinkedHashMap<String, MimoParticles>(16, 0.75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<String, MimoParticles>?) = size > 24 }
     fun of(spec: MimoSpec, n: Int, data: MimoData): MimoParticles = synchronized(cache) { cache.getOrPut(spec.seed + "|" + spec.squar + "|" + spec.top + "|" + n) { build(spec, n, data) } }
     private fun build(spec: MimoSpec, n: Int, data: MimoData): MimoParticles {
@@ -117,6 +119,9 @@ internal class Hole(val x: Double, val y: Double, val w: Double, val h: Double, 
 }
 
 internal class MimoSim(var spec: MimoSpec, var n: Int, val data: MimoData, val fill: Double = 0.88, val vfill: Double = 0.8, var thickForce: Double = -1.0) {
+  /** The smallest particle radius, in the units of `compute`; negative = the rule of lib/mimo.mjs. The phone draws on the GPU with soft edges, so its particles can be as fine as the big face's. */
+  var minROverride = -1.0
+
   private class Sprite(val type: String, var age: Double, val life: Double, val ox: Double)
   var mood = "normal"; private var def = data.moods.getValue("normal"); val cur = data.neutral.copyOf()
   var t = (hashStr(spec.seed) % 900) / 100.0; var hue = spec.hue; var ball = 0.0; var ballTarget = 0.0; private var lookX = 0.0; private var lookY = 0.0
@@ -220,7 +225,7 @@ internal class MimoSim(var spec: MimoSpec, var n: Int, val data: MimoData, val f
       val k = s * 0.26; val ax = min(w - k * 0.9, cx + s * extX * 0.72 + sprite.ox * s * 0.12 + sin(sprite.age * 3) * s * 0.04); val ay = max(k * 1.1, cy + yTop * s * 0.62 - sprite.age * s * 0.2)
       out.add(SpriteDraw(sh.pts, sh.color, ax, ay, k, vis, max(0.9, u * 1.5)))
     }
-    f.sprites = out; f.particles = P; f.w = w; f.h = h; f.s = s; f.u = u; f.cx = cx; f.hue = hue; f.dim = c("dim"); f.light = light; f.alpha = 1 - explode * 0.3; f.dot = sp.dot; f.minR = if (thick > 0.2) 0.85 + 0.4 * thick else 0.3
+    f.sprites = out; f.particles = P; f.w = w; f.h = h; f.s = s; f.u = u; f.cx = cx; f.hue = hue; f.dim = c("dim"); f.light = light; f.alpha = 1 - explode * 0.3; f.dot = sp.dot; f.minR = if (minROverride >= 0) minROverride else if (thick > 0.2) 0.85 + 0.4 * thick else 0.3
     f.shadowY = cy0 + yBot * s * 1.04; f.shadowS = s; f.shadowExplode = explode; f.shadowJump = jump
     return f
   }
@@ -235,6 +240,7 @@ internal class MimoSim(var spec: MimoSpec, var n: Int, val data: MimoData, val f
   }
 
   companion object {
+    fun airyMinR(dpMin: Double) = 0.9 * Math.sqrt(min(1.0, dpMin / 330.0))
     /** For the tests: runs `steps` steps of 0.033 s on a mood and prints the first particles and the bucket sizes as JSON (same numbers as the JavaScript). */
     @JvmStatic fun dump(dataJson: String, specJson: String, mood: String, steps: Int, n: Int, w: Double, h: Double, light: Boolean): String {
       val sim = MimoSim(MimoSpec.parse(specJson), n, MimoData.of(dataJson)); sim.moodTo(mood); var f: MimoFrame? = null

@@ -46,9 +46,9 @@ function FaceArt({ bot, state = 'idle', size = 54, animated = false, mood: force
   const specJson = useMemo(() => JSON.stringify(spec), [spec]);
   const on = useAnimation(animated && size >= 28), live = useBotMood(bot?.id);
   const mood = forced || (on && live ? live : moodFor(state)), light = currentTheme();
-  const count = particleCount(size, !MimoView);
+  const count = particleCount(size, true);
   return <View accessible accessibilityLabel={`${bot?.name || 'Bot'}${NAMES[mood] ? `, ${NAMES[mood]}` : ''}`} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-    {MimoView ? <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={size >= 150 ? 30 : 20} />
+    {MimoView ? <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />
       : Platform.OS === 'web' ? <WebFace spec={spec} mood={mood} size={size} light={light} on={on} /> : null}
   </View>;
 }

@@ -1229,3 +1229,6 @@ Achados do usuário e de um bot dele numa tarefa real (SIGAA, resolução de lis
 - **PDF com tempo esgotado**: a WebView do PDF agora é medida, posicionada e retomada (`resumeTimers`, `onResume`) antes de imprimir; era a suspeita de a impressão não começar com o app em segundo plano. **Não confirmado** (sem reproduzir).
 - **Não feito**: gráfico do Markdown como figura no Word/PDF-do-Word (o Word recebe a tabela de dados; exigiria rasterizar a figura ou montar um gráfico nativo), e `email_search` (é falta de conta de e-mail conectada). Próximo: transmitir o navegador do celular para o PC (abas, ampliar, assumir).
 - `npm test` 311/311 (`creator-math.test.mjs` novo).
+
+### Entrega da 0.44.4
+APK ARM64 offline `dist/apk/mybots-v75.apk` e `.sha256`, **versionCode 75 / 0.44.4**, 44.349.487 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v75](https://github.com/AugustodoBRT/Mybots/releases/tag/v75), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.

@@ -36,6 +36,13 @@ test('backup validation preserves identifiers and refuses corrupt or duplicate r
   assert.throws(() => validateBackup({ ...original, bots: [{ ...bot(), messages: [{ ...bot().messages[0], role: 'system' }] }] }), /mensagem inválida/);
 });
 
+test('backup validation accepts skills that are folders of the computer', () => {
+  const skills = [{ path: '/home/augusto/.claude/skills/pdf', write: false }];
+  validateBackup({ schema: 1, mode: 'phone', bots: [{ ...bot(), skills }] });
+  assert.throws(() => validateBackup({ schema: 1, bots: [{ ...bot(), skills: [{ path: 'relativo' }] }] }), /Perfil inválido/);
+  assert.throws(() => validateBackup({ schema: 1, bots: [{ ...bot(), skills: ['nao-e-id'] }] }), /Perfil inválido/);
+});
+
 test('Termux backup is private, date named and restores long Unicode text byte for byte', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-backup-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

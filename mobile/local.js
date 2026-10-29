@@ -126,12 +126,14 @@ export function deleteLocalBot(store, id) {
 export function validateBackup(value) {
   const validId = id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
   if (!value || value.schema !== 1 || !Array.isArray(value.bots) || value.bots.length > 200) throw new Error('Este arquivo não é um backup válido do MyBots.');
+  // A skill is an old stored one (an id) or a folder of the computer ({ path, write }).
+  const validSkill = skill => validId(skill) || (skill && typeof skill === 'object' && typeof skill.path === 'string' && skill.path.startsWith('/') && skill.path.length < 1024 && (skill.write === undefined || typeof skill.write === 'boolean'));
   const validDate = date => typeof date === 'string' && Number.isFinite(Date.parse(date));
   const bots = new Set();
   for (const bot of value.bots) {
     if (bot?.browserMode !== undefined && (![...BROWSER_MODES, 'own'].includes(bot.browserMode) || bot.browserMode === 'claude' && bot.provider !== 'claude' || bot.browserMode === 'mine' && bot.access === 'basic')) throw new Error('Navegador inválido no backup.');
     if (!bot || typeof bot !== 'object') throw new Error('Bot inválido no backup.');
-    if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home)) || (bot.folders !== undefined && (!Array.isArray(bot.folders) || bot.folders.length > 10 || bot.folders.some(path => typeof path !== 'string' || path.length > 301))) || (bot.skills !== undefined && (!Array.isArray(bot.skills) || bot.skills.length > 50 || bot.skills.some(id => !validId(id))))) throw new Error('Perfil inválido no backup.');
+    if ((bot.avatar !== undefined && !['orbit','pixel','cat','spark'].includes(bot.avatar)) || (bot.autonomy !== undefined && !['ask','local'].includes(bot.autonomy)) || (bot.provider !== undefined && !['codex','claude'].includes(bot.provider)) || (bot.home !== undefined && !['phone','pc','any'].includes(bot.home)) || (bot.folders !== undefined && (!Array.isArray(bot.folders) || bot.folders.length > 10 || bot.folders.some(path => typeof path !== 'string' || path.length > 301))) || (bot.skills !== undefined && (!Array.isArray(bot.skills) || bot.skills.length > 50 || bot.skills.some(skill => !validSkill(skill))))) throw new Error('Perfil inválido no backup.');
     if (!validId(bot.id) || bots.has(bot.id) || typeof bot.name !== 'string' || !bot.name.trim() || bot.name.length > 40 || typeof bot.instructions !== 'string' || bot.instructions.length > 2000 || !['green', 'blue', 'purple', 'orange'].includes(bot.color) || !validDate(bot.createdAt) || !validDate(bot.updatedAt) || (bot.codexSessionId !== undefined && !validId(bot.codexSessionId)) || !Array.isArray(bot.messages) || bot.messages.length > 20000) throw new Error('O backup contém um bot inválido.');
     bots.add(bot.id);
     const messages = new Set();

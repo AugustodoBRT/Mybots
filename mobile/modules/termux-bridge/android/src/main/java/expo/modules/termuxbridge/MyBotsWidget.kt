@@ -20,7 +20,7 @@ import java.net.URL
 /**
  * The home-screen widget: the most recent bots with their faces alive (breathing and blinking; glancing around while
  * they work; the antenna blinking amber while they wait for the person), the latest message and the next deadline.
- * Faces are still frames made by lib/face.mjs in the supervisor and painted by FacePainter.
+ * Faces are still frames described by lib/mimo.mjs in the supervisor and painted by MimoStill.
  * Data comes from the supervisor's /device/widget long-poll, so the widget follows the bots with the app closed.
  */
 class MyBotsWidget : AppWidgetProvider() {
@@ -78,11 +78,11 @@ internal object WidgetSync {
     return PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
   }
 
-  /** The bot's face as one still frame, made by lib/face.mjs in the supervisor ("still" for the list, "big" for the single size). */
+  /** The bot's face as one still frame, described by lib/mimo.mjs in the supervisor ("still" for the list, "big" for the single size). */
   private fun face(context: Context, views: RemoteViews, bot: JSONObject, size: Int) {
     views.removeAllViews(R.id.mybots_widget_face)
     val still = bot.optJSONObject(if (size > 150) "big" else "still") ?: return
-    val bitmap = FacePainter.bitmap(context, still.optString("frame"), still.optString("tones"), still.optInt("cols"), still.optInt("rows"), size, still.optBoolean("text"))
+    val bitmap = MimoStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), size, still.optDouble("dp", 52.0), false)
     views.addView(R.id.mybots_widget_face, RemoteViews(context.packageName, R.layout.mybots_widget_frame).apply { setImageViewBitmap(R.id.mybots_widget_frame, bitmap) })
   }
 
@@ -90,7 +90,7 @@ internal object WidgetSync {
 
   private fun list(context: Context, data: JSONObject, rows: Int): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.mybots_widget)
-    data.optJSONObject("brand")?.let { views.setImageViewBitmap(R.id.mybots_widget_logo, FacePainter.bitmap(context, it.optString("frame"), it.optString("tones"), it.optInt("cols"), it.optInt("rows"), 66, it.optBoolean("text"))) }
+    data.optJSONObject("brand")?.let { views.setImageViewBitmap(R.id.mybots_widget_logo, MimoStill.bitmap(context, it.optJSONObject("spec")?.toString() ?: "{}", it.optString("mood", "normal"), it.optInt("n", 3000), 66, it.optDouble("dp", 52.0), false)) }
     open(context, null, 0)?.let { views.setOnClickPendingIntent(R.id.mybots_widget_header, it) }
     val bots = data.optJSONArray("bots") ?: JSONArray()
     val approvals = data.optInt("approvals"); val open = data.optInt("openItems")

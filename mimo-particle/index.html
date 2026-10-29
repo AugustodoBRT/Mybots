@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101615"><meta name="description" content="Conheça Mimo: um pequeno ser de partículas, cheio de expressões e movimento.">
+<title>Mimo · feito de pequenas coisas</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+:root{color-scheme:dark;--bg:#101615;--panel:#17201e;--line:#2c3934;--text:#edf4ee;--muted:#99aaa1;--mint:#c3fba9}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid var(--mint);outline-offset:5px}button{color:inherit}header{max-width:1440px;margin:auto;padding:29px 46px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{font-family:Manrope,sans-serif;font-size:25px;font-weight:800;letter-spacing:-1.5px;display:flex;gap:12px;align-items:center}.brand-mark{width:23px;height:23px;border:1.5px dotted var(--mint);border-radius:8px;position:relative}.brand-mark:after{content:'••';position:absolute;color:var(--mint);font-size:15px;letter-spacing:3px;top:0;left:4px}.header-note{font-size:12px;letter-spacing:.08em;color:var(--muted)}.live{display:flex;align-items:center;gap:8px;font-size:12px}.live i{width:6px;height:6px;background:var(--mint);border-radius:50%;box-shadow:0 0 14px #c3fba955}main{max-width:1440px;margin:auto;padding:46px 46px 28px}.intro{display:flex;align-items:end;justify-content:space-between;margin-bottom:34px}.eyebrow{font-size:10px;letter-spacing:.19em;color:var(--mint);text-transform:uppercase;font-weight:600}h1{font-family:Manrope,sans-serif;font-size:clamp(29px,3.1vw,45px);letter-spacing:-1.8px;line-height:1.18;font-weight:500;margin:13px 0 0}h1 span{color:var(--muted)}.intro p{font-size:13px;line-height:1.7;color:var(--muted);margin:0 0 3px;max-width:272px}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 304px;gap:20px}.stage{position:relative;min-height:526px;background:radial-gradient(ellipse at 50% 50%,#1f312a 0%,#18231f 46%,#161e1b 80%);border:1px solid var(--line);border-radius:24px;overflow:hidden}.stage:before{content:'';position:absolute;inset:0;background-image:radial-gradient(#8cac8e25 .7px,transparent .7px);background-size:24px 24px;pointer-events:none}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y}.stage-top{position:absolute;top:25px;left:26px;right:26px;display:flex;justify-content:space-between;pointer-events:none}.stage-label{font-size:10px;letter-spacing:.16em;color:#a9bcb0}.number{font-size:10px;color:#6b8576}.stage-bottom{position:absolute;bottom:23px;left:26px;right:26px;display:flex;justify-content:space-between;align-items:center;gap:10px}.status{display:flex;gap:9px;align-items:center;font-size:12px;color:#d9e9dc}.status i{width:5px;height:5px;border-radius:50%;background:var(--mint)}.hint{font-size:10px;color:#8ca393}.small-button{background:#23312a;border:1px solid #3c5142;padding:8px 12px;border-radius:20px;font-size:11px;display:flex;align-items:center;gap:7px}.controls{border:1px solid var(--line);border-radius:24px;background:var(--panel);padding:25px 23px;display:flex;flex-direction:column}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}.section-head h2{font-size:14px;margin:0;font-weight:500}.section-head span{font-size:10px;color:var(--muted)}.emotions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.emotion{height:69px;border:1px solid #334139;border-radius:13px;background:#1b2621;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;font-size:11px;color:#b7c6bc;transition:.2s}.emotion:hover{border-color:#74926f;background:#243427}.emotion[aria-pressed=true]{background:var(--mint);color:#23301f;border-color:var(--mint)}.face{font-family:monospace;font-weight:700;font-size:19px;line-height:1;height:20px;letter-spacing:3px}.divider{height:1px;background:var(--line);margin:24px 0}.colors{display:flex;gap:10px}.color{border:0;width:29px;height:29px;border-radius:50%;background:var(--swatch);position:relative}.color[aria-pressed=true]:after{content:'';position:absolute;inset:-4px;border:1px solid var(--swatch);border-radius:50%}.range-label{display:flex;justify-content:space-between;font-size:12px;color:#becbc2;margin-bottom:13px}.range-label output{color:var(--muted);font-size:11px}input[type=range]{width:100%;accent-color:var(--mint);height:4px;cursor:pointer;margin:7px 0 0}.energy{margin-top:25px}.tour{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:auto;padding:16px 0 0;border:0;background:transparent;color:var(--mint);font-size:12px}.tour span:last-child{font-size:18px}.motion-bar{margin-top:19px;display:flex;gap:9px;align-items:center;flex-wrap:wrap}.motion-label{font-size:10px;letter-spacing:.12em;color:var(--muted);margin-right:9px}.motion{padding:13px 19px;border:1px solid var(--line);border-radius:50px;background:#1b2520;font-size:12px;display:flex;align-items:center;gap:9px;transition:.18s}.motion:hover,.motion[aria-pressed=true]{background:#c3fba9;color:#22301f;border-color:#c3fba9}.motion b{font-weight:400;font-size:17px;line-height:14px}.reset{margin-left:auto;background:none;border:none;color:var(--muted);font-size:12px;padding:13px 0}.footer{display:flex;justify-content:space-between;margin-top:35px;padding-top:20px;border-top:1px solid var(--line);font-size:10px;color:#81958a;letter-spacing:.04em}.footer span:last-child{color:#adc1b1}@media(min-width:1500px){.stage{min-height:600px}}@media(max-width:960px){header{padding:24px}.header-note{display:none}main{padding:30px 24px}.workspace{grid-template-columns:minmax(0,1fr) 260px}.controls{padding:22px 18px}.intro p{max-width:210px}.hint{display:none}.stage{min-height:500px}.motion{padding:12px 15px}}@media(max-width:690px){header{padding:20px}.live{font-size:10px}main{padding:29px 16px 22px}.intro{display:block;margin-bottom:24px}.intro p{max-width:none;margin-top:16px;font-size:12px}.intro p br{display:none}h1{font-size:33px}.workspace{grid-template-columns:1fr}.stage{min-height:420px}.controls{padding:22px}.emotions{grid-template-columns:repeat(3,1fr)}.emotion{height:62px}.controls .divider{margin:20px 0}.tour{margin-top:20px}.motion-label{width:100%;margin:3px 0}.motion{flex:1;justify-content:center;padding:13px 10px;white-space:nowrap;min-width:115px}.reset{flex:1}.footer{gap:20px;line-height:1.7;margin-top:26px}.stage-top{left:20px;right:20px}.stage-bottom{left:20px;right:20px}}
+</style>
+</head>
+<body>
+<header><div class="brand"><span class="brand-mark" aria-hidden="true"></span>mimo<span style="color:#9eb697;font-weight:400">.</span></div><div class="header-note">ESTUDO DE PERSONAGEM / 003</div><div class="live"><i></i> um pequeno ser vivo</div></header>
+<main>
+<div class="intro"><div><div class="eyebrow">Feito de pequenas coisas</div><h1>Um corpo de partículas.<br><span>Um monte de personalidade.</span></h1></div><p>Às vezes quadrado. Às vezes uma bola.<br>Sempre em movimento, sempre Mimo.</p></div>
+<div class="workspace">
+<section class="stage" aria-label="Prévia interativa do personagem Mimo"><canvas id="mimo" role="img" aria-label="Bichinho denso de partículas. Olhos e boca são espaços vazios abertos pelo movimento das partículas.">Personagem Mimo animado.</canvas><div class="stage-top"><span class="stage-label">MIMO / EM SEU HABITAT</span><span class="number">03 — ∞</span></div><div class="stage-bottom"><span class="status"><i></i><span id="status" aria-live="polite">Só existindo, feliz.</span></span><span class="hint">Os vazios acompanham seu cursor</span><button class="small-button" id="pause" aria-pressed="false">Ⅱ Pausar</button></div></section>
+<aside class="controls" aria-label="Controles do personagem"><div class="section-head"><h2>Como ele se sente?</h2><span>EXPRESSÕES</span></div><div class="emotions">
+<button class="emotion" data-mood="normal" aria-pressed="true"><span class="face" aria-hidden="true">● ●</span>De boa</button><button class="emotion" data-mood="happy" aria-pressed="false"><span class="face" aria-hidden="true">⌒ ⌒</span>Feliz</button><button class="emotion" data-mood="curious" aria-pressed="false"><span class="face" aria-hidden="true">◉ ●</span>Curioso</button><button class="emotion" data-mood="stress" aria-pressed="false"><span class="face" aria-hidden="true">ˋ ˊ</span>Estressado</button><button class="emotion" data-mood="sleepy" aria-pressed="false"><span class="face" aria-hidden="true">− −</span>Sonolento</button><button class="emotion" data-mood="surprise" aria-pressed="false"><span class="face" aria-hidden="true">◎ ◎</span>Surpreso</button>
+</div><div class="divider"></div><div class="section-head"><h2>Sua cor</h2><span id="color-name">MENTA</span></div><div class="colors"><button class="color" data-hue="113" data-name="MENTA" style="--swatch:#c3fba9" aria-label="Cor menta" aria-pressed="true"></button><button class="color" data-hue="177" data-name="LAGOA" style="--swatch:#90ece1" aria-label="Cor lagoa" aria-pressed="false"></button><button class="color" data-hue="262" data-name="LILÁS" style="--swatch:#bca8f4" aria-label="Cor lilás" aria-pressed="false"></button><button class="color" data-hue="25" data-name="PÊSSEGO" style="--swatch:#f6be96" aria-label="Cor pêssego" aria-pressed="false"></button><button class="color" data-hue="339" data-name="ROSA" style="--swatch:#efa6c5" aria-label="Cor rosa" aria-pressed="false"></button></div><div class="energy"><label class="range-label" for="energy"><span>Energia das partículas</span><output id="energy-value">60%</output></label><input id="energy" type="range" min="10" max="100" value="60"></div><button id="tour" class="tour" aria-pressed="false"><span>Ver todas as animações</span><span aria-hidden="true">↗</span></button></aside>
+</div><div class="motion-bar"><span class="motion-label">TRANSFORMAR</span><button class="motion" data-action="spin" aria-pressed="false"><b aria-hidden="true">↻</b> Dar uma volta</button><button class="motion" data-action="ball" aria-pressed="false"><b aria-hidden="true">○</b> Virar uma bola</button><button class="motion" data-action="dissolve" aria-pressed="false"><b aria-hidden="true">⁙</b> Se desfazer</button><button class="motion" data-action="jump" aria-pressed="false"><b aria-hidden="true">↑</b> Pular de alegria</button><button id="reset" class="reset">↺ Recomeçar</button></div>
+<div class="footer"><span>Sem engrenagens. Só um pouquinho de magia.</span><span>Conceito interativo · Mimo</span></div>
+</main>
+<script>
+(()=>{'use strict';
+const canvas=document.getElementById('mimo'),ctx=canvas.getContext('2d'),stage=canvas.parentElement;
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+let W=0,H=0,dpr=1,t=0,last=0,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,mood='normal',hue=113,targetHue=113,energy=.6,action=null,actionStart=0,ballTarget=0,ball=0,touring=false,tourAt=0,tourIndex=0,pointer={x:0,y:0};
+const lerp=(a,b,k)=>a+(b-a)*k,clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),smooth=x=>{x=clamp(x);return x*x*(3-2*x)},TAU=Math.PI*2;
+let seed=53;function rand(){seed=(seed*16807)%2147483647;return(seed-1)/2147483646}
+const particles=[];
+for(let i=0;i<12000;i++){let x,y,z;do{x=rand()*2-1;y=rand()*2-1;z=rand()*2-1}while(Math.pow(Math.abs(x),5)+Math.pow(Math.abs(y),5)+Math.pow(Math.abs(z),5)>1);const r=Math.hypot(x,y,z),max=Math.pow(Math.pow(Math.abs(x),5)+Math.pow(Math.abs(y),5)+Math.pow(Math.abs(z),5),1/5);particles.push({x,y,z,sx:x/r*max*1.1,sy:y/r*max*1.1,sz:z/r*max*1.1,phase:rand()*TAU,size:.85+rand()*1.1,speed:.5+rand()*1.2,ex:(rand()-.5)*6,ey:(rand()-.5)*4.7,ez:(rand()-.5)*5,light:rand(),dust:i%67===0,dx:0,dy:0,render:{}})}
+const statuses={normal:'Só existindo, feliz.',happy:'Alegria que não cabe num quadrado.',curious:'O que é aquilo ali?',stress:'Preciso de um minutinho…',sleepy:'Só mais cinco minutinhos.',surprise:'Ué! Como assim?'};
+function setStatus(s){$('#status').textContent=s}
+function setMood(m){mood=m;$$('[data-mood]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mood===m));if(!action)setStatus(statuses[m])}
+function stopTour(){touring=false;$('#tour').setAttribute('aria-pressed','false');$('#tour span').textContent='Ver todas as animações'}
+function runAction(a){if(paused){paused=false;updatePause()}action=a;actionStart=t;if(a==='ball'){ballTarget=1-ballTarget;setStatus(ballTarget?'Quadrado? Hoje sou uma bolinha.':'De volta ao meu cantinho arredondado.')}else setStatus({spin:'Uma voltinha em outra dimensão.',dissolve:'Me espalho. Respiro. Volto a ser eu.',jump:'Partículas de pura alegria!'}[a]);updateActions()}
+function updateActions(){$$('[data-action]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.action==='ball'?ballTarget===1:b.dataset.action===action))}
+$$('[data-mood]').forEach(b=>b.onclick=()=>{stopTour();setMood(b.dataset.mood)});$$('[data-action]').forEach(b=>b.onclick=()=>{stopTour();runAction(b.dataset.action)});
+$$('[data-hue]').forEach(b=>b.onclick=()=>{targetHue=+b.dataset.hue;$('#color-name').textContent=b.dataset.name;$$('[data-hue]').forEach(x=>x.setAttribute('aria-pressed',x===b))});
+$('#energy').oninput=e=>{energy=e.target.value/100;$('#energy-value').textContent=e.target.value+'%'};
+function updatePause(){$('#pause').textContent=paused?'▶ Continuar':'Ⅱ Pausar';$('#pause').setAttribute('aria-pressed',paused)}
+$('#pause').onclick=()=>{paused=!paused;updatePause()};updatePause();
+$('#tour').onclick=()=>{if(touring){stopTour();return}touring=true;paused=false;updatePause();tourAt=t;tourIndex=0;$('#tour').setAttribute('aria-pressed','true');$('#tour span').textContent='Parar demonstração';setMood('normal')};
+$('#reset').onclick=()=>{stopTour();action=null;ballTarget=0;targetHue=113;setMood('normal');energy=.6;$('#energy').value=60;$('#energy-value').textContent='60%';$('#color-name').textContent='MENTA';$$('[data-hue]').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.hue===113));updateActions();paused=false;updatePause()};
+stage.addEventListener('pointermove',e=>{const r=stage.getBoundingClientRect();pointer.x=clamp((e.clientX-r.left)/r.width*2-1,-1,1);pointer.y=clamp((e.clientY-r.top)/r.height*2-1,-1,1)});stage.addEventListener('pointerleave',()=>{pointer.x=0;pointer.y=0});canvas.onclick=()=>{stopTour();setMood('happy');runAction('jump')};
+function resize(){W=stage.clientWidth;H=stage.clientHeight;dpr=Math.min(devicePixelRatio||1,2);canvas.width=W*dpr;canvas.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}new ResizeObserver(resize).observe(stage);resize();
+const expr={happy:0,curious:0,stress:0,sleepy:0,surprise:0};let lookX=0,lookY=0;
+const tourSteps=[()=>setMood('happy'),()=>runAction('jump'),()=>setMood('curious'),()=>runAction('spin'),()=>{setMood('surprise');if(!ballTarget)runAction('ball')},()=>setMood('stress'),()=>runAction('dissolve'),()=>{setMood('sleepy');if(ballTarget)runAction('ball')},()=>{setMood('normal');stopTour()}];
+function render(now){if(!W||!H){requestAnimationFrame(render);return}const dt=Math.min((now-last)/1000||.016,.04);last=now;if(!paused)t+=dt;const k=paused?0:1-Math.exp(-dt*7);ball=lerp(ball,ballTarget,k);hue=lerp(hue,targetHue,k*.5);lookX=lerp(lookX,pointer.x,k);lookY=lerp(lookY,pointer.y,k);for(const key in expr)expr[key]=lerp(expr[key],mood===key?1:0,k);
+if(touring&&t-tourAt>(action==='dissolve'?4.3:2.6)){tourAt=t;if(tourIndex<tourSteps.length)tourSteps[tourIndex++]()}
+let elapsed=t-actionStart,spin=0,explode=0,jump=0,squash=1;if(action==='spin'){spin=smooth(elapsed/2.15)*TAU;if(elapsed>2.2)action=null}if(action==='dissolve'){explode=elapsed<1.4?smooth(elapsed/1.4):elapsed<2.2?1:1-smooth((elapsed-2.2)/1.7);if(elapsed>3.9)action=null}if(action==='jump'){const p=clamp(elapsed/1.5);jump=Math.sin(p*Math.PI)*78;squash=1+Math.sin(p*TAU*2)*.09*(1-p);if(elapsed>1.5)action=null}if(action==='ball'&&elapsed>1.2)action=null;
+if(!action&&canvas.dataset.acting){setStatus(statuses[mood]);delete canvas.dataset.acting;updateActions()}else if(action)canvas.dataset.acting='1';
+const s=Math.min(W*.205,H*.255,154),cx=W/2+Math.sin(t*.7)*4,cy=H*.5+8+Math.sin(t*1.7)*7-jump,ang=spin+Math.sin(t*.55)*.1+lookX*.1+expr.curious*.1,tilt=Math.sin(t*.75)*.035+expr.curious*.12,ca=Math.cos(ang),sa=Math.sin(ang),ct=Math.cos(tilt),st=Math.sin(tilt),breath=1+Math.sin(t*2)*.017,stress=expr.stress;
+ctx.clearRect(0,0,W,H);
+const shadow=ctx.createRadialGradient(cx,H*.79,0,cx,H*.79,s*1.25);shadow.addColorStop(0,'rgba(0,0,0,'+(.22*(1-explode)*(1-jump/150))+')');shadow.addColorStop(1,'rgba(0,0,0,0)');ctx.save();ctx.translate(0,H*.79);ctx.scale(1,.19);ctx.translate(0,-H*.79);ctx.fillStyle=shadow;ctx.fillRect(cx-s*1.3,H*.79-s*1.3,s*2.6,s*2.6);ctx.restore();
+function project(x,y,z){const rx=x*ca+z*sa,rz=z*ca-x*sa,ry=y*ct+rx*st,xx=rx*ct-y*st,p=4.8/(4.8-rz*.42);return{x:cx+xx*s*p*breath,y:cy+ry*s*p*breath*squash,z:rz,p}}
+// Expressions are force fields. Every visible facial edge is made of body
+// particles; there are no face sprites, filled facial shapes, or cutout masks.
+const face=project(0,-.06,1.04),faceScale=s*breath;
+const faceVis=smooth(clamp((ca-.16)/.65))*(1-smooth(explode*2));
+const blinkCycle=t%5.2;
+const blink=blinkCycle>4.90?1-Math.sin((blinkCycle-4.90)/.30*Math.PI)*.96:1;
+const holes=[];
+for(const side of [-1,1]){
+  const curiousScale=1+expr.curious*(side===-1?.22:-.2);
+  holes.push({
+    x:side*.34+lookX*.065,
+    y:-.15+lookY*.05+side*expr.curious*.055,
+    w:(.18+expr.surprise*.045)*curiousScale,
+    h:Math.max(.014,(.275*(1-expr.happy-expr.stress-expr.sleepy)+.045*expr.happy+.095*expr.stress+.027*expr.sleepy+.075*expr.surprise)*blink*curiousScale),
+    angle:-side*expr.stress*.32,
+    curve:expr.happy*.13,
+    amount:1
+  });
+}
+const mouthOpen=expr.happy+expr.surprise;
+if(mouthOpen>.002){holes.push({x:lookX*.025,y:.40+lookY*.02,w:(.24*expr.happy+.105*expr.surprise)/mouthOpen,h:(.048*expr.happy+.14*expr.surprise)/mouthOpen,angle:0,curve:-.105*expr.happy/mouthOpen,amount:smooth(mouthOpen)})}
+for(const h of holes){h.c=Math.cos(h.angle);h.s=Math.sin(h.angle)}
+function repel(x,y,h){
+  const dx=x-h.x,dy=y-h.y;
+  let u=dx*h.c+dy*h.s,v=-dx*h.s+dy*h.c;
+  // Bend the empty region into an arch for squinting or a smile.
+  const bend=h.curve*(Math.pow(clamp(u/h.w,-1.7,1.7),2)-1);
+  v-=bend;
+  const nx=u/h.w,ny=v/h.h,r=Math.hypot(nx,ny);
+  // Map equal areas to equal areas across a broad neighborhood. A linear
+  // radial push compresses particles into a visible rim; this square-root
+  // mapping maintains uniform density all the way to the opening.
+  const outer=3.4;
+  if(r>=outer)return [0,0];
+  const edge=1+Math.min(.017/h.h,.65);
+  const reach=Math.sqrt(edge*edge+(1-edge*edge/(outer*outer))*r*r);
+  const force=(reach-r)*h.amount;
+  const inv=1/Math.max(r,.0001);
+  const du=nx*inv*force*h.w;
+  let dv=ny*inv*force*h.h;
+  // Restore the bend at the displaced position to avoid curved-edge bunching.
+  dv+=h.curve*(Math.pow(clamp((u+du)/h.w,-1.7,1.7),2)-1)-bend;
+  return [du*h.c-dv*h.s,du*h.s+dv*h.c];
+}
+const rendered=[];
+const moveK=paused?0:1-Math.exp(-dt*22);
+const faceWidth=Math.max(.1,Math.abs(ca));
+for(const p of particles){
+  const flow=.009+energy*.025,tt=t*p.speed*(.65+energy),shake=stress*Math.sin(t*33+p.phase)*.015;
+  let x=lerp(p.x,p.sx,ball),y=lerp(p.y,p.sy,ball),z=lerp(p.z,p.sz,ball);
+  x+=Math.sin(tt+p.phase+y*3)*flow+shake;
+  y+=Math.cos(tt*1.1+p.phase+x*3)*flow;
+  z+=Math.sin(tt*.8+p.phase)*flow;
+  if(p.dust){const orbit=.06+.12*(1+Math.sin(tt));x*=1+orbit;y*=1+orbit;z*=1+orbit}
+  x+=p.ex*explode;y+=p.ey*explode+Math.sin(t+p.phase)*explode*.3;z+=p.ez*explode;
+  const q=project(x,y,z);
+  const fx=(q.x-face.x)/faceScale,fy=(q.y-face.y)/(faceScale*squash);
+  const localX=(fx*ct+fy*st)/faceWidth,localY=-fx*st+fy*ct;
+  let ox=0,oy=0;
+  if(faceVis>.001){for(const h of holes){const shift=repel(localX,localY,h);ox+=shift[0];oy+=shift[1]}}
+  const targetX=(ox*faceWidth*ct-oy*st)*faceScale*faceVis;
+  const targetY=(ox*faceWidth*st+oy*ct)*faceScale*squash*faceVis;
+  // Persistent particles travel to the new facial boundaries instead of
+  // being removed, recolored as eyes, or covered by a face layer.
+  p.dx=lerp(p.dx,targetX,moveK);p.dy=lerp(p.dy,targetY,moveK);
+  const item=p.render;
+  item.x=q.x+p.dx;item.y=q.y+p.dy;item.z=q.z;item.p=q.p;
+  item.size=p.size;item.light=p.light;item.dust=p.dust;
+  rendered.push(item);
+}
+rendered.sort((a,b)=>a.z-b.z);
+for(const q of rendered){
+  const depth=clamp((q.z+1.2)/2.4),alpha=(q.dust?.55:.84)*(1-explode*.3);
+  const light=34+depth*36+q.light*15;
+  ctx.fillStyle=`hsla(${hue},${q.dust?74:52}%,${light}%,${alpha})`;
+  ctx.beginPath();ctx.arc(q.x,q.y,q.size*q.p*(s/130)*(q.dust?.72:1),0,TAU);ctx.fill();
+}
+requestAnimationFrame(render)}requestAnimationFrame(render);
+})();
+</script>
+</body></html>

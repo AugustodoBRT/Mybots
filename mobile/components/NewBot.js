@@ -5,7 +5,7 @@ import { IconButton, ModelSettings, PrimaryButton } from './shared';
 import { ACCESS, HOMES, useKeyboardRoom } from '../BotProfile';
 import { BOT_TEMPLATES } from '../bot-templates';
 import { FacePicker } from './FacePicker';
-import { botColor } from '../../lib/face.mjs';
+import { botColor } from '../../lib/mimo.mjs';
 import { desktop } from '../desktop';
 
 // On the computer the steps stay in a column about as wide as a phone.
@@ -56,7 +56,7 @@ export function NewBot({ visible, models, defaultSelection, connections, nodes =
     const profile = BOT_TEMPLATES.find(item => item.id === template)?.profile || {};
     try {
       await onCreate({ ...profile, name: name.trim(), instructions: instructions.trim(), color: 'green', avatar: 'orbit', autonomy: 'ask', access: access === 'free' ? 'ask' : access, home, ...selection,
-        face: { seed, color: face?.color || botColor({ name: name.trim(), face: { seed } }), ...(face?.pieces ? { pieces: face.pieces } : {}) } }, { first: first.trim(), free: access === 'free' });
+        face: { seed, color: face?.color || botColor({ name: name.trim(), face: { seed } }), ...(face?.mimo ? { mimo: face.mimo } : {}) } }, { first: first.trim(), free: access === 'free' });
     } catch (failure) { setError(failure.message || 'Não deu para criar o bot.'); setSaving(false); }
   };
   const radio = (selected, title, detail, onPress, warn) => <Pressable key={title} accessibilityRole="radio" accessibilityState={{ selected }} onPress={onPress} style={s.choice}>

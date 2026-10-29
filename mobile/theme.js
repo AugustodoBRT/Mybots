@@ -23,7 +23,7 @@ export function themed(factory) {
   let version = -1, sheet;
   return new Proxy({}, { get(_, key) { if (version !== themeVersion) { sheet = StyleSheet.create(factory()); version = themeVersion; } return sheet[key]; } });
 }
-// The colors a bot can wear are in lib/face.mjs (a face's color is one of them); the old names still map to them.
+// The colors a bot can wear are in lib/mimo.mjs (a face's color is one of them); the old names still map to them.
 export const hueOf = botColor;
 export const F = {
   r: 'PlusJakartaSans_400Regular', m: 'PlusJakartaSans_500Medium', s: 'PlusJakartaSans_600SemiBold',

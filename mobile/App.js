@@ -47,7 +47,7 @@ async function api(path, data, token, apiUrl) {
 }
 
 export default function App() {
-  const [fonts] = useFonts({ PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold, BotGlyphs: require('./assets/fonts/BotGlyphs.ttf') });
+  const [fonts] = useFonts({ PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold });
   return fonts ? <KeyboardProvider><AppMain /></KeyboardProvider> : <View style={styles.app} />;
 }
 

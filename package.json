@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.mjs",
     "mobile": "node scripts/mobile.mjs",
-    "test": "node scripts/package-connectors.mjs && node scripts/package-supervisor.mjs && node --test tests/*.test.mjs"
+    "test": "node scripts/package-connectors.mjs && node scripts/package-supervisor.mjs && node scripts/mimo-data.mjs && node --test tests/*.test.mjs"
   },
   "engines": { "node": ">=22.13" }
 }

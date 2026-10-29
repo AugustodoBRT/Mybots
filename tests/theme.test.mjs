@@ -32,15 +32,14 @@ test('contraste AA (4,5:1) dos textos nos dois temas', () => {
   }
 });
 
-test('os rostos têm contraste de elemento gráfico (3:1) sobre o fundo nos dois temas', async () => {
-  const { FACE_COLORS } = await import('../mobile/palettes.js');
-  const { tone } = await import('../lib/face.mjs');
+test('os bichos de partículas têm contraste de elemento gráfico (3:1) sobre o fundo nos dois temas', async () => {
+  const { FACE_COLORS, hueOfHex, Mimo, specFromSeed, bucketColor } = await import('../lib/mimo.mjs');
+  const rgb = ([h, s, l]) => { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return '#' + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join(''); };
   for (const mode of ['dark', 'light']) for (const [hex, name] of FACE_COLORS) {
-    for (const kind of ['rim', 'tex', 'bright']) {
-      const [color] = tone(kind, hex, mode);
-      assert.ok(ratio(color, PALETTES[mode].bg) >= 3, `${mode}: ${name} (${kind}) = ${ratio(color, PALETTES[mode].bg).toFixed(2)}`);
-      assert.ok(ratio(color, PALETTES[mode].surface) >= 3, `${mode}: ${name} (${kind}) sobre o cartão`);
-    }
-    assert.ok(ratio(tone('eye', hex, mode)[0], PALETTES[mode].bg) >= 4.5, `${mode}: olhos`);
+    const m = new Mimo(specFromSeed('x'), { n: 200 }); m.hue = hueOfHex(hex); const frame = m.compute(200, 200, { light: mode === 'light' });
+    // the middle of the depth range is what most of the body looks like
+    const color = rgb(bucketColor(frame, 15)); assert.ok(ratio(color, PALETTE_BG[mode].bg) >= 3, `${mode}: ${name} = ${ratio(color, PALETTE_BG[mode].bg).toFixed(2)}`);
+    assert.ok(ratio(color, PALETTE_BG[mode].surface) >= 3, `${mode}: ${name} sobre o cartão`);
   }
 });
+const PALETTE_BG = PALETTES;

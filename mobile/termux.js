@@ -75,9 +75,9 @@ export const BotBrowserView = native ? requireNativeViewManager('TermuxBridge', 
 let frameView;
 try { frameView = native ? requireNativeViewManager('TermuxBridge', 'BotFrameView') : null; } catch {}
 export const BotFrameView = frameView;
-let faceView;
-try { faceView = native ? requireNativeViewManager('TermuxBridge', 'FaceView') : null; } catch {}
-export const FaceView = faceView;
+let mimoView;
+try { mimoView = native ? requireNativeViewManager('TermuxBridge', 'MimoView') : null; } catch {}
+export const MimoView = mimoView;
 export const browserInfo = () => native.browserInfo();
 export const browserAction = (botId, action) => native.browserAction(botId, action);
 export const fileStage = (id, name, chunk, append) => native.fileStage(id, name, chunk, append);

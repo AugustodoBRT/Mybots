@@ -1,7 +1,7 @@
 import { useStore } from '../state/useStore';
 import { selectHome, selectBots, selectShareTargets } from '../state/store';
 import { C, Icon, HUES, hueOf } from '../theme';
-import { stillOf } from '../../lib/face.mjs';
+import { stillOf } from '../../lib/mimo.mjs';
 import BotAvatar from '../BotAvatar';
 import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
 import { styles } from '../styles';
@@ -994,6 +994,6 @@ export function useLiveCallback(handler) {
 export function ShareTargets() {
   const targets = useStore(selectShareTargets); const key = JSON.stringify(targets);
   // Each shortcut's icon is a still frame of the bot's face, made here and painted natively.
-  useEffect(() => { if (termuxAvailable) publishShareTargets(targets.map(bot => ({ ...bot, still: stillOf(bot, 'idle', 192, 'dark') })))?.catch(() => {}); }, [key]);
+  useEffect(() => { if (termuxAvailable) publishShareTargets(targets.map(bot => ({ ...bot, still: stillOf(bot, 'idle', { px: 192, dp: 52 }) })))?.catch(() => {}); }, [key]);
   return null;
 }

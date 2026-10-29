@@ -2,9 +2,13 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { C, Icon, F, themed } from '../theme';
 import BotAvatar, { FACE_SWATCHES } from '../BotAvatar';
-import { PIECES, PIECE_NAMES, botColor } from '../../lib/face.mjs';
+import { EYE_STYLES, MOUTHS, TOPS, MOODS, specFromFace, botColor } from '../../lib/mimo.mjs';
 
-const PART_TITLES = { head: 'Cabeça', tex: 'Textura', eye: 'Olhos', mouth: 'Boca', top: 'Topo' };
+const BODIES = [['Redondo', 2.4], ['Meio', 4], ['Quadrado', 7]];
+const STEPS = [['Pequeno', 0.86], ['Médio', 1], ['Grande', 1.14]];
+const GAPS = [['Perto', 0.8], ['Normal', 1], ['Longe', 1.2]];
+const same = (a, b) => Math.abs(a - b) < 0.09;
+const PREVIEW = ['normal', 'feliz', 'curioso', 'surpreso', 'falando', 'trabalhando'];
 const s = themed(() => ({
   stage: { alignItems: 'center', justifyContent: 'center', height: 340, marginTop: 6 },
   actions: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 4 },
@@ -23,34 +27,47 @@ const s = themed(() => ({
 
 const draw = () => Math.random().toString(36).slice(2, 6);
 
+function Chips({ title, options, value, onPick }) {
+  return <View>
+    <Text style={s.part}>{title}</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+      {options.map(([label, key, on = value === key]) => <Pressable key={label} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onPick(key)} style={[s.chip, on && s.chipOn]}>
+        <Text style={[s.chipText, on && { color: C.accent }]}>{label}</Text></Pressable>)}
+    </ScrollView>
+  </View>;
+}
+
 /**
- * Choosing a bot's face: the big face moves while you pick. "Sortear" draws a whole new face from a new seed;
- * "Montar" lets you pin the head, texture, eyes, mouth and top one by one (anything not pinned keeps coming from the seed).
- * `face` is { seed, color, pieces } or null (then the name is the seed); `onChange` gets the next one.
+ * Choosing a bot's face: the big face moves while you pick. "Sortear" draws a whole new body from a new seed;
+ * "Montar" lets you pin the body, eyes, mouth and top one by one (what is not pinned keeps coming from the seed).
+ * `face` is { seed, color, mimo } or null (then the name is the seed); `onChange` gets the next one.
  */
 export function FacePicker({ name, face, onChange, state = 'idle', showStage = true }) {
-  const [building, setBuilding] = useState(false);
+  const [building, setBuilding] = useState(false), [mood, setMood] = useState(null);
   const seed = face?.seed || (name || '').trim() || 'bot';
-  const bot = { name: name || 'Seu bot', face: { seed, ...(face?.color ? { color: face.color } : {}), ...(face?.pieces ? { pieces: face.pieces } : {}) } };
-  const color = botColor(bot);
-  const set = patch => onChange({ seed, ...(face?.color ? { color: face.color } : { color }), ...(face?.pieces ? { pieces: face.pieces } : {}), ...patch });
-  const pin = (part, value) => { const pieces = { ...(face?.pieces || {}) }; if (value) pieces[part] = value; else delete pieces[part]; set({ pieces: Object.keys(pieces).length ? pieces : undefined }); };
+  const bot = { name: name || 'Seu bot', face: { seed, ...(face?.color ? { color: face.color } : {}), ...(face?.mimo ? { mimo: face.mimo } : {}) } };
+  const color = botColor(bot), spec = specFromFace(bot.face, bot.name);
+  const set = patch => onChange({ seed, color: face?.color || color, ...(face?.mimo ? { mimo: face.mimo } : {}), ...patch });
+  const pin = patch => set({ mimo: { ...(face?.mimo || {}), ...patch } });
   return <View>
-    {showStage ? <View style={s.stage}><BotAvatar bot={bot} size={330} state={state} animated /></View> : null}
+    {showStage ? <View style={s.stage}><BotAvatar bot={bot} size={330} state={state} animated mood={mood || undefined} /></View> : null}
     <View style={s.actions}>
-      <Pressable accessibilityRole="button" onPress={() => { onChange({ seed: `${(name || 'bot').trim() || 'bot'}-${draw()}`, color }); }} style={({ pressed }) => [s.action, pressed && { opacity: 0.7 }]}>
+      <Pressable accessibilityRole="button" onPress={() => onChange({ seed: `${(name || 'bot').trim() || 'bot'}-${draw()}`, color })} style={({ pressed }) => [s.action, pressed && { opacity: 0.7 }]}>
         <Icon name="refresh" size={17} color={C.accent} /><Text style={s.actionText}>Sortear</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: building }} onPress={() => setBuilding(value => !value)} style={({ pressed }) => [s.action, building && s.actionOn, pressed && { opacity: 0.7 }]}>
         <Icon name="edit" size={17} color={C.accent} /><Text style={s.actionText}>Montar</Text></Pressable>
     </View>
     {building ? <View>
-      {Object.keys(PIECES).map(part => <View key={part}>
-        <Text style={s.part}>{PART_TITLES[part]}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-          {[[null, 'Do sorteio'], ...PIECES[part].map(value => [value, PIECE_NAMES[part][value]])].map(([value, label]) => { const on = (face?.pieces?.[part] || null) === value;
-            return <Pressable key={label} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => pin(part, value)} style={[s.chip, on && s.chipOn]}><Text style={[s.chipText, on && { color: C.accent }]}>{label}</Text></Pressable>; })}
-        </ScrollView>
-      </View>)}
+      <Chips title="Corpo" options={BODIES.map(([l, v]) => [l, v, same(spec.squar, v)])} onPick={squar => pin({ squar })} />
+      <Chips title="Largura" options={STEPS.map(([l, v]) => [l, v, same(spec.sx, v)])} onPick={sx => pin({ sx })} />
+      <Chips title="Altura" options={STEPS.map(([l, v]) => [l, v, same(spec.sy, v)])} onPick={sy => pin({ sy })} />
+      <Chips title="Olhos" options={[[`Um`, 1], ['Dois', 2], ['Três', 3]]} value={spec.eyes} onPick={eyes => pin({ eyes })} />
+      <Chips title="Formato do olho" options={Object.entries(EYE_STYLES).map(([k, v]) => [v[0], k])} value={spec.eyeStyle} onPick={eyeStyle => pin({ eyeStyle })} />
+      <Chips title="Distância dos olhos" options={GAPS.map(([l, v]) => [l, v, same(spec.eyeGap, v)])} onPick={eyeGap => pin({ eyeGap })} />
+      <Chips title="Boca" options={Object.entries(MOUTHS).map(([k, v]) => [v, k])} value={spec.mouth} onPick={mouth => pin({ mouth })} />
+      <Chips title="Topo" options={Object.entries(TOPS).map(([k, v]) => [v, k])} value={spec.top} onPick={top => pin({ top })} />
+      <Chips title="Bochechas" options={[['Sem', false], ['Com', true]]} value={Boolean(spec.blush)} onPick={blush => pin({ blush })} />
+      <Chips title="Ver expressão" options={[['Automática', null], ...PREVIEW.map(m => [MOODS[m].label, m])]} value={mood} onPick={setMood} />
     </View> : null}
     <Text style={s.part}>Cor</Text>
     <View style={s.swatches}>{FACE_SWATCHES.map(([hex, label]) => { const on = color.toLowerCase() === hex.toLowerCase();

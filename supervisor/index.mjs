@@ -24,7 +24,7 @@ import { Routines } from './routines.mjs';
 import { Attachments } from './attachments.mjs';
 import { Apps } from './apps.mjs';
 import { Browser, personInput } from './browser.mjs';
-import { stillOf } from '../lib/face.mjs';
+import { stillOf } from '../lib/mimo.mjs';
 import { Phone } from './phone.mjs';
 import { browserMode } from './tool-policy.mjs';
 import { Items } from './items.mjs';
@@ -108,7 +108,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const toApp = (plain, wait = 12000) => new Promise(resolve => {
       if (Date.now() - lastPoll > 60000 && !appOpen()) { resolve(false); return; }
       // The notice carries a still frame of the bot's face (the app paints it as the notification's picture).
-      const owner = plain.botId ? db.bot(plain.botId) : null; const item = owner ? { ...plain, face: stillOf(owner, 'idle', 128) } : plain;
+      const owner = plain.botId ? db.bot(plain.botId) : null; const item = owner ? { ...plain, face: stillOf(owner, 'idle', { px: 128, dp: 64 }) } : plain;
       const timer = setTimeout(() => { outbox.delete(item.id); resolve(false); }, wait);
       outbox.set(item.id, { item, done: () => { clearTimeout(timer); outbox.delete(item.id); resolve(true); } });
       flushOutbox();
@@ -311,12 +311,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // A bot of the computer sleeps while it is off; a message sent to it waits.
         const state = pending.includes(bot.id) ? 'waiting' : !nodes.presence(bot).online ? 'sleeping' : busy ? 'working' : 'idle';
         // Still frames of the face for the widget (a small one for the list, a big one for the single-bot size).
-        return { id: bot.id, name: bot.name, color: bot.color || 'green', avatar: bot.avatar || '', state, still: stillOf(bot, state, 112), big: stillOf(bot, state, 192),
+        return { id: bot.id, name: bot.name, color: bot.color || 'green', avatar: bot.avatar || '', state, still: stillOf(bot, state, { px: 112, dp: 44 }), big: stillOf(bot, state, { px: 192, dp: 78 }),
           preview: state === 'waiting' ? 'Esperando sua decisão' : state === 'sleeping' ? (busy ? 'Mensagem esperando o computador' : 'Dormindo até o computador ligar') : state === 'working' ? 'Trabalhando…' : latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle || ''}` : plain(latest?.text) || 'Pronto para começar' };
       });
       const open = db.all("SELECT * FROM pending_items WHERE state='open'").map(row => items.row(row)).filter(item => db.bot(item.botId) && !db.bot(item.botId).deletedAt);
       const next = open.filter(item => item.due).sort((a, b) => a.due.localeCompare(b.due))[0];
-      const body = { brand: stillOf({ name: 'MyBots', face: { seed: 'MyBots', color: '#FF9F1C' } }, 'idle', 66), bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
+      const body = { brand: stillOf({ name: 'MyBots', face: { seed: 'MyBots', color: '#FF9F1C' } }, 'idle', { px: 66, dp: 30 }), bots, approvals: pending.length, openItems: open.length, next: next ? { title: next.title.slice(0, 80), due: next.dueLabel || next.due, course: (next.course || '').slice(0, 60) } : null };
       return { version: createHash('sha256').update(JSON.stringify(body)).digest('hex').slice(0, 16), ...body };
     };
     // The account's connector names, learned from `claude mcp list` and from each Claude reply, kept across restarts.

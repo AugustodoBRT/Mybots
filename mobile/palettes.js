@@ -14,4 +14,4 @@ export const PALETTES = {
 // 'dark' | 'light' | 'system' + what the system says → 'dark' | 'light'.
 export const resolveTheme = (preference, system) => preference === 'light' ? 'light' : preference === 'system' ? (system === 'light' ? 'light' : 'dark') : 'dark';
 
-export { FACE_COLORS, HUES, botColor } from '../lib/face.mjs';
+export { FACE_COLORS, HUES, botColor } from '../lib/mimo.mjs';

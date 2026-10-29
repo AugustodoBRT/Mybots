@@ -1,6 +1,6 @@
 import { routineArguments } from '../mobile/routine-text.js';
 import { safeUrl } from './browser.mjs';
-import { PIECES } from '../lib/face.mjs';
+import { EYE_STYLES, MOUTHS, TOPS, LIMITS } from '../lib/mimo.mjs';
 export const TOOL_DEFINITIONS = [
   { name: 'memory.read', label: 'Ler memória', description: 'Lê somente as lembranças deste bot.', readOnly: true },
   { name: 'memory.write', label: 'Salvar memória', description: 'Guarda ou atualiza uma lembrança deste bot.' },
@@ -90,13 +90,26 @@ export function validFolders(list) {
 export { browserMode } from '../mobile/local.js';
 import { BROWSER_MODES } from '../mobile/local.js';
 import agentSkills from '../lib/agent-skills.cjs';
-// A bot's face: a seed, an optional color and optional pinned pieces (head, tex, eye, mouth, top).
+// A bot's face: a seed, an optional color (#rrggbb) and the choices the person made for the body (`mimo`; what is not there comes from the
+// seed). `pieces` is what the earlier character faces saved: accepted so older bots still validate, no longer used.
 export function validFace(face) {
   if (!face || typeof face !== 'object' || Array.isArray(face)) return false;
   if (typeof face.seed !== 'string' || !face.seed.trim() || face.seed.length > 40 || /[\u0000-\u001f]/.test(face.seed)) return false;
   if (face.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(face.color)) return false;
-  if (face.pieces !== undefined && (!face.pieces || typeof face.pieces !== 'object' || Object.entries(face.pieces).some(([part, value]) => !PIECES[part] || !PIECES[part].includes(value)))) return false;
-  return Object.keys(face).every(key => ['seed', 'color', 'pieces'].includes(key));
+  if (face.pieces !== undefined && (!face.pieces || typeof face.pieces !== 'object' || Array.isArray(face.pieces) || Object.values(face.pieces).some(value => typeof value !== 'string' || value.length > 20))) return false;
+  if (face.mimo !== undefined) {
+    const o = face.mimo; if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+    for (const [key, value] of Object.entries(o)) {
+      if (key in LIMITS) { if (!Number.isFinite(value) || value < LIMITS[key][0] || value > LIMITS[key][1]) return false; }
+      else if (key === 'eyes') { if (![1, 2, 3].includes(value)) return false; }
+      else if (key === 'eyeStyle') { if (!EYE_STYLES[value]) return false; }
+      else if (key === 'mouth') { if (!MOUTHS[value]) return false; }
+      else if (key === 'top') { if (!TOPS[value]) return false; }
+      else if (key === 'blush') { if (typeof value !== 'boolean') return false; }
+      else return false;
+    }
+  }
+  return Object.keys(face).every(key => ['seed', 'color', 'pieces', 'mimo'].includes(key));
 }
 export function validateProfile(data) {
   if (data.face !== undefined && !validFace(data.face)) throw new Error('Escolha um rosto válido.');

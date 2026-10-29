@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Keyboard, Switch, StyleSheet } from 'react-native';
 import BotAvatar from './BotAvatar';
 import { FacePicker } from './components/FacePicker';
-import { botColor, botSeed } from '../lib/face.mjs';
+import { botColor, botSeed } from '../lib/mimo.mjs';
 import { BOT_TEMPLATES } from './bot-templates';
 import { C, F, Icon, themed } from './theme';
 import { plainText } from './markdown';

@@ -185,9 +185,9 @@ internal object BotNotifier {
       .setSmallIcon(R.drawable.mybots_notification).setContentTitle(title).setContentText(text)
       .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setColor(0xFFFF9F1C.toInt())
     if (tap != null) builder.setContentIntent(tap)
-    // The bot's face (a still frame from the supervisor) is the notification's picture.
+    // The bot's face (a still frame the supervisor describes) is the notification's picture.
     item.optJSONObject("face")?.let { still ->
-      try { builder.setLargeIcon(FacePainter.bitmap(context, still.optString("frame"), still.optString("tones"), still.optInt("cols"), still.optInt("rows"), 128, still.optBoolean("text"))) } catch (_: Exception) { }
+      try { builder.setLargeIcon(MimoStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), 128, still.optDouble("dp", 52.0), false)) } catch (_: Exception) { }
     }
     val notificationId = tag.hashCode()
     val approvalId = item.optString("approvalId"); val actionHash = item.optString("actionHash"); val botId = item.optString("botId")

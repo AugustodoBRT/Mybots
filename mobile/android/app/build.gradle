@@ -92,8 +92,8 @@ android {
         applicationId 'com.mybots.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 79
-        versionName "0.45.3"
+        versionCode 80
+        versionName "0.46.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

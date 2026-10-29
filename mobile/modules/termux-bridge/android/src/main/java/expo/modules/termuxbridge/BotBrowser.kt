@@ -318,6 +318,8 @@ internal object BotBrowser {
       "thumb" -> maskedScreenshot(context, botId, false, 480f, 60)
       "read" -> js(context, botId, READ_JS).also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
       "inspect" -> if (args.has("action")) js(context, botId, "JSON.stringify(($POINT_JS)($args))") else js(context, botId, "($INSPECT_JS)($id)")
+      // Back, forward and reload from the window of the computer (the person holds the browser there).
+      "nav" -> { onMain { action(context, botId, args.getString("action")) }; page(context, botId) }
       "tabs" -> throw IllegalStateException("Disponível só quando o bot responde pelo computador.")
       "find" -> js(context, botId, "JSON.stringify(($READ_PAGE)($args))")
       "act" -> {
@@ -789,6 +791,11 @@ internal object BotBrowser {
     args => {
       const el = args.action === 'key' ? document.activeElement : document.elementFromPoint(args.x, args.y);
       if (args.action === 'scroll') window.scrollBy(args.dx, args.dy);
+      else if (args.action === 'text') {
+        // What the person types in the window of the computer while they hold the browser: into the field that has the focus.
+        const field = document.activeElement; if (!field || field === document.body) return JSON.stringify({ error: 'Toque num campo antes de digitar.' });
+        if (!document.execCommand('insertText', false, String(args.text || ''))) { if ('value' in field) { field.value += String(args.text || ''); field.dispatchEvent(new Event('input', { bubbles: true })); } }
+      }
       else if (args.action === 'key') {
         const key = args.key === 'Space' ? ' ' : args.key;
         if (key === 'Tab' || key === 'Shift+Tab') {
@@ -796,6 +803,7 @@ internal object BotBrowser {
           const i = all.indexOf(el), step = key === 'Tab' ? 1 : -1; all[(i + step + all.length) % all.length]?.focus();
         } else {
           const allowed = el?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+          if (allowed && (key === 'Backspace' || key === 'Delete') && el && ('value' in el || el.isContentEditable)) document.execCommand(key === 'Backspace' ? 'delete' : 'forwardDelete');
           if (allowed && key === 'Enter' && el?.form) el.form.requestSubmit();
           if (['PageDown','PageUp','ArrowDown','ArrowUp','Home','End'].includes(key)) window.scrollBy(0, key === 'Home' ? -document.documentElement.scrollHeight : key === 'End' ? document.documentElement.scrollHeight : (key.endsWith('Up') ? -1 : 1) * (key.startsWith('Page') ? innerHeight : 40));
           el?.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));

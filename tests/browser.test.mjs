@@ -25,7 +25,9 @@ function fakeApp(app) {
     if (op === 'click') { if (args.id === 4) page.url += '#enviado'; return { url: page.url, title: page.title }; }
     if (op === 'login') { if (!/sigaa/.test(page.url)) throw new Error('Não há senha salva para este site e este bot.'); page.url += '#entrou'; return { url: page.url, title: page.title, filled: true, sent: true }; }
     if (op === 'upload') { if (args.id !== 5) throw new Error('Este elemento não é um campo de arquivo.'); page.uploaded = args; return { url: page.url, title: page.title, attached: args.name }; }
-    if (op === 'screenshot') return { url: page.url, title: page.title, image: Buffer.from('jpeg').toString('base64') };
+    if (op === 'screenshot') return { url: page.url, title: page.title, width: 360, height: 640, image: Buffer.from('jpeg').toString('base64') };
+    if (op === 'act') { page.acts = [...(page.acts || []), args]; return { url: page.url, title: page.title }; }
+    if (op === 'nav') { page.navs = [...(page.navs || []), args.action]; return { url: page.url, title: page.title }; }
     return { url: page.url, title: page.title };
   };
   (async () => {
@@ -188,4 +190,27 @@ test('without the app the bot is told to ask for MyBots to be opened, and comman
   await f.open(other.id).call('browser_open', { url: 'https://b.example.com' });
   assert.deepEqual(f.phone.seen.filter(item => item.op === 'open').map(item => [item.botId, item.args.url]), [[f.bot.id, 'https://a.example.com/'], [other.id, 'https://b.example.com/']]);
   assert.equal((await fetch(`http://127.0.0.1:${f.app.port}/device/browser`, { headers: { Authorization: 'Bearer ' + 'x'.repeat(64) } })).status, 401);
+});
+
+test('the window of the computer sees the phone browser as pictures and acts on it only after the person took it over', async t => {
+  const f = await setup(t, 'ask');
+  const bot = f.bot;
+  // Before anything: a picture, with who has the control; input is refused.
+  const frame = await f.app.rpc('browser.phoneFrame', { botId: bot.id });
+  assert.deepEqual([frame.width, frame.height, frame.assumed], [360, 640, false]); assert.ok(frame.image);
+  await assert.rejects(f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'click', x: 10, y: 20 }), /Assumir/);
+  // The person takes it over: the bot's own commands are refused, theirs go through to the phone with the same picture coordinates.
+  await f.app.rpc('browser.control', { botId: bot.id, who: 'person' });
+  assert.equal((await f.app.rpc('browser.phoneFrame', { botId: bot.id })).assumed, true);
+  await f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'click', x: 100.4, y: 200.6 });
+  await f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'scroll', dx: 0, dy: 120 });
+  await f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'text', text: 'Olá' });
+  await f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'key', key: 'Backspace' });
+  await f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'reload' });
+  const sent = f.phone.seen.filter(command => ['act', 'nav'].includes(command.op)).map(command => [command.op, command.args.action, command.args.x, command.args.y, command.args.dy, command.args.text, command.args.key]);
+  assert.deepEqual(sent, [['act', 'click', 100, 201, 0, undefined, undefined], ['act', 'scroll', 0, 0, 120, undefined, undefined], ['act', 'text', 0, 0, 0, 'Olá', undefined], ['act', 'key', 0, 0, 0, undefined, 'Backspace'], ['nav', 'reload', undefined, undefined, undefined, undefined, undefined]]);
+  // Nothing odd gets through.
+  await assert.rejects(f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'eval', text: 'x' }), /Ação inválida/);
+  await assert.rejects(f.app.rpc('browser.phoneInput', { botId: bot.id, action: 'key', key: 'x'.repeat(40) }), /Tecla inválida/);
+  await assert.rejects(f.app.rpc('browser.phoneFrame', { botId: 'não-é-id' }), /Bot inválido/);
 });

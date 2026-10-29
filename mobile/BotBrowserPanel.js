@@ -41,7 +41,7 @@ function TabIcon({ icon }) {
 }
 
 /** The tab strip: icon, title, close and "+". Only the person who took over changes tabs; the bot uses browser_tabs. */
-function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
+export function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
   if (!tabs?.length) return null;
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
     {tabs.map(tab => <Pressable key={tab.tab} disabled={!enabled || tab.active || !onSwitch} onPress={() => onSwitch(tab.tab)} accessibilityRole="tab" accessibilityState={{ selected: tab.active }} accessibilityLabel={`Aba ${tab.tab}: ${tab.title || 'Nova aba'}`} style={[styles.tabChip, tab.active && styles.tabChipOn]}>
@@ -64,7 +64,7 @@ function WalletFreeze() {
 }
 
 /** Back, forward, reload and the address, always visible; they act only after "Assumir". */
-function AddressRow({ url, enabled, back, forward, onBack, onForward, onReload, onOpen, placeholder }) {
+export function AddressRow({ url, enabled, back, forward, onBack, onForward, onReload, onOpen, placeholder }) {
   const [editing, setEditing] = useState(null);
   const shown = url && url !== 'about:blank' ? url.replace(/^https?:\/\//, '') : '';
   const go = () => { if (editing?.trim()) onOpen(editing.trim()); setEditing(null); };

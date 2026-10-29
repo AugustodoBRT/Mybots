@@ -9,6 +9,7 @@ import { desktop, desktopBus, readingColumn } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
+import PhoneBrowserLive from '../components/PhoneBrowserLive';
 import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
@@ -67,7 +68,9 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   useEffect(() => { desktopBus.emit('browser-state', { botId: bot.id, open: browserOpen || assumed }); }, [browserOpen, assumed, bot.id]);
   // Tablets and the computer's window: the browser sits beside the conversation instead of above it.
   const [width, setWidth] = useState(0);
-  const showBrowser = browsing && (browserOpen || assumed), side = showBrowser && width >= 820;
+  // On the computer, a bot whose browser is not on this computer lives on the phone: its page is shown live here (PhoneBrowserLive).
+  const phoneView = Boolean(desktop) && !browsing && (browserOpen || assumed);
+  const showBrowser = browsing && (browserOpen || assumed), side = (showBrowser || phoneView) && width >= 820;
   // While the bot works, new messages still go out and wait their turn (phone mode).
   const typing = phone ? sending || saving : busy;
   const canSend = !typing && (draft.trim() || files.length) && selection?.model;
@@ -115,8 +118,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   const asleep = offline(data, bot.id);
   const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
-  const noBrowser = desktop && browserOpen && !browsing;
-  const panel = noBrowser ? <View style={styles.browserNone}><Icon name="globe" size={22} color={C.muted} /><Text style={styles.browserNoneText}>O navegador de {bot.name} não está aberto no computador.</Text><Text style={styles.browserNoneHint}>Quando ele abrir uma página, ela aparece aqui para você acompanhar ou assumir.</Text><Pressable accessibilityRole="button" onPress={() => setBrowserOpen(false)} style={styles.stopButton}><Text style={styles.stopText}>Fechar</Text></Pressable></View>
+  const panel = phoneView ? <PhoneBrowserLive bot={bot} assumed={assumed} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} />
     : showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
   return <View style={styles.chatScreen} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.chatHeader}>

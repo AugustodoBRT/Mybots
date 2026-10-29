@@ -450,6 +450,24 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'negotiation.respond': return negotiations.respond(params.offerId, params.accept);
         case 'free.get': return tools.freeSettings();
         case 'free.set': return tools.setFreeList(params.ask);
+        // The bot's browser on the phone, watched from the window of the computer: one picture at a time (the window asks for the next
+        // one when it has the last), and, only after the person took it over, their clicks, scrolls and keys.
+        case 'browser.phoneFrame': {
+          if (!uuid(params.botId)) throw new Error('Bot inválido.'); db.requireBot(params.botId);
+          const shot = await browser.view(params.botId, 'screenshot', {});
+          return { image: shot.image, width: shot.width, height: shot.height, url: shot.url || '', title: shot.title || '', assumed: browser.control.get(params.botId) === 'person' };
+        }
+        case 'browser.phoneInput': {
+          if (!uuid(params.botId)) throw new Error('Bot inválido.'); db.requireBot(params.botId);
+          if (browser.control.get(params.botId) !== 'person') throw new Error('Toque em Assumir antes de mexer no navegador.');
+          const action = params.action; const num = value => Number.isFinite(value) ? Math.round(value) : 0;
+          if (['back', 'forward', 'reload'].includes(action)) return browser.view(params.botId, 'nav', { action });
+          if (!['click', 'double_click', 'scroll', 'key', 'text', 'hover'].includes(action)) throw new Error('Ação inválida.');
+          const args = { action, x: num(params.x), y: num(params.y), dx: num(params.dx), dy: num(params.dy) };
+          if (action === 'key') { if (typeof params.key !== 'string' || params.key.length > 20) throw new Error('Tecla inválida.'); args.key = params.key; }
+          if (action === 'text') { if (typeof params.text !== 'string' || !params.text || params.text.length > 2000) throw new Error('Texto inválido.'); args.text = params.text; }
+          return browser.view(params.botId, 'act', args);
+        }
         case 'phone.status': return phone.status();
         case 'phone.stop': return phone.stop(params.source === 'computer' ? 'computer' : 'app');
         case 'phone.control': return phoneControl(params.who, 'app');

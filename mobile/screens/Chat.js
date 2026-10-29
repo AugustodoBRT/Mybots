@@ -1,4 +1,4 @@
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useKeyboardPad } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
@@ -26,6 +26,7 @@ const readWebFile = file => new Promise((resolve, reject) => {
 });
 
 function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+  const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null);
@@ -125,7 +126,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     {side ? null : panel}
     <View style={side ? styles.chatSplit : { flex: 1 }}>
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
+    <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
     <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
@@ -175,7 +176,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
         placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
         onAttach={phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
     </View>
-    </KeyboardAvoidingView>
+    </View>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />
     </View>
     {side ? <View style={styles.chatSide}>{panel}</View> : null}

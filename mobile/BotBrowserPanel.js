@@ -197,6 +197,9 @@ export function BrowserTimeline({ bot, call, working }) {
   const last = steps.at(-1);
   const shown = last ? steps.filter(step => step.taskId === last.taskId) : [];
   if (!shown.length) return null;
+  // The card follows the work: while the bot works and for a few minutes after; older ones stay in the browser panel, not stuck at the end of the chat.
+  const raw = String(last.at || '').replace(' ', 'T'), stamp = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + 'Z');
+  if (!working && Number.isFinite(stamp) && Date.now() - stamp > 15 * 60 * 1000) return null;
   const show = working || expanded;
   const index = open ? shown.findIndex(step => step.id === open) : -1, current = shown[index];
   return <View style={styles.timeline}>

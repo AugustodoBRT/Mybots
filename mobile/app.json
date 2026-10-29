@@ -3,7 +3,7 @@
     "name": "MyBots",
     "slug": "mybots",
     "scheme": "mybots",
-    "version": "0.44.0",
+    "version": "0.44.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
@@ -12,7 +12,7 @@
     ],
     "android": {
       "package": "com.mybots.app",
-      "versionCode": 71
+      "versionCode": 72
     },
     "icon": "./assets/brand/icon.png",
     "splash": {

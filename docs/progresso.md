@@ -1188,3 +1188,10 @@ Pedido do usuário: qualidade de 7 mil partículas e animação "lisinha" de 60 
 - **Partículas finas**: raio mínimo menor (0,55 em vez de 1,0–1,3), o "gordo" que o usuário notou.
 - Emulador (software): cabeçalho com 16 ms de mediana e p90 (vsync de 60 fps), 2% de quadros lentos, sem erro de EGL depois de esperar a thread ao destruir a superfície. **Não medido em celular real** (a GPU do emulador é por software).
 - Pendente: a janela do PC ainda usa o raio mínimo antigo e o canvas; conferir "Teste" com expressão de erro na lista (parece ser o estado real do bot, mas não verifiquei a causa).
+
+## 29/10/2026 — 0.44.1 (versionCode 72): três achados do celular real
+Relatados pelo usuário com capturas do celular:
+- **Gráfico da Atividade com legenda embolada** (celular estreito): rótulos de dia e tokens se sobrepunham. Em largura menor que 560 o eixo mostra só o dia da semana e o número do dia (os tokens ficam no total); margens menores. Conferido no emulador.
+- **"Linha do tempo do navegador" sempre presa no fim da conversa**: o cartão ficava para sempre com os passos da última tarefa. Agora só aparece enquanto o bot trabalha e até 15 minutos depois do último passo (`at` do passo).
+- **Teclado tampando o campo de mensagem**: reproduzido no emulador (API 36, edge to edge): o `KeyboardAvoidingView` da biblioteca deixava o campo abaixo do topo do teclado. Chat e Sala passaram a usar `keyboard.js` (`useKeyboardPad`): a tela põe padding igual a quanto o teclado avança sobre ela, medido pela posição real do teclado (a altura que o Android informa não inclui a barra de navegação). Conferido no emulador: o campo aparece inteiro acima do teclado.
+- `npm test` 309/309. **Não testado**: no celular real (o teclado dele é outro e a barra de navegação também), Sala com teclado e os formulários de Perfil/Novo bot (não mudaram).

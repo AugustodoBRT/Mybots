@@ -1,4 +1,4 @@
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useKeyboardPad } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
@@ -14,6 +14,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 import { readingColumn } from '../desktop';
 
 function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
+  const [keyboard, keyboardRef] = useKeyboardPad();
   const openFile = useLiveCallback(onFile);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null); const hold = useLiveCallback(message => setHeld(message));
@@ -53,7 +54,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       </View>
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
     </View>
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="translate-with-padding">
+    <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
     <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
@@ -90,7 +91,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
-    </KeyboardAvoidingView>
+    </View>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => send(message.text)} canResend={!sending} />
   </View>;
 }

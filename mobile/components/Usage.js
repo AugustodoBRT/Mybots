@@ -33,12 +33,12 @@ const niceMax = value => { const exp = 10 ** Math.floor(Math.log10(value)); cons
 
 /** The estimated spend of each day as a line, with the value over every point and the tokens under the day. */
 export function UsageChart({ days, byTokens = false }) {
-  const [width, setWidth] = useState(0); const height = 250; const pad = { left: 74, right: 26, top: 34, bottom: 62 };
+  const [width, setWidth] = useState(0); const height = 250; const narrow = width > 0 && width < 560; const pad = { left: narrow ? 58 : 74, right: narrow ? 14 : 26, top: 34, bottom: narrow ? 52 : 62 };
   const costs = days.map(day => byTokens ? day.input + day.output : day.cost || 0); const top = niceMax(Math.max(byTokens ? 1 : 0.01, ...costs));
   const label = value => byTokens ? tokensLabel(Math.round(value)) : usd(value).replace('US$ ', '$ ');
   const wide = width >= 560; const peak = costs.indexOf(Math.max(...costs));
   // The first and last points keep away from the edges so their values do not touch the axis.
-  const inner = 38; const x = index => pad.left + inner + (width - pad.left - pad.right - 2 * inner) * (days.length > 1 ? index / (days.length - 1) : 0.5);
+  const inner = narrow ? 16 : 38; const x = index => pad.left + inner + (width - pad.left - pad.right - 2 * inner) * (days.length > 1 ? index / (days.length - 1) : 0.5);
   const y = value => pad.top + (height - pad.top - pad.bottom) * (1 - value / top);
   const line = days.map((day, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)} ${y(costs[index]).toFixed(1)}`).join('');
   return <View onLayout={event => setWidth(Math.floor(event.nativeEvent.layout.width))} accessible accessibilityRole="image"
@@ -50,8 +50,10 @@ export function UsageChart({ days, byTokens = false }) {
       {days.map((day, index) => <Circle key={day.date} cx={x(index)} cy={y(costs[index])} r={index === days.length - 1 ? 5.5 : 4} fill={index === days.length - 1 ? C.accent : C.bg} stroke={C.accent} strokeWidth="2.2" />)}
       {days.map((day, index) => (wide || index === peak || index === days.length - 1) && costs[index] > 0
         ? <SvgText key={'l' + day.date} x={x(index)} y={y(costs[index]) - 12} fill={C.text} fontSize="12" fontFamily={F.b} textAnchor="middle">{label(costs[index])}</SvgText> : null)}
-      {days.map((day, index) => <SvgText key={'d' + day.date} x={x(index)} y={height - 34} fill={C.text2} fontSize="12" fontFamily={F.s} textAnchor="middle">{weekday(day.date)} {day.date.slice(8)}/{day.date.slice(5, 7)}</SvgText>)}
-      {days.map((day, index) => <SvgText key={'t' + day.date} x={x(index)} y={height - 15} fill={C.muted} fontSize="11" fontFamily={F.m} textAnchor="middle">{tokensLabel(day.input + day.output)}</SvgText>)}
+      {narrow ? days.map((day, index) => <SvgText key={'d' + day.date} x={x(index)} y={height - 30} fill={C.text2} fontSize="11.5" fontFamily={F.s} textAnchor="middle">{weekday(day.date).slice(0, 3)}</SvgText>)
+        : days.map((day, index) => <SvgText key={'d' + day.date} x={x(index)} y={height - 34} fill={C.text2} fontSize="12" fontFamily={F.s} textAnchor="middle">{weekday(day.date)} {day.date.slice(8)}/{day.date.slice(5, 7)}</SvgText>)}
+      {narrow ? days.map((day, index) => <SvgText key={'t' + day.date} x={x(index)} y={height - 14} fill={C.muted} fontSize="11" fontFamily={F.m} textAnchor="middle">{day.date.slice(8)}</SvgText>)
+        : days.map((day, index) => <SvgText key={'t' + day.date} x={x(index)} y={height - 15} fill={C.muted} fontSize="11" fontFamily={F.m} textAnchor="middle">{tokensLabel(day.input + day.output)}</SvgText>)}
     </Svg> : <View style={{ height }} />}
   </View>;
 }

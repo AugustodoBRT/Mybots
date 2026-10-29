@@ -327,3 +327,10 @@ A carteira guarda até 10 cartões no cofre do Android. **Quais bots podem pagar
 - **Widget, atalhos de compartilhar e notificações** recebem um quadro parado do rosto, gerado no supervisor (`lib/face.mjs`) e pintado pelo Kotlin (`FacePainter`). O quadro tem só caracteres, cores e opacidades; não leva texto de conversa. O resumo do widget continua só pelo `127.0.0.1` com o token do pareamento.
 - **Aparência (escuro, claro, sistema)** é uma preferência da pessoa guardada em `metadata` (`person.theme`), editável só por `person.update`; o PC pareado a lê junto com o resto do estado.
 
+## Parte 2 do redesenho (v66)
+
+- **Senhas guardadas** viraram uma tela própria (busca, agrupada por site, carregada aos poucos). Ela lista só site, usuário e quais bots podem usar a senha, como antes; o segredo continua no cofre do Android e nunca chega ao JavaScript, à IA ou aos logs. Nada mudou em salvar, importar ou apagar.
+- **Criar bot em passos**: o rosto escolhido (sortear ou montar) passa pela mesma validação do supervisor (`validFace`). O nível **Livre** nunca é enviado na criação: o bot nasce no Médio e o app aplica o Livre depois, mostrando o mesmo aviso de sempre (`applyAccess`); se a pessoa recusar o aviso, o bot fica no Médio. A primeira mensagem só é colocada no campo da conversa; nada é enviado sem a pessoa tocar em enviar.
+- **Uma decisão aparece uma vez por tela**: a Atividade mostra só o contador de decisões esperando; Aprovar e Recusar ficam na Home e na conversa do bot, como antes. Nenhuma regra de aprovação mudou.
+- **`@bot tarefa` na busca** só abre a conversa com o texto no campo; não envia nem dá permissão.
+

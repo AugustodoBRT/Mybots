@@ -9,7 +9,7 @@ import { C, F, Icon, themed } from './theme';
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
 export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
   return <View style={styles.helpCard}>
-    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="hand" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>NAVEGADOR DO BOT</Text></View>
+    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="hand" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>Navegador do bot</Text></View>
     <Text style={styles.helpTitle}>{bot.name} precisa de você</Text>
     <Text style={styles.helpBody}>{help.reason}</Text>
     <Text style={styles.helpHint}>{onPc ? 'Toque em Assumir, faça isso na página ao vivo do Chrome do bot e depois toque em “Devolver ao bot”. Senhas e códigos digitados aqui não vão para a IA.' : 'Toque em Assumir, faça isso na página e depois em “Devolver ao bot”. A senha fica no navegador do bot; ela não vai para a IA.'}</Text>
@@ -164,7 +164,7 @@ export function PhoneLiveCard({ bot, phone, call, onStop, onControl }) {
   if (!mine && !help) return null;
   const act = async (name, action) => { setBusy(name); try { await action(); } catch {} finally { setBusy(''); } };
   return <View style={styles.helpCard}>
-    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="phone" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>{mine ? 'CELULAR · AO VIVO' : 'CELULAR'}</Text></View>
+    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="phone" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>{mine ? 'Celular ao vivo' : 'Celular'}</Text></View>
     <Text style={styles.helpTitle}>{person ? 'Você está no controle do celular' : help ? `${bot.name} precisa de você no celular` : `${bot.name} está usando o celular`}</Text>
     <Text style={styles.helpBody}>{help && !mine ? help.reason : person ? `${bot.name} espera você devolver.` : phone.caption || 'Olhando a tela'}</Text>
     {step?.image ? <StepImage key={step.id} step={step} call={call} style={[styles.phoneShot, { aspectRatio: step.width && step.height ? step.width / step.height : 0.5 }]} /> : null}
@@ -201,7 +201,7 @@ export function BrowserTimeline({ bot, call, working }) {
   const index = open ? shown.findIndex(step => step.id === open) : -1, current = shown[index];
   return <View style={styles.timeline}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: show }} onPress={() => setExpanded(value => !value)} style={styles.timelineHead}>
-      <Icon name="globe" size={14} color={C.sky} /><Text style={styles.timelineTitle}>{shown.every(step => step.caption.startsWith('No celular')) ? 'LINHA DO TEMPO DO CELULAR' : shown.some(step => step.caption.startsWith('No celular')) ? 'LINHA DO TEMPO' : 'LINHA DO TEMPO DO NAVEGADOR'}</Text>
+      <Icon name="globe" size={14} color={C.sky} /><Text style={styles.timelineTitle}>{shown.every(step => step.caption.startsWith('No celular')) ? 'Linha do tempo do celular' : shown.some(step => step.caption.startsWith('No celular')) ? 'Linha do tempo' : 'Linha do tempo do navegador'}</Text>
       <Text style={styles.hint}>{shown.length} {shown.length === 1 ? 'passo' : 'passos'}</Text>
       {working ? null : <View style={{ transform: [{ rotate: show ? '180deg' : '0deg' }] }}><Icon name="down" size={13} color={C.muted} /></View>}
     </Pressable>
@@ -492,7 +492,7 @@ const styles = themed(() => ({
   sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 9 }, sheetTitle: { flex: 1, color: C.text, fontFamily: F.x, fontSize: 16 },
   download: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   timeline: { padding: 12, gap: 9, borderRadius: 20, borderWidth: 1, borderColor: C.sky + '44', backgroundColor: C.surface },
-  timelineHead: { flexDirection: 'row', alignItems: 'center', gap: 7 }, timelineTitle: { flex: 1, color: C.sky, fontFamily: F.x, fontSize: 10, letterSpacing: 1.2 },
+  timelineHead: { flexDirection: 'row', alignItems: 'center', gap: 7 }, timelineTitle: { flex: 1, color: C.sky, fontFamily: F.b, fontSize: 13 },
   step: { width: 128, gap: 5 }, stepImage: { width: 128, height: 80, borderRadius: 10, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   stepText: { color: C.text2, fontFamily: F.m, fontSize: 11, lineHeight: 15 },
   viewerBack: { flex: 1, justifyContent: 'center', padding: 14, backgroundColor: '#000000CC' },
@@ -521,7 +521,7 @@ const styles = themed(() => ({
   controlBack: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent }, controlBackText: { color: C.accent },
   helpCard: { padding: 16, borderRadius: 22, borderWidth: 1, borderColor: C.sky + '55', backgroundColor: '#111925', gap: 7 },
   helpHead: { flexDirection: 'row', alignItems: 'center', gap: 9 }, helpIcon: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.sky + '1C' },
-  helpEyebrow: { color: C.sky, fontFamily: F.x, fontSize: 10, letterSpacing: 1.4 }, helpTitle: { color: C.text, fontFamily: F.x, fontSize: 16.5, marginTop: 2 },
+  helpEyebrow: { color: C.sky, fontFamily: F.b, fontSize: 13 }, helpTitle: { color: C.text, fontFamily: F.x, fontSize: 16.5, marginTop: 2 },
   helpBody: { color: C.text2, fontFamily: F.m, fontSize: 14, lineHeight: 21 }, helpHint: { color: C.muted, fontFamily: F.m, fontSize: 12, lineHeight: 17 },
   helpButton: { minHeight: 48, flexDirection: 'row', gap: 8, borderRadius: 16, backgroundColor: C.sky, alignItems: 'center', justifyContent: 'center', marginTop: 6 }, helpButtonText: { color: '#0F1D2E', fontFamily: F.x, fontSize: 14 }
 }));

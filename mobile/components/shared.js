@@ -237,12 +237,12 @@ export function ApprovalCard({ approval, bot, onRespond, busy }) {
   const summary = approval.summary ?? Object.values(approval.args).filter(value => typeof value === 'string' && value).join('\n');
   return <View style={styles.approvalCard}>
     <View style={styles.approvalHeading}><Avatar bot={bot || { name: 'Bot', color: 'orange' }} size={44} state="waiting" />
-      <View style={{ flex: 1 }}><Text style={styles.approvalEyebrow}>{negotiation ? 'PROPOSTA ESPERANDO VOCÊ' : 'PRECISA DE VOCÊ'}</Text><Text style={styles.approvalTitle}>{bot?.name || 'Seu bot'} quer {(approval.title || titles[approval.tool] || 'executar uma ação').replace(/^./, letter => letter.toLocaleLowerCase())}.</Text></View></View>
+      <View style={{ flex: 1 }}><Text style={styles.approvalEyebrow}>{negotiation ? 'Proposta esperando você' : 'Precisa de você'}</Text><Text style={styles.approvalTitle}>{bot?.name || 'Seu bot'} quer {(approval.title || titles[approval.tool] || 'executar uma ação').replace(/^./, letter => letter.toLocaleLowerCase())}.</Text></View></View>
     {summary ? <Text selectable style={styles.approvalBody}>{summary}</Text> : null}
     <View style={styles.approvalHintRow}><Icon name="clock" size={14} color={C.faint} /><Text style={styles.approvalHint}>{negotiation ? 'Prazo do mandato: ' + new Date(approval.expiresAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '.' : `${approval.canAlways ? 'Uma vez vale só agora. ' : ''}Expira às ${new Date(approval.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`}</Text></View>
     <View style={styles.approvalActions}>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRespond(approval, false)} style={({ pressed }) => [styles.denyButton, pressed && styles.pressed]}><Text style={styles.denyText}>Recusar</Text></Pressable>
-      <PrimaryButton compact icon="check" title={busy ? 'Aguarde…' : negotiation ? 'Aceitar' : 'Permitir'} disabled={busy} onPress={() => onRespond(approval, true)} style={{ flex: 1.4 }} />
+      <PrimaryButton compact icon="check" title={busy ? 'Aguarde…' : negotiation ? 'Aceitar' : 'Aprovar'} disabled={busy} onPress={() => onRespond(approval, true)} style={{ flex: 1.4 }} />
     </View>
     {approval.canAlways ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRespond(approval, true, true)} style={styles.alwaysButton}><Icon name="shield" size={15} color={C.amber} /><Text style={styles.alwaysText}>Sempre permitir</Text></Pressable> : null}
   </View>;
@@ -641,9 +641,9 @@ export function WalletCardArt({ card, frozen = false }) {
       <SvgText x="24" y="38" fill="#FFFFFF" fontSize="13" fontWeight="700" opacity="0.9">{(card.label || 'Cartão virtual').slice(0, 24)}</SvgText>
       <SvgText x="24" y="128" fill="#FFFFFF" fontSize="21" fontWeight="600" letterSpacing="2">{`••••  ••••  ••••  ${card.last4}`}</SvgText>
       <SvgText x="24" y="168" fill="#FFFFFF" fontSize="11" opacity="0.85" letterSpacing="1">{holder}</SvgText>
-      <SvgText x="24" y="184" fill="#FFFFFF" fontSize="9" opacity="0.7">{`VÁLIDO ATÉ ${valid}`}</SvgText>
+      <SvgText x="24" y="184" fill="#FFFFFF" fontSize="9" opacity="0.7">{`Válido até ${valid}`}</SvgText>
       <SvgText x="298" y="182" fill="#FFFFFF" fontSize="19" fontWeight="800" fontStyle="italic" textAnchor="end">{brand}</SvgText>
-      {frozen ? <SvgText x="296" y="36" fill="#FFFFFF" fontSize="11" fontWeight="700" textAnchor="end" letterSpacing="2">CONGELADA</SvgText> : null}
+      {frozen ? <SvgText x="296" y="36" fill="#FFFFFF" fontSize="12" fontWeight="700" textAnchor="end">Congelada</SvgText> : null}
     </Svg>
   </View>;
 }
@@ -705,61 +705,6 @@ export function WalletPanel({ bots = [] }) {
         <Text style={[styles.optionDetail, { textAlign: 'center', marginTop: 10 }]}>Comprovante do checkout, com o cartão tapado. Toque para fechar.</Text>
       </Pressable>
     </Modal>
-  </View>;
-}
-
-export function PasswordsPanel({ bots }) {
-  const [list, setList] = useState([]); const [form, setForm] = useState(null); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
-  const load = () => passwordsList().then(setList).catch(error => setNote(nativeMessage(error)));
-  useEffect(() => { load(); }, []);
-  const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
-  const save = async () => {
-    setBusy(true); setNote('');
-    try { await passwordSave(form.site, form.username || '', form.password || '', form.bots?.length ? form.bots : null); setForm(null); setNote('Senha salva. Os bots escolhidos já podem entrar nesse site.'); await load(); }
-    catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); }
-  };
-  const remove = item => Alert.alert(`Apagar a senha de ${item.host}?`, 'Os bots deixam de entrar sozinhos nesse site.', [{ text: 'Cancelar', style: 'cancel' },
-    { text: 'Apagar', style: 'destructive', onPress: () => passwordDelete(item.id).then(load).catch(error => setNote(nativeMessage(error))) }]);
-  const names = ids => ids ? ids.map(id => bots.find(bot => bot.id === id)?.name).filter(Boolean).join(', ') || 'bot apagado' : 'todos os bots';
-  // A password export (Chrome: chrome://password-manager → Configurações → Exportar senhas). The app reads it natively.
-  const importFile = async () => {
-    setBusy(true); setNote('');
-    try {
-      const result = await passwordImport(form?.bots?.length ? form.bots : null); if (!result) return;
-      await load(); setForm(null);
-      setNote(`${result.imported} ${result.imported === 1 ? 'senha importada' : 'senhas importadas'}${result.skipped ? ` (${result.skipped} sem site ou senha ficaram de fora)` : ''}. Os bots escolhidos já podem entrar nesses sites.`);
-      Alert.alert('Apagar o arquivo exportado?', `${result.name} tem todas as suas senhas sem proteção. Elas já estão guardadas no MyBots.`, [{ text: 'Manter', style: 'cancel' },
-        { text: 'Apagar arquivo', style: 'destructive', onPress: () => passwordImportDelete().then(done => setNote(old => old + (done ? ' Arquivo apagado.' : ' Não consegui apagar o arquivo; apague pelo gerenciador de arquivos.'))).catch(() => {}) }]);
-    } catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); }
-  };
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>Senhas de sites</Text>
-    <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste celular e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
-    {list.map(item => <View key={item.id} style={styles.passwordRow}>
-      <View style={styles.rowIcon}><Icon name="key" size={17} color={C.accent} /></View>
-      <View style={{ flex: 1 }}><Text style={styles.limitName} numberOfLines={1}>{item.host}</Text><Text style={styles.limitMeta} numberOfLines={1}>{item.username || 'sem usuário'} · {names(item.bots)}</Text></View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Apagar a senha de ${item.host}`} hitSlop={10} onPress={() => remove(item)}><Icon name="trash" size={17} color={C.faint} /></Pressable>
-    </View>)}
-    {form ? <View style={{ marginTop: 6 }}>
-      {form.importing ? <Text style={styles.optionDetail}>No Chrome: Gerenciador de senhas → Configurações → Exportar senhas, e escolha o arquivo aqui. Também aceita CSV do Firefox, Bitwarden e 1Password. Só entram logins de sites (http/https); um site e usuário já salvo fica com a senha nova.</Text> : <>
-      <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />
-      <TextInput style={styles.formInput} placeholder="Usuário (CPF, matrícula ou e-mail)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.username || ''} onChangeText={value => field('username', value)} />
-      <TextInput style={styles.formInput} placeholder="Senha" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password || ''} onChangeText={value => field('password', value)} /></>}
-      <Text style={[styles.limitMeta, { marginTop: 10 }]}>Quais bots podem usar</Text>
-      <View style={styles.shareFiles}>
-        {[{ id: null, name: 'Todos' }, ...bots].map(bot => { const all = !form.bots?.length; const on = bot.id ? form.bots?.includes(bot.id) : all; return <Pressable key={bot.id || 'all'} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
-          onPress={() => field('bots', bot.id ? (on ? form.bots.filter(id => id !== bot.id) : [...(form.bots || []), bot.id]) : [])} style={[styles.botChoice, on && styles.botChoiceOn]}><Text style={[styles.botChoiceText, on && { color: C.accent }]}>{bot.name}</Text></Pressable>; })}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-        <Pressable accessibilityRole="button" onPress={() => setForm(null)} style={[styles.denyButton, { flex: 1 }]}><Text style={styles.denyText}>Cancelar</Text></Pressable>
-        {form.importing ? <PrimaryButton compact icon="download" title={busy ? 'Importando…' : 'Escolher arquivo'} disabled={busy} onPress={importFile} style={{ flex: 1.4 }} />
-          : <PrimaryButton compact icon="check" title={busy ? 'Salvando…' : 'Salvar senha'} disabled={busy || !form.site || !form.password} onPress={save} style={{ flex: 1.4 }} />}
-      </View>
-    </View> : <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({}); }} style={styles.stopButton}><Icon name="plus" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Adicionar senha</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => { setNote(''); setForm({ importing: true }); }} style={styles.stopButton}><Icon name="download" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Importar CSV</Text></Pressable>
-    </View>}
-    {note ? <Text style={[styles.optionDetail, /salva|importada/.test(note) ? { color: C.accent } : { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 
@@ -1189,7 +1134,7 @@ export function RoomSheet({ visible, room, bots, onClose, onSave, onDelete }) {
       <View style={styles.sheetHandle} />
       <SheetHeader title={room ? 'Editar sala' : 'Nova sala'} subtitle="Uma conversa com vários bots. Sem @, todos respondem; com @Nome, só quem você chamar." onClose={onClose} />
       <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }} keyboardShouldPersistTaps="handled">
-        <Text style={styles.sheetSection}>NOME</Text>
+        <Text style={styles.sheetSection}>Nome</Text>
         <TextInput accessibilityLabel="Nome da sala" style={styles.formInput} placeholder="Ex.: Faculdade e estágio" placeholderTextColor={C.faint} maxLength={40} value={name} onChangeText={setName} selectionColor={C.accent} />
         <Text style={styles.sheetSection}>BOTS DA SALA · {picked.length}</Text>
         {bots.map(bot => { const on = picked.includes(bot.id); return <Pressable key={bot.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setPicked(old => on ? old.filter(id => id !== bot.id) : [...old, bot.id])}

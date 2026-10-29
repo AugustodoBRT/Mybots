@@ -5,8 +5,10 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, PasswordsPanel, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, DesktopShell, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, UsagePanel, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { SearchSheet } from './components/Search';
+import { SettingsSheet } from './components/Settings';
+import { NewBot } from './components/NewBot';
 import { desktop, column, paintPage } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
@@ -448,11 +450,27 @@ function AppMain() {
     catch (error) { setLoadError(error.message); }
     finally { setSavingSettings(false); }
   };
-  const createBot = async payload => {
+  // Changes a bot's access level; Livre first shows its warning (once) and records the bot natively before the supervisor hears of it.
+  const applyAccess = async (botId, access) => {
+        if (access === 'free') {
+          const guard = await freeGuard().catch(() => null);
+          if (!guard?.warned) await new Promise((resolve, reject) => Alert.alert('Nível Livre: o bot age como você no celular',
+            'Ele vai poder abrir e usar os outros apps do celular (mandar mensagens, pedir comida, mexer em configurações), usar o terminal completo do Termux e agir nos sites e contas em que você está logado, sem pedir licença a cada passo.\n\nSó pedem aprovação os itens que você deixar em “Sempre perguntar”. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA e bancos continuam com você, e cada ação fica na Atividade.\n\nEnquanto ele controla o celular, uma barra com Parar fica sempre na tela. Use Livre só com bots e pedidos em que você confia.',
+            [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Entendi, usar Livre', style: 'destructive', onPress: resolve }]));
+        }
+        // The app's own record comes first: MyBotsAccess obeys only bots it lists.
+        if (!desktop && termuxAvailable) await freeGuardSet(botId, access === 'free');
+        await supervisor.current.call('bot.update', { botId, access }); await loadSupervisorState(); if (profileId === botId) await loadProfile(botId);
+        if (access === 'free') loadFree().catch(() => {});
+  };
+  const createBot = async (payload, extra = {}) => {
     if (maintenanceBusy) throw new Error('Aguarde o backup ou a restauração terminar.');
     if (mode === 'phone') {
       const bot = await supervisor.current.call('bot.create', payload);
-      await loadSupervisorState(); setSelected(bot.id); setDraft(''); setCreateVisible(false); return;
+      await loadSupervisorState(); setSelected(bot.id); setDraft(extra.first || ''); setCreateVisible(false);
+      // Livre needs its warning, so it is applied after the bot exists, like in the profile; declining leaves the bot at Médio.
+      if (extra.free) applyAccess(bot.id, 'free').catch(() => {});
+      return;
     }
     const bot = await api('/api/bots', payload, apiToken, apiBase);
     await refreshComputer(); setSelected(bot.id); setDraft(''); setCreateVisible(false);
@@ -671,7 +689,9 @@ function AppMain() {
       </View></View>
     </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
-    {data && <BotProfile initialTab={profileTab} visible={createVisible || Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
+    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} nodes={data.nodes || []} phone={mode === 'phone'}
+      freeChoice={mode === 'phone' && !desktop && termuxAvailable} onClose={() => setCreateVisible(false)} onCreate={createBot} /> : null}
+    {data && <BotProfile initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
@@ -692,18 +712,7 @@ function AppMain() {
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
       onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await profileChanged(); }}
-      onAccess={async access => {
-        if (access === 'free') {
-          const guard = await freeGuard().catch(() => null);
-          if (!guard?.warned) await new Promise((resolve, reject) => Alert.alert('Nível Livre: o bot age como você no celular',
-            'Ele vai poder abrir e usar os outros apps do celular (mandar mensagens, pedir comida, mexer em configurações), usar o terminal completo do Termux e agir nos sites e contas em que você está logado, sem pedir licença a cada passo.\n\nSó pedem aprovação os itens que você deixar em “Sempre perguntar”. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA e bancos continuam com você, e cada ação fica na Atividade.\n\nEnquanto ele controla o celular, uma barra com Parar fica sempre na tela. Use Livre só com bots e pedidos em que você confia.',
-            [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Entendi, usar Livre', style: 'destructive', onPress: resolve }]));
-        }
-        // The app's own record comes first: MyBotsAccess obeys only bots it lists.
-        if (!desktop && termuxAvailable) await freeGuardSet(profileId, access === 'free');
-        await supervisor.current.call('bot.update', { botId: profileId, access }); await profileChanged();
-        if (access === 'free') loadFree().catch(() => {});
-      }}
+      onAccess={access => applyAccess(profileId, access)}
       freeChoice={mode === 'phone' && !desktop && termuxAvailable} freeSettings={freeSettings} PhoneControl={!desktop && termuxAvailable ? PhoneControlAccess : null}
       onFreeAsk={async (key, on) => {
         const list = (freeSettings?.options || []).filter(item => item.key === key ? on : item.ask).map(item => item.key);
@@ -712,63 +721,9 @@ function AppMain() {
       }}
       onComplete={async id => { await supervisor.current.call('item.complete', { id }); await loadSupervisorState(); }}
       onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} />}
-    <Modal transparent visible={maintenanceVisible} animationType="slide" onRequestClose={() => setMaintenanceVisible(false)}>
-      <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
-        <View style={styles.sheetHandle} />
-        <SheetHeader title="Ajustes" subtitle={desktop ? 'Como o MyBots funciona neste computador.' : 'Como o MyBots funciona neste celular.'} onClose={() => setMaintenanceVisible(false)} />
-        <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
-          {mode === 'phone' ? <><Text style={styles.sheetSection}>VOCÊ</Text>
-            <PersonName name={data?.person?.name} onSave={async name => { await supervisor.current.call('person.update', { name }); await loadSupervisorState(); }} /></> : null}
-          {mode === 'phone' ? <ThemeChoice value={data?.person?.theme || 'dark'} onSave={async theme => { await supervisor.current.call('person.update', { theme }); await loadSupervisorState(); }} /> : null}
-          {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>FUNCIONAMENTO</Text><ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /></> : null}
-          {mode === 'phone' && !desktop ? <><Text style={styles.sheetSection}>COMPUTADOR</Text><ComputerPanel computer={data?.computer} nodes={data?.nodes}
-            onPair={async link => { const result = await supervisor.current.call('computer.pair', { link }); await loadSupervisorState(); return result; }}
-            onForget={async () => { await supervisor.current.call('computer.forget', {}); await loadSupervisorState(); }}
-            onRetry={async () => { await supervisor.current.call('computer.retry', {}); await loadSupervisorState(); }} /></> : null}
-          {desktop ? <><Text style={styles.sheetSection}>CELULAR</Text><DesktopPair call={(method, params) => supervisor.current.call(method, params)} />
-            <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup, e-mail por senha de app e senhas de sites ficam nos Ajustes do app do celular.</Text></View></> : <>
-          <Text style={styles.sheetSection}>CELULAR</Text>
-          {termuxAvailable ? <WidgetRow /> : null}
-          <PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
-          {termuxAvailable ? <><Text style={styles.sheetSection}>SENHAS</Text><PasswordsPanel bots={data?.bots || []} /></> : null}
-          {termuxAvailable && !desktop ? <><Text style={styles.sheetSection}>CARTEIRA</Text><Pressable accessibilityRole="button" onPress={() => { setMaintenanceVisible(false); setWalletVisible(true); }} style={styles.modeOption}><Text style={styles.optionLabel}>Abrir a Carteira</Text><Text style={styles.optionDetail}>Cartões, quais bots podem usar cada um, regras de gasto e extrato.</Text></Pressable></> : null}
-          <Text style={styles.sheetSection}>CONTAS E APPS</Text>
-          {desktop ? null : <EmailConnection email={data?.email} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
-            const result = await supervisor.current.call(method, params); await loadSupervisorState();
-            setMaintenanceText(result?.message || 'Conta de e-mail desconectada.');
-          })} />}
-          <AccountConnections load={async refresh => supervisor.current.call('account.connectors', { refresh })} />
-          {desktop ? null : <AppConnections apps={data?.apps} busy={maintenanceBusy} onAction={(method, params) => maintenance(async () => {
-            const result = await supervisor.current.call(method, params); await loadSupervisorState();
-            setMaintenanceText(method === 'app.remove' ? 'App desconectado; os bots perderam o acesso a ele.' : result?.status === 'connected' ? `${result.name}: ${result.tools.length} ferramentas disponíveis. Libere no perfil de cada bot.` : result?.message || 'Pronto.');
-          })} />}
-          {termuxAvailable ? <><Text style={styles.sheetSection}>ATUALIZAÇÕES</Text>
-            {update?.info?.available ? <UpdateCard compact update={update} onInstall={installUpdate} />
-              : <View style={[styles.modeOption, styles.rowOption]}>
-                <View style={styles.rowIcon}><Icon name="check" size={19} color={C.good} /></View>
-                <View style={{ flex: 1 }}><Text style={styles.optionLabel}>MyBots {update?.info?.currentName || ''}</Text>
-                  <Text style={[styles.optionDetail, update?.error && { color: C.amber }]}>{update?.checking ? 'Procurando…' : update?.error || (update?.info ? 'Você está na versão mais nova.' : 'O app procura versões novas sozinho ao abrir.')}</Text></View>
-                <Pressable accessibilityRole="button" disabled={update?.checking} onPress={() => checkUpdate(true)} style={styles.stopButton}><Icon name="refresh" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Procurar</Text></Pressable>
-              </View>}</> : null}
-          {desktop ? null : <><Text style={styles.sheetSection}>BACKUP E DIAGNÓSTICO</Text>
-          <View style={styles.modeOption}><Text selectable style={styles.optionDetail}>{maintenanceText}</Text></View>
-          <PrimaryButton icon="download" tone="ghost" title="Salvar backup agora" disabled={maintenanceBusy} onPress={() => maintenance(async () => {
-            const backup = await saveBackup(); setMaintenanceText(`Backup salvo em ${backup.path}`);
-          })} />
-          <PrimaryButton icon="refresh" tone="ghost" title="Restaurar um backup" disabled={maintenanceBusy || Boolean(data?.active?.length)} onPress={() => maintenance(async () => {
-            const names = await supervisor.current.call('backup.list');
-            setBackupNames(names.sort().reverse()); setMaintenanceText(names.length ? 'Escolha a cópia que deseja restaurar:' : 'Nenhum backup salvo ainda.');
-          })} />
-          {backupNames.map(name => <Pressable key={name} disabled={maintenanceBusy} onPress={() => restoreBackup(name)} style={styles.modeOption}><Text style={styles.optionLabel}>{name.slice(13, 15)}/{name.slice(11, 13)}/{name.slice(7, 11)} · {name.slice(16, 18)}:{name.slice(18, 20)}:{name.slice(20, 22)} UTC</Text><Text style={styles.optionDetail}>Restaurar esta cópia</Text></Pressable>)}
-          <PrimaryButton icon="info" tone="ghost" title="Ver diagnóstico do aparelho" disabled={maintenanceBusy} onPress={() => maintenance(async () => {
-            const device = await readDeviceInfo();
-            const result = await supervisor.current.call('environment.get');
-            setMaintenanceText(`${device}\n\n${result.report}`);
-          })} />
-          <Pressable disabled={maintenanceBusy} onPress={() => copyTermuxText(maintenanceText).catch(error => setMaintenanceText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.accent} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable></>}
-        </ScrollView>
-      </View></View>
-    </Modal>
+    <SettingsSheet visible={maintenanceVisible} onClose={() => setMaintenanceVisible(false)} a={{ data, mode, call: (method, params) => supervisor.current.call(method, params), reload: loadSupervisorState,
+      busy: maintenanceBusy, text: maintenanceText, setText: setMaintenanceText, backupNames, setBackupNames, maintenance, saveBackup, restoreBackup, update, checkUpdate, installUpdate,
+      openProfile: bot => { setProfileTab(null); setProfileId(bot.id); }, onCreate: () => setCreateVisible(true), openWallet: () => setWalletVisible(true), readDeviceInfo, copyText: copyTermuxText }} />
     <Modal transparent visible={walletVisible} animationType="slide" onRequestClose={() => setWalletVisible(false)}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
         <View style={styles.sheetHandle} />
@@ -787,22 +742,24 @@ function AppMain() {
         <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 18 }}>
           {mode === 'phone' ? <><Text style={styles.sheetSection}>USO</Text><UsagePanel usage={data?.usage} bots={data?.bots || []} connections={data?.connections}
             onRefresh={async provider => { await supervisor.current.call('limits.refresh', { provider }); await loadSupervisorState(); }} /></> : null}
-          {mode === 'phone' ? <Text style={styles.sheetSection}>FUNCIONAMENTO</Text> : null}
+          {mode === 'phone' ? <Text style={styles.sheetSection}>Funcionamento</Text> : null}
           {mode === 'phone' ? <View style={styles.modeOption}>
             <Text style={styles.optionLabel}>Interrupções · {(data?.interruptions || []).length ? `${data.interruptions.filter(item => Date.now() - Date.parse(item.created_at) < 7 * 86400000).length} nos últimos 7 dias` : 'nenhuma registrada'}</Text>
             {(data?.interruptions || []).slice(0, 5).map(item => <View key={item.id} style={styles.interruption}><Icon name={item.kind === 'supervisor_restarted' ? 'refresh' : 'pause'} size={14} color={item.kind === 'supervisor_restarted' ? C.accent : C.amber} /><Text style={[styles.optionDetail, { flex: 1, marginTop: 0 }]}>{item.detail}</Text></View>)}
             {!(data?.interruptions || []).length ? <Text style={styles.optionDetail}>Quando o celular pausar ou parar o supervisor, aparece aqui quando foi e como ele voltou.</Text> : null}
           </View> : null}
-          {(data?.approvals || []).length ? <Text style={styles.sheetSection}>DECISÕES</Text> : null}
-          {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={data.bots.find(item => item.id === approval.botId)} onRespond={respondApproval} busy={approvalBusy === approval.id} />)}
+          {(data?.approvals || []).length ? <Pressable accessibilityRole="button" onPress={() => { setActivityVisible(false); setSelected(null); setRoomId(null); }} style={[styles.modeOption, styles.rowOption]}>
+            <View style={[styles.rowIcon, { backgroundColor: C.accent + '22' }]}><Icon name="hand" size={19} color={C.accent} /></View>
+            <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{data.approvals.length > 1 ? `${data.approvals.length} decisões esperam você` : '1 decisão espera você'}</Text><Text style={styles.optionDetail}>Aprove ou recuse na tela inicial ou na conversa do bot. Cada decisão aparece num lugar só.</Text></View>
+            <Icon name="right" size={16} color={C.faint} /></Pressable> : null}
           <ItemsByDeadline items={(data?.pendingItems || []).filter(item => item.state === 'open')} bots={data?.bots || []} onComplete={completeItem} />
-          {(data?.tasks || []).filter(task => ['queued','running','waiting_approval'].includes(task.state)).length ? <Text style={styles.sheetSection}>EM ANDAMENTO</Text> : null}
+          {(data?.tasks || []).filter(task => ['queued','running','waiting_approval'].includes(task.state)).length ? <Text style={styles.sheetSection}>Em andamento</Text> : null}
           {(data?.tasks || []).filter(task => ['queued','running','waiting_approval'].includes(task.state)).map(task => <View key={task.id} style={[styles.modeOption, styles.rowOption]}>
             <Avatar bot={data.bots.find(item => item.id === task.bot_id) || { name: 'Bot' }} size={36} state={task.state === 'waiting_approval' ? 'waiting' : 'working'} tile={false} />
             <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{data?.bots?.find(item => item.id === task.bot_id)?.name || 'Bot'}</Text><Text style={styles.optionDetail}>{({ queued: 'Na fila', running: 'Respondendo', waiting_approval: 'Aguardando decisão' })[task.state]}</Text></View>
             <Pressable accessibilityRole="button" onPress={() => cancelTask(task.id)} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable>
           </View>)}
-          <Text style={styles.sheetSection}>HISTÓRICO</Text>
+          <Text style={styles.sheetSection}>Histórico</Text>
           <View style={styles.timeline}>{(data?.activity || []).slice(0, 40).map(item => <View key={item.id} style={styles.timelineRow}>
             <View style={[styles.timelineDot, /fail|denied|late|error/.test(item.kind) && { backgroundColor: C.red }, /approval/.test(item.kind) && { backgroundColor: C.amber }, /done|created|accepted|reminder|downloaded/.test(item.kind) && { backgroundColor: C.accent }]} />
             <View style={{ flex: 1 }}><Text style={styles.timelineText}>{item.detail}</Text><Text style={styles.timelineMeta}>{data.bots.find(bot => bot.id === item.bot_id)?.name ? `${data.bots.find(bot => bot.id === item.bot_id).name} · ` : ''}{new Date(item.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text></View>

@@ -40,19 +40,19 @@ export default function NegotiationPanel({ bot, negotiations, onNegotiation, dis
       </View> : null}
     </View>)}
     {form ? <View style={s.form}>
-      <Text style={s.label}>OBJETIVO</Text>
+      <Text style={s.label}>Objetivo</Text>
       <TextInput value={form.objective} onChangeText={value => field('objective', value)} placeholder="Ex.: comprar a bicicleta aro 29 anunciada na OLX" placeholderTextColor={C.faint} multiline maxLength={300} style={[s.input, { minHeight: 64 }]} />
       <View style={s.row}>{chip(form.side === 'buy', 'Comprar', () => field('side', 'buy'))}{chip(form.side === 'sell', 'Vender', () => field('side', 'sell'))}</View>
       <View style={s.row}>
         <View style={{ flex: 1 }}><Text style={s.label}>PREÇO-ALVO (R$)</Text><TextInput value={form.target} onChangeText={value => field('target', value)} keyboardType="decimal-pad" placeholder="800" placeholderTextColor={C.faint} style={s.input} /></View>
         <View style={{ flex: 1 }}><Text style={s.label}>{form.side === 'buy' ? 'TETO (R$)' : 'MÍNIMO (R$)'}</Text><TextInput value={form.limit} onChangeText={value => field('limit', value)} keyboardType="decimal-pad" placeholder="900" placeholderTextColor={C.faint} style={s.input} /></View>
-        <View style={{ flex: 0.8 }}><Text style={s.label}>PRAZO (DIAS)</Text><TextInput value={form.days} onChangeText={value => field('days', value)} keyboardType="decimal-pad" placeholder="3" placeholderTextColor={C.faint} style={s.input} /></View>
+        <View style={{ flex: 0.8 }}><Text style={s.label}>Prazo, em dias</Text><TextInput value={form.days} onChangeText={value => field('days', value)} keyboardType="decimal-pad" placeholder="3" placeholderTextColor={C.faint} style={s.input} /></View>
       </View>
-      <Text style={s.label}>CANAIS</Text>
+      <Text style={s.label}>Canais</Text>
       <View style={[s.row, { flexWrap: 'wrap' }]}>{CHANNELS.map(([key, label]) => chip(form.channels.includes(key), label, () => field('channels', form.channels.includes(key) ? form.channels.filter(item => item !== key) : [...form.channels, key])))}</View>
       <View style={s.switchRow}><View style={{ flex: 1 }}><Text style={s.itemTitle}>Pode fechar sozinho</Text><Text style={s.hint}>Dentro do mandato, o bot fecha (e paga pela carteira, se for compra). Desligado, ele só traz a melhor proposta com Aceitar/Recusar.</Text></View>
         <Switch accessibilityLabel="Pode fechar sozinho" value={form.canClose} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={form.canClose ? C.accent : C.muted} onValueChange={value => field('canClose', value)} /></View>
-      <Text style={s.label}>TOM DAS MENSAGENS</Text>
+      <Text style={s.label}>Tom das mensagens</Text>
       <View style={[s.row, { flexWrap: 'wrap' }]}>{TONES.map(([key, label]) => chip(form.tone === key, label, () => field('tone', key)))}</View>
       <View style={s.switchRow}><View style={{ flex: 1 }}><Text style={s.itemTitle}>Apresentar-se como assistente</Text><Text style={s.hint}>Ligado, o bot diz que é o assistente de quem negocia. Desligado, ele escreve em seu nome sem se apresentar, mas nunca nega ser um assistente se perguntarem.</Text></View>
         <Switch accessibilityLabel="Apresentar-se como assistente" value={form.introduce} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={form.introduce ? C.accent : C.muted} onValueChange={value => field('introduce', value)} /></View>
@@ -73,7 +73,7 @@ const s = themed(() => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, justifyContent: 'space-between' },
   history: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 2 },
   form: { backgroundColor: C.surface, borderRadius: 16, borderWidth: 1, borderColor: C.line2, padding: 14, marginTop: 12 },
-  label: { color: C.faint, fontFamily: F.b, fontSize: 11, letterSpacing: 0.8, marginTop: 12, marginBottom: 6 },
+  label: { color: C.text2, fontFamily: F.b, fontSize: 14, marginTop: 12, marginBottom: 6 },
   input: { color: C.text, fontFamily: F.m, fontSize: 14, backgroundColor: C.bg2, borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 10, textAlignVertical: 'top' },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: C.line2, backgroundColor: C.bg2 }, chipOn: { borderColor: C.accent + '90', backgroundColor: C.accent + '18' }, chipText: { color: C.text2, fontFamily: F.s, fontSize: 13 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 },

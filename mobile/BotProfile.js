@@ -1,7 +1,8 @@
 import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Keyboard, Switch, StyleSheet } from 'react-native';
-import BotAvatar, { FACE_SWATCHES } from './BotAvatar';
+import BotAvatar from './BotAvatar';
+import { FacePicker } from './components/FacePicker';
 import { botColor, botSeed } from '../lib/face.mjs';
 import { BOT_TEMPLATES } from './bot-templates';
 import { C, F, Icon, themed } from './theme';
@@ -27,7 +28,7 @@ export const HOMES = [
  * Android draws the app edge to edge, so the window does not shrink for the keyboard: the sheet leaves its height
  * free at the bottom and scrolls the field being typed in into view.
  */
-function useKeyboardRoom(scroll) {
+export function useKeyboardRoom(scroll) {
   const [height, setHeight] = useState(0);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', event => {
@@ -75,14 +76,14 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
         <Pressable accessibilityLabel="Fechar perfil" accessibilityRole="button" onPress={onClose} style={s.close}><Icon name="close" size={19} color={C.text2} /></Pressable>
       </View>
       {bot && phone && <View style={s.tabs}>{tabs.map(([key, label, icon]) => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }} onPress={() => setTab(key)} style={[s.tab, tab === key && s.tabActive]}>
-        <Icon name={icon} size={16} color={tab === key ? C.accent : C.muted} /><Text style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text></Pressable>)}</View>}
+        <Icon name={icon} size={16} color={tab === key ? C.accent : C.muted} /><Text numberOfLines={1} style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text></Pressable>)}</View>}
       <ScrollView ref={scroll} style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {tab === 'profile' && <>
           <View style={s.preview}>
             <View style={[s.halo, { backgroundColor: botColor(form) + '14' }]}><BotAvatar bot={form} size={118} tile={false} /></View>
             <Text style={s.previewName}>{form.name || 'Seu próximo parceiro'}</Text>
           </View>
-          {!bot && phone ? <><Text style={s.label}>COMEÇAR DE UM MODELO</Text>
+          {!bot && phone ? <><Text style={s.label}>Começar de um modelo</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} style={{ marginHorizontal: -20, paddingHorizontal: 20, flexGrow: 0 }}>
               {[{ id: 'blank', label: 'Do zero', hint: 'Você escreve tudo.', profile: { name: '', instructions: '' } }, ...BOT_TEMPLATES].map(template => {
                 const chosen = template.id === 'blank' ? !BOT_TEMPLATES.some(item => item.profile.instructions === form.instructions) : form.instructions === template.profile.instructions;
@@ -91,16 +92,14 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               })}
               <View style={{ width: 20 }} />
             </ScrollView></> : null}
-          <Text style={s.sectionName}>Rosto</Text>
-          <View style={s.colors}>{FACE_SWATCHES.map(([color, name]) => { const on = botColor(form).toLowerCase() === color.toLowerCase(); return <Pressable key={color} accessibilityRole="radio" accessibilityLabel={name} accessibilityState={{ selected: on }} onPress={() => field('face', { ...(form.face || { seed: botSeed(form) }), color })} style={[s.swatchRing, on && { borderColor: color }]}><View style={[s.swatch, { backgroundColor: color }]}>{on ? <Icon name="check" size={13} color="#000" stroke={2.6} /> : null}</View></Pressable>; })}</View>
-          <Pressable accessibilityRole="button" onPress={() => field('face', { ...(form.face || {}), seed: `${(form.name || 'bot').trim()}-${Math.random().toString(36).slice(2, 6)}` })} style={({ pressed }) => [s.shuffle, pressed && s.pressed]}><Icon name="refresh" size={16} color={C.accent} /><Text style={s.shuffleText}>Sortear outro rosto</Text></Pressable>
-          <Text style={s.label}>NOME</Text><TextInput accessibilityLabel="Nome do bot" value={form.name || ''} onChangeText={v => field('name', v)} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.accent} style={s.input} />
-          <Text style={s.label}>PERSONALIDADE E FUNÇÃO</Text><TextInput accessibilityLabel="Personalidade e função" value={form.instructions || ''} onChangeText={v => field('instructions', v)} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.accent} style={[s.input, s.instructions]} />
-          <Text style={s.label}>INTELIGÊNCIA</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider) => setForm(old => ({ ...old, model, reasoningEffort, provider }))} />
+          <Text style={s.label}>Nome</Text><TextInput accessibilityLabel="Nome do bot" value={form.name || ''} onChangeText={v => field('name', v)} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.accent} style={s.input} />
+          <Text style={s.label}>Personalidade e função</Text><TextInput accessibilityLabel="Personalidade e função" value={form.instructions || ''} onChangeText={v => field('instructions', v)} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.accent} style={[s.input, s.instructions]} />
+          <Text style={s.label}>Inteligência</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider) => setForm(old => ({ ...old, model, reasoningEffort, provider }))} />
           {bot && phone && onFallback && FallbackSettings ? <FallbackSettings models={models} bot={bot} disabled={saving || active} onChange={fallback => act(() => onFallback(fallback))} /> : null}
-          {phone && <><Text style={s.label}>ONDE ELE VIVE</Text>{HOMES.map(([key, title, detail]) => radio(form.home === key, title, detail, () => field('home', key), { disabled: saving || active }))}
+          <Text style={s.label}>Rosto</Text><FacePicker name={form.name} face={form.face || { seed: (bot?.name || form.name || 'bot').trim(), color: botColor(form) }} onChange={face => field('face', face)} showStage={false} />
+          {phone && <><Text style={s.label}>Onde ele vive</Text>{HOMES.map(([key, title, detail]) => radio(form.home === key, title, detail, () => field('home', key), { disabled: saving || active }))}
             {form.home !== 'phone' && !nodes.length ? <Text style={s.hint}>Nenhum computador conectado ainda. Até ele chegar, {form.home === 'pc' ? 'as mensagens para este bot ficam esperando' : 'este bot trabalha no celular'}.</Text> : null}</>}
-          {phone && !bot && <><Text style={s.label}>NÍVEL DE ACESSO</Text>{ACCESS.filter(([key]) => key !== 'free').map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
+          {phone && !bot && <><Text style={s.label}>Nível de acesso</Text>{ACCESS.filter(([key]) => key !== 'free').map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
           {active && <Text style={s.hint}>Aguarde ou cancele a tarefa para salvar o perfil.</Text>}
           <Pressable accessibilityRole="button" disabled={!canSave} onPress={() => act(() => onSave({ ...form, face: form.face || { seed: (bot?.name || form.name || 'bot').trim() } }))} style={({ pressed }) => [s.primary, !canSave && s.disabled, pressed && s.pressed]}>
             <Icon name={bot ? 'check' : 'spark'} size={19} color={C.accentInk} stroke={2.4} /><Text style={s.primaryText}>{saving ? 'Salvando…' : bot ? 'Salvar alterações' : 'Criar meu bot'}</Text></Pressable>
@@ -113,7 +112,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
           {active ? <Text style={s.hint}>Aguarde a resposta terminar para mudar o nível.</Text> : null}
           {bot?.access === 'free' ? <>
             {PhoneControl ? <PhoneControl /> : null}
-            <Text style={s.label}>SEMPRE PERGUNTAR (NÍVEL LIVRE)</Text>
+            <Text style={s.label}>Sempre perguntar (nível Livre)</Text>
             <View style={s.group}>
               <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>No Livre, só o que estiver ligado aqui pede sua aprovação, num cartão como o de sempre. Vale para todos os bots no nível Livre e só muda por aqui, no app; o bot não consegue mudar. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA continua com você, e o MyBots, instalar apps e dar permissões nunca são feitos por bots.{bot.provider !== 'claude' ? ' No Codex, o MyBots não consegue perguntar comando a comando no Termux: com “Comandos no Termux” ligado, ele fica sem terminal no celular, e “Comandos perigosos” vale só como instrução.' : ''}</Text>
               {(freeSettings?.options || []).map((item, index, list) => <View key={item.key} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
@@ -123,7 +122,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               {!freeSettings ? <Text style={[s.hint, { padding: 14 }]}>Carregando…</Text> : null}
             </View></> : null}
           {phone && bot?.provider === 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
-            <Text style={s.label}>APPS DA SUA CONTA DO CLAUDE</Text>
+            <Text style={s.label}>Apps da sua conta do Claude</Text>
             <View style={s.group}>
               <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Marque só o que {bot.name} usa. Cada app carrega todas as ferramentas dele em cada passo da resposta (de 5 a 20 mil tokens cada); os desmarcados ficam fora.</Text>
               {[...new Set([...accountServers, ...accountApps])].map((name, index, list) => <View key={name} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
@@ -133,7 +132,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
             </View></> : null}
           {phone && bot && bot.provider !== 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
-            <Text style={s.label}>APPS DA SUA CONTA DO CODEX</Text>
+            <Text style={s.label}>Apps da sua conta do Codex</Text>
             <View style={s.group}>
               <View style={[s.permission, { borderBottomWidth: 0 }]}>
                 <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar os apps conectados (Indeed, Gmail, Agenda…)</Text>
@@ -142,7 +141,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               </View>
             </View></> : null}
           {phone && bot ? <>
-            <Text style={s.label}>NAVEGADOR</Text>
+            <Text style={s.label}>Navegador</Text>
             {[
               ['shared', 'Navegador compartilhado', 'O padrão. Um navegador para todos os bots, com abas próprias de cada um: um login feito por um bot (ou por você, ao assumir) vale para os outros. Os bots agem logados nessas contas.'],
               ['separate', 'Navegador separado', 'Só deste bot, sem os logins dos outros. Use para isolar um bot.'],
@@ -154,7 +153,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
             {bot.home !== 'phone' && grants.find(item => item.name === 'browser')?.state !== 'allow' ? <Text style={s.hint}>Libere Navegador em Ajustes finos para usar seus logins do Chrome.</Text> : null}
           </> : null}
           {phone && bot && bot.home && bot.home !== 'phone' && grants.find(item => item.name === 'computer')?.state !== 'deny' ? <>
-            <Text style={s.label}>PASTAS NO COMPUTADOR</Text>
+            <Text style={s.label}>Pastas no computador</Text>
             <View style={s.group}>
               <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>{bot.name} vê, cria e edita livremente na pasta dele (~/MyBots/{bot.name}) e nestas.{bot.access === 'full' ? ' Com Acesso total, também no resto da sua pasta pessoal.' : ' Fora delas, ler e salvar pedem sua aprovação.'} Senhas e chaves (como ~/.ssh) ficam sempre escondidas.</Text>
               {(bot.folders || []).map(path => <View key={path} style={s.permission}>
@@ -203,7 +202,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               <Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onRoutine('routine.delete', item.id))} style={s.smallButton}><Icon name="trash" size={14} color={C.red} /><Text style={s.deleteText}>Apagar</Text></Pressable></View>
           </View>) : <View style={s.emptyBox}><Icon name="bolt" size={26} color={C.faint} /><Text style={s.empty}>Nenhuma rotina ainda. Peça uma na conversa.</Text></View>}
           <Text style={s.hint}>O resultado de cada rotina chega como notificação do MyBots.</Text>
-          {skills.length ? <><Text style={s.label}>HABILIDADES</Text>
+          {skills.length ? <><Text style={s.label}>Habilidades</Text>
             <Text style={s.hint}>Programas que você aprovou. Rodam neste celular, isolados e sem usar a IA: só acessam os sites listados, sem seus arquivos e sem outros programas.</Text>
             {skills.map(skill => <View key={skill.id} style={s.item}>
               <View style={s.routineHead}><View style={s.itemIcon}><Icon name="spark" size={17} color={C.sky} /></View><Text style={[s.itemTitle, { flex: 1 }]}>{skill.title}</Text><Text style={s.hint}>v{skill.version}</Text></View>
@@ -215,7 +214,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
         {tab === 'negotiate' && bot && <NegotiationPanel bot={bot} negotiations={negotiations} onNegotiation={onNegotiation} disabled={saving} />}
         {tab === 'memory' && <><Text style={s.sectionTitle}>O que {bot?.name} guardou</Text><Text style={s.hint}>Estas lembranças pertencem somente a este bot.</Text>
           {memories.length ? memories.map(item => <View key={item.id} style={s.item}><Text style={s.itemTitle}>{item.key}</Text><Text selectable style={s.itemText}>{item.text}</Text></View>) : <View style={s.emptyBox}><Icon name="memory" size={26} color={C.faint} /><Text style={s.empty}>Nenhuma lembrança ainda. Peça para o bot guardar algo.</Text></View>}
-          <Text style={s.label}>PENDÊNCIAS</Text>
+          <Text style={s.label}>Pendências</Text>
           {items.length ? items.map(item => <View key={item.id} style={[s.item, item.state === 'done' && { opacity: 0.55 }]}>
             <View style={s.routineHead}><View style={[s.check, item.state === 'done' && s.checkDone]}>{item.state === 'done' ? <Icon name="check" size={13} color={C.accentInk} stroke={3} /> : null}</View><Text style={[s.itemTitle, { flex: 1 }]}>{item.course ? `${item.course} · ` : ''}{item.title}</Text></View>
             {item.dueLabel ? <Text style={s.routineTrigger}>Prazo {item.dueLabel}</Text> : null}{item.details ? <Text style={s.itemText}>{item.details}</Text> : null}{item.source ? <Text style={s.hint}>Fonte: {item.source}</Text> : null}
@@ -235,8 +234,8 @@ const s = themed(() => ({
   title: { color: C.text, fontFamily: F.x, fontSize: 23, letterSpacing: -0.7 }, subtitle: { color: C.muted, fontFamily: F.m, fontSize: 13, marginTop: 2 },
   close: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 14, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: C.surface, borderRadius: 18, padding: 4, marginBottom: 12, borderWidth: 1, borderColor: C.line },
-  tab: { flex: 1, flexDirection: 'row', gap: 5, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
-  tabActive: { backgroundColor: C.elevated }, tabText: { color: C.muted, fontFamily: F.s, fontSize: 12.5 }, tabTextActive: { color: C.text, fontFamily: F.b },
+  tab: { flex: 1, minWidth: 0, flexDirection: 'column', gap: 3, paddingVertical: 8, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+  tabActive: { backgroundColor: C.elevated }, tabText: { color: C.muted, fontFamily: F.s, fontSize: 11.5 }, tabTextActive: { color: C.text, fontFamily: F.b },
   scroll: { flex: 1 }, content: { paddingBottom: 30 },
   pressed: { opacity: 0.75 },
   preview: { alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 6 },
@@ -244,9 +243,7 @@ const s = themed(() => ({
   previewName: { color: C.text, fontFamily: F.x, fontSize: 25, letterSpacing: -0.7 },
   hint: { color: C.muted, fontFamily: F.m, fontSize: 12.5, lineHeight: 19 },
   sectionName: { color: C.text2, fontFamily: F.b, fontSize: 14, marginTop: 22, marginBottom: 2 },
-  shuffle: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginTop: 12, paddingVertical: 8 },
-  shuffleText: { color: C.accent, fontFamily: F.b, fontSize: 14 },
-  label: { color: C.faint, fontFamily: F.x, fontSize: 11, letterSpacing: 1.6, marginTop: 24, marginBottom: 10 },
+  label: { color: C.text2, fontFamily: F.b, fontSize: 15, marginTop: 24, marginBottom: 10 },
   template: { ...boxOf(), width: 150, padding: 14, gap: 6 },
   forms: { flexDirection: 'row', gap: 8 },
   formOption: { ...boxOf(), flex: 1, alignItems: 'center', paddingVertical: 12, gap: 6 },

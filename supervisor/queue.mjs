@@ -128,8 +128,11 @@ export class Queue extends EventEmitter {
         // The reply as it is being written: the owner of the draft is the room (with the bot) or the private chat.
         const draftOf = text => { this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), text }); };
         // One try of the turn with `runBot`: the bot itself, or its reserve model when the subscription limit ended.
+        // The pictures of the person's message go straight to a Codex bot that runs here on the phone (a bot on the computer, or Claude, reads them with attachment_read).
+        const pictures = next.lane === 'phone' && this.tools?.attachments ? (this.db.message(task.message_id)?.attachments || []).filter(file => /^image\/(png|jpe?g|webp|gif)$/i.test(file.mime || '') && file.size <= 10 * 1024 * 1024).slice(0, 4).map(file => this.tools.attachments.path(file.id)) : [];
         const attempt = (runBot, runPrompt, spare) => execute(runBot, runPrompt, {
           signal: controller.signal,
+          ...(runBot.provider !== 'claude' && pictures.length ? { images: pictures } : {}),
           onDelta: text => { if (!controller.signal.aborted) draftOf(text); },
           workspace: capability?.workspace,
           tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),

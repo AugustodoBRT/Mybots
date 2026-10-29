@@ -19,3 +19,27 @@ test('the Codex image tool is on, and the pictures it saved during a reply are p
   assert.deepEqual(found.map(item => [item.name, item.mime, item.bytes.toString()]), [['imagem-1.png', 'image/png', 'nova']]);
   assert.deepEqual(await runner.generatedImages('não-é-uma-sessão', start), []);
 });
+
+test('the pictures of the person\'s message go to Codex with the question (--image), before the prompt marker', () => {
+  const runner = require('../lib/codex-runner.cjs');
+  const args = runner.chatArguments('/tmp/out', { model: 'x' }, undefined, undefined, ['/a/um.png', '/a/dois.jpg']);
+  const at = args.indexOf('--image');
+  assert.deepEqual(args.slice(at, at + 4), ['--image', '/a/um.png', '--image', '/a/dois.jpg']); assert.equal(args.at(-1), '-');
+  assert.ok(!runner.chatArguments('/tmp/out', { model: 'x' }).includes('--image'));
+});
+
+test('a message with a picture reaches the Codex run with the stored picture path, and a Claude bot or a file that is not a picture gets none', async () => {
+  const { createSupervisor } = await import('../supervisor/index.mjs');
+  const { existsSync, mkdtempSync: temp } = await import('node:fs');
+  const seen = [];
+  const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ model: 'm', displayName: 'M', isDefault: true, efforts: ['low'], defaultEffort: 'low' }], limits: async () => ({}) };
+  const app = await createSupervisor({ directory: temp(join(tmpdir(), 'pics-')), port: 0, codex, execute: async (bot, prompt, options) => { seen.push(options.images || []); return { text: 'ok', model: 'm', reasoningEffort: 'low' }; } });
+  try {
+    const bot = await app.rpc('bot.create', { name: 'Olhos', instructions: 'x', access: 'ask', model: 'm', reasoningEffort: 'low' });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64').toString('base64');
+    const send = (text, attachments) => app.rpc('chat.send', { botId: bot.id, requestId: crypto.randomUUID(), text, attachments });
+    await send('olha', [{ name: 'a.png', mime: 'image/png', data: png }, { name: 'n.txt', mime: 'text/plain', data: Buffer.from('oi').toString('base64') }]);
+    for (let i = 0; i < 200 && !seen.length; i++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(seen[0].length, 1); assert.ok(existsSync(seen[0][0]));
+  } finally { await app.close(); }
+});

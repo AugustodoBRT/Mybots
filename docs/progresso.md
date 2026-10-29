@@ -1286,3 +1286,10 @@ Pedido do usuário: no PC, ao abrir o navegador de um bot que roda no celular, v
 
 ### Entrega da 0.46.0
 APK ARM64 offline `dist/apk/mybots-v80.apk` e `.sha256`, **versionCode 80 / 0.46.0**, 44.366.563 bytes, só ARM64. Certificado conferido (`fac61745…033b9c`). Release pública [v80](https://github.com/AugustodoBRT/Mybots/releases/tag/v80), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh`.
+
+## 29/10/2026 — 0.46.1 (versionCode 81): os bots Codex enxergam as imagens que você manda
+Pergunta do usuário: parece que os bots Codex não enxergam imagens?
+- **Verificado**: o Codex lia imagens só pela ferramenta `attachment_read` (no emulador, o bot de teste descreveu um círculo laranja que recebeu), mas dependia de o modelo decidir chamar a ferramenta, e imagens de **mais de 5 MB** (um print em tela cheia, por exemplo) davam "A imagem passa de 5 MB".
+- **Agora**: as imagens (PNG, JPEG, WebP, GIF, até 10 MB, até 4) da sua mensagem vão **junto da pergunta** ao Codex (`--image`, em `chatArguments`/`runReply`; `queue.mjs` escolhe as imagens da mensagem): o modelo as vê na hora, sem ferramenta, e o Codex reduz as grandes. Testado com o Codex real (`-i arquivo -` com o prompt no stdin: descreveu "círculo laranja centralizado sobre fundo preto") e com um teste do supervisor (a mensagem com imagem chega à execução com o caminho guardado; arquivo que não é imagem não vai).
+- **Não muda**: bots do **Claude** e bots Codex que rodam no **computador** leem a imagem com `attachment_read` (até 5 MB), como antes; as imagens que o próprio bot gera não são reenviadas a ele.
+- `npm test` 316/316.

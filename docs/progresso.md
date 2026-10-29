@@ -1253,3 +1253,6 @@ Pedido do usuário: na janela do PC só dava para anexar pelo botão "+" (escolh
 - Os mesmos limites: até 5 arquivos e 2,5 MB juntos no PC.
 - O envio dos anexos até um bot do celular foi conferido no teste da janela (supervisor de teste): a mensagem sai com a imagem em bolha e o arquivo como cartão. **Não testado**: a janela instalada (Tauri) de verdade, em especial colar arquivos copiados do gerenciador de arquivos (o WebKitGTK no Linux às vezes só entrega imagens), e arrastar do gerenciador de arquivos.
 - Anexar em **salas** pelo PC continua só pelo celular.
+
+### Entrega da 0.45.1
+APK ARM64 offline `dist/apk/mybots-v77.apk` e `.sha256`, **versionCode 77 / 0.45.1**, 44.357.191 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v77](https://github.com/AugustodoBRT/Mybots/releases/tag/v77), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh` (inclui `dragDropEnabled: false`).

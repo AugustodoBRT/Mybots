@@ -1256,3 +1256,6 @@ Pedido do usuário: na janela do PC só dava para anexar pelo botão "+" (escolh
 
 ### Entrega da 0.45.1
 APK ARM64 offline `dist/apk/mybots-v77.apk` e `.sha256`, **versionCode 77 / 0.45.1**, 44.357.191 bytes, só ARM64. Certificado conferido com `apksigner verify --print-certs` (`fac61745…033b9c`). Release pública [v77](https://github.com/AugustodoBRT/Mybots/releases/tag/v77), a mais recente; o APK baixado é idêntico ao local. Janela do PC refeita com `scripts/build-desktop.sh` (inclui `dragDropEnabled: false`).
+
+## 29/10/2026 — 0.45.2 (versionCode 78): anexos de até 10 MB pela janela do PC
+Pergunta do usuário: por que só 2,5 MB? O limite vinha da primeira versão da janela (0.43.0), que supôs que o canal até o celular era pequeno. Conferido: o canal do nó aceita quadros de 32 MB (`MAX_FRAME`), o supervisor do celular aceita 20 MB por quadro e 10 MB por arquivo e por mensagem (`Attachments`). O limite da janela passou a **10 MB por mensagem** (até 5 arquivos), igual ao do celular; o teste agora recusa 11 MB. `docs/computador.md` e `docs/seguranca.md` ajustados. Não exercitado com um arquivo de 9 a 10 MB de verdade pelo celular (a conta: 10 MB em base64 são 13,4 MB, abaixo dos 20 MB do quadro).

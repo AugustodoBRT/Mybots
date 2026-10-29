@@ -64,8 +64,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   const chooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
   await (await chooser).setFiles({ name: 'prova.txt', mimeType: 'text/plain', buffer: Buffer.from('oi, bot') }); await seen('prova.txt');
   const big = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
-  await (await big).setFiles({ name: 'grande.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(3 * 1024 * 1024) });
-  await page.getByText('No computador, os anexos de uma mensagem podem somar até 2,5 MB. Para arquivos maiores, use o celular.', { exact: true }).waitFor({ timeout: 30000 });
+  await (await big).setFiles({ name: 'grande.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(11 * 1024 * 1024) });
+  await page.getByText('Os anexos de uma mensagem podem somar até 10 MB.', { exact: true }).waitFor({ timeout: 30000 });
 
   // Pasting a picture (Ctrl+V) and dragging a file onto the window attach them too; pasted text stays text.
   await page.evaluate(() => { const data = new DataTransfer(); data.items.add(new File(['x'], 'colada.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })); });

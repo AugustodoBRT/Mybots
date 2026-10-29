@@ -16,8 +16,8 @@ import { QueuePanel } from '../components/QueuePanel';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 
 // The computer's window attaches files from the browser (button or drop). The channel to the phone is small, so a message
-// carries up to 5 files and 2,5 MB.
-const WINDOW_LIMIT = 2.5 * 1024 * 1024;
+// carries up to 5 files and 10 MB, the same the phone accepts.
+const WINDOW_LIMIT = 10 * 1024 * 1024;
 const readWebFile = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, data: String(reader.result).split(',')[1] || '' });
@@ -76,7 +76,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     try {
       const picked = Array.from(list || []); if (!picked.length) return;
       if (files.length + picked.length > 5) throw new Error('Uma mensagem leva até 5 arquivos.');
-      if (files.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, item) => sum + item.size, 0) > WINDOW_LIMIT) throw new Error('No computador, os anexos de uma mensagem podem somar até 2,5 MB. Para arquivos maiores, use o celular.');
+      if (files.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, item) => sum + item.size, 0) > WINDOW_LIMIT) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
       const read = await Promise.all(picked.map(readWebFile)); setFiles(old => [...old, ...read].slice(0, 5));
     } catch (e) { setComposerError(e.message); }
   };

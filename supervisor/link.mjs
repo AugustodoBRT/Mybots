@@ -283,9 +283,12 @@ export class Link {
     });
   }
   post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }
+  /** Whether the computer's Chromium can serve a bot whose turn runs on the phone (not Meu Chrome or the main Chrome). */
+  browserFor(bot) { return this.state === 'online' && this.socket?.readyState === 1 && ['shared', 'separate'].includes(browserMode(bot)); }
   /** An action already authorized on the phone, only for its currently running turn on this connection. */
   command(run, op, args) {
-    const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId);
+    // A bot answering on the phone has no run on the computer; its browser still lives there (browser.* only, by bot).
+    const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId) || (run.lane !== 'pc' && /^browser\./.test(op) ? [null] : null);
     if (!entry || run.signal?.aborted || this.socket?.readyState !== 1) return Promise.reject(new Error('A resposta no computador já foi interrompida.'));
     return new Promise((resolve, reject) => {
       const rid = randomUUID();
@@ -293,7 +296,7 @@ export class Link {
       const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); run.signal?.removeEventListener('abort', stop); error ? reject(new Error(error)) : resolve(result || {}); };
       const timer = setTimeout(() => done({ error: 'O computador demorou para executar a ferramenta.' }), 135000);
       this.commands.set(rid, done); run.signal?.addEventListener('abort', stop, { once: true });
-      this.socket.send(JSON.stringify({ type: 'pc_command', rid, id: entry[0], op, args }));
+      this.socket.send(JSON.stringify({ type: 'pc_command', rid, id: entry[0], op, args, ...(entry[0] ? {} : { botId: run.botId, mode: browserMode(this.db.bot(run.botId)) }) }));
     });
   }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */

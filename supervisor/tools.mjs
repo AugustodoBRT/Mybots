@@ -583,11 +583,13 @@ export class Tools {
       const gate = this.gate(bot, 'browser', { readOnly: true });
       if (gate.ask && !(await this.ask(run, tool, args, hash, null, gate.always))) throw new Error(refused);
       this.requireGrant(run, 'browser');
+      // A bot answering on the phone browses in the computer's Chromium when it is connected; the phone's WebView is the fallback.
+      const viaPc = run.lane === 'pc' || Boolean(this.pcBrowserFor?.(bot));
       const command = async (botId, op, input = {}) => {
         checkMine();
         this.requireGrant(run, 'browser');
         if (this.browser.control.get(botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
-        if (run.lane !== 'pc') return this.browser.command(botId, op, input);
+        if (!viaPc) return this.browser.command(botId, op, input);
         const value = await this.pcCommand(run, 'browser.' + op, input);
         if (typeof value.url === 'string') this.browser.pages.set(botId, { url: value.url, title: value.title || '', where: 'pc' });
         if (op !== 'login') return value;
@@ -676,7 +678,8 @@ export class Tools {
     const intent = { store: args.store, items: args.items, category: args.category, total: args.total, ...(args.card ? { card: args.card } : {}) };
     if (!this.browser.available()) throw new Error('A carteira fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots.');
     this.paying.set(run.botId, { taskId: run.taskId, run, at: Date.now() });
-    if (run.lane !== 'pc') {
+    const viaPc = run.lane === 'pc' || Boolean(this.pcBrowserFor?.(bot));
+    if (!viaPc) {
       try { return await command(run.botId, 'pay', { intent, botName: bot.name }); } catch (error) { this.paying.delete(run.botId); throw error; }
     }
     let id = null;
@@ -704,7 +707,7 @@ export class Tools {
     const recent = [...this.paying].filter(([, item]) => Date.now() - item.at < 15 * 60000 && live.has(item.run));
     this.paying.clear();
     for (const [botId, { taskId, run }] of recent) {
-      if (run.lane === 'pc') await this.pcCommand(run, 'browser.pay_clear', {}).catch(() => {});
+      if (run.lane === 'pc' || this.pcBrowserFor?.(this.db.bot(botId))) await this.pcCommand(run, 'browser.pay_clear', {}).catch(() => {});
       this.db.record('wallet_frozen', 'Carteira congelada: o pagamento foi interrompido.', botId, taskId);
       await this.cancelTask?.(taskId);
     }

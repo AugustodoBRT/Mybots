@@ -336,7 +336,10 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
       if (message.type === 'pc_command') {
-        const run = runs.get(message.id);
+        // A bot that answers on the phone has no run here: its browser ops are checked by the supervisor, and only the bot's own Chromium is reachable.
+        const direct = !message.id && typeof message.botId === 'string' && ['shared', 'separate'].includes(message.mode) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb)$/.test(message.op);
+        if (direct && browserModes.get(message.botId) !== message.mode) configureBrowser({ id: message.botId, browserMode: message.mode });
+        const run = direct ? { controller: new AbortController(), bot: { id: message.botId, browserMode: message.mode }, tools: { browser: true } } : runs.get(message.id);
         try {
           if (!run || run.controller.signal.aborted) throw new Error('A resposta no computador já foi interrompida.');
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
@@ -346,7 +349,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           // Only the screen and the mouse have one pilot at a time; each bot's browser is its own, so they run side by side.
           if (isDesktop) { if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.'); owner = run; }
-          run.indicator ||= desktop.indicate(run.bot);
+          run.indicator ||= direct ? Promise.resolve(() => {}) : desktop.indicate(run.bot);
           const dismiss = await run.indicator;
           if (run.controller.signal.aborted) { await dismiss(); throw new Error('Controle interrompido.'); }
           const result = chrome ? { ready: true } : isDesktop ? await desktop.command(message.op, message.args, run.controller.signal) : await browser.command(run.bot.id, message.op.slice(8), message.args, run.controller.signal);

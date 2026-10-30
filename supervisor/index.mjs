@@ -143,6 +143,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const catalog = () => [...models, ...(nodes.computer()?.models || []).filter(item => !models.some(own => (own.provider || 'codex') === (item?.provider || 'codex')))];
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
+    tools.pcBrowserFor = bot => link.browserFor(bot);
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.
     const viewGovernor = new ViewGovernor(); let viewTimer;
     const watchBrowsers = refresh => {

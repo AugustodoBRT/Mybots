@@ -10,6 +10,7 @@ import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // The WebView reads the same function from this bundled asset.
@@ -67,6 +68,15 @@ export function downloadName(value, folder) {
 async function checkRoute(route) {
   try { await allowedUrl(route.request().url()); await route.continue(); } catch { await route.abort().catch(() => {}); }
 }
+// Google refuses to sign in on a browser that says it is automated ("este navegador pode não ser seguro"): no
+// --enable-automation flag, no navigator.webdriver, and a user agent that is not "HeadlessChrome" (the person
+// asked for this, like the embedded browsers of other agent apps).
+let chromeUserAgent;
+function normalUserAgent() {
+  if (chromeUserAgent !== undefined) return chromeUserAgent;
+  try { const major = /(\d+)\./.exec(execFileSync('/usr/bin/google-chrome-stable', ['--version'], { encoding: 'utf8', timeout: 5000 }))?.[1]; chromeUserAgent = major ? `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36` : null; } catch { chromeUserAgent = null; }
+  return chromeUserAgent;
+}
 // A Chrome of MyBots (a separate bot's or the shared one): no window, no saved passwords, every address checked.
 export async function launchContext(profile, headless = true) {
   const path = join(profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
@@ -76,8 +86,8 @@ export async function launchContext(profile, headless = true) {
   writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
   const context = await chromium.launchPersistentContext(profile, {
     executablePath: '/usr/bin/google-chrome-stable', headless, viewport: { width: 1280, height: 800 },
-    acceptDownloads: true, serviceWorkers: 'block', permissions: [],
-    args: [...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+    acceptDownloads: true, serviceWorkers: 'block', permissions: [], ignoreDefaultArgs: ['--enable-automation'],
+    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
   });
   await context.clearPermissions();
   await context.route('**/*', checkRoute);

@@ -183,8 +183,15 @@ test('Parar from the overlay or the notice, Assumir and Devolver come from the a
   assert.equal((await fetch(`http://127.0.0.1:${f.app.port}/device/phone`, { method: 'POST', body: '{"event":"stop"}' })).status, 401);
   assert.equal((await post({ event: 'take' })).status, 200);
   assert.equal(f.app.state().phone.control, 'person');
-  await assert.rejects(run.call('phone_screen', {}), /A pessoa assumiu o celular/);
+  // The bot's next step waits while the person is in control and goes on when they give the phone back.
+  let done = false; const waiting = run.call('phone_screen', {}).then(() => { done = true; });
+  await new Promise(resolve => setTimeout(resolve, 150)); assert.equal(done, false);
   assert.equal((await post({ event: 'return' })).status, 200);
+  await waiting;
+  // A take-over left over when the turn ends does not block the next turn.
+  assert.equal((await post({ event: 'take' })).status, 200);
+  f.app.tools.phone.end(f.app.tools.phone.controller.taskId);
+  assert.equal(f.app.state().phone.control, 'bot');
   await run.call('phone_screen', {});
   // The bot asks for the person (a bank that refuses accessibility): a notice, then Devolver queues the next turn.
   await run.call('phone_ask_user', { reason: 'Confirme o Pix no app do banco.' });

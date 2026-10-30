@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, renameSync, readFileSync, rmSync, copyFileSync, chmodSync, openSync, readSync, closeSync, statSync } from 'node:fs';
+import { mkdirSync, appendFileSync, writeFileSync, renameSync, readFileSync, rmSync, copyFileSync, chmodSync, openSync, readSync, closeSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
@@ -19,13 +19,16 @@ export const IMAGE_HINT = 'Este resultado traz imagem: se você chamou por scrip
 // The WebSocket accepts 20 MB per message, so 10 MB of files (13.4 MB in base64) always fits.
 // Files live outside every bot workspace and are read back only through attachment.read, for their own bot.
 export class Attachments {
-  constructor(db) { this.db = db; this.folder = join(db.directory, 'attachments'); mkdirSync(this.folder, { recursive: true, mode: 0o700 }); }
+  constructor(db) { this.db = db; this.uploads = new Map(); this.folder = join(db.directory, 'attachments'); mkdirSync(this.folder, { recursive: true, mode: 0o700 }); }
   path(id) { return join(this.folder, id); }
   /** Validates and stores the files sent with a message; returns their public metadata. */
   save(botId, files) {
     if (files === undefined) return [];
     this.db.requireBot(botId);
     if (!Array.isArray(files) || files.length > LIMITS.files) throw new Error(`Envie até ${LIMITS.files} arquivos por mensagem.`);
+    // A file the computer's window sent in parts (uploadBegin/uploadChunk): it is already on disk, with no 10 MB ceiling.
+    const uploaded = files.filter(file => typeof file?.upload === 'string').map(file => this.uploadFinish(botId, file.upload));
+    files = files.filter(file => typeof file?.upload !== 'string');
     const decoded = files.map(file => {
       if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 120 || /[\u0000/\\]/.test(file.name) || typeof file.mime !== 'string' || file.mime.length > 100 || typeof file.data !== 'string') throw new Error('Arquivo anexado inválido.');
       const bytes = Buffer.from(file.data, 'base64');
@@ -33,7 +36,39 @@ export class Attachments {
       return { name: file.name.trim(), mime: file.mime.toLowerCase(), bytes };
     });
     if (decoded.reduce((sum, file) => sum + file.bytes.length, 0) > LIMITS.total) throw new Error('Os anexos desta mensagem passam de 10 MB juntos.');
-    return decoded.map(file => this.store(botId, file));
+    return [...uploaded, ...decoded.map(file => this.store(botId, file))];
+  }
+  /** Starts a file that arrives in parts; returns the id the parts and the message refer to. */
+  uploadBegin(botId, name, mime) {
+    this.db.requireBot(botId);
+    name = typeof name === 'string' ? name.trim() : '';
+    if (!name || name.length > 120 || /[\u0000/\\]/.test(name)) throw new Error('Arquivo anexado inválido.');
+    if (BLOCKED.test(name)) throw new Error('Arquivos executáveis são bloqueados.');
+    for (const [id, upload] of this.uploads) if (Date.now() - upload.at > 6 * 3600_000) { rmSync(upload.path, { force: true }); this.uploads.delete(id); }
+    const id = randomUUID(), path = this.path(id) + '.part';
+    writeFileSync(path, '', { mode: 0o600 });
+    this.uploads.set(id, { botId, name, mime: typeof mime === 'string' && mime.length <= 100 ? mime.toLowerCase() : 'application/octet-stream', path, size: 0, at: Date.now() });
+    return { upload: id };
+  }
+  /** One part, at the offset where the last one ended (a repeated part is accepted once). */
+  uploadChunk(id, offset, data) {
+    const upload = this.uploads.get(id);
+    if (!upload) throw new Error('Envio não encontrado. Anexe o arquivo de novo.');
+    if (offset < upload.size) return { size: upload.size };
+    if (offset !== upload.size) throw new Error('Parte fora de ordem.');
+    const bytes = Buffer.from(typeof data === 'string' ? data : '', 'base64');
+    if (upload.size + bytes.length > BIG_FILE) throw new Error('O arquivo passa de 4 GB.');
+    appendFileSync(upload.path, bytes); upload.size += bytes.length; upload.at = Date.now();
+    return { size: upload.size };
+  }
+  uploadFinish(botId, id) {
+    const upload = this.uploads.get(id);
+    if (!upload || upload.botId !== botId) throw new Error('Envio não encontrado. Anexe o arquivo de novo.');
+    if (!upload.size) throw new Error('O arquivo está vazio.');
+    this.uploads.delete(id);
+    const fileId = randomUUID(); renameSync(upload.path, this.path(fileId));
+    this.db.run('INSERT INTO attachments VALUES(?,?,?,?,?,?)', fileId, botId, upload.name, upload.mime, upload.size, now());
+    return { id: fileId, name: upload.name, mime: upload.mime, size: upload.size };
   }
   /** Keeps one file for a bot (an attachment, a download or a file the bot made). */
   store(botId, { name, mime, bytes }) {

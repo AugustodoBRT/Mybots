@@ -60,12 +60,12 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByText('Aprovações e hoje').first().click(); await seen('Esperando você'); await page.keyboard.press('Escape');
   assert.equal(await page.getByText('Esperando você').count(), 0, 'Esc fecha a barra');
 
-  // A file is attached from the window (button) and shown in the tray; one over the limit is refused with a clear message.
+  // A file is attached from the window (button) and shown in the tray; a file bigger than 10 MB attaches too (it goes in parts).
   const chooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
   await (await chooser).setFiles({ name: 'prova.txt', mimeType: 'text/plain', buffer: Buffer.from('oi, bot') }); await seen('prova.txt');
   const big = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
-  await (await big).setFiles({ name: 'grande.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(11 * 1024 * 1024) });
-  await page.getByText('Os anexos de uma mensagem podem somar até 10 MB.', { exact: true }).waitFor({ timeout: 30000 });
+  await (await big).setFiles({ name: 'grande.dat', mimeType: 'application/octet-stream', buffer: Buffer.alloc(11 * 1024 * 1024) });
+  await seen('grande.dat');
 
   // Pasting a picture (Ctrl+V) and dragging a file onto the window attach them too; pasted text stays text.
   await page.evaluate(() => { const data = new DataTransfer(); data.items.add(new File(['x'], 'colada.png', { type: 'image/png' })); window.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })); });

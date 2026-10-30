@@ -161,12 +161,12 @@ export function PhoneLiveCard({ bot, phone, call, onStop, onControl }) {
     browserEvents.add(listener);
     return () => { live = false; browserEvents.delete(listener); };
   }, [bot.id]);
-  if (!mine && !help) return null;
+  if (!mine && !help && !person) return null;
   const act = async (name, action) => { setBusy(name); try { await action(); } catch {} finally { setBusy(''); } };
   return <View style={styles.helpCard}>
     <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="phone" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>{mine ? 'Celular ao vivo' : 'Celular'}</Text></View>
     <Text style={styles.helpTitle}>{person ? 'Você está no controle do celular' : help ? `${bot.name} precisa de você no celular` : `${bot.name} está usando o celular`}</Text>
-    <Text style={styles.helpBody}>{help && !mine ? help.reason : person ? `${bot.name} espera você devolver.` : phone.caption || 'Olhando a tela'}</Text>
+    <Text style={styles.helpBody}>{help && !mine ? help.reason : person ? `${mine ? `${bot.name} espera você devolver.` : 'Toque em “Devolver ao bot” para ele poder usar o celular de novo.'}` : phone.caption || 'Olhando a tela'}</Text>
     {step?.image ? <StepImage key={step.id} step={step} call={call} style={[styles.phoneShot, { aspectRatio: step.width && step.height ? step.width / step.height : 0.5 }]} /> : null}
     <Text style={styles.helpHint}>{mine ? 'No próprio celular, uma barra no topo mostra cada passo, com Parar e Assumir. Parar interrompe na hora, mesmo no meio de um passo.' : 'Faça o que foi pedido no celular e depois toque em “Devolver ao bot”.'}</Text>
     <View style={styles.keys}>

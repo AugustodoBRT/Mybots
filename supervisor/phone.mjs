@@ -28,12 +28,11 @@ export class Phone {
   constructor(browser, { changed = () => {}, cancel = async () => {}, record = () => {} } = {}) {
     // A turn may end while the supervisor shuts down: the record is best effort, never a reason to fail the close.
     Object.assign(this, { browser, changed, cancel, record: (...args) => { try { record(...args); } catch {} } });
-    this.controller = null; this.control = 'bot'; this.caption = ''; this.help = new Map();
+    this.controller = null; this.control = 'bot'; this.caption = ''; this.help = new Map(); this.waiters = new Set();
   }
   status() { return { controller: this.controller ? { botId: this.controller.botId, name: this.controller.name, since: this.controller.since } : null, control: this.control, caption: this.caption, help: Object.fromEntries(this.help) }; }
   /** A command for MyBotsAccess. The turn's signal rejects it at once when the turn is stopped. */
   command(run, bot, tool, args) {
-    if (this.control === 'person') return Promise.reject(new Error('A pessoa assumiu o celular. Espere ela tocar em “Devolver ao bot”.'));
     if (this.controller && this.controller.taskId !== run.taskId) return Promise.reject(new Error(`${this.controller.name} está usando o celular agora. Tente de novo quando ele terminar.`));
     if (!this.browser.available()) return Promise.reject(new Error('O controle do celular fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots (ou ligar “Funcionar com a tela apagada” nos Ajustes).'));
     if (!this.controller) {
@@ -41,7 +40,17 @@ export class Phone {
       this.record('phone_control', `${bot.name} começou a controlar o celular.`, bot.id, run.taskId);
       this.changed('phone.changed', this.status());
     }
-    return this.browser.queue({ botId: null, op: PHONE_OPS[tool], args: { ...args, taskId: run.taskId, botId: bot.id, botName: bot.name }, signal: run.signal });
+    // The person took over: the bot's step waits here (Parar still cancels it) and goes on when they tap "Devolver ao bot".
+    const queue = () => this.browser.queue({ botId: null, op: PHONE_OPS[tool], args: { ...args, taskId: run.taskId, botId: bot.id, botName: bot.name }, signal: run.signal });
+    return this.control === 'person' ? this.untilReturned(run.signal).then(queue) : queue();
+  }
+  untilReturned(signal) {
+    return new Promise((resolve, reject) => {
+      const waiter = { resolve: () => { signal?.removeEventListener('abort', abort); resolve(); } };
+      const abort = () => { this.waiters.delete(waiter); reject(new Error('Parado.')); };
+      if (signal?.aborted) return abort();
+      signal?.addEventListener('abort', abort, { once: true }); this.waiters.add(waiter);
+    });
   }
   step(caption) { this.caption = caption; this.changed('phone.changed', this.status()); }
   /** A turn ended (done, failed or stopped): the overlay and the notice go away. */
@@ -49,6 +58,8 @@ export class Phone {
     if (this.controller?.taskId !== taskId) return;
     const { botId, name } = this.controller;
     this.controller = null; this.caption = '';
+    // The app drops its take-over flag with the turn; keep this side the same, or the next turn would find the phone "taken" with no button to give it back.
+    if (this.control === 'person') { this.control = 'bot'; this.release(); }
     this.native('phoneEnd', { taskId });
     this.record('phone_control', `${name} parou de controlar o celular.`, botId, taskId);
     this.changed('phone.changed', this.status());
@@ -68,12 +79,14 @@ export class Phone {
     if (!['person', 'bot'].includes(who)) throw new Error('Controle do celular inválido.');
     this.control = who;
     if (from !== 'native') this.native('phoneControl', { person: who === 'person' });
+    if (who === 'bot') this.release();
     const botId = this.controller?.botId || [...this.help.keys()][0] || null;
     const help = who === 'bot' && botId ? this.help.get(botId) : null;
     if (help) this.help.delete(botId);
     this.changed('phone.changed', this.status());
     return help ? { botId, ...help } : null;
   }
+  release() { for (const waiter of [...this.waiters]) { this.waiters.delete(waiter); waiter.resolve(); } }
   requestHelp(botId, reason) { this.help.set(botId, { reason, at: now() }); this.changed('phone.changed', this.status()); }
   // Stop, take-over and end go to the app on their own lane, never behind a slow command.
   native(op, args) { if (this.browser.available()) this.browser.queue({ botId: null, op, args }).catch(() => {}); }

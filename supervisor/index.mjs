@@ -572,6 +572,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const piece = attachments.part(row.id, offset, part);
           return { id: row.id, name: row.name, mime: row.mime, size: piece.size, chunk: piece.bytes.toString('base64'), next: offset + part < piece.size ? offset + part : null };
         }
+        // The computer's window sends a big file in parts (3 MB each) before the message that carries it.
+        case 'file.uploadStart': return attachments.uploadBegin(db.requireBot(params.botId).id, params.name, params.mime);
+        case 'file.uploadChunk': return attachments.uploadChunk(params.upload, Number.isInteger(params.offset) ? params.offset : -1, params.data);
         case 'outbox.ack': for (const id of Array.isArray(params.ids) ? params.ids.slice(0, 50) : []) outbox.get(id)?.done(); return { acknowledged: true };
         case 'device.timezone': return routines.setTimeZone(params.timeZone);
         case 'routines.list': return routines.all();

@@ -16,15 +16,9 @@ import { FileChip } from '../RichMessage';
 import { QueuePanel } from '../components/QueuePanel';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 
-// The computer's window attaches files from the browser (button or drop). The channel to the phone is small, so a message
-// carries up to 5 files and 10 MB, the same the phone accepts.
-const WINDOW_LIMIT = 10 * 1024 * 1024;
-const readWebFile = file => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, data: String(reader.result).split(',')[1] || '' });
-  reader.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
-  reader.readAsDataURL(file);
-});
+// The computer's window attaches files from the browser (button or drop), up to 5 per message and of any size: the file
+// stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
+const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
 function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
@@ -79,8 +73,8 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     try {
       const picked = Array.from(list || []); if (!picked.length) return;
       if (files.length + picked.length > 5) throw new Error('Uma mensagem leva até 5 arquivos.');
-      if (files.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, item) => sum + item.size, 0) > WINDOW_LIMIT) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
-      const read = await Promise.all(picked.map(readWebFile)); setFiles(old => [...old, ...read].slice(0, 5));
+      if (picked.some(item => !item.size)) throw new Error('O arquivo está vazio.');
+      const read = picked.map(readWebFile); setFiles(old => [...old, ...read].slice(0, 5));
     } catch (e) { setComposerError(e.message); }
   };
   const pickWebFile = () => { const input = globalThis.document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => addWebFiles(input.files); input.click(); };
@@ -157,7 +151,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
-      {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id]) ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
+      {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id] || data.phone?.control === 'person') ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
       {/* the steps of the bot's browser belong to the browser: they show only while it is open */}
       {browserCall && showBrowser ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}
       {(data.approvals || []).filter(item => item.botId === bot.id).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bot} onRespond={onRespond} busy={approvalBusy === approval.id} />)}

@@ -27,6 +27,25 @@ import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FileBadge, formatSize } from './RichMessage';
 
+const UPLOAD_PART = 3 * 1024 * 1024;
+const blobBase64 = blob => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+  reader.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+  reader.readAsDataURL(blob);
+});
+/** Files picked in the computer's window go to the phone in 3 MB parts, so no size limit applies; the phone's own files travel inline. */
+async function uploadWebFiles(call, botId, files) {
+  const out = [];
+  for (const file of files) {
+    if (!file.blob) { out.push({ name: file.name, mime: file.mime, data: file.data }); continue; }
+    const { upload } = await call('file.uploadStart', { botId, name: file.name, mime: file.mime });
+    for (let offset = 0; offset < file.blob.size; offset += UPLOAD_PART) await call('file.uploadChunk', { upload, offset, data: await blobBase64(file.blob.slice(offset, offset + UPLOAD_PART)) });
+    out.push({ upload });
+  }
+  return out;
+}
+
 async function api(path, data, token, apiUrl) {
   if (!apiUrl || !token) throw new Error('Escaneie o QR code do MyBots no computador para conectar o app.');
   const controller = new AbortController();
@@ -440,7 +459,7 @@ function AppMain() {
       return;
     }
     try {
-      await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) });
+      await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: await uploadWebFiles((...args) => supervisor.current.call(...args), bot.id, files) } : {}) });
       setDraft(''); await loadSupervisorState(); return true;
     } catch (error) { setLoadError(error.message); return false; }
     finally { setSending(false); }

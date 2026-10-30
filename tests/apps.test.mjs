@@ -90,6 +90,20 @@ test('a remote MCP app connects with its key in the vault, is granted per bot an
   assert.ok(!(await readdir(join(f.directory, 'secrets'))).includes(`mcp-${added.id}.enc`));
 });
 
+test('a file bigger than 10 MB arrives in parts and attaches to the message', async t => {
+  const f = await setup(t);
+  const big = Buffer.alloc(11 * 1024 * 1024, 7), part = 3 * 1024 * 1024;
+  const { upload } = await f.app.rpc('file.uploadStart', { botId: f.bot.id, name: 'grande.dat', mime: 'application/octet-stream' });
+  for (let offset = 0; offset < big.length; offset += part) {
+    const data = big.subarray(offset, offset + part).toString('base64');
+    await f.app.rpc('file.uploadChunk', { upload, offset, data }); await f.app.rpc('file.uploadChunk', { upload, offset, data });
+  }
+  await assert.rejects(f.app.rpc('file.uploadChunk', { upload, offset: part * 9, data: 'AA==' }), /fora de ordem/);
+  const sent = await f.app.rpc('chat.send', { botId: f.bot.id, requestId: randomUUID(), text: 'veja', attachments: [{ upload }] });
+  const [file] = f.app.db.message(sent.messageId).attachments;
+  assert.equal(file.size, big.length); assert.deepEqual(f.app.tools.attachments.bytes(f.bot.id, file.id), big);
+});
+
 test('attachments are stored outside workspaces, read only by their bot, images return as images', async t => {
   const f = await setup(t);
   const other = f.app.db.create({ name: 'Outro' }, selection);

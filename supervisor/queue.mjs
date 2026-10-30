@@ -23,6 +23,8 @@ const STEERED = 'Interrompida para corrigir o rumo.';
 const STEER_NOTE = 'A pessoa interrompeu a tarefa em andamento para corrigir o rumo. Continue de onde parou, seguindo esta instrução:\n';
 
 // A subscription limit (or quota) ending, as the runners' errors and the raw CLI output say it.
+// The IA no longer has the session the app kept for the bot (its file was removed, or the run died before saving it).
+const SESSION_GONE = /no rollout found for thread|no conversation found with session id/i;
 const LIMIT = /usage.limit|limite de uso|rate.limit|limit reached|insufficient_quota|\bquota\b|\b429\b/i;
 
 // How much of a private chat a new IA session reads at most (promptFor keeps what fits in its size budget).
@@ -156,7 +158,18 @@ export class Queue extends EventEmitter {
           onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
         });
         let reply;
-        try { reply = await attempt(bot, prompt, false); }
+        try {
+          try { reply = await attempt(bot, prompt, false); }
+          catch (lost) {
+            // The saved session is gone and would fail every turn from now on: forget it and answer in a new one, with the history.
+            if (!bot.codexSessionId || controller.signal.aborted || !SESSION_GONE.test(`${lost.output || ''}\n${lost.message || ''}`)) throw lost;
+            if (turn) this.db.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', turn.room_id, owner.id); else this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', owner.id);
+            this.db.record('session_reset', 'A sessão guardada da IA não existe mais; a conversa continua numa sessão nova, com o histórico.', owner.id, task.id);
+            capability?.close(); capability = this.tools?.open(task, controller.signal, next.lane);
+            const fresh = { ...bot, codexSessionId: undefined };
+            reply = await attempt(fresh, turn ? this.rooms.prompt(fresh, task.id, { tools: Boolean(this.tools), resumed: false }) : promptFor(this.chat(fresh, task.message_id), task.message_id, { tools: Boolean(this.tools) }), false);
+          }
+        }
         catch (error) {
           // The subscription limit ended: the same turn, with the bot's reserve model, keeping its level, grants and "sempre perguntar".
           const reserve = !turn && !controller.signal.aborted && LIMIT.test(`${error.output || ''}\n${error.message || ''}`) ? this.reserve(owner) : null;

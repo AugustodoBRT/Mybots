@@ -1,3 +1,4 @@
+import { desktop as desktopWindow } from './desktop';
 import { textEdit, protectEdit } from './browser-input';
 import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode } from './local';
@@ -253,7 +254,9 @@ function LiveImages({ frame }) {
  * The bot's own Chrome on the computer, live inside MyBots: frames come from the computer; after "Assumir" a tap
  * clicks there, a drag scrolls, and the text box types into the page. Points go as fractions of the frame.
  */
-function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side, onFile, color }) {
+function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control, onClose, side, onFile, color }) {
+  // The computer's window always drives the page: no "Assumir", the bot and the person share it.
+  const assumed = assumedByBot || Boolean(desktopWindow);
   const [tabbar, setTabbar] = useState(null); const [action, showAction] = useBotAction(); const [downloads, setDownloads] = useState(false); const [notice, setNotice] = useState(null); const seen = useRef(null);
   // The native view repeats its last metadata: a download is announced once.
   const extras = data => { if (data.tabbar?.tabs) setTabbar(data.tabbar); if (data.action) showAction(data.action); if (data.download?.name && data.download.at !== seen.current) { seen.current = data.download.at; setNotice(data.download); } };
@@ -357,10 +360,10 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
       <View style={styles.lock}><Icon name="laptop" size={16} color={assumed ? C.accent : C.muted} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.title} numberOfLines={1}>{browserName(bot)} · computador</Text>
-        <Text style={styles.url} numberOfLines={1}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : assumed ? 'Você está no controle. O bot espera.' : browserMode(bot) === 'shared' ? 'Logins do navegador do computador, valem para os bots dele.' : 'Ao vivo do computador.'}</Text>
+        <Text style={styles.url} numberOfLines={1}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'Computador desconectado.' : desktopWindow ? 'Você e o bot usam a mesma página.' : assumed ? 'Você está no controle. O bot espera.' : browserMode(bot) === 'shared' ? 'Logins do navegador do computador, valem para os bots dele.' : 'Ao vivo do computador.'}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Downloads do navegador" hitSlop={6} onPress={() => { setDownloads(true); setNotice(null); }} style={[styles.tool, notice && styles.toolOn]}><Icon name="download" size={17} color={notice ? C.accent : C.text2} /></Pressable>
-      {!assumed && !side ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable> : null}
+      {(!assumed && !side) || desktopWindow ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar navegador" hitSlop={6} onPress={onClose} style={styles.tool}><Icon name="close" size={17} color={C.text2} /></Pressable> : null}
     </View>
     <TabStrip tabs={tabs} enabled={assumed} onSwitch={tab => send({ type: 'tab', tab })} onClose={tab => send({ type: 'tab_close', tab })} onNew={() => send({ type: 'tab_new' })} />
     <AddressRow url={frame?.url} enabled={assumed} back={tabbar ? tabbar.back : true} forward={tabbar?.forward} onBack={() => send({ type: 'back' })} onForward={() => send({ type: 'forward' })} onReload={() => send({ type: 'reload' })} onOpen={url => send({ type: 'open', url })}
@@ -395,9 +398,9 @@ function PcBrowserLive({ bot, call, assumed, busy, error, control, onClose, side
     </View> : null}
     {problem || error ? <Text style={styles.error}>{problem || error}</Text> : null}
     <WalletFreeze />
-    <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
+    {desktopWindow ? null : <Pressable accessibilityRole="button" disabled={busy} onPress={() => control(assumed ? 'bot' : 'person')} style={[styles.control, assumed && styles.controlBack, busy && { opacity: 0.5 }]}>
       <Icon name={assumed ? 'bots' : 'hand'} size={18} color={assumed ? C.accent : C.accentInk} stroke={2} /><Text style={[styles.controlText, assumed && styles.controlBackText]}>{assumed ? 'Devolver ao bot' : 'Assumir'}</Text>
-    </Pressable>
+    </Pressable>}
   </View></BrowserSurface>;
 }
 

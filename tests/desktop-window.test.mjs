@@ -55,8 +55,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByLabel('Opções da conversa').first().waitFor();
   assert.equal(await page.getByText('Aprovações e hoje').count(), 0, 'a barra direita começa fechada');
   // One button opens the right sidebar with the conversation's options; its rows lead to the model, browser, profile and what waits.
-  await page.getByLabel('Opções da conversa').first().click(); for (const label of ['Navegador do bot', 'Perfil e permissões', 'Aprovações e hoje']) await seen(label);
-  await page.getByText('Navegador do bot').first().click(); await seen('Navegador de Atlas · celular'); await seen('O navegador do bot fica no app MyBots, que não está ativo agora. Abra o MyBots no celular.');
+  await page.getByLabel('Opções da conversa').first().click(); for (const label of ['Abrir navegador', 'Perfil e permissões', 'Aprovações e hoje']) await seen(label);
+  await page.getByText('Abrir navegador').first().click(); await seen('Navegador compartilhado · computador'); await page.getByLabel('Fechar navegador').first().click();
   await page.getByText('Aprovações e hoje').first().click(); await seen('Esperando você'); await page.keyboard.press('Escape');
   assert.equal(await page.getByText('Esperando você').count(), 0, 'Esc fecha a barra');
 

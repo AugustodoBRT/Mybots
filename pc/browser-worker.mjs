@@ -213,6 +213,8 @@ export class BrowserSession {
   }
   async setView(on, options) {
     await this.start();
+    // The person opening the browser from the window does not depend on a bot: an empty browser starts on a search page.
+    if (on && options?.home && !this.opened && this.page.url() === 'about:blank') { this.opened = true; this.page.goto('https://www.google.com/', { timeout: 15000 }).catch(() => {}); }
     const wanted = { ...this.viewOptions, ...options }; Object.assign(wanted, viewSize(wanted));
     wanted.interactive = Boolean(wanted.interactive); wanted.congested = Boolean(wanted.congested);
     const changed = !this.viewOptions || ['maxWidth','maxHeight','interactive','congested'].some(key => wanted[key] !== this.viewOptions[key]);

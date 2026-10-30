@@ -119,7 +119,7 @@ function Help({ visible, onClose }) {
 function OptionsPanel({ bot, model, waiting, browserOpen, onBrowser, onProfile, onToday, onClose }) {
   const rows = [
     bot && model ? ['bots', 'Modelo e raciocínio', model, onProfile] : null,
-    bot ? ['globe', 'Navegador do bot', browserOpen ? 'Aberto ao lado da conversa; toque para fechar' : 'Abre ao lado da conversa', onBrowser] : null,
+    bot ? ['globe', 'Abrir navegador', 'O Chromium do computador, nesta barra. Você usa direto, sem esperar o bot.', onBrowser] : null,
     bot ? ['user', 'Perfil e permissões', 'Nome, rosto, instruções e o que o bot pode fazer', onProfile] : null,
     ['hand', 'Aprovações e hoje', waiting ? `${waiting} esperando você` : 'Nada esperando você', onToday]
   ].filter(Boolean);
@@ -271,7 +271,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
       <View style={{ flex: 1 }}>{current ? children : <Welcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
-    {options && !page ? <OptionsPanel bot={bot} model={model} waiting={waiting} browserOpen={browserOpen} onBrowser={() => desktopBus.emit('browser')} onProfile={() => { setOptions(false); onProfile(bot); }} onToday={() => { setOptions(false); setPanel(true); }} onClose={() => setOptions(false)} />
+    {options && !page && !browserOpen ? <OptionsPanel bot={bot} model={model} waiting={waiting} browserOpen={browserOpen} onBrowser={() => desktopBus.emit('browser')} onProfile={() => { setOptions(false); onProfile(bot); }} onToday={() => { setOptions(false); setPanel(true); }} onClose={() => setOptions(false)} />
       : null}
     {panel && !page ? <TodayPanel data={data} onOpen={id => { setPanel(false); onOpen(id); }} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} onClose={() => setPanel(false)} /> : null}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />

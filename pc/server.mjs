@@ -191,7 +191,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const updateView = async (botId, force = false) => {
     const sinks = [...(views.get(botId) || [])];
     const sizes = sinks.map(sink => sink.options || viewSize());
-    const wanted = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId), congested: sinks.some(sink => sink.remoteCongested) };
+    const wanted = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId) || sinks.some(sink => sink.direct), home: sinks.some(sink => sink.direct), congested: sinks.some(sink => sink.remoteCongested) };
     const bytes = Math.max(0, ...sinks.map(sink => sink.bufferedAmount?.() || 0), wanted.congested ? 300_000 : 0);
     const options = viewGovernor.next(botId, wanted, bytes);
     if (!options) { if (force && viewOptions.has(botId)) await browser.command(botId, 'view', viewOptions.get(botId)); return; }
@@ -215,8 +215,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     if (!views.size && viewTimer) { clearInterval(viewTimer); viewTimer = null; }
     await updateView(botId, on);
   };
-  const personInput = async (botId, input) => {
-    if (!assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
+  // The computer's own window may always use the page (no "Assumir"); the phone's taps still need it.
+  const personInput = async (botId, input, direct = false) => {
+    if (!direct && !assumed.has(botId)) throw new Error('Toque em Assumir antes de usar a página.');
     return browser.command(botId, 'input', cleanPersonInput(input));
   };
   const panic = () => { for (const run of controls) run.controller.abort('panic'); return browser.close(); };
@@ -239,7 +240,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: personInput }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');

@@ -39,7 +39,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   const status = error || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
   const phone = mode === 'phone' && termuxAvailable;
   // A bot answering from the computer browses in its own Chrome there, shown live here and in the computer's window.
-  const pcBrowser = remote || data.browser?.pages?.[bot.id]?.where === 'pc';
+  const pcBrowser = Boolean(desktop) || remote || data.browser?.pages?.[bot.id]?.where === 'pc';
   const browsing = phone || (desktop && pcBrowser);
   const [files, setFiles] = useState([]); const [composerError, setComposerError] = useState('');
   // The bot's own browser panel; it stays open while the person has taken over.

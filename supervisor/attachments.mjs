@@ -47,7 +47,7 @@ export class Attachments {
     for (const [id, upload] of this.uploads) if (Date.now() - upload.at > 6 * 3600_000) { rmSync(upload.path, { force: true }); this.uploads.delete(id); }
     const id = randomUUID(), path = this.path(id) + '.part';
     writeFileSync(path, '', { mode: 0o600 });
-    this.uploads.set(id, { botId, name, mime: typeof mime === 'string' && mime.length <= 100 ? mime.toLowerCase() : 'application/octet-stream', path, size: 0, at: Date.now() });
+    this.uploads.set(id, { botId, name, mime: typeof mime === 'string' && mime && mime.length <= 100 ? mime.toLowerCase() : MIME_BY_EXTENSION[(name.split('.').pop() || '').toLowerCase()] || 'application/octet-stream', path, size: 0, at: Date.now() });
     return { upload: id };
   }
   /** One part, at the offset where the last one ended (a repeated part is accepted once). */

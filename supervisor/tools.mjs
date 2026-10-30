@@ -310,7 +310,8 @@ export class Tools {
           if (made.bytes.length > 20 * 1024 * 1024) throw new Error('O arquivo passaria de 20 MB; divida o conteúdo.');
           file = this.attachments.store(run.botId, made);
           this.db.record('file_created', `Arquivo criado: ${file.name}.`, run.botId, run.taskId);
-        } else if (args.path) { file = this.attachments.adopt(run.botId, ...this.sendablePath(run, args.path)); this.db.record('file_created', `Arquivo enviado: ${file.name}.`, run.botId, run.taskId); }
+        } else if (args.path && run.lane === 'pc' && this.pcFile) { file = await this.pcFile(run.botId, args.path); this.db.record('file_created', `Arquivo do computador enviado: ${file.name}.`, run.botId, run.taskId); }
+        else if (args.path) { file = this.attachments.adopt(run.botId, ...this.sendablePath(run, args.path)); this.db.record('file_created', `Arquivo enviado: ${file.name}.`, run.botId, run.taskId); }
         else { const row = this.attachments.meta(run.botId, args.id); file = { id: row.id, name: row.name, mime: row.mime, size: row.size }; }
         if (tool === 'file.send' || args.send) {
           const list = this.outgoing.get(run.taskId) || [];

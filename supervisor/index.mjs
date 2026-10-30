@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -207,6 +207,18 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       db.run('DELETE FROM browser_downloads WHERE bot_id=? AND place=? AND name=?', botId, 'pc', file.name);
       db.run('INSERT INTO browser_downloads VALUES(?,?,?,?,?,?,?,?)', randomUUID(), botId, 'pc', file.name, stored.size, stored.mime, stored.id, now());
       return stored;
+    };
+    // file_send with a path from a bot that runs on the computer: the file comes here in parts and becomes the bot's file.
+    tools.pcFile = async (botId, path) => {
+      let offset = 0, id = null, started = null;
+      try {
+        do {
+          const part = await link.pcFile(botId, path, offset);
+          if (!id) { started = attachments.uploadBegin(botId, part.name, ''); id = started.upload; }
+          attachments.uploadChunk(id, offset, part.chunk); offset = part.next;
+        } while (offset !== null && offset !== undefined);
+        return attachments.uploadFinish(botId, id);
+      } catch (error) { if (id) { rmSync(attachments.uploads.get(id)?.path || '', { force: true }); attachments.uploads.delete(id); } throw error; }
     };
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
     browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;

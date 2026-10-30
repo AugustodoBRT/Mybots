@@ -3,9 +3,9 @@ import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
 import { createServer as createSocket } from 'node:net';
 import { randomBytes, randomUUID, X509Certificate, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, renameSync, statSync, readdirSync, realpathSync, openSync, readSync, closeSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
@@ -154,6 +154,26 @@ export function browserFiles(root, botId, op, name) {
 }
 
 /**
+ * One part (3 MB) of a file the bot asked to send with file_send. Only what the bot may already read: its own folder,
+ * the folders freed for it, or the home on Acesso total; never hidden folders or secrets.
+ */
+export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024) {
+  if (!computer || typeof input !== 'string' || !input.trim() || input.length > 1000) throw new Error('Este bot não pode mexer no computador.');
+  const home = computer.home || homedir();
+  let real; try { real = realpathSync(isAbsolute(input) ? input : input.startsWith('~') ? join(home, input.slice(1)) : resolve(computer.workspace, input)); } catch { throw new Error('Não achei esse arquivo no computador.'); }
+  const inside = base => { const rel = relative(base, real); return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel); };
+  const roots = [computer.workspace, ...computer.folders, ...(computer.full ? [home] : [])];
+  if (!roots.some(inside) || SENSITIVE.test(real) || (computer.full && !inside(computer.workspace) && !computer.folders.some(inside) && relative(home, real).split(sep).some(name => name.startsWith('.')))) throw new Error('Esse arquivo está fora do que este bot pode acessar no computador.');
+  const info = statSync(real);
+  if (!info.isFile()) throw new Error('Isso não é um arquivo.');
+  const fd = openSync(real, 'r');
+  try {
+    const buffer = Buffer.alloc(Math.max(0, Math.min(part, info.size - offset))); const read = buffer.length ? readSync(fd, buffer, 0, buffer.length, offset) : 0;
+    return { name: basename(real), size: info.size, chunk: buffer.subarray(0, read).toString('base64'), next: offset + part < info.size ? offset + part : null };
+  } finally { closeSync(fd); }
+}
+
+/**
  * The MyBots node on the computer. It waits for the paired phone, which connects to it (the phone never listens on
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
@@ -296,6 +316,13 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
+      if (message.type === 'pc_file' && typeof message.rid === 'string') {
+        try {
+          const run = [...runs.values()].find(item => item.bot.id === message.botId && item.computer);
+          send({ type: 'pc_result', rid: message.rid, result: botFilePart(run?.computer, message.path, Number.isInteger(message.offset) && message.offset >= 0 ? message.offset : 0) });
+        } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type === 'agent_skills' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: { skills: discover().map(({ id, name, description, path, source }) => ({ id, name, description, path, source })) } }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
@@ -340,10 +367,11 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true });
         if (!wrap) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
         log(`Respondendo como ${bot.name}.`);
+        const computer = message.tools ? computerFor(message.tools.computer, workspace, undefined, enabledSkills) : undefined; run.computer = computer || null;
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer: computerFor(message.tools.computer, workspace, undefined, enabledSkills), skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer, skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress }),
           onDelta: draft => send({ type: 'progress', id: message.id, draft })

@@ -262,6 +262,16 @@ export class Link {
       if (!this.post({ type: 'browser_files', rid, botId, op, ...(name ? { name } : {}) })) done({ error: 'offline' });
     });
   }
+  /** One part of a file on the computer that a bot there asked to send (file_send with a path). */
+  pcFile(botId, path, offset) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou para responder.' }), 60000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'pc_file', rid, botId, path, offset })) done({ error: 'offline' });
+    });
+  }
   /** The skills (folders with SKILL.md) found on the computer, for the profile's list and to check what a bot turns on. */
   skills() {
     return new Promise((resolve, reject) => {

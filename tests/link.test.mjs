@@ -350,3 +350,23 @@ test('missing discovery explains reachability and foreground retries are throttl
   const pending = f.app.link.connect(true); f.app.link.close(); await pending;
   assert.equal(f.app.link.timer, null);
 });
+
+test('file_send of a path on the computer: only what the bot may reach there, in parts', async () => {
+  const { botFilePart, computerFor } = await import('../pc/server.mjs');
+  const { mkdirSync, writeFileSync, symlinkSync } = await import('node:fs');
+  const home = await mkdtemp(join(tmpdir(), 'mybots-home-')); try {
+    const work = join(home, 'MyBots/Dev'); mkdirSync(work, { recursive: true }); mkdirSync(join(home, '.ssh')); mkdirSync(join(home, '.cache'));
+    writeFileSync(join(work, 'capa.png'), Buffer.alloc(7 * 1024 * 1024, 3)); writeFileSync(join(home, 'fora.txt'), 'x'); writeFileSync(join(home, '.ssh/id'), 'k'); writeFileSync(join(home, '.cache/a'), 'c');
+    symlinkSync(join(home, '.ssh/id'), join(work, 'atalho'));
+    const mine = computerFor({ folders: [], full: false }, work, home), full = computerFor({ folders: [], full: true }, work, home);
+    let part = botFilePart(mine, 'capa.png', 0), total = 0;
+    while (true) { total += Buffer.from(part.chunk, 'base64').length; if (part.next === null) break; part = botFilePart(mine, join(work, 'capa.png'), part.next); }
+    assert.equal(total, 7 * 1024 * 1024); assert.equal(part.name, 'capa.png');
+    assert.throws(() => botFilePart(mine, join(home, 'fora.txt')), /fora do que/);
+    assert.throws(() => botFilePart(mine, 'atalho'), /fora do que/);
+    assert.equal(botFilePart(full, join(home, 'fora.txt')).name, 'fora.txt');
+    assert.throws(() => botFilePart(full, join(home, '.ssh/id')), /fora do que/);
+    assert.throws(() => botFilePart(full, join(home, '.cache/a')), /fora do que/);
+    assert.throws(() => botFilePart(false, 'capa.png'), /não pode mexer/);
+  } finally { await rm(home, { recursive: true, force: true }); }
+});

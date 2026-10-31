@@ -1388,3 +1388,6 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 ## 0.47.6 (versionCode 100) — sem contorno amarelo no campo; mensagens mais afastadas
 - Pedido da pessoa: ao clicar para escrever no campo do bot aparecia um retângulo amarelo de foco. Em `mobile/desktop.js` saíram o contorno de `textarea:focus-visible` e a borda/sombra de `[data-desktop-composer]:focus-within`; campos de texto ficam sem contorno ao receber foco. Botões e abas mantêm o contorno de foco por teclado.
 - Também: a coluna de leitura do PC (`readingColumn` em `mobile/desktop.js`) foi de 1080 para 1560 px; mensagens do bot ficam na esquerda e as da pessoa na direita, mais afastadas, como no OpenBot.
+
+## 0.47.7 (versionCode 101) — balões também no celular
+- Pedido da pessoa: o APK ainda mostrava as respostas do bot soltas, sem balão. Em `mobile/styles.js` a base (celular) agora tem balão cinza para o bot (canto superior esquerdo reto) e balão marrom para a pessoa, como no PC, com largura máxima de 88%/82%. Não conferido em celular real nem no emulador.

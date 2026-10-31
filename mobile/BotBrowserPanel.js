@@ -42,7 +42,7 @@ function TabIcon({ icon }) {
 }
 
 /** The tab strip: icon, title, close and "+". Only the person who took over changes tabs; the bot uses browser_tabs. */
-export function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
+export function TabStrip({ tabs, enabled, onSwitch, onClose, onNew, max = 5 }) {
   if (!tabs?.length) return null;
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
     {tabs.map(tab => <Pressable key={tab.tab} disabled={!enabled || tab.active || !onSwitch} onPress={() => onSwitch(tab.tab)} accessibilityRole="tab" accessibilityState={{ selected: tab.active }} accessibilityLabel={`Aba ${tab.tab}: ${tab.title || 'Nova aba'}`} style={[styles.tabChip, tab.active && styles.tabChipOn]}>
@@ -50,7 +50,7 @@ export function TabStrip({ tabs, enabled, onSwitch, onClose, onNew }) {
       <Text style={[styles.tabTitle, tab.active && { color: C.text }]} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
       {onClose && enabled ? <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel={`Fechar aba ${tab.tab}`} onPress={() => onClose(tab.tab)}><Icon name="close" size={12} color={C.muted} /></Pressable> : null}
     </Pressable>)}
-    {onNew && enabled && tabs.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Nova aba" onPress={onNew} style={styles.tabNew}><Icon name="plus" size={14} color={C.text2} /></Pressable> : null}
+    {onNew && enabled && tabs.length < max ? <Pressable accessibilityRole="button" accessibilityLabel="Nova aba" onPress={onNew} style={styles.tabNew}><Icon name="plus" size={14} color={C.text2} /></Pressable> : null}
   </ScrollView>;
 }
 

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Image } from 'react-native';
 import { C, Icon, F, themed } from '../theme';
 import { IconButton } from './shared';
-import BotBrowserPanel, { browserFrames } from '../BotBrowserPanel';
+import BotBrowserPanel, { browserFrames, TabStrip, AddressRow } from '../BotBrowserPanel';
+import { native } from '../desktop';
 
-const STRIP = 64;
 const s = themed(() => ({
   side: { flex: 1, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.line },
@@ -24,7 +24,7 @@ const s = themed(() => ({
   composer: { position: 'absolute', left: 0, right: 0, bottom: 22, alignItems: 'center', zIndex: 2 },
   pill: { width: '60%', minWidth: 300, maxWidth: 640, flexDirection: 'row', alignItems: 'center', gap: 8, height: 42, paddingLeft: 16, paddingRight: 6, borderRadius: 21, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2 },
   pillInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 14, outlineStyle: 'none' },
-  strip: { position: 'absolute', left: 0, right: 0, bottom: 0, height: STRIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, backgroundColor: C.bg2, borderTopWidth: 1, borderTopColor: C.line },
+  stripFlow: { height: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, backgroundColor: C.bg2, borderTopWidth: 1, borderTopColor: C.line },
   back: { width: 150, flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingHorizontal: 12, borderRadius: 10 },
   go: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.text }
 }));
@@ -69,7 +69,8 @@ const hostOf = url => { try { return new URL(url).hostname.replace(/^www\./, '')
  * The bot's browser in the bar: one card per tab with the last picture seen of it. A card opens that tab full window.
  * Pictures come from the live frames (already masked by the computer), so a tab nobody looked at yet shows its icon.
  */
-export function BrowserCards({ bot, call, onOpen }) {
+export function BrowserCards(props) { return native ? <NativeCards onOpen={props.onOpen} /> : <StreamCards {...props} />; }
+function StreamCards({ bot, call, onOpen }) {
   const [tabs, setTabs] = useState([]); const [shots, setShots] = useState({}); const [state, setState] = useState('connecting'); const live = useRef([]); const last = useRef({});
   useEffect(() => {
     setTabs([]); setShots({}); setState('connecting'); live.current = [];
@@ -111,41 +112,74 @@ export function BrowserCards({ bot, call, onOpen }) {
   </View>;
 }
 
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+/** The window's real tabs (Electron): the list, kept live by the window. */
+function useNativeTabs() {
+  const [state, setState] = useState({ active: null, tabs: [] });
+  useEffect(() => { let live = true; native.tabs().then(value => live && value && setState(value)).catch(() => {}); const off = native.onTabs(value => live && setState(value)); return () => { live = false; off(); }; }, []);
+  return state;
+}
 
-/**
- * One tab of the bot's browser filling the whole app. Where the computer lets the node dock windows, it is the real Chrome
- * of the bots laid over the window (its own tabs, address bar, mouse and keyboard, no streaming); this component keeps only
- * the strip at the bottom: back to the bars and a field to talk to the bot while it works. Anywhere else it falls back to
- * the page streamed as pictures (BotBrowserPanel).
- */
-export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSend, color }) {
-  const [real, setReal] = useState(null); const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
+/** The sidebar's view of the real browser: one card per tab, with a picture the window takes of it now and then. */
+function NativeCards({ onOpen }) {
+  const { tabs, active } = useNativeTabs(); const [shots, setShots] = useState({});
   useEffect(() => {
     let live = true;
-    (async () => {
-      for (let n = 0; n < 10 && live; n++) {
-        try { const result = await call('browser.dock', { on: true, inset: { bottom: STRIP } }); if (live) setReal(Boolean(result?.real)); return; }
-        catch (error) { if (!/ainda não abriu/.test(error.message)) break; await wait(400); }
-      }
-      if (live) setReal(false);
-    })();
-    return () => { live = false; call('browser.dock', { on: false }).catch(() => {}); };
-  }, [bot.id]);
+    const take = async () => { for (const tab of tabs.slice(0, 12)) { const uri = await native.thumb(tab.id).catch(() => null); if (!live) return; if (uri) setShots(old => ({ ...old, [tab.id]: uri })); } };
+    take(); const timer = setInterval(take, 4000); return () => { live = false; clearInterval(timer); };
+  }, [tabs.map(tab => tab.id).join()]);
+  const open = async id => { await native.activate(id); onOpen(); };
+  return <ScrollView contentContainerStyle={{ padding: 14, gap: 18 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Nova aba do navegador" onPress={async () => { await native.create(); onOpen(); }} style={({ hovered }) => [{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, hovered && s.hover]}><Icon name="plus" size={16} color={C.muted} /></Pressable>
+    {tabs.map(tab => <Pressable key={tab.id} accessibilityRole="button" accessibilityLabel={`Abrir a aba ${tab.title || hostOf(tab.url) || tab.id}`} onPress={() => open(tab.id)} style={s.card}>
+      <View style={[s.shot, { aspectRatio: 1.6 }, tab.id === active && { borderColor: C.line2 }]}>
+        {shots[tab.id] ? <Image source={{ uri: shots[tab.id] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" fadeDuration={0} /> : <Icon name="globe" size={22} color={C.faint} />}
+      </View>
+      <Text style={s.cardTitle} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
+    </Pressable>)}
+  </ScrollView>;
+}
+
+
+/**
+ * The bots' browser filling the whole app. In the Electron window it is real Chromium: the window puts the active tab over
+ * the area this component leaves empty, so the page has its own mouse, selection, keyboard and speed. The tabs, the address
+ * and the field to talk to the bot are ours. Anywhere else the page is streamed as pictures (BotBrowserPanel).
+ */
+function NativeFull({ bot, data, onClose, onSend }) {
+  const { tabs, active } = useNativeTabs(); const hole = useRef(null); const [text, setText] = useState(''); const busy = Boolean(bot && data.active?.includes(bot.id));
+  const current = tabs.find(tab => tab.id === active);
+  useEffect(() => {
+    const node = hole.current; if (!node?.getBoundingClientRect) return undefined;
+    const send = () => { const box = node.getBoundingClientRect(); native.place({ x: box.left, y: box.top, width: box.width, height: box.height }); };
+    send(); const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(send) : null; watch?.observe(node); globalThis.addEventListener('resize', send);
+    return () => { watch?.disconnect(); globalThis.removeEventListener('resize', send); native.place(null); };
+  }, []);
   const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
-  const composer = <View style={[s.pill, real && { width: '60%' }]}>
-    <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
-    <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
-  </View>;
-  if (real !== false) return <View pointerEvents="box-none" style={s.full}>
-    <View style={s.strip}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao MyBots" onPress={onClose} style={({ hovered }) => [s.back, hovered && s.hover]}><Icon name="shrink" size={16} color={C.text2} /><Text style={s.tabText}>Voltar ao MyBots</Text></Pressable>
-      <View style={{ flex: 1, alignItems: 'center' }}>{composer}</View><View style={{ width: 150 }} />
+  return <View style={s.full}>
+    <View style={{ paddingTop: 8, paddingHorizontal: 10, gap: 8, backgroundColor: C.bg2 }}>
+      <TabStrip max={50} enabled tabs={tabs.map(tab => ({ tab: tab.id, title: tab.title, url: tab.url, icon: tab.icon, active: tab.id === active }))} onSwitch={id => native.activate(id)} onClose={id => native.close(id)} onNew={() => native.create()} />
+      <AddressRow win enabled url={current?.url} back={current?.back} forward={current?.forward} onBack={() => native.nav(active, 'back')} onForward={() => native.nav(active, 'forward')} onReload={() => native.nav(active, 'reload')} onOpen={url => native.go(active, url)} placeholder="Digite um endereço ou uma busca" />
     </View>
-    {real === null ? <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text style={s.note}>Abrindo o navegador…</Text></View> : null}
+    <View ref={hole} style={{ flex: 1 }} />
+    <View style={s.stripFlow}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao MyBots" onPress={onClose} style={({ hovered }) => [s.back, hovered && s.hover]}><Icon name="shrink" size={16} color={C.text2} /><Text style={s.tabText}>Voltar ao MyBots</Text></Pressable>
+      <View style={{ flex: 1, alignItems: 'center' }}>{bot ? <View style={[s.pill, { width: '60%' }]}>
+        <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
+      </View> : null}</View><View style={{ width: 150 }} />
+    </View>
   </View>;
+}
+
+export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSend, color }) {
+  const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
+  if (native) return <NativeFull bot={bot} data={data} onClose={onClose} onSend={onSend} />;
+  const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
   return <View style={s.full}>
     <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} keepView />
-    <View pointerEvents="box-none" style={s.composer}>{composer}</View>
+    <View pointerEvents="box-none" style={s.composer}><View style={s.pill}>
+      <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
+    </View></View>
   </View>;
 }

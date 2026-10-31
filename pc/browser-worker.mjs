@@ -6,6 +6,7 @@ import { viewSize } from '../supervisor/browser-frame.mjs';
 import { redactCardNumbers } from '../supervisor/card-pan.mjs';
 import { readCheckoutTotal } from '../supervisor/wallet-checkout.mjs';
 import { safeUrl, stepCaption, BLOCKED } from '../supervisor/browser.mjs';
+import { electronInfo, connectElectron, electronCall, electronPage } from './electron-link.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
@@ -78,18 +79,16 @@ function normalUserAgent() {
   return chromeUserAgent;
 }
 // A Chrome of MyBots (a separate bot's or the shared one): no window, no saved passwords, every address checked.
-// On a computer where the node can dock windows (Hyprland), the bots' Chrome is a real window, kept out of sight until the person opens it.
-export const REAL_WINDOW = process.env.MYBOTS_REAL_BROWSER === '1';
-export async function launchContext(profile, headless = !REAL_WINDOW) {
+export async function launchContext(profile, headless = true) {
   const path = join(profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
   let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
   prefs.credentials_enable_service = false;
   prefs.profile = { ...prefs.profile, password_manager_enabled: false };
   writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
   const context = await chromium.launchPersistentContext(profile, {
-    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: headless ? { width: 1280, height: 800 } : null,
+    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: { width: 1280, height: 800 },
     acceptDownloads: true, serviceWorkers: 'block', permissions: [], ignoreDefaultArgs: ['--enable-automation'],
-    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland', '--class=mybots-browser']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
   });
   await context.clearPermissions();
   await context.route('**/*', checkRoute);
@@ -168,7 +167,8 @@ export class BrowserSession {
     if (this.closing) throw new Error('O navegador do bot foi interrompido.');
     if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
     const safe = url ? await allowedUrl(url) : null;
-    const page = await this.context.newPage();
+    const page = this.context.electron ? await electronPage(this.context) : await this.context.newPage();
+    if (this.context.electron) await page.route('**/*', route => this.route(route));
     if (this.closing) { await this.closePage(page); throw new Error('O navegador do bot foi interrompido.'); }
     if (this.mode === 'shared') this.addPage(page);
     if (this.mode === 'mine') {
@@ -183,6 +183,8 @@ export class BrowserSession {
   }
   async closePage(page) {
     if (page.isClosed()) return;
+    // Electron cannot close a tab over the protocol: its window does.
+    if (page.mybotsMarker && this.context?.electron) { await electronCall(this.context.electron, '/tab/close', { marker: page.mybotsMarker }); return; }
     if (this.mode !== 'mine') return page.close();
     const cdp = this.metrics.get(page) || await page.context().newCDPSession(page);
     const { targetInfo } = await cdp.send('Target.getTargetInfo');
@@ -531,7 +533,7 @@ export class BrowserSession {
   tabList() { return (this.pages || []).map((page, n) => ({ tab: n + 1, title: this.tabTitles?.get(page) || page.url().slice(0, 100), active: page === this.page })); }
   async activate(page) {
     const watching = Boolean(this.cdp); if (watching) await this.view(false);
-    this.page = page; if (this.device) await this.deviceView({ ...this.device, fit: this.fit }); this.login = null; this.elementFrames = null; await page.bringToFront();
+    this.page = page; if (this.device) await this.deviceView({ ...this.device, fit: this.fit }); this.login = null; this.elementFrames = null; if (page.mybotsMarker && this.context?.electron) await electronCall(this.context.electron, '/tab/activate', { marker: page.mybotsMarker }).catch(() => {}); else await page.bringToFront();
     if (watching) await this.view(true);
   }
   async info() {
@@ -776,7 +778,8 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
   // The shared Chrome (the default): one profile for every bot that uses it, so a login made by one serves all of them.
   // Old logins are copied in before any bot's page opens.
   const imports = [];
-  const open = () => sharedContext ||= launchContext(join(process.argv[2], 'chrome')).then(async context => {
+  // With the MyBots window (Electron) running, the shared browser is the window's own: real tabs the person and the bots both use.
+  const open = () => sharedContext ||= (async () => { const info = process.env.MYBOTS_NODE_DIR && electronInfo(process.env.MYBOTS_NODE_DIR); if (info) { try { return await connectElectron(info); } catch {} } return launchContext(join(process.argv[2], 'chrome')); })().then(async context => {
     context.on('close', () => { sharedContext = null; });
     for (let n = 0; n < imports.length; n++) await imports[n](context).catch(() => {});
     return context;

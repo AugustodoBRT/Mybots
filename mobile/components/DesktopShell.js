@@ -5,7 +5,7 @@ import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
 import { CLAUDE_MARK, OPENAI_MARK, CLAUDE_COLOR } from '../brand';
 import { C, Icon, F, themed } from '../theme';
-import { desktopBus } from '../desktop';
+import { desktopBus, native } from '../desktop';
 import { Avatar, RoomFaces, IconButton, Notice, ApprovalCard, DesktopPair, greeting, botLine, latestOf, latestInRoom, plain, shortTime, findModel, offline } from './shared';
 import { RoutinesSheet, NegotiationsSheet } from './Lists';
 import FaceArt from '../FaceArt';
@@ -273,13 +273,13 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
         {side.active === 'settings' ? profilePanel
           : side.active === 'file' ? filePanel
           : side.active === 'today' ? <TodayPanel data={data} onOpen={id => onOpen(id)} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} />
-          : side.active === 'browser' ? (!bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
+          : side.active === 'browser' ? (native ? <BrowserCards onOpen={() => setFull(true)} /> : !bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
             : browserMode(bot) === 'claude' ? <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={who => onBrowserControl(bot.id, who)} onClose={() => closeKind('browser')} side onFile={onFile} />
             : <BrowserCards key={bot.id} bot={bot} call={call} onOpen={() => setFull(true)} />)
           : <SideMenu bot={bot} waiting={waiting} onPick={kind => { if (kind === 'settings') { onProfile(bot); openKind('settings'); } else openKind(kind); }} />}
       </SideFrame>
     </DesktopReveal>
-    {full && bot ? <BrowserFull bot={bot} data={data} call={call} onControl={who => onBrowserControl(bot.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={onSend} /> : null}
+    {full && (bot || native) ? <BrowserFull bot={bot} data={data} call={call} onControl={who => onBrowserControl(bot.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={onSend} /> : null}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
     <Help visible={help} onClose={() => setHelp(false)} />
     {menu ? <Modal transparent visible animationType="none" onRequestClose={() => setMenu(null)}><Pressable style={{ flex: 1 }} onPress={() => setMenu(null)} onContextMenu={event => { event?.preventDefault?.(); setMenu(null); }}>

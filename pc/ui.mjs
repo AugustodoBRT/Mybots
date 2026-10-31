@@ -76,12 +76,6 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!['start', 'stop', 'cancel'].includes(action)) throw new Error('Ditado inválido.');
           reply(id, { result: await dictation[action](ws.dictation) });
         }
-        // The real Chrome window: laid over the area the window asks for, or sent away again.
-        else if (method === 'browser.dock') {
-          const dock = browser?.dock; if (!dock) { reply(id, { result: { real: false } }); return; }
-          if (params?.on) { ws.docked = true; reply(id, { result: { real: true, box: await dock.dock(Object.fromEntries(['top', 'right', 'bottom', 'left'].map(side => [side, Number.isFinite(params.inset?.[side]) ? Math.max(0, Math.min(4000, params.inset[side])) : 0]))) } }); }
-          else { ws.docked = false; await dock.undock(); reply(id, { result: { real: true } }); }
-        }
         else if (method === 'browser.input') {
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
@@ -100,7 +94,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
         }
       } catch (error) { reply(id, { error: error.message }); }
     });
-    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); if (ws.docked) browser?.dock?.undock().catch(() => {}); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
+    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
   });
   /** A bot's file, saved in ~/Downloads (and opened with the desktop's default app when asked). */
   async function saveFile({ id, name, action }) {

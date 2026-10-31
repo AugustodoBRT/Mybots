@@ -18,9 +18,9 @@ if (desktop) {
   const motion = document.createElement('style'); motion.id = 'mybots-motion';
   motion.textContent = `
     [role=button], [role=tab] { transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
-    [role=button]:focus-visible, [role=tab]:focus-visible, textarea:focus-visible { outline: 2px solid #EAB875; outline-offset: 3px; }
+    [role=button]:focus-visible, [role=tab]:focus-visible { outline: 2px solid #EAB875; outline-offset: 3px; }
     [data-desktop-message] { animation: message-in 220ms ease-out both; }
-    [data-desktop-composer]:focus-within { border-color: #A68355 !important; box-shadow: 0 0 0 3px #EAB8750B; }
+    textarea, input, textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; box-shadow: none !important; }
     @keyframes message-in { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }
   `; document.head.appendChild(motion);
@@ -40,4 +40,4 @@ export const desktopBus = {
   emit(name, value) { listeners.get(name)?.forEach(fn => fn(value)); }
 };
 // Conversation text and the message field stay in a calm column of about 760 px.
-export const readingColumn = desktop ? { width: '100%', maxWidth: 1080, alignSelf: 'center' } : {};
+export const readingColumn = desktop ? { width: '100%', maxWidth: 1560, alignSelf: 'center' } : {};

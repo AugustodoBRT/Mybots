@@ -1391,3 +1391,6 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 
 ## 0.47.7 (versionCode 101) — balões também no celular
 - Pedido da pessoa: o APK ainda mostrava as respostas do bot soltas, sem balão. Em `mobile/styles.js` a base (celular) agora tem balão cinza para o bot (canto superior esquerdo reto) e balão marrom para a pessoa, como no PC, com largura máxima de 88%/82%. Não conferido em celular real nem no emulador.
+
+## 0.47.8 (versionCode 102) — balão do usuário legível no celular
+- Erro da 0.47.7: o balão da pessoa escolhia a cor comparando `C.bg` com `#131416` (fundo só do PC); no celular o fundo é preto, caía no bege claro e o texto claro sumia. Agora o escuro/claro vem da luminosidade de `C.bg`.

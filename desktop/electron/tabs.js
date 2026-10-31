@@ -21,6 +21,12 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
   const hints = { brands: [{ brand: 'Not?A_Brand', version: '24' }, { brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }],
     fullVersionList: [{ brand: 'Not?A_Brand', version: '24.0.0.0' }, { brand: 'Chromium', version: full }, { brand: 'Google Chrome', version: full }],
     platform: 'Linux', platformVersion: '6.0.0', architecture: 'x86', model: '', mobile: false, bitness: '64', wow64: false };
+  // Electron sends no client-hint headers at all; a Chrome sends these three on every request (done at the person's request).
+  ses.webRequest.onBeforeSendHeaders((details, done) => {
+    const headers = details.requestHeaders;
+    headers['Sec-CH-UA'] = `"Not?A_Brand";v="24", "Chromium";v="${major}", "Google Chrome";v="${major}"`; headers['Sec-CH-UA-Mobile'] = '?0'; headers['Sec-CH-UA-Platform'] = '"Linux"';
+    done({ requestHeaders: headers });
+  });
   const present = contents => { try { if (!contents.debugger.isAttached()) contents.debugger.attach('1.3'); contents.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: agent, acceptLanguage: 'pt-BR,pt,en-US,en', platform: 'Linux x86_64', userAgentMetadata: hints }).catch(() => {}); } catch {} };
   // The browser keeps its own rules: no permissions asked silently, downloads go to the bots' folder.
   ses.setPermissionRequestHandler((_contents, _permission, done) => done(false));
@@ -43,7 +49,8 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
   };
   function create(url = 'about:blank', { owner = null, activate = true } = {}) {
     const id = ++serial, marker = randomBytes(6).toString('hex');
-    const view = new WebContentsView({ webPreferences: { session: ses, sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false, backgroundThrottling: false } });
+    const view = new WebContentsView({ webPreferences: { session: ses, // window.chrome, as a Chrome has it, comes from tab-preload.js
+    preload: require('node:path').join(__dirname, 'tab-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false, backgroundThrottling: false } });
     view.setBackgroundColor('#ffffff');
     const contents = view.webContents, tab = { view, contents, marker, owner, icon: '' };
     tabs.set(id, tab); order.push(id);

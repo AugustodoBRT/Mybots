@@ -18,6 +18,7 @@ import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalSt
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
+import { decodeWindowFrame } from './window-frame';
 import { setImageReader } from './attachment-images';
 import { createTermuxBackup } from './backup';
 import { RoomScreen } from './screens/Room';
@@ -297,6 +298,7 @@ function AppMain() {
     }
   }), {
     // The window on the computer: a refused token means the page is older than the node's; a fresh page has the right one.
+    onFrame: buffer => { decodeWindowFrame(buffer).then(frame => { if (!frame) return; try { for (const listener of browserFrames) listener(frame); } finally { frame.bitmap.close(); } }).catch(() => {}); },
     onRefused: error => { if (desktop && /Acesso negado/.test(error?.message || '')) setTimeout(() => globalThis.location?.reload(), 1500); }
   });
 

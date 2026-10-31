@@ -67,7 +67,7 @@ const hostOf = url => { try { return new URL(url).hostname.replace(/^www\./, '')
  * Pictures come from the live frames (already masked by the computer), so a tab nobody looked at yet shows its icon.
  */
 export function BrowserCards({ bot, call, onOpen }) {
-  const [tabs, setTabs] = useState([]); const [shots, setShots] = useState({}); const [state, setState] = useState('connecting'); const live = useRef([]);
+  const [tabs, setTabs] = useState([]); const [shots, setShots] = useState({}); const [state, setState] = useState('connecting'); const live = useRef([]); const last = useRef({});
   useEffect(() => {
     setTabs([]); setShots({}); setState('connecting'); live.current = [];
     const listener = data => {
@@ -75,10 +75,15 @@ export function BrowserCards({ bot, call, onOpen }) {
       const list = data.tabbar?.tabs || data.tabs;
       if (list) { live.current = list; setTabs(list); }
       if (data.closed) setState('closed');
-      else if (data.image && data.width) {
+      else if ((data.blob || data.image) && data.width) {
         setState('live');
+        // A card needs a new picture only now and then.
         const now = live.current.find(tab => tab.active);
-        if (now) setShots(old => ({ ...old, [now.tab]: { image: data.image, ratio: data.width / data.height, url: now.url || '' } }));
+        if (now && Date.now() - (last.current[now.tab] || 0) > 1500) {
+          last.current[now.tab] = Date.now();
+          const uri = data.blob ? URL.createObjectURL(data.blob) : 'data:image/jpeg;base64,' + data.image;
+          setShots(old => { if (data.blob && old[now.tab]?.uri) URL.revokeObjectURL(old[now.tab].uri); return { ...old, [now.tab]: { uri, ratio: data.width / data.height, url: now.url || '' } }; });
+        }
       }
     };
     browserFrames.add(listener);
@@ -93,7 +98,7 @@ export function BrowserCards({ bot, call, onOpen }) {
       {tabs.map(tab => { const shot = shots[tab.tab];
         return <Pressable key={tab.tab} accessibilityRole="button" accessibilityLabel={`Abrir a aba ${tab.title || hostOf(tab.url) || tab.tab}`} onPress={() => pick(tab)} style={s.card}>
           <View style={[s.shot, { aspectRatio: shot?.ratio || 1.6 }, tab.active && { borderColor: C.line2 }]}>
-            {shot ? <Image source={{ uri: 'data:image/jpeg;base64,' + shot.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" fadeDuration={0} />
+            {shot ? <Image source={{ uri: shot.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" fadeDuration={0} />
               : <><Icon name="globe" size={22} color={C.faint} /><Text style={[s.cardTitle, { color: C.faint, marginTop: 6 }]} numberOfLines={1}>{hostOf(tab.url) || 'Nova aba'}</Text></>}
           </View>
           <Text style={s.cardTitle} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
@@ -108,7 +113,7 @@ export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSen
   const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
   const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
   return <View style={s.full}>
-    <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} />
+    <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} keepView />
     <View pointerEvents="box-none" style={s.composer}>
       <View style={s.pill}>
         <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />

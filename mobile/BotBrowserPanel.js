@@ -254,7 +254,7 @@ function LiveImages({ frame }) {
  * The bot's own Chrome on the computer, live inside MyBots: frames come from the computer; after "Assumir" a tap
  * clicks there, a drag scrolls, and the text box types into the page. Points go as fractions of the frame.
  */
-function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control, onClose, side, onFile, color }) {
+function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control, onClose, side, onFile, color, keepView }) {
   // The computer's window always drives the page: no "Assumir", the bot and the person share it.
   const assumed = assumedByBot || Boolean(desktopWindow);
   const [tabbar, setTabbar] = useState(null); const [action, showAction] = useBotAction(); const [downloads, setDownloads] = useState(false); const [notice, setNotice] = useState(null); const seen = useRef(null);
@@ -265,7 +265,7 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
   const [loading, setLoading] = useState(false); const [slow, setSlow] = useState(false); const [circle, setCircle] = useState(null); const circleTimer = useRef(null);
   const [viewport, setViewport] = useState(null); const [desktop, setDesktop] = useState(false);
   // The computer's window is a normal desktop browser: the page takes the size of its area, no phone emulation.
-  const viewportInput = () => ({ type: 'viewport', width: Math.round(viewport.cssWidth), height: Math.round(viewport.cssHeight), deviceScaleFactor: desktopWindow ? 1 : PixelRatio.get(), ...(desktopWindow ? { fit: true } : {}) });
+  const viewportInput = () => ({ type: 'viewport', width: Math.round(viewport.cssWidth), height: Math.round(viewport.cssHeight), deviceScaleFactor: desktopWindow ? (globalThis.devicePixelRatio || 1) : PixelRatio.get(), ...(desktopWindow ? { fit: true } : {}) });
   useEffect(() => { if (assumed) { returning.current = false; challengeZoom.current = null; } if (assumed && viewport) send(viewportInput()); }, [assumed, viewport]);
   // A Chrome that reopened starts as a desktop again: a frame shaped unlike the phone's page brings the phone's size back.
   const resized = useRef(0);
@@ -296,9 +296,17 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
     if (data.solved && data.autoReturn && live.current.assumed && !returning.current) { returning.current = true; live.current.control('bot'); }
   };
   useEffect(() => {
-    setFrame(null); setState('connecting');
+    setFrame(null); setState('connecting'); lastMeta.current = ''; shown.current = false;
     const listener = data => {
       if (data?.botId !== bot.id) return;
+      // The computer's window paints each picture straight onto the canvas; the view re-renders only when something else changed.
+      if (data.bitmap) {
+        paint(data.bitmap);
+        const { bitmap, blob, ...meta } = data, signature = `${meta.width}x${meta.height}|${meta.url}|${meta.title}|${JSON.stringify(meta.tabs)}`;
+        if (signature !== lastMeta.current) { lastMeta.current = signature; setFrame(meta); }
+        if (!shown.current) { shown.current = true; setState('live'); setProblem(''); }
+        return;
+      }
       extras(data);
       if (data.captcha) challenge(data.captcha);
       if (typeof data.loading === 'boolean') setLoading(data.loading);
@@ -313,11 +321,18 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
     browserFrames.add(listener);
     const watch = () => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).then(result => { if (!result?.online) setState('offline'); }).catch(e => { setState('offline'); setProblem(e.message); });
     watch();
-    return () => { browserFrames.delete(listener); call('browser.view', { botId: bot.id, on: false }).catch(() => {}); };
+    return () => { browserFrames.delete(listener); if (!keepView) call('browser.view', { botId: bot.id, on: false }).catch(() => {}); };
   }, [bot.id, browserMode(bot)]);
   useEffect(() => { if (viewport) call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport }).catch(e => setProblem(e.message)); }, [viewport, bot.id, browserMode(bot)]);
   const reopen = () => { setState('connecting'); call('browser.view', { botId: bot.id, on: false }).catch(() => {}).then(() => call('browser.view', { botId: bot.id, on: true, native: Boolean(BotFrameView), ...viewport })).catch(e => setProblem(e.message)); };
   const touch = useRef(null);
+  // The window's picture of the page: a canvas painted at the pace the pictures arrive.
+  const canvas = useRef(null); const lastMeta = useRef(''); const shown = useRef(false);
+  const paint = bitmap => {
+    const node = canvas.current; if (!node) return;
+    if (node.width !== bitmap.width || node.height !== bitmap.height) { node.width = bitmap.width; node.height = bitmap.height; }
+    (node.context ||= node.getContext('2d', { alpha: false })).drawImage(bitmap, 0, 0);
+  };
   // Mouse wheel scrolls the page under the pointer.
   const liveNode = useRef(null);
   useEffect(() => {
@@ -334,9 +349,10 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
     onStartShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onMoveShouldSetPanResponder: () => live.current.assumed && Boolean(live.current.frame),
     onPanResponderGrant: event => {
-      setCircle({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }); clearTimeout(circleTimer.current); circleTimer.current = setTimeout(() => setCircle(null), 350);
+      // The touch circle and the double-tap zoom belong to the phone; on the computer the mouse is just a mouse.
+      if (!desktopWindow) { setCircle({ x: event.nativeEvent.locationX, y: event.nativeEvent.locationY }); clearTimeout(circleTimer.current); circleTimer.current = setTimeout(() => setCircle(null), 350); }
       const p = point(event); touch.current = { ...p, at: 0, dx: 0, dy: 0 };
-      if (Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, local(event.nativeEvent), view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
+      if (!desktopWindow && Date.now() - lastTap.current < 300) { touch.current.zooming = true; setZoom(view => zoomAt(view, local(event.nativeEvent), view.scale > 1 ? 1 : 2.5, size.current.width, size.current.height)); return; }
       if (!live.current.desktop) send({ type: 'touch', phase: 'touchStart', points: [p] });
     },
     onPanResponderMove: (event, gesture) => {
@@ -351,6 +367,7 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
         return;
       }
       if (start.zooming) return;
+      if (desktopWindow) return;
       setDrag({ x: gesture.dx - start.dx, y: gesture.dy - start.dy });
       if (Date.now() - start.at < 50) return;
       start.at = Date.now();
@@ -389,8 +406,9 @@ function PcBrowserLive({ bot, call, assumed: assumedByBot, busy, error, control,
       onLayout={event => { const layout = event.nativeEvent.layout; area.current = layout; setAreaSize({ width: layout.width, height: layout.height }); const next = { maxWidth: PixelRatio.getPixelSizeForLayoutSize(layout.width), maxHeight: PixelRatio.getPixelSizeForLayoutSize(layout.height), cssWidth: layout.width, cssHeight: layout.height }; setViewport(current => current?.maxWidth === next.maxWidth && current?.maxHeight === next.maxHeight ? current : next); }} {...responder.panHandlers}>
       {/* The page keeps its proportions: a desktop page on a standing phone gets bands instead of being stretched. */}
       <View pointerEvents="none" style={fitted(frame, areaSize, desktopWindow ? 0 : 4)} onLayout={event => { size.current = event.nativeEvent.layout; }}>
-      {BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; extras(data); if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
-        : <View style={styles.empty}><Text style={styles.hint}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o navegador do bot no computador…'}</Text></View>}
+      {desktopWindow ? React.createElement('canvas', { ref: canvas, style: { position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' } }) : null}
+      {desktopWindow ? null : BotFrameView ? <BotFrameView pointerEvents="none" key={bot.id} botId={bot.id} style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]} onMetadata={event => { const data = event.nativeEvent; extras(data); if (data.captcha) challenge(data.captcha); if (typeof data.loading === 'boolean') setLoading(data.loading); if (typeof data.slow === 'boolean') setSlow(data.slow); if (typeof data.desktop === 'boolean') setDesktop(data.desktop); if (data.error) setProblem(data.error); else if (data.closed) setState('closed'); else if (data.width) { setFrame(data); setState('live'); setProblem(''); } }} /> : frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX:zoom.translateX+drag.x }, { translateY:zoom.translateY+drag.y }, { rotate:`${zoom.rotation}deg` }, { scale:zoom.scale }] }]}><LiveImages key={bot.id} frame={frame} /></View>
+        : <View style={[styles.empty, desktopWindow && state === 'live' && { display: 'none' }]}><Text style={styles.hint}>{state === 'closed' ? 'O navegador deste bot está fechado.' : state === 'offline' ? 'O computador está desconectado. A página aparece quando ele voltar.' : 'Abrindo o navegador do bot no computador…'}</Text></View>}
         {frame ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { transform: [{ translateX: zoom.translateX + drag.x }, { translateY: zoom.translateY + drag.y }, { rotate: `${zoom.rotation}deg` }, { scale: zoom.scale }] }]}><BotCursor action={action} color={color || C.accent} /></View> : null}
       </View>
       <StepCaption action={action} />
@@ -432,7 +450,7 @@ function fitted(frame, room, inset = 4) {
   return { position: 'absolute', left: (width - frame.width * k) / 2, top: (height - frame.height * k) / 2, width: frame.width * k, height: frame.height * k, backgroundColor: '#FFFFFF' };
 }
 
-export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc, side, onFile, color }) {
+export default function BotBrowserPanel({ bot, browser, onControl, onClose, call, pc, side, onFile, color, keepView }) {
   const { height: windowHeight } = useWindowDimensions();
   const [page, setPage] = useState(browser?.pages?.[bot.id] || null);
   const [info, setInfo] = useState(null);
@@ -448,7 +466,7 @@ export default function BotBrowserPanel({ bot, browser, onControl, onClose, call
     try { await onControl(who); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const act = action => browserAction(bot.id, action).catch(() => {});
-  if (onPc && !chrome && call) return <PcBrowserLive bot={bot} call={call} assumed={assumed} busy={busy} error={error} control={control} onClose={onClose} side={side} onFile={onFile} color={color} />;
+  if (onPc && !chrome && call) return <PcBrowserLive bot={bot} call={call} assumed={assumed} busy={busy} error={error} control={control} onClose={onClose} side={side} onFile={onFile} color={color} keepView={keepView} />;
   if (onPc) return <View style={[styles.panel, side && styles.sidePanel]}>
     <Text style={styles.title}>{chrome ? 'Chrome principal · Claude' : `${browserName(bot)} no computador`}</Text>
     <Text style={styles.url}>{browser.pages[bot.id].url}</Text>

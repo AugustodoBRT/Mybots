@@ -37,6 +37,18 @@ test('the computer window fits the page to its own area as a desktop browser, wi
   assert.equal(s.fit, false);
 });
 
+test('the computer window streams the page fast (30+ pictures a second) at the size of its area', real, async t => {
+  const s = await session(t); const frames = [];
+  s.frame = frame => { if (frame.image) frames.push(frame); };
+  await s.page.setContent('<body style="margin:0"><div id=b style="width:200px;height:200px;background:red;position:absolute"></div><script>let x=0;(function f(){document.getElementById("b").style.left=(x=(x+7)%800)+"px";requestAnimationFrame(f)})()</script>');
+  await s.input({ type: 'viewport', width: 1200, height: 700, deviceScaleFactor: 1, fit: true });
+  await s.view(true, { maxWidth: 1200, maxHeight: 700, interactive: true, fast: true });
+  frames.length = 0; await new Promise(resolve => setTimeout(resolve, 2000)); const count = frames.length;
+  await s.view(false);
+  assert.ok(count >= 60, `só ${count} quadros em 2 s`);
+  assert.deepEqual([frames.at(-1).width, frames.at(-1).height], [1200, 700]);
+});
+
 test('real touch dispatch reaches the page and preserves start/move/end', real, async t => {
   const s = await session(t);
   await s.page.setContent('<meta name="viewport" content="width=device-width"><script>window.touches=[]; for(const k of ["touchstart","touchmove","touchend"]) document.addEventListener(k,e=>touches.push(e.type));</script>');

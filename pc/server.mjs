@@ -191,8 +191,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const updateView = async (botId, force = false) => {
     const sinks = [...(views.get(botId) || [])];
     const sizes = sinks.map(sink => sink.options || viewSize());
-    const wanted = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId) || sinks.some(sink => sink.direct), home: sinks.some(sink => sink.direct), congested: sinks.some(sink => sink.remoteCongested) };
-    const bytes = Math.max(0, ...sinks.map(sink => sink.bufferedAmount?.() || 0), wanted.congested ? 300_000 : 0);
+    const wanted = { on: sinks.length > 0, maxWidth: sizes.length ? Math.max(...sizes.map(size => size.maxWidth)) : 1280, maxHeight: sizes.length ? Math.max(...sizes.map(size => size.maxHeight)) : 800, interactive: assumed.has(botId) || sinks.some(sink => sink.direct), fast: sinks.some(sink => sink.direct), home: sinks.some(sink => sink.direct), congested: sinks.some(sink => sink.remoteCongested) };
+    // The window is on this very computer: its pace is never lowered for congestion.
+    const bytes = sinks.some(sink => sink.direct) ? 0 : Math.max(0, ...sinks.map(sink => sink.bufferedAmount?.() || 0), wanted.congested ? 300_000 : 0);
     const options = viewGovernor.next(botId, wanted, bytes);
     if (!options) { if (force && viewOptions.has(botId)) await browser.command(botId, 'view', viewOptions.get(botId)); return; }
     const previous = viewOptions.get(botId);

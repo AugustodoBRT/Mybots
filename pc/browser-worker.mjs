@@ -217,7 +217,8 @@ export class BrowserSession {
     if (on && options?.home && !this.opened && this.page.url() === 'about:blank') { this.opened = true; this.page.goto('https://www.google.com/', { timeout: 15000 }).catch(() => {}); }
     const wanted = { ...this.viewOptions, ...options }; Object.assign(wanted, viewSize(wanted));
     wanted.interactive = Boolean(wanted.interactive); wanted.congested = Boolean(wanted.congested);
-    const changed = !this.viewOptions || ['maxWidth','maxHeight','interactive','congested'].some(key => wanted[key] !== this.viewOptions[key]);
+    wanted.fast = Boolean(wanted.fast);
+    const changed = !this.viewOptions || ['maxWidth','maxHeight','interactive','congested','fast'].some(key => wanted[key] !== this.viewOptions[key]);
     this.viewOptions = wanted;
     if ((!on || changed) && this.cdp) {
       const cdp = this.cdp; this.cdp = null; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
@@ -226,7 +227,8 @@ export class BrowserSession {
     if (on && !this.pageTimer) this.pageTimer = setInterval(() => this.checkChallenge().catch(() => {}), 500);
     if (!on) { clearInterval(this.pageTimer); this.pageTimer = null; }
     if (on) await this.maskFields();
-    const quality = (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
+    // The computer's own window (fast) gets a picture as good and as frequent as the screen allows; the phone's link stays frugal.
+    const quality = wanted.fast ? 85 : (wanted.interactive ? 70 : 55) - (wanted.congested ? 20 : 0);
     if (on && !this.cdp) {
       const cdp = this.cdp = await this.context.newCDPSession(this.page);
       this.lastFrameAt = 0;
@@ -364,7 +366,7 @@ export class BrowserSession {
       if (Date.now() - (this.lastInfoAt || 0) >= 500) { this.lastInfoAt = Date.now(); this.info().catch(() => {}); }
       this.emitFrame({ ...next, seq: ++this.seq, url: this.page?.url() || '', title: this.tabTitles?.get(this.page) || '', tabs: this.tabList() });
     };
-    const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
+    const delay = Math.max(0, Math.ceil(1000 / (this.viewOptions.fast ? 60 : this.viewOptions.interactive ? 15 : 5)) - (Date.now() - this.lastFrameAt));
     if (delay) this.frameTimer = setTimeout(flush, delay); else flush();
   }
   async checkChallenge() {
@@ -490,7 +492,7 @@ export class BrowserSession {
     // The computer's window sizes the page to its own area as a normal desktop browser (no phone emulation, no fixed 1280x800).
     this.fit = args.fit === true;
     this.desktop = this.fit || this.siteViews[origin] === true || this.challengeDesktop?.origin === origin;
-    const metrics = this.fit ? { width: args.width, height: args.height, deviceScaleFactor: 1, mobile: false } : this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
+    const metrics = this.fit ? { width: args.width, height: args.height, deviceScaleFactor: args.deviceScaleFactor, mobile: false } : this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
     await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });
     this.emitFrame({ desktop: this.desktop, viewport: metrics, inputKey: this.inputKeys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64') });

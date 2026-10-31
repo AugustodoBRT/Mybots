@@ -61,7 +61,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           ws.views ||= new Map();
           const on = Boolean(params.on);
-          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => ws.readyState === 1 && ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame, ...(frame.image ? { image: frame.image.toString('base64') } : {}) } })), () => ws.bufferedAmount > 1_000_000));
+          if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => { if (ws.readyState !== 1) return; if (Buffer.isBuffer(frame.image)) ws.send(windowFrame(params.botId, frame)); else ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame } })); }, () => ws.bufferedAmount > 1_000_000));
           const sink = ws.views.get(params.botId);
           if (sink) { sink.bufferedAmount = () => ws.bufferedAmount; sink.direct = true; }
           if (!on) ws.views.delete(params.botId);
@@ -118,6 +118,16 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
     broadcast(event, data = {}) { if (event === 'desktop.phone') offlineSince = data.online ? null : Date.now(); for (const ws of clients) if (ws.readyState === 1) ws.send(JSON.stringify({ event, data })); },
     close: () => { for (const ws of clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); }
   };
+}
+
+/**
+ * A picture of the bot's Chrome for the window, as one binary message (no base64, no JSON around the JPEG):
+ * 0x01, u8 id length, id, u32 meta length, meta (JSON without the picture), JPEG.
+ */
+export function windowFrame(botId, { image, ...meta }) {
+  const id = Buffer.from(botId), info = Buffer.from(JSON.stringify(meta)), head = Buffer.alloc(2 + id.length + 4);
+  head[0] = 1; head[1] = id.length; id.copy(head, 2); head.writeUInt32BE(info.length, 2 + id.length);
+  return Buffer.concat([head, info, image]);
 }
 
 /** Sends the newest frame when the connection has room; frames in between are skipped, never queued. */

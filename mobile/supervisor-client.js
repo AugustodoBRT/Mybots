@@ -19,8 +19,11 @@ export class SupervisorClient {
           this.onConnection(true); resolve();
         }).catch(error => { clearTimeout(timeout); this.onRefused?.(error); reject(error); ws.close(); });
       };
+      ws.binaryType = 'arraybuffer';
       ws.onmessage = event => {
         if (this.socket !== ws) return;
+        // A picture of a bot's Chrome from the computer: binary, see windowFrame in pc/ui.mjs.
+        if (typeof event.data !== 'string') { this.onFrame?.(event.data); return; }
         let message; try { message = JSON.parse(event.data); } catch { return; }
         if (message.event) { this.onEvent(message.event, message.data); return; }
         const pending = this.pending.get(message.id);

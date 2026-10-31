@@ -16,7 +16,11 @@ async function until(check) { for (let i = 0; i < 800; i++) { if (check()) retur
 /** A client speaking the supervisor's protocol (the app on the phone, or the window on the computer). */
 async function client(url, token, origin) {
   const ws = new WebSocket(url, origin ? { origin } : {}); const frames = []; const waiting = new Map(); let serial = 0;
-  ws.on('message', raw => { const message = JSON.parse(raw); if (message.event === 'browser.frame') frames.push(message.data); else waiting.get(message.id)?.(message); });
+  ws.on('message', (raw, binary) => {
+    // The window gets each picture as one binary message (windowFrame in pc/ui.mjs); here it is turned back into the old shape.
+    if (binary) { const id = raw[1], size = raw.readUInt32BE(2 + id), start = 6 + id; frames.push({ botId: raw.subarray(2, 2 + id).toString(), ...JSON.parse(raw.subarray(start, start + size)), image: raw.subarray(start + size).toString('base64') }); return; }
+    const message = JSON.parse(raw); if (message.event === 'browser.frame') frames.push(message.data); else waiting.get(message.id)?.(message);
+  });
   await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
   const call = (method, params = {}) => new Promise((resolve, reject) => {
     const id = String(++serial); waiting.set(id, message => { waiting.delete(id); message.error ? reject(new Error(message.error)) : resolve(message.result); });

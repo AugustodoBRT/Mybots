@@ -1394,3 +1394,7 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 
 ## 0.47.8 (versionCode 102) — balão do usuário legível no celular
 - Erro da 0.47.7: o balão da pessoa escolhia a cor comparando `C.bg` com `#131416` (fundo só do PC); no celular o fundo é preto, caía no bege claro e o texto claro sumia. Agora o escuro/claro vem da luminosidade de `C.bg`.
+
+## 0.47.9 (versionCode 103) — logo nova em todo lugar
+- Logo da pessoa (`logo/assinatura/`: gato âmbar `#EABB75` sobre `#111215`) aplicada: ícone do celular (adaptive foreground/background e `ic_launcher*.webp`, ícone de notificação monocromático `mybots_notification.xml`), tela de abertura (`splashscreen_logo` em todas as densidades; fundo `#111215` no claro e no escuro), `mobile/assets/brand/*`, ícones do Electron/Tauri, `public/icon.svg` e README (`docs/screenshots/logo.png`, `icone.png`). Fonte dos PNGs: `logo/assinatura/icone.png`.
+- Não conferido: aparência real no launcher do celular e na barra de tarefas do Hyprland.

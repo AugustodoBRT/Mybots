@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/screenshots/icone.png" width="96" alt="Ícone do MyBots" />
+<img src="docs/screenshots/logo.png" width="420" alt="MyBots" />
 
 # MyBots
 

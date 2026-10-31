@@ -3,7 +3,7 @@
     "name": "MyBots",
     "slug": "mybots",
     "scheme": "mybots",
-    "version": "0.47.8",
+    "version": "0.47.9",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
@@ -12,13 +12,13 @@
     ],
     "android": {
       "package": "com.mybots.app",
-      "versionCode": 102
+      "versionCode": 103
     },
     "icon": "./assets/brand/icon.png",
     "splash": {
       "image": "./assets/brand/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#111215"
     }
   }
 }

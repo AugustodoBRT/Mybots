@@ -1,0 +1,12 @@
+MYBOTS — ASSINATURA
+
+Símbolo derivado do bot MyBots do aplicativo: corpo largo, duas pontas, olhos redondos vazados e ausência de boca.
+A marca compacta usa uma silhueta sólida; a versão de partículas continua como expressão animada do personagem.
+
+Dourado #EABB75; fundo #111215; texto claro #F6F3ED.
+SVGs vetoriais com letras desenhadas em curvas, sem dependência de fontes.
+PNGs: símbolo/ícone 2048px; assinatura horizontal 4080×1536.
+Usar logo-transparente em fundos claros e logo-negativa em fundos escuros.
+Margem livre recomendada: ao menos o diâmetro de um olho.
+Em tamanhos pequenos usar apenas o símbolo.
+Os arquivos do aplicativo não foram substituídos.

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { chromeEndpoint, IMPORTED } from './browser-worker.mjs';
 import { mkdirSync, existsSync } from 'node:fs';
+import { realWindowWanted } from './dock.mjs';
 
 // "own" is the pre-v58 name of a bot's Chrome; those bots moved to the shared one.
 const MODES = ['shared', 'separate', 'mine', 'claude'];
@@ -15,7 +16,7 @@ const MODES = ['shared', 'separate', 'mine', 'claude'];
  * default) and in Meu Chrome share one process each, with their own tabs; a separate browser has a process per bot.
  */
 export class PcBrowser {
-  constructor(directory, { onFrame = () => {}, mineProfile = join(homedir(), '.config/google-chrome'), downloads = join(directory, 'downloads') } = {}) { this.directory = directory; this.workers = new Map(); this.onFrame = onFrame; this.modes = new Map(); this.mineProfile = mineProfile; this.downloads = downloads; this.imports = new Set(); }
+  constructor(directory, { onFrame = () => {}, mineProfile = join(homedir(), '.config/google-chrome'), downloads = join(directory, 'downloads'), realWindow = realWindowWanted() } = {}) { this.directory = directory; this.realWindow = realWindow; this.workers = new Map(); this.onFrame = onFrame; this.modes = new Map(); this.mineProfile = mineProfile; this.downloads = downloads; this.imports = new Set(); }
   configure(botId, mode) {
     if (mode === 'own') mode = 'shared';
     if (!MODES.includes(mode)) throw new Error('Modo de navegador inválido.');
@@ -39,7 +40,7 @@ export class PcBrowser {
     const profile = join(this.directory, 'browsers', key);
     mkdirSync(profile, { recursive: true, mode: 0o700 }); mkdirSync(this.downloads, { recursive: true, mode: 0o700 });
     const env = Object.fromEntries(['PATH', 'HOME', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-    env.MYBOTS_DOWNLOADS = this.downloads;
+    env.MYBOTS_DOWNLOADS = this.downloads; if (this.realWindow) env.MYBOTS_REAL_BROWSER = '1';
     const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : shared ? 'shared' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true });
     const worker = { child, pending: new Map(), botIds: new Set([botId]), mine, multi: mine || shared, endpoint }; this.workers.set(key, worker);
     if (shared) for (const id of this.imports) child.send({ op: 'import', args: { profile: join(this.directory, 'browsers', id) } }, () => {});

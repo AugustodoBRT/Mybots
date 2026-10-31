@@ -78,16 +78,18 @@ function normalUserAgent() {
   return chromeUserAgent;
 }
 // A Chrome of MyBots (a separate bot's or the shared one): no window, no saved passwords, every address checked.
-export async function launchContext(profile, headless = true) {
+// On a computer where the node can dock windows (Hyprland), the bots' Chrome is a real window, kept out of sight until the person opens it.
+export const REAL_WINDOW = process.env.MYBOTS_REAL_BROWSER === '1';
+export async function launchContext(profile, headless = !REAL_WINDOW) {
   const path = join(profile, 'Default'); mkdirSync(path, { recursive: true, mode: 0o700 });
   let prefs = {}; try { prefs = JSON.parse(readFileSync(join(path, 'Preferences'), 'utf8')); } catch {}
   prefs.credentials_enable_service = false;
   prefs.profile = { ...prefs.profile, password_manager_enabled: false };
   writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
   const context = await chromium.launchPersistentContext(profile, {
-    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: { width: 1280, height: 800 },
+    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: headless ? { width: 1280, height: 800 } : null,
     acceptDownloads: true, serviceWorkers: 'block', permissions: [], ignoreDefaultArgs: ['--enable-automation'],
-    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland', '--class=mybots-browser']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
   });
   await context.clearPermissions();
   await context.route('**/*', checkRoute);

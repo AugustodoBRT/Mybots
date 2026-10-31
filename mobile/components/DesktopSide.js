@@ -4,6 +4,7 @@ import { C, Icon, F, themed } from '../theme';
 import { IconButton } from './shared';
 import BotBrowserPanel, { browserFrames } from '../BotBrowserPanel';
 
+const STRIP = 64;
 const s = themed(() => ({
   side: { flex: 1, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.line },
@@ -23,6 +24,8 @@ const s = themed(() => ({
   composer: { position: 'absolute', left: 0, right: 0, bottom: 22, alignItems: 'center', zIndex: 2 },
   pill: { width: '60%', minWidth: 300, maxWidth: 640, flexDirection: 'row', alignItems: 'center', gap: 8, height: 42, paddingLeft: 16, paddingRight: 6, borderRadius: 21, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2 },
   pillInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 14, outlineStyle: 'none' },
+  strip: { position: 'absolute', left: 0, right: 0, bottom: 0, height: STRIP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, backgroundColor: C.bg2, borderTopWidth: 1, borderTopColor: C.line },
+  back: { width: 150, flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingHorizontal: 12, borderRadius: 10 },
   go: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.text }
 }));
 
@@ -108,17 +111,41 @@ export function BrowserCards({ bot, call, onOpen }) {
   </View>;
 }
 
-/** One tab of the bot's browser filling the whole app, like a normal browser, with a field to talk to the bot while it works. */
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * One tab of the bot's browser filling the whole app. Where the computer lets the node dock windows, it is the real Chrome
+ * of the bots laid over the window (its own tabs, address bar, mouse and keyboard, no streaming); this component keeps only
+ * the strip at the bottom: back to the bars and a field to talk to the bot while it works. Anywhere else it falls back to
+ * the page streamed as pictures (BotBrowserPanel).
+ */
 export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSend, color }) {
-  const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
+  const [real, setReal] = useState(null); const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      for (let n = 0; n < 10 && live; n++) {
+        try { const result = await call('browser.dock', { on: true, inset: { bottom: STRIP } }); if (live) setReal(Boolean(result?.real)); return; }
+        catch (error) { if (!/ainda não abriu/.test(error.message)) break; await wait(400); }
+      }
+      if (live) setReal(false);
+    })();
+    return () => { live = false; call('browser.dock', { on: false }).catch(() => {}); };
+  }, [bot.id]);
   const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
+  const composer = <View style={[s.pill, real && { width: '60%' }]}>
+    <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
+    <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
+  </View>;
+  if (real !== false) return <View pointerEvents="box-none" style={s.full}>
+    <View style={s.strip}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao MyBots" onPress={onClose} style={({ hovered }) => [s.back, hovered && s.hover]}><Icon name="shrink" size={16} color={C.text2} /><Text style={s.tabText}>Voltar ao MyBots</Text></Pressable>
+      <View style={{ flex: 1, alignItems: 'center' }}>{composer}</View><View style={{ width: 150 }} />
+    </View>
+    {real === null ? <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text style={s.note}>Abrindo o navegador…</Text></View> : null}
+  </View>;
   return <View style={s.full}>
     <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} keepView />
-    <View pointerEvents="box-none" style={s.composer}>
-      <View style={s.pill}>
-        <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
-      </View>
-    </View>
+    <View pointerEvents="box-none" style={s.composer}>{composer}</View>
   </View>;
 }

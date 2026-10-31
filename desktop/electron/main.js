@@ -20,6 +20,9 @@ process.on('uncaughtException', error => console.error('MyBots:', error));
 // Chromium listens for the node's browser worker on a random local port (written to DevToolsActivePort).
 app.commandLine.appendSwitch('remote-debugging-port', '0');
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+// The remote debugging port would otherwise tell every page it is automated (navigator.webdriver).
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('lang', 'pt-BR');
 const first = app.requestSingleInstanceLock();
 if (!first) app.quit();
 // A leftover from the last run would point the node at a port nobody listens on.

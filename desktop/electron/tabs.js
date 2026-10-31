@@ -12,7 +12,16 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
   const tabs = new Map(); let order = [], active = null, serial = 0, place = null;
   const ses = session.fromPartition(PARTITION);
   // A normal Chrome to the sites (Google refuses to sign in to anything that says "Electron").
-  ses.setUserAgent(app.userAgentFallback.replace(/ Electron\/\S+/, '').replace(/ mybots-desktop\/\S+/, ''));
+  const agent = app.userAgentFallback.replace(/ Electron\/\S+/, '').replace(/ mybots-desktop\/\S+/, '');
+  const major = (process.versions.chrome || '150').split('.')[0], full = process.versions.chrome || `${major}.0.0.0`;
+  const LANGUAGES = 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7';
+  ses.setUserAgent(agent, LANGUAGES);
+  // Electron's client hints name only Chromium; Google's sign-in wants to see a Chrome. Same engine, same version.
+  // Done at the person's request (they accept the risk to their Google account).
+  const hints = { brands: [{ brand: 'Not?A_Brand', version: '24' }, { brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }],
+    fullVersionList: [{ brand: 'Not?A_Brand', version: '24.0.0.0' }, { brand: 'Chromium', version: full }, { brand: 'Google Chrome', version: full }],
+    platform: 'Linux', platformVersion: '6.0.0', architecture: 'x86', model: '', mobile: false, bitness: '64', wow64: false };
+  const present = contents => { try { if (!contents.debugger.isAttached()) contents.debugger.attach('1.3'); contents.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: agent, acceptLanguage: 'pt-BR,pt,en-US,en', platform: 'Linux x86_64', userAgentMetadata: hints }).catch(() => {}); } catch {} };
   // The browser keeps its own rules: no permissions asked silently, downloads go to the bots' folder.
   ses.setPermissionRequestHandler((_contents, _permission, done) => done(false));
   ses.on('will-download', (_event, item) => { try { item.setSavePath(require('node:path').join(downloads, `${Date.now()}-${item.getFilename().replace(/[\/\\]/g, '_')}`)); } catch {} });
@@ -42,7 +51,8 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
     contents.on('page-favicon-updated', (_event, icons) => { tab.icon = icons[0] || ''; changed(); });
     // A link that wants a new window opens as a new tab, like in any browser.
     contents.setWindowOpenHandler(({ url: target }) => { if (/^https?:/i.test(target)) setImmediate(() => create(target, { owner })); return { action: 'deny' }; });
-    contents.on('destroyed', () => { tabs.delete(id); order = order.filter(item => item !== id); if (active === id) active = order[order.length - 1] ?? null; layout(); changed(); });
+    contents.on('destroyed', () => { tabs.delete(id); order = order.filter(item => item !== id); if (active === id) active = order[order.length - 1] ?? null; layout(); changed(); if (!order.length && !window.isDestroyed()) setImmediate(() => create(HOME)); });
+    present(contents);
     contents.loadURL(url === 'about:blank' ? `about:blank#${marker}` : url).catch(() => {});
     if (activate) active = id;
     layout(); changed(); return { id, marker };
@@ -54,7 +64,9 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
   const thumb = async id => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return null; const image = await contents.capturePage(); const small = image.resize({ width: 480 }); return small.toDataURL(); };
   const setPlace = rect => { place = rect && [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) ? { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.max(1, Math.round(rect.width)), height: Math.max(1, Math.round(rect.height)) } : null; layout(); };
   window.on('resize', () => place && layout());
-  create('about:blank', { activate: false }); // the browser always has a tab, like the first run of Chrome
+  // The browser always has a tab, and a new one the person opens lands on Google, like the first run of Chrome.
+  const HOME = 'https://www.google.com/';
+  create(HOME, { activate: false });
   return { state, create, close, activate, go, nav, thumb, place: setPlace, tabs, ses, markerOf: marker => [...tabs.entries()].find(([, tab]) => tab.marker === marker)?.[0] };
 }
 

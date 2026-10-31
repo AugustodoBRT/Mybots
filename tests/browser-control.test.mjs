@@ -26,6 +26,17 @@ test('mobile viewport uses CSS size and density, persists per origin and restore
   assert.deepEqual(await s.page.evaluate(() => [innerWidth,innerHeight,devicePixelRatio,navigator.maxTouchPoints]), [1280,800,1,0]);
 });
 
+test('the computer window fits the page to its own area as a desktop browser, with the mouse and no touch', real, async t => {
+  const s = await session(t);
+  await s.page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><input>');
+  await s.input({ type: 'viewport', width: 1500, height: 777, deviceScaleFactor: 1, fit: true });
+  assert.deepEqual(await s.page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio, navigator.maxTouchPoints]), [1500, 777, 1, 0]);
+  assert.deepEqual(s.viewportSize(), { width: 1500, height: 777 });
+  assert.equal(s.desktop, true);
+  await s.deviceView({ restore: true });
+  assert.equal(s.fit, false);
+});
+
 test('real touch dispatch reaches the page and preserves start/move/end', real, async t => {
   const s = await session(t);
   await s.page.setContent('<meta name="viewport" content="width=device-width"><script>window.touches=[]; for(const k of ["touchstart","touchmove","touchend"]) document.addEventListener(k,e=>touches.push(e.type));</script>');

@@ -47,8 +47,8 @@ export function personInput(input) {
     return { type: 'touch', phase: input.phase, points: input.points.map(({ x, y, id }) => ({ x, y, id })) };
   }
   if (input.type === 'viewport') {
-    if (![input.width, input.height, input.deviceScaleFactor].every(Number.isFinite) || input.width < 200 || input.width > 2560 || input.height < 100 || input.height > 2560 || input.deviceScaleFactor < 0.5 || input.deviceScaleFactor > 5 || input.desktop !== undefined && typeof input.desktop !== 'boolean') throw new Error('Tamanho do visor inválido.');
-    return { type: 'viewport', width: Math.round(input.width), height: Math.round(input.height), deviceScaleFactor: input.deviceScaleFactor, ...(input.desktop !== undefined ? { desktop: input.desktop } : {}) };
+    if (![input.width, input.height, input.deviceScaleFactor].every(Number.isFinite) || input.width < 200 || input.width > 2560 || input.height < 100 || input.height > 2560 || input.deviceScaleFactor < 0.5 || input.deviceScaleFactor > 5 || input.desktop !== undefined && typeof input.desktop !== 'boolean' || input.fit !== undefined && typeof input.fit !== 'boolean') throw new Error('Tamanho do visor inválido.');
+    return { type: 'viewport', width: Math.round(input.width), height: Math.round(input.height), deviceScaleFactor: input.deviceScaleFactor, ...(input.desktop !== undefined ? { desktop: input.desktop } : {}), ...(input.fit === true ? { fit: true } : {}) };
   }
   if (input.type === 'tab' || input.type === 'tab_close') { if (!Number.isInteger(input.tab) || input.tab < 1 || input.tab > 5) throw new Error('Aba inválida.'); return { type: input.type, tab: input.tab }; }
   if (input.type === 'tab_new' || input.type === 'forward') return { type: input.type };

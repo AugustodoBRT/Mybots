@@ -470,7 +470,7 @@ export class BrowserSession {
       saved = { cdp, original }; this.devices.set(page, saved);
     }
     if (args.restore) {
-      this.device = null;
+      this.device = null; this.fit = false;
       for (const [tab, state] of this.devices) {
         if (!tab.isClosed()) {
           await state.cdp.send('Emulation.setDeviceMetricsOverride', this.mode === 'mine' ? state.original : { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
@@ -487,8 +487,10 @@ export class BrowserSession {
     }
     this.inputKeys ||= generateKeyPairSync('rsa', { modulusLength: 2048 });
     this.device = { width: args.width, height: args.height, deviceScaleFactor: args.deviceScaleFactor };
-    this.desktop = this.siteViews[origin] === true || this.challengeDesktop?.origin === origin;
-    const metrics = this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
+    // The computer's window sizes the page to its own area as a normal desktop browser (no phone emulation, no fixed 1280x800).
+    this.fit = args.fit === true;
+    this.desktop = this.fit || this.siteViews[origin] === true || this.challengeDesktop?.origin === origin;
+    const metrics = this.fit ? { width: args.width, height: args.height, deviceScaleFactor: 1, mobile: false } : this.desktop ? { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } : { ...this.device, mobile: true };
     await saved.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     await saved.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: !this.desktop, maxTouchPoints: 5 });
     this.emitFrame({ desktop: this.desktop, viewport: metrics, inputKey: this.inputKeys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64') });
@@ -521,11 +523,11 @@ export class BrowserSession {
     else throw new Error('Ação inválida.');
     return { sent: true };
   }
-  viewportSize() { return this.device ? (this.desktop ? { width: 1280, height: 800 } : this.device) : this.page.viewportSize() || { width: 1280, height: 800 }; }
+  viewportSize() { return this.device ? (this.fit ? { width: this.device.width, height: this.device.height } : this.desktop ? { width: 1280, height: 800 } : this.device) : this.page.viewportSize() || { width: 1280, height: 800 }; }
   tabList() { return (this.pages || []).map((page, n) => ({ tab: n + 1, title: this.tabTitles?.get(page) || page.url().slice(0, 100), active: page === this.page })); }
   async activate(page) {
     const watching = Boolean(this.cdp); if (watching) await this.view(false);
-    this.page = page; if (this.device) await this.deviceView(this.device); this.login = null; this.elementFrames = null; await page.bringToFront();
+    this.page = page; if (this.device) await this.deviceView({ ...this.device, fit: this.fit }); this.login = null; this.elementFrames = null; await page.bringToFront();
     if (watching) await this.view(true);
   }
   async info() {

@@ -17,6 +17,8 @@ test('browser arguments reject invalid actions, coordinates, keys, tabs and unsa
   assert.throws(() => toolArguments('browser.screenshot', { marks: 'true' }));
   assert.throws(() => personInput({ type: 'tab', tab: 6 }));
   assert.deepEqual(personInput({ type: 'tab', tab: 2, injected: true }), { type: 'tab', tab: 2 });
+  assert.deepEqual(personInput({ type: 'viewport', width: 1200.4, height: 700, deviceScaleFactor: 1, fit: true, x: 1 }), { type: 'viewport', width: 1200, height: 700, deviceScaleFactor: 1, fit: true });
+  assert.throws(() => personInput({ type: 'viewport', width: 1200, height: 700, deviceScaleFactor: 1, fit: 'sim' }));
   assert.equal(toolArguments('browser.wait', { url: '/ready' }).url, '/ready');
 });
 

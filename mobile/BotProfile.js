@@ -44,7 +44,7 @@ export function useKeyboardRoom(scroll) {
   return height;
 }
 const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
-export default function BotProfile({ initialTab, visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onFallback, FallbackSettings, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl }) {
+export default function BotProfile({ initialTab, visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onFallback, FallbackSettings, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl, inline = false }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: bot.avatar || 'orbit', ...(bot.face ? { face: bot.face } : {}), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
@@ -68,12 +68,14 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
   useEffect(() => { if (visible && skillsOpen && onComputer && loadAgentSkills) { setCatalog(null); loadAgentSkills().then(setCatalog, error => setCatalog({ skills: [], message: error.message })); } }, [visible, skillsOpen, onComputer, bot?.id]);
   const setSkill = (skill, change) => { const current = bot.skills || []; const rest = current.filter(item => item.path !== skill.path); const mine = current.find(item => item.path === skill.path); return act(() => onAgentSkills(change === null ? rest : [...rest, { path: skill.path, write: false, ...mine, ...change }])); };
   const toggle = (value, onChange, label) => <Switch accessibilityLabel={label} value={value} disabled={saving} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={value ? C.accent : C.muted} onValueChange={onChange} />;
-  return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-    <View style={[s.backdrop, { paddingBottom: keyboard }]}><View style={s.keyboard}><View style={s.sheet}>
+  // On the computer the profile lives inside the window's right bar instead of a dialog.
+  const frame = sheet => inline ? (visible ? <View style={{ flex: 1 }}>{sheet}</View> : null)
+    : <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}><View style={[s.backdrop, { paddingBottom: keyboard }]}><View style={s.keyboard}>{sheet}</View></View></Modal>;
+  return frame(<View style={[s.sheet, inline && s.inlineSheet]}>
       <View style={s.handle} />
       <View style={s.heading}>
         <View style={{ flex: 1 }}><Text style={s.title}>{bot ? bot.name : 'Novo bot'}</Text><Text style={s.subtitle}>{bot ? 'Perfil, rotinas, acesso e memória' : 'Um rosto, um jeito e um trabalho'}</Text></View>
-        <Pressable accessibilityLabel="Fechar perfil" accessibilityRole="button" onPress={onClose} style={s.close}><Icon name="close" size={19} color={C.text2} /></Pressable>
+        {inline ? null : <Pressable accessibilityLabel="Fechar perfil" accessibilityRole="button" onPress={onClose} style={s.close}><Icon name="close" size={19} color={C.text2} /></Pressable>}
       </View>
       {bot && phone && <View style={s.tabs}>{tabs.map(([key, label, icon]) => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }} onPress={() => setTab(key)} style={[s.tab, tab === key && s.tabActive]}>
         <Icon name={icon} size={16} color={tab === key ? C.accent : C.muted} /><Text numberOfLines={1} style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text></Pressable>)}</View>}
@@ -222,13 +224,13 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
             : <View style={s.emptyBox}><Icon name="list" size={26} color={C.faint} /><Text style={s.empty}>As pendências criadas pelo bot aparecem aqui.</Text></View>}</>}
         {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
       </ScrollView>
-    </View></View></View>
-  </Modal>;
+    </View>);
 }
 const boxOf = () => ({ backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.line });
 const s = themed(() => ({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#000000B3', ...dialogBackdrop }, keyboard: { height: '92%', ...column, ...(dialogShape.borderRadius ? { height: '100%', maxHeight: 900 } : {}) },
   sheet: { flex: 1, backgroundColor: C.bg2, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 20, paddingBottom: 20, borderTopWidth: 1, borderColor: C.line2, ...dialogShape, ...(dialogShape.borderRadius ? { paddingTop: 20 } : {}) },
+  inlineSheet: { borderRadius: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0, borderWidth: 0, borderTopWidth: 0, paddingTop: 14, paddingHorizontal: 16 },
   handle: { alignSelf: 'center', width: 42, height: 5, backgroundColor: C.line2, borderRadius: 3, marginTop: 10, marginBottom: 12, ...noHandle },
   heading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   title: { color: C.text, fontFamily: F.x, fontSize: 23, letterSpacing: -0.7 }, subtitle: { color: C.muted, fontFamily: F.m, fontSize: 13, marginTop: 2 },

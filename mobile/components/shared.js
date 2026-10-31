@@ -907,7 +907,7 @@ export function useDictation({ phone, call, setValue, onError }) {
 export function Composer({ value, setValue, onSend, canSend, placeholder, editable = true, inputRef, onAttach, attachDisabled, phone, call, onError, accessibilityLabel }) {
   const dictation = useDictation({ phone, call, setValue, onError });
   const { voice } = dictation;
-  return <View style={[styles.composerBox, voice && styles.composerListening]}>
+  return <View dataSet={desktop ? { desktopComposer: "true" } : undefined} style={[styles.composerBox, voice && styles.composerListening]}>
     {voice ? <View style={styles.voiceLive}>
       <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
       <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>

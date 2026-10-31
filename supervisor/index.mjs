@@ -576,6 +576,20 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           broadcast('activity.new'); return { control: params.who, continued: Boolean(help) };
         }
         // The app fetches a bot's file in parts (3 MB, whole base64 groups) to open, share or save it.
+        case 'file.resolve': {
+          db.requireBot(params.botId);
+          if (typeof params.reference !== 'string' || params.reference.length > 1000 || /[\0\r\n]/.test(params.reference)) throw new Error('Referência inválida.');
+          // Resolve only files already made available by this bot. A message is not
+          // permission to read arbitrary paths from either machine.
+          const reference = params.reference;
+          const exact = db.get('SELECT id,name,mime,size FROM attachments WHERE bot_id=? AND id=?', params.botId, reference);
+          if (exact) return exact;
+          const name = reference.split(/[\\/]/).pop();
+          const rows = db.all('SELECT id,name,mime,size FROM attachments WHERE bot_id=? AND name=?', params.botId, name);
+          if (rows.length > 1) throw new Error('Há mais de um arquivo com esse nome. Abra o anexo da mensagem para escolher a versão certa.');
+          if (!rows.length) throw new Error('Este arquivo ainda não foi disponibilizado. Peça ao bot para enviá-lo como anexo.');
+          return rows[0];
+        }
         case 'file.read': {
           if (!uuid(params.id)) throw new Error('Arquivo inválido.');
           const row = db.get('SELECT * FROM attachments WHERE id=?', params.id);

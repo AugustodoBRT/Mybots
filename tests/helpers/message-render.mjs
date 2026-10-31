@@ -10,7 +10,7 @@ export function messageTree(source, props) {
   const shared = { Avatar: 'Avatar', EFFORT_NAMES: { low: 'Baixo' }, tokensLabel: String, claudeName: () => null, findModel: models => models?.[0] };
   const deps = { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { View: 'View', Pressable: 'Pressable', Text: 'Text' },
     '../styles': { styles: new Proxy({}, { get: (_, key) => String(key) }) }, '../theme': { C: { sky: 'sky', faint: 'faint', red: 'red', text: 'text' }, Icon: 'Icon' },
-    './shared': shared, '../RichMessage': { RichText: 'RichText', FileChip: 'FileChip', FileCard: 'FileCard' }, '../message-cache': { sameMessage: () => false },
+    './shared': shared, '../RichMessage': { RichText: 'RichText', FileChip: 'FileChip', FileCard: 'FileCard' }, '../desktop': { desktop: null }, '../message-cache': { sameMessage: () => false },
     './ImageBubble': { ImageBubble: 'ImageBubble' }, '../attachment-images': { isPicture: file => /^image\//.test(file?.mime || '') } };
   const exports = {};
   const result = babel.transformSync(source, { babelrc: false, configFile: false, plugins: [[require('@babel/plugin-transform-react-jsx'), { runtime: 'automatic' }], require('@babel/plugin-transform-modules-commonjs')] });

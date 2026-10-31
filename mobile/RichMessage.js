@@ -1,18 +1,29 @@
+import { desktop } from './desktop';
 import { messageMarkdown } from './message-cache';
-import React, { useState } from 'react';
+import React, { useState, useContext, createContext } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
 import Svg, { Rect, Line, Polyline, Circle, Path, Text as SvgText } from 'react-native-svg';
 import { parseBlocks, parseInline } from './markdown';
+import { fileReference, referenceRuns, previewKind } from './file-references';
 import { C, F, Icon, themed } from './theme';
 
 // Bot replies: Markdown with tables and charts, drawn with the same reader the supervisor uses for files.
 const chartColors = () => [C.sky, C.peach, C.accent, '#F58AB0', C.lilac, '#62CFD9'];
 const number = value => Number.isInteger(value) ? String(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
+const FileContext = createContext(null);
 function Inline({ text, style, cache }) {
-  return <Text selectable style={style}>{(cache ? cache.runs(text) : parseInline(text)).map((run, index) => <Text key={index}
-    style={[run.bold && s.bold, run.italic && s.italic, run.code && s.code, run.href && s.link]}
-    onPress={run.href ? () => Linking.openURL(run.href).catch(() => {}) : undefined}>{run.text}</Text>)}</Text>;
+  const context = useContext(FileContext);
+  const runs = cache ? cache.runs(text) : parseInline(text);
+  return <Text selectable style={style}>{(context ? referenceRuns(runs) : runs).map((run, index) => {
+    const reference = context && fileReference(run.file || (run.code ? run.text : ''));
+    const file = reference && ((context.files || []).find(file => file.id === reference.reference || file.name === reference.reference || file.name === reference.name) || { ...reference, botId: context.botId });
+    const kind = file && previewKind(file);
+    return <Text key={index} accessibilityRole={file || run.href ? 'link' : undefined}
+      accessibilityLabel={file ? `Abrir arquivo ${file.name}` : undefined}
+      style={[run.bold && s.bold, run.italic && s.italic, run.code && s.code, run.href && s.link, file && { color: kind === 'archive' ? C.accent : kind === 'video' || kind === 'image' ? C.lilac : C.sky, textDecorationLine: 'underline' }]}
+      onPress={file ? () => context.onFile(file) : run.href ? () => Linking.openURL(run.href).catch(() => {}) : undefined}>{run.text}</Text>;
+  })}</Text>;
 }
 
 function Table({ header, rows, cache }) {
@@ -75,9 +86,9 @@ export function Chart({ spec }) {
   </View>;
 }
 
-export function RichText({ id, text, textStyle }) {
+export function RichText({ id, text, textStyle, files, botId, onFile }) {
   const cache = messageMarkdown(id, text);
-  return <View style={s.rich}>{cache.blocks.map((block, index) => {
+  return <FileContext.Provider value={onFile ? { files, botId, onFile } : null}><View style={s.rich}>{cache.blocks.map((block, index) => {
     if (block.type === 'heading') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.heading, block.level === 1 && s.h1]} />;
     if (block.type === 'paragraph') return <Inline cache={cache} key={index} text={block.text} style={textStyle} />;
     // One Text per item: a flex row inside an auto-width bubble shrinks the words to a narrow column.
@@ -88,7 +99,7 @@ export function RichText({ id, text, textStyle }) {
     if (block.type === 'code') return <Text key={index} selectable style={s.codeBlock}>{block.text}</Text>;
     if (block.type === 'quote') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.quote]} />;
     return <View key={index} style={s.rule} />;
-  })}</View>;
+  })}</View></FileContext.Provider>;
 }
 
 const ICONS = { 'application/pdf': '📕', 'text/csv': '📊', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📘', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': '📙' };
@@ -121,7 +132,7 @@ export function FileCard({ file, busy, onPress }) {
     <FileBadge file={file} />
     <View style={{ flex: 1 }}>
       <Text style={s.fileName} numberOfLines={2}>{file.name}</Text>
-      <Text style={s.fileMeta}>{formatSize(file.size)} · {busy ? 'preparando…' : 'abrir, compartilhar ou salvar'}</Text>
+      <Text style={s.fileMeta}>{formatSize(file.size)} · {busy ? 'preparando…' : desktop ? (previewKind(file) === 'archive' ? 'baixar arquivo' : 'ver prévia') : 'abrir, compartilhar ou salvar'}</Text>
     </View>
     <Icon name="right" size={16} color={C.faint} />
   </Pressable>;

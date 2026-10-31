@@ -14,7 +14,7 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // backups, connectors with passwords, pairing or the phone's own hardware.
 export const DESKTOP_METHODS = ['state.get', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
-  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
+  'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
 const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];

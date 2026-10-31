@@ -12,14 +12,23 @@ export const column = desktop ? { width: '100%', maxWidth: 820, marginHorizontal
 if (desktop) {
   document.title = 'MyBots'; document.body.style.backgroundColor = '#000000';
   const style = document.createElement('style'); style.id = 'mybots-scroll';
-  style.textContent = '::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:#37373F;border-radius:5px}';
+  style.textContent = '';
+  const motion = document.createElement('style'); motion.id = 'mybots-motion';
+  motion.textContent = `
+    [role=button], [role=tab] { transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
+    [role=button]:focus-visible, [role=tab]:focus-visible, textarea:focus-visible { outline: 2px solid #EAB875; outline-offset: 3px; }
+    [data-desktop-message] { animation: message-in 220ms ease-out both; }
+    [data-desktop-composer]:focus-within { border-color: #A68355 !important; box-shadow: 0 0 0 3px #EAB8750B; }
+    @keyframes message-in { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }
+  `; document.head.appendChild(motion);
   document.head.appendChild(style);
 }
 // The window's page background and scrollbar follow the theme (the app's own views are repainted by React).
 export function paintPage(colors) {
   if (!desktop) return;
   document.body.style.backgroundColor = colors.bg; document.documentElement.style.colorScheme = colors.dark ? 'dark' : 'light';
-  const style = document.getElementById('mybots-scroll'); if (style) style.textContent = `::-webkit-scrollbar{width:10px;background:transparent}::-webkit-scrollbar-thumb{background:${colors.line2};border-radius:5px}`;
+  const style = document.getElementById('mybots-scroll'); if (style) style.textContent = `::-webkit-scrollbar{width:6px;height:6px;background:transparent}::-webkit-scrollbar-thumb{background:${colors.line2};border-radius:5px}`;
 }
 
 // Small messages between the window's shell and the open conversation (for example "open the browser panel").
@@ -29,4 +38,4 @@ export const desktopBus = {
   emit(name, value) { listeners.get(name)?.forEach(fn => fn(value)); }
 };
 // Conversation text and the message field stay in a calm column of about 760 px.
-export const readingColumn = desktop ? { width: '100%' } : {};
+export const readingColumn = desktop ? { width: '100%', maxWidth: 1080, alignSelf: 'center' } : {};

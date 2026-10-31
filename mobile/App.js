@@ -25,6 +25,7 @@ import { ChatScreen } from './screens/Chat';
 import { C, Icon, setTheme, resolveTheme } from './theme';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
+import { FilePreview } from './components/FilePreview';
 import { FileBadge, formatSize } from './RichMessage';
 
 const UPLOAD_PART = 3 * 1024 * 1024;
@@ -407,6 +408,15 @@ function AppMain() {
       return `data:${file.mime};base64,${data}`;
     });
   }, []);
+  const openConversationFile = file => {
+    setFileNote('');
+    if (!file.id && file.reference && file.botId) {
+      const messages = chatsRef.current[file.botId]?.messages || [];
+      const matches = new Map(messages.flatMap(message => message.attachments || []).filter(item => item.name === file.name).map(item => [item.id, item]));
+      if (matches.size === 1) file = [...matches.values()][0];
+    }
+    setFileSheet({ ...file });
+  };
   const fileAct = async (file, action) => {
     setFileBusy(file.id); setFileNote('');
     // On the computer the node saves the file in ~/Downloads and opens it with the default app.
@@ -684,13 +694,13 @@ function AppMain() {
     const target = data.bots.find(item => item.id === share.botId);
     if (target) pickShare(target); else setShare({ ...share, botId: null });
   }, [share, data?.bots]);
-  const roomView = data && room ? <RoomScreen onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={file => setFileSheet(file)} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
           onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={desktop ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
-          onFile={file => setFileSheet(file)} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
+          onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
           onPhoneStop={async () => { await Promise.resolve(phoneStopNow()).catch(() => {}); await supervisor.current.call('phone.stop', {}); await loadSupervisorState(); }}
@@ -703,32 +713,7 @@ function AppMain() {
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
     settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />
   } : {};
-  return <View key={look} style={styles.app}>
-    <ShareTargets />
-    <StatusBar barStyle={look === 'light' ? 'dark-content' : 'light-content'} backgroundColor={C.bg} />
-    {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
-    {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
-      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
-      : desktop ? <DesktopShell page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
-          onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onHome={() => { setSelected(null); setRoomId(null); setDraft(''); }} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
-          onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
-          {roomView || chatView}</DesktopShell>
-      : roomView || chatView || <HomeScreen onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
-            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
-            onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
-    {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
-      <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
-        <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>{confirm.buttons.map(button => <Pressable key={button.text} accessibilityRole="button" onPress={() => { setConfirm(null); button.onPress?.(); }}
-          style={[button.style === 'cancel' ? styles.denyButton : styles.confirmButton, { flex: 1 }, button.style === 'destructive' && { backgroundColor: C.red + '22', borderColor: C.red + '66' }]}>
-          <Text style={[styles.denyText, button.style === 'destructive' && { color: C.red }, !button.style && { color: C.accent }]}>{button.text}</Text></Pressable>)}</View>
-      </View></View>
-    </Modal> : null}
-    {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
-    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} nodes={data.nodes || []} phone={mode === 'phone'}
-      freeChoice={mode === 'phone' && !desktop && termuxAvailable} onClose={() => setCreateVisible(false)} onCreate={createBot} /> : null}
-    {data && <BotProfile initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
+  const profileSheet = data ? <BotProfile inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
@@ -757,7 +742,34 @@ function AppMain() {
         setFreeSettings(await supervisor.current.call('free.set', { ask: list }));
       }}
       onComplete={async id => { await supervisor.current.call('item.complete', { id }); await loadSupervisorState(); }}
-      onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} />}
+      onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} /> : null;
+  return <View key={look} style={styles.app}>
+    <ShareTargets />
+    <StatusBar barStyle={look === 'light' ? 'dark-content' : 'light-content'} backgroundColor={C.bg} />
+    {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
+    {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
+      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
+      : desktop ? <DesktopShell fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
+          filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
+          onOpen={id => { setSelected(id); setRoomId(null); setDraft(''); }} onRoom={id => { setRoomId(id); setSelected(null); }} onHome={() => { setSelected(null); setRoomId(null); setDraft(''); }} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
+          onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
+          {roomView || chatView}</DesktopShell>
+      : roomView || chatView || <HomeScreen onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
+            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
+            onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
+    {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
+      <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
+        <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>{confirm.buttons.map(button => <Pressable key={button.text} accessibilityRole="button" onPress={() => { setConfirm(null); button.onPress?.(); }}
+          style={[button.style === 'cancel' ? styles.denyButton : styles.confirmButton, { flex: 1 }, button.style === 'destructive' && { backgroundColor: C.red + '22', borderColor: C.red + '66' }]}>
+          <Text style={[styles.denyText, button.style === 'destructive' && { color: C.red }, !button.style && { color: C.accent }]}>{button.text}</Text></Pressable>)}</View>
+      </View></View>
+    </Modal> : null}
+    {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
+    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} nodes={data.nodes || []} phone={mode === 'phone'}
+      freeChoice={mode === 'phone' && !desktop && termuxAvailable} onClose={() => setCreateVisible(false)} onCreate={createBot} /> : null}
+    {desktop ? null : profileSheet}
     <SettingsSheet visible={maintenanceVisible} onClose={() => setMaintenanceVisible(false)} a={settingsContext} />
     <Modal transparent visible={walletVisible} animationType="slide" onRequestClose={() => setWalletVisible(false)}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
@@ -802,7 +814,7 @@ function AppMain() {
         </ScrollView>}
       </View></View>
     </Modal>
-    <Modal transparent visible={Boolean(fileSheet)} animationType="slide" onRequestClose={() => { setFileSheet(null); setFileNote(''); }}>
+    <Modal transparent visible={!desktop && Boolean(fileSheet)} animationType="slide" onRequestClose={() => { setFileSheet(null); setFileNote(''); }}>
       <View style={styles.sheetBackdrop}><View style={styles.sheet}>
         <View style={styles.sheetHandle} />
         {fileSheet ? <View style={{ alignItems: 'center', marginBottom: 6 }}><FileBadge file={fileSheet} size={64} /></View> : null}

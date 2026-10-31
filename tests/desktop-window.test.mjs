@@ -23,6 +23,11 @@ test('janela do PC: lista, abas, Ctrl+K, Ctrl+N, Ajustes em duas colunas, Ativid
   await run('npx', ['expo', 'export', '--platform', 'web', '--output-dir', ui], { cwd: new URL('../mobile', import.meta.url).pathname, timeout: 400000, maxBuffer: 1 << 26 });
   const app = await createSupervisor({ directory: join(directory, 'sup'), port: 0, codex, execute: async () => ({ text: 'Pronto.', ...selection }) });
   const bots = []; for (const name of ['Atlas', 'Clara', 'Nico']) bots.push(await app.rpc('bot.create', { name, instructions: `Bot ${name}.`, access: 'ask', face: { seed: name }, ...selection }));
+  const previewDoc = app.tools.attachments.store(bots[0].id, { name: 'revisao.md', mime: 'text/markdown', bytes: Buffer.from('# Revisão visual\n\nArquivo dentro do app.') });
+  const previewImage = app.tools.attachments.store(bots[0].id, { name: 'amostra.png', mime: 'image/png', bytes: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ncAAAAASUVORK5CYII=', 'base64') });
+  const previewVideo = app.tools.attachments.store(bots[0].id, { name: 'previa.webm', mime: 'video/webm', bytes: await readFile(new URL('./fixtures/preview.webm', import.meta.url)) });
+  const previewZip = app.tools.attachments.store(bots[0].id, { name: 'projeto.zip', mime: 'application/zip', bytes: Buffer.from('PK archive') });
+  app.db.appendMessage(bots[0].id, { id: crypto.randomUUID(), role: 'assistant', createdAt: new Date().toISOString(), text: '[Auto-revisão](revisao.md), [Vídeo](previa.webm) e [Projeto](projeto.zip)', status: 'complete', attachments: [previewDoc, previewImage, previewZip, previewVideo] });
   await app.rpc('person.update', { name: 'Augusto' });
 // Spend over the last week: a few replies per day for the first two bots, none for the third.
 const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-sol') => { const at = new Date(Date.now() - daysAgo * 86400000).toISOString(); app.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', crypto.randomUUID(), botId, null, 'codex', model, input, cached, output, at); };
@@ -52,12 +57,38 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   // A conversation opens in a tab; the toolbar and the closed side panel are there.
   await page.getByLabel('Conversar com Atlas').first().click();
   await page.getByRole('tab', { name: /Atlas/ }).waitFor();
-  await page.getByLabel('Opções da conversa').first().waitFor();
+  await page.getByLabel('Barra lateral').first().waitFor();
   assert.equal(await page.getByText('Aprovações e hoje').count(), 0, 'a barra direita começa fechada');
-  // One button opens the right sidebar with the conversation's options; its rows lead to the model, browser, profile and what waits.
-  await page.getByLabel('Opções da conversa').first().click(); for (const label of ['Abrir navegador', 'Perfil e permissões', 'Aprovações e hoje']) await seen(label);
-  await page.getByText('Abrir navegador').first().click(); await seen('Navegador compartilhado · computador'); await page.getByLabel('Fechar navegador').first().click();
-  await page.getByText('Aprovações e hoje').first().click(); await seen('Esperando você'); await page.keyboard.press('Escape');
+  assert.equal(await page.getByLabel('Voltar', { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('Avançar', { exact: true }).count(), 0);
+  await page.getByLabel('Abrir arquivo revisao.md').click();
+  await seen('Revisão visual'); await seen('Arquivo dentro do app.');
+  if (process.env.MYBOTS_FILE_SCREENSHOT) { await page.waitForTimeout(300); await page.screenshot({ path: process.env.MYBOTS_FILE_SCREENSHOT }); }
+  await page.getByLabel('Mostrar código-fonte').click(); await page.getByText('# Revisão visual', { exact: false }).waitFor();
+  await page.getByLabel('Fechar prévia').click();
+  await page.getByLabel('Imagem amostra.png: abrir, compartilhar ou salvar').click();
+  await page.getByRole('img', { name: 'amostra.png', exact: true }).waitFor();
+  await page.getByLabel('Ampliar imagem', { exact: true }).click(); await seen('125%');
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Abrir arquivo previa.webm').click();
+  await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+  await page.locator('video').evaluate(video => video.play());
+  await page.waitForFunction(() => document.querySelector('video')?.currentTime > 0);
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Abrir arquivo projeto.zip').click();
+  await seen('Arquivo compactado. Baixe para extrair o conteúdo.');
+  assert.equal(await page.getByLabel('Abrir no programa padrão').count(), 0);
+  await page.keyboard.press('Escape');
+
+  // One button opens the right bar; everything it offers opens inside it as tabs (browser, agent settings, today), never elsewhere.
+  await page.getByLabel('Barra lateral').first().click(); for (const label of ['Abrir Navegador', 'Abrir Configurações do agente', 'Aprovações e hoje']) await seen(label);
+  assert.equal(await page.getByText('Modelo e raciocínio').count(), 0, 'modelo e perfil são uma opção só');
+  await page.getByText('Abrir Navegador').first().click(); await page.getByRole('tab', { name: /Navegador/ }).waitFor(); await seen(/Abrindo o navegador|computador está desconectado/);
+  await page.getByLabel('Abrir outra aba da barra').click(); await page.getByText('Abrir Configurações do agente').first().click();
+  await page.getByRole('tab', { name: /Configurações/ }).waitFor(); await seen('Perfil, rotinas, acesso e memória'); await page.getByLabel('Nome do bot').waitFor();
+  await page.getByLabel('Abrir outra aba da barra').click(); await page.getByText('Aprovações e hoje').first().click(); await seen('Esperando você');
+  assert.equal(await page.getByRole('tab').filter({ hasText: /Navegador|Configurações|Hoje/ }).count(), 3, 'três abas na barra');
+  await page.keyboard.press('Escape');
   assert.equal(await page.getByText('Esperando você').count(), 0, 'Esc fecha a barra');
 
   // A file is attached from the window (button) and shown in the tray; a file bigger than 10 MB attaches too (it goes in parts).
@@ -78,6 +109,23 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   // The attached files go with the message to the bot: the message shows them.
   await page.getByLabel('Sua mensagem').fill('Veja os anexos'); await page.getByLabel('Enviar mensagem').click();
   await seen('Veja os anexos'); await page.getByLabel(/Imagem colada\.png/).first().waitFor(); await seen('arrastada.txt');
+
+  // Desktop reading column, distinct bubbles and a collapsible conversation list.
+  const userBubble = page.locator('[data-desktop-message="user"]').last().locator(':scope > div').first();
+  const bubbleBox = await userBubble.boundingBox();
+  assert.ok(bubbleBox.width < 780, 'a mensagem não ocupa a conversa inteira');
+  await page.getByLabel('Recolher conversas').click();
+  await page.waitForFunction(() => !document.body.innerText.includes('Buscar bot ou sala'));
+  await page.getByLabel('Expandir conversas').click(); await seen('Buscar bot ou sala');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByLabel('Barra lateral').click(); await page.getByRole('tab', { name: /Hoje/ }).waitFor();
+  if (process.env.MYBOTS_SIDE_SCREENSHOT) { await page.waitForTimeout(300); await page.screenshot({ path: process.env.MYBOTS_SIDE_SCREENSHOT }); }
+  await page.keyboard.press('Escape');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  if (process.env.MYBOTS_UI_SCREENSHOT) {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: process.env.MYBOTS_UI_SCREENSHOT });
+  }
 
   // Ctrl+K searches and Enter opens the first match.
   await page.keyboard.press('Control+k'); await page.getByLabel('Buscar e trocar de bot').fill('nic'); await seen('↑ ↓ escolhem · Enter abre · Esc fecha · Ctrl+N cria um bot');
@@ -110,7 +158,7 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   assert.ok(box.x < side.x && side.x > 700, 'o gasto ocupa a área principal e as listas ficam ao lado');
   await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.'); await railStays();
   await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.');
-  // The plans' limits are the AI's own symbol in a ring, not names.
+  // Outside conversations, the plan meters remain compact in the navigation rail.
   await page.getByLabel(/^Codex: \d+% livre$/).first().waitFor();
   assert.equal(await page.getByText('Codex', { exact: true }).count(), 0, 'sem o nome escrito');
   await page.getByLabel('Conversas', { exact: true }).first().click(); await page.getByLabel('Conversar com Atlas').first().waitFor();
@@ -118,6 +166,13 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   // Narrow window: the list keeps only the faces and still opens conversations.
   await page.setViewportSize({ width: 860, height: 800 });
   await page.waitForFunction(() => !document.body.innerText.includes('Buscar bot ou sala'));
+  await page.getByLabel('Conversar com Atlas').first().click();
+  await page.getByLabel('Abrir arquivo revisao.md').click(); await seen('Revisão visual');
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.waitForTimeout(300);
+  assert.ok((await page.getByLabel('Fechar prévia').boundingBox()).x < 600);
+  await page.getByLabel('Fechar prévia').click();
+  await page.setViewportSize({ width: 860, height: 800 });
   await page.getByLabel('Conversar com Clara').first().click(); await page.getByRole('tab', { name: /Clara/ }).waitFor();
 
   // A phone still running the previous supervisor sends no dollars: the page must not show a misleading zero.

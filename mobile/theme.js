@@ -1,4 +1,5 @@
 import React from 'react';
+import { desktop } from './desktop';
 import { StyleSheet } from 'react-native';
 import { PALETTES, resolveTheme, FACE_COLORS, HUES, botColor } from './palettes';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
@@ -7,14 +8,16 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 // setTheme, so a component reads C.text at render and the whole tree repaints on a change without restarting the app.
 // One accent (orange); a bot's own color lives only in its face.
 export { PALETTES, resolveTheme, FACE_COLORS, HUES };
-export const C = { ...PALETTES.dark };
+const desktopColors = { bg: '#131416', bg2: '#191A1D', surface: '#1E2023', surface2: '#25272B', elevated: '#2C2E33', line: '#2B2D31', line2: '#3B3E44', text: '#F0F0F2', text2: '#D2D3D7', muted: '#A6A8B0', faint: '#91949E', accent: '#EAB875', accentInk: '#292014' };
+const colorsFor = name => ({ ...PALETTES[name], ...(desktop && name === 'dark' ? desktopColors : {}) });
+export const C = colorsFor('dark');
 let themeName = 'dark', themeVersion = 0; const listeners = new Set();
 export const currentTheme = () => themeName;
 // Applies 'dark' or 'light' (anything else is dark). Safe to call on every render: nothing changes when it is already applied.
 export function setTheme(name) {
   const next = name === 'light' ? 'light' : 'dark';
   if (next === themeName) return false;
-  themeName = next; themeVersion++; Object.assign(C, PALETTES[next]); listeners.forEach(fn => fn());
+  themeName = next; themeVersion++; Object.assign(C, colorsFor(next)); listeners.forEach(fn => fn());
   return true;
 }
 export const onTheme = fn => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -49,6 +52,8 @@ const ICONS = {
   mic: [['rect', { x: 9, y: 3, width: 6, height: 11.5, rx: 3 }], ['path', { d: 'M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21' }]],
   send: [['path', { d: 'M12 19V5.5M6 11l6-6 6 6' }]],
   close: [['path', { d: 'M6.5 6.5l11 11M17.5 6.5l-11 11' }]],
+  expand: [['path', { d: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7' }]],
+  shrink: [['path', { d: 'M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7' }]],
   check: [['polyline', { points: '5 12.5 10 17.5 19 7' }]],
   bell: [['path', { d: 'M6 16.5V11a6 6 0 0 1 12 0v5.5l1.8 1.8H4.2zM10 21h4' }]],
   refresh: [['path', { d: 'M20 12a8 8 0 1 1-2.4-5.7' }], ['polyline', { points: '20 4 20 9 15 9' }]],

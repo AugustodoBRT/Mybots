@@ -1,3 +1,4 @@
+import { fileReference } from './file-references.js';
 // The bots write Markdown. This reader is shared by the app (chat bubbles) and the supervisor (PDF, Word and
 // spreadsheet files), so a table or chart looks the same in the conversation and in a file the bot sends.
 //
@@ -148,18 +149,23 @@ export function parseBlocks(text, { keepMath = false } = {}) {
   return blocks;
 }
 
-/** Inline runs: [{ text, bold?, italic?, code?, href? }]. Links only http(s). */
+/** Inline runs: [{ text, bold?, italic?, code?, href? }]. External links only http(s); local files are separate actions. */
 export function parseInline(text) {
   const runs = []; const source = String(text || '');
-  const pattern = /(\*\*|__)(.+?)\1|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)|(^|[^\w])_(?!\s)([^_\n]+?)_(?!\w)/g;
+  const pattern = /(\*\*|__)(.+?)\1|`([^`]+)`|\[([^\]]+)\]\(([^\n)]+)\)|(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)|(^|[^\w])_(?!\s)([^_\n]+?)_(?!\w)/g;
   let last = 0, match;
   while ((match = pattern.exec(source))) {
+    if (match[4] !== undefined && !/^https?:\/\//i.test(match[5]) && !fileReference(match[5])) continue;
     const lead = match[6] ?? match[8] ?? '';
     const start = match.index + lead.length;
     if (start > last) runs.push({ text: source.slice(last, start) });
     if (match[2] !== undefined) runs.push(...parseInline(match[2]).map(run => ({ ...run, bold: true })));
     else if (match[3] !== undefined) runs.push({ text: match[3], code: true });
-    else if (match[4] !== undefined) runs.push({ text: match[4], href: match[5] });
+    else if (match[4] !== undefined) {
+      if (/^https?:\/\//i.test(match[5])) runs.push({ text: match[4], href: match[5] });
+      else if (fileReference(match[5])) runs.push({ text: match[4], file: match[5] });
+      else runs.push({ text: match[0] });
+    }
     else runs.push({ text: match[7] ?? match[9], italic: true });
     last = pattern.lastIndex;
   }

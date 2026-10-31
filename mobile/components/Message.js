@@ -1,3 +1,4 @@
+import { desktop } from '../desktop';
 import { sameMessage } from '../message-cache';
 import { memo, useState } from 'react';
 import { View, Pressable, Text } from 'react-native';
@@ -26,7 +27,7 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => onRetry(message.text, message)} style={styles.retryButton}><Icon name="refresh" size={14} color={C.text} /><Text style={styles.retryText}>Tentar de novo</Text></Pressable>
   </View>;
   const files = message.attachments?.length ? <View style={styles.messageFiles}>{message.attachments.map(file => isPicture(file) ? <ImageBubble key={file.id} file={file} onPress={onFile} /> : user ? <FileChip key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} /> : <FileCard key={file.id} file={file} busy={fileBusy === file.id} onPress={onFile} />)}</View> : null;
-  if (user) return <View style={[styles.messageRow, styles.userMessageRow]}>
+  if (user) return <View dataSet={desktop ? { desktopMessage: "user" } : undefined} style={[styles.messageRow, styles.userMessageRow]}>
     <View style={[styles.messageBubble, styles.userBubble]}>
       {files}
       {message.text && message.text !== 'Veja o anexo.' ? <Text selectable style={styles.messageText}>{message.text}</Text> : null}
@@ -34,12 +35,12 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
       {error}
     </View>
   </View>;
-  return <View style={styles.messageRow}>
+  return <View dataSet={desktop ? { desktopMessage: "assistant" } : undefined} style={styles.messageRow}>
     {group ? <Avatar bot={bot} size={30} animated={false} tile={false} /> : null}
     <View style={[styles.messageBubble, styles.assistantBubble]}>
-      <View style={styles.messageMeta}>{group ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
+      <View style={styles.messageMeta}>{group || desktop ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
       {files}
-      <RichText id={message.id} text={message.text} textStyle={styles.messageText} />
+      <RichText files={message.attachments} botId={bot.id} onFile={desktop ? onFile : undefined} id={message.id} text={message.text} textStyle={styles.messageText} />
       {error}
     </View>
   </View>;

@@ -37,6 +37,7 @@
               {
                 "type": "RichText",
                 "props": {
+                  "botId": "a",
                   "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
                   "textStyle": "messageText"
                 }
@@ -180,6 +181,7 @@
               {
                 "type": "RichText",
                 "props": {
+                  "botId": "a",
                   "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
                   "textStyle": "messageText"
                 }
@@ -294,6 +296,15 @@
               {
                 "type": "RichText",
                 "props": {
+                  "files": [
+                    {
+                      "id": "f",
+                      "name": "relatório.pdf",
+                      "mime": "application/pdf",
+                      "size": 1000
+                    }
+                  ],
+                  "botId": "a",
                   "text": "**Olá**, você!\n\n| a | b |\n|---|---|\n| 1 | 2 |",
                   "textStyle": "messageText"
                 }

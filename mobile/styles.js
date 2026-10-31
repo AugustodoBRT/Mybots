@@ -295,5 +295,29 @@ export const styles = themed(() => ({
   logsContent: { padding: 13 }, logsText: { color: C.text2, fontFamily: 'monospace', fontSize: 11.5, lineHeight: 17 },
   logsPrivacy: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 10 },
   modalClose: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },
-  modalCloseText: { color: C.text2, fontSize: 22, lineHeight: 24 }
+  modalCloseText: { color: C.text2, fontSize: 22, lineHeight: 24 },
+  // Desktop has its own density and reading rhythm; phone sizing remains unchanged.
+  ...(desktop ? {
+    chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 22, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.bg },
+    chatTitle: { color: C.text, fontFamily: F.b, fontSize: 14, letterSpacing: -0.2 },
+    chatSubtitle: { color: C.muted, fontFamily: F.m, fontSize: 11, marginTop: 2 },
+    messagesContent: { paddingHorizontal: 30, paddingVertical: 28, gap: 22 },
+    messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, minWidth: 0 },
+    userMessageRow: { justifyContent: 'flex-end', paddingLeft: 32 },
+    messageBubble: { flexShrink: 1, minWidth: 0, maxWidth: '85%' },
+    assistantBubble: { padding: 16, paddingTop: 12, borderRadius: 18, borderTopLeftRadius: 5, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+    userBubble: { maxWidth: '72%', paddingHorizontal: 17, paddingTop: 13, paddingBottom: 9, borderRadius: 18, borderBottomRightRadius: 5, backgroundColor: C.bg === '#131416' ? '#302B24' : '#F0E5D5', borderWidth: 1, borderColor: C.accent + '26' },
+    messageText: { color: C.text, fontFamily: F.r, fontSize: 14, lineHeight: 22 },
+    messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 9, flexWrap: 'wrap' },
+    messageSpeaker: { color: C.text2, fontFamily: F.b, fontSize: 11.5 },
+    messageTime: { color: C.faint, fontFamily: F.m, fontSize: 10 },
+    userTime: { color: C.muted, fontFamily: F.m, fontSize: 10, alignSelf: 'flex-end', marginTop: 7 },
+    composerArea: { paddingHorizontal: 28, paddingTop: 10, paddingBottom: 20, backgroundColor: C.bg },
+    composerBox: { borderRadius: 18, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, padding: 9, paddingTop: 4 },
+    composerInput: { minHeight: 36, maxHeight: 150, color: C.text, fontFamily: F.r, fontSize: 13.5, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 4, outlineStyle: 'none' },
+    composerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+    composerTool: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },
+    sendButton: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
+    modelPanel: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4, backgroundColor: C.bg2, borderBottomWidth: 1, borderBottomColor: C.line }
+  } : {})
 }));

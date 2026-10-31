@@ -11,7 +11,7 @@ import { C, Icon } from '../theme';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
-import { readingColumn } from '../desktop';
+import { desktop, readingColumn } from '../desktop';
 
 function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
@@ -46,7 +46,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
   return <View style={styles.chatScreen}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar" onPress={onBack} size={40} /> : null}
-      <RoomFaces bots={members} size={40} />
+      <RoomFaces bots={members} size={desktop ? 30 : 40} />
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{room.name}</Text>
         {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.accent }]} numberOfLines={1}>{working.map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
@@ -56,7 +56,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
     </View>
     <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
-    <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
+    <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
       onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}

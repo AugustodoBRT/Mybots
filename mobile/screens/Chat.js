@@ -56,15 +56,15 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     setComposerError(problems.join(' '));
     onIncoming();
   }, [incoming]);
-  useEffect(() => { if (assumed) setBrowserOpen(true); }, [assumed]);
-  // The window's shell can open or close this conversation's browser panel ("Abrir navegador").
-  useEffect(() => desktopBus.on('browser', () => setBrowserOpen(value => !value)), []);
-  useEffect(() => { desktopBus.emit('browser-state', { botId: bot.id, open: browserOpen || assumed }); }, [browserOpen, assumed, bot.id]);
+  // The computer's window keeps the bot's browser in its right bar: it asks for it there and tells here whether it is open.
+  const openBrowser = () => (desktop ? desktopBus.emit('browser-open', { botId: bot.id }) : setBrowserOpen(true));
+  useEffect(() => { if (assumed) openBrowser(); }, [assumed]);
+  useEffect(() => desktopBus.on('browser-state', state => { if (desktop && state.botId === bot.id) setBrowserOpen(Boolean(state.open)); }), [bot.id]);
   // Tablets and the computer's window: the browser sits beside the conversation instead of above it.
   const [width, setWidth] = useState(0);
   // On the computer, a bot whose browser is not on this computer lives on the phone: its page is shown live here (PhoneBrowserLive).
   const phoneView = Boolean(desktop) && !browsing && (browserOpen || assumed);
-  const showBrowser = browsing && (browserOpen || assumed), side = (showBrowser || phoneView) && width >= 820;
+  const showBrowser = browsing && (browserOpen || assumed), side = !desktop && (showBrowser || phoneView) && width >= 820;
   // While the bot works, new messages still go out and wait their turn (phone mode).
   const typing = phone ? sending || saving : busy;
   const canSend = !typing && (draft.trim() || files.length) && selection?.model;
@@ -112,12 +112,12 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   const asleep = offline(data, bot.id);
   const working = data.active?.includes(bot.id) && !asleep;
   const hue = HUE_OF(bot);
-  const panel = phoneView ? <PhoneBrowserLive bot={bot} assumed={assumed} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} />
+  const panel = desktop ? null : phoneView ? <PhoneBrowserLive bot={bot} assumed={assumed} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} />
     : showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
   return <View style={styles.chatScreen} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.chatHeader}>
       {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={desktop ? 32 : 44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{bot.name}</Text>
         {waiting ? <Text style={[styles.chatSubtitle, { color: C.amber }]}>Esperando sua decisão</Text>
@@ -136,7 +136,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
-    <FlatList ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
+    <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
       onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
@@ -150,7 +150,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
       renderItem={({ item }) => <Actionable message={item} onHold={hold}><Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} /></Actionable>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
-      {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { setBrowserOpen(true); onBrowserControl('person').catch(() => {}); }} /> : null}
+      {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { openBrowser(); onBrowserControl('person').catch(() => {}); }} /> : null}
       {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id] || data.phone?.control === 'person') ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
       {/* the steps of the bot's browser belong to the browser: they show only while it is open */}
       {browserCall && showBrowser ? <BrowserTimeline bot={bot} call={browserCall} working={Boolean(working)} /> : null}

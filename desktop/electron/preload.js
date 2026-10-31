@@ -11,5 +11,13 @@ contextBridge.exposeInMainWorld('mybotsNative', {
   nav: (id, action) => ask('tabs:nav', id, action),
   // The area of the interface the browser fills (CSS pixels of the window), or null to hide it.
   place: rect => ask('tabs:place', rect),
-  thumb: id => ask('tabs:thumb', id)
+  thumb: id => ask('tabs:thumb', id),
+  // The bot's face over the page (a view of its own above the tabs): the interface shows it and receives what is typed in it.
+  overlayShow: state => ask('overlay:show', state),
+  overlayHide: () => ask('overlay:hide'),
+  onOverlayMessage: callback => { const handler = (_event, text) => callback(text); ipcRenderer.on('overlay:message', handler); return () => ipcRenderer.removeListener('overlay:message', handler); },
+  // The face's own page.
+  onOverlayState: callback => { const handler = (_event, state) => callback(state); ipcRenderer.on('overlay:state', handler); return () => ipcRenderer.removeListener('overlay:state', handler); },
+  overlayExpand: open => ask('overlay:expand', Boolean(open)),
+  overlaySend: text => ask('overlay:send', text)
 });

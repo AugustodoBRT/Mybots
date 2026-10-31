@@ -8,7 +8,7 @@ const { createServer } = require('node:http');
 const PARTITION = 'persist:mybots-browser';
 const limit = (text, size) => String(text || '').slice(0, size);
 
-function createTabs({ window, notify, downloads, log = () => {} }) {
+function createTabs({ window, notify, downloads, above = () => null, log = () => {} }) {
   const tabs = new Map(); let order = [], active = null, serial = 0, place = null;
   const ses = session.fromPartition(PARTITION);
   // A normal Chrome to the sites (Google refuses to sign in to anything that says "Electron").
@@ -46,6 +46,8 @@ function createTabs({ window, notify, downloads, log = () => {} }) {
       if (shown) window.contentView.addChildView(tab.view); else window.contentView.addChildView(tab.view, 0);
       tab.view.setBounds(shown ? place : { x: 0, y: 0, width, height }); tab.view.setVisible(true);
     }
+    // What floats over the page (the bot's face) stays on top of the tab that was just brought forward.
+    const floating = above(); if (floating) window.contentView.addChildView(floating);
   };
   function create(url = 'about:blank', { owner = null, activate = true } = {}) {
     const id = ++serial, marker = randomBytes(6).toString('hex');

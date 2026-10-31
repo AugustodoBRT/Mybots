@@ -28,7 +28,7 @@ if (!first) app.quit();
 // A leftover from the last run would point the node at a port nobody listens on.
 else try { unlinkSync(join(app.getPath('userData'), 'DevToolsActivePort')); } catch {}
 
-let window = null, ui = null, tray = null, tabs = null, control = null, quitting = false;
+let window = null, ui = null, overlay = null, overlayState = null, overlayOpen = false, tray = null, tabs = null, control = null, quitting = false;
 // The bots browse in this window's tabs, and Chromium only paints a window that is not hidden. Where the compositor is
 // Hyprland the window is therefore parked on a special workspace instead of hidden, so the bots keep working in the tray.
 const hypr = (...args) => new Promise(resolve => execFile('hyprctl', args, { timeout: 3000 }, (error, out) => resolve(error ? null : String(out))));
@@ -77,7 +77,16 @@ if (first) app.whenReady().then(async () => {
   ui.webContents.loadFile(join(__dirname, '..', 'loader', 'index.html'));
 
   const downloads = join(node, 'downloads'); mkdirSync(downloads, { recursive: true, mode: 0o700 });
-  tabs = createTabs({ window, downloads, notify: state => { if (!window.isDestroyed() && !ui.webContents.isDestroyed()) ui.webContents.send('tabs:state', state); } });
+  // The bot's face over the page: a transparent view above the tabs, shown only while the interface asks for it.
+  overlay = new WebContentsView({ webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
+  overlay.setBackgroundColor('#00000000'); overlay.setVisible(false); window.contentView.addChildView(overlay);
+  const placeOverlay = () => {
+    if (!overlayState) { overlay.setVisible(false); return; }
+    const [width, height] = window.getContentSize(), wide = overlayOpen ? Math.min(480, width - 40) : 56, tall = overlayOpen ? 64 : 56;
+    overlay.setBounds({ x: width - wide - 20, y: height - tall - 20, width: wide, height: tall }); overlay.setVisible(true); window.contentView.addChildView(overlay);
+  };
+  window.on('resize', placeOverlay);
+  tabs = createTabs({ window, downloads, above: () => (overlayState ? overlay : null), notify: state => { if (!window.isDestroyed() && !ui.webContents.isDestroyed()) ui.webContents.send('tabs:state', state); } });
   const token = randomBytes(32).toString('hex');
   control = await controlServer({ tabs, token });
   // The DevToolsActivePort file appears a moment after the app is ready.
@@ -91,6 +100,16 @@ if (first) app.whenReady().then(async () => {
   ipcMain.handle('tabs:go', (event, id, url) => trusted(event) && typeof url === 'string' && tabs.go(id, url.slice(0, 2000)));
   ipcMain.handle('tabs:nav', (event, id, action) => trusted(event) && tabs.nav(id, action));
   ipcMain.handle('tabs:place', (event, rect) => { if (trusted(event)) tabs.place(rect); });
+  const fromOverlay = event => { try { return event.sender === overlay?.webContents && new URL(event.senderFrame.url).origin === UI; } catch { return false; } };
+  ipcMain.handle('overlay:show', (event, state) => {
+    if (!trusted(event) || !state || typeof state !== 'object') return;
+    overlayState = { bot: state.bot, working: Boolean(state.working) };
+    if (!overlay.webContents.getURL()) overlay.webContents.loadURL(`${UI}/?overlay=1`).catch(() => {});
+    placeOverlay(); overlay.webContents.send('overlay:state', overlayState);
+  });
+  ipcMain.handle('overlay:hide', event => { if (!trusted(event)) return; overlayState = null; overlayOpen = false; placeOverlay(); });
+  ipcMain.handle('overlay:expand', (event, open) => { if (!fromOverlay(event)) return; overlayOpen = Boolean(open); placeOverlay(); if (overlayOpen) overlay.webContents.focus(); });
+  ipcMain.handle('overlay:send', (event, text) => { if (fromOverlay(event) && typeof text === 'string' && text.trim() && !ui.webContents.isDestroyed()) ui.webContents.send('overlay:message', text.slice(0, 4000)); });
   ipcMain.handle('tabs:thumb', (event, id) => trusted(event) ? tabs.thumb(id) : null);
 
   tray = new Tray(icon.resize({ width: 32, height: 32 })); tray.setToolTip('MyBots');

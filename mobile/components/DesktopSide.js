@@ -24,8 +24,6 @@ const s = themed(() => ({
   composer: { position: 'absolute', left: 0, right: 0, bottom: 22, alignItems: 'center', zIndex: 2 },
   pill: { width: '60%', minWidth: 300, maxWidth: 640, flexDirection: 'row', alignItems: 'center', gap: 8, height: 42, paddingLeft: 16, paddingRight: 6, borderRadius: 21, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2 },
   pillInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 14, outlineStyle: 'none' },
-  stripFlow: { height: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, backgroundColor: C.bg2, borderTopWidth: 1, borderTopColor: C.line },
-  back: { width: 150, flexDirection: 'row', alignItems: 'center', gap: 8, height: 34, paddingHorizontal: 12, borderRadius: 10 },
   go: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: C.text }
 }));
 
@@ -146,7 +144,8 @@ function NativeCards({ onOpen }) {
  * and the field to talk to the bot are ours. Anywhere else the page is streamed as pictures (BotBrowserPanel).
  */
 function NativeFull({ bot, data, onClose, onSend }) {
-  const { tabs, active } = useNativeTabs(); const hole = useRef(null); const [text, setText] = useState(''); const busy = Boolean(bot && data.active?.includes(bot.id));
+  const { tabs, active } = useNativeTabs(); const hole = useRef(null);
+  const busy = Boolean(bot && data.active?.includes(bot.id));
   const current = tabs.find(tab => tab.id === active);
   useEffect(() => {
     const node = hole.current; if (!node?.getBoundingClientRect) return undefined;
@@ -154,20 +153,21 @@ function NativeFull({ bot, data, onClose, onSend }) {
     send(); const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(send) : null; watch?.observe(node); globalThis.addEventListener('resize', send);
     return () => { watch?.disconnect(); globalThis.removeEventListener('resize', send); native.place(null); };
   }, []);
-  const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
+  // The bot's face floats over the page (the window draws it above the tab); what is typed there comes back here.
+  const face = bot && { id: bot.id, name: bot.name, color: bot.color, avatar: bot.avatar, face: bot.face };
+  useEffect(() => { if (face) native.overlayShow({ bot: face, working: busy }); }, [bot?.id, bot?.name, busy]);
+  useEffect(() => () => { native.overlayHide(); }, []);
+  const sendRef = useRef(onSend); sendRef.current = onSend;
+  useEffect(() => native.onOverlayMessage(text => sendRef.current(text)), []);
   return <View style={s.full}>
     <View style={{ paddingTop: 8, paddingHorizontal: 10, gap: 8, backgroundColor: C.bg2 }}>
-      <TabStrip max={50} enabled tabs={tabs.map(tab => ({ tab: tab.id, title: tab.title, url: tab.url, icon: tab.icon, active: tab.id === active }))} onSwitch={id => native.activate(id)} onClose={id => native.close(id)} onNew={() => native.create()} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flex: 1, minWidth: 0 }}><TabStrip max={50} enabled tabs={tabs.map(tab => ({ tab: tab.id, title: tab.title, url: tab.url, icon: tab.icon, active: tab.id === active }))} onSwitch={id => native.activate(id)} onClose={id => native.close(id)} onNew={() => native.create()} /></View>
+        <IconButton icon="shrink" label="Voltar ao MyBots" onPress={onClose} size={32} />
+      </View>
       <AddressRow win enabled url={current?.url} back={current?.back} forward={current?.forward} onBack={() => native.nav(active, 'back')} onForward={() => native.nav(active, 'forward')} onReload={() => native.nav(active, 'reload')} onOpen={url => native.go(active, url)} placeholder="Digite um endereço ou uma busca" />
     </View>
     <View ref={hole} style={{ flex: 1 }} />
-    <View style={s.stripFlow}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao MyBots" onPress={onClose} style={({ hovered }) => [s.back, hovered && s.hover]}><Icon name="shrink" size={16} color={C.text2} /><Text style={s.tabText}>Voltar ao MyBots</Text></Pressable>
-      <View style={{ flex: 1, alignItems: 'center' }}>{bot ? <View style={[s.pill, { width: '60%' }]}>
-        <TextInput accessibilityLabel={`Mensagem para ${bot.name}`} value={text} onChangeText={setText} onSubmitEditing={go} placeholder={busy ? `${bot.name} está trabalhando…` : `Mensagem para ${bot.name}`} placeholderTextColor={C.faint} style={s.pillInput} selectionColor={C.accent} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Enviar" disabled={!text.trim() || busy} onPress={go} style={[s.go, (!text.trim() || busy) && { opacity: 0.4 }]}><Icon name="send" size={15} color={C.bg} /></Pressable>
-      </View> : null}</View><View style={{ width: 150 }} />
-    </View>
   </View>;
 }
 

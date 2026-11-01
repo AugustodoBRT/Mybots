@@ -75,6 +75,8 @@ const ICONS = {
   mail: [['rect', { x: 3, y: 5, width: 18, height: 14, rx: 2.5 }], ['polyline', { points: '3.5 7 12 13 20.5 7' }]],
   calendar: [['rect', { x: 4, y: 5, width: 16, height: 16, rx: 2.5 }], ['path', { d: 'M8 3v4M16 3v4M4 10h16' }]],
   bolt: [['path', { d: 'M13 3L5 14h6.2L10 21l8-11h-6.2z' }]],
+  // An isometric room: two walls and a floor.
+  office: [['path', { d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9z' }], ['path', { d: 'M4 7.5l8 4.5 8-4.5M12 12v9' }]],
   user: [['circle', { cx: 12, cy: 8, r: 4 }], ['path', { d: 'M4.5 20.5a7.5 7.5 0 0 1 15 0' }]],
   hand: [['path', { d: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V11M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5M14 10.5V5.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6.5 7-3 0-4.5-1.5-6-4l-1.6-2.8a1.5 1.5 0 0 1 2.6-1.5L8 15' }]],
   info: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M12 11v5.5' }], ['circle', { cx: 12, cy: 7.8, r: 1.1, fill: true }]],

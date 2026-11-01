@@ -27,6 +27,7 @@ import { C, Icon, setTheme, resolveTheme } from './theme';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
+import Office from './components/Office';
 import { FileBadge, formatSize } from './RichMessage';
 
 const UPLOAD_PART = 3 * 1024 * 1024;
@@ -713,7 +714,8 @@ function AppMain() {
   // On the computer these are whole pages beside the icon bar instead of sheets.
   const deskPages = desktop ? {
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
-    settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />
+    settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />,
+    office: <Office data={data} onOpen={id => { setDeskPage(null); setSelected(id); setRoomId(null); setDraft(''); }} />
   } : {};
   const profileSheet = data ? <BotProfile inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}

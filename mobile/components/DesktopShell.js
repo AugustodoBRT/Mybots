@@ -215,7 +215,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
   const limit = provider => { const window = data.usage?.limits?.[provider]?.windows?.find(item => item.key === 'five_hour') || data.usage?.limits?.[provider]?.windows?.[0]; return window ? 100 - window.used : null; };
   const openPage = key => onPage(key);
-  const rail = [['bots', 'Conversas', () => onPage(null), page === null], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
+  const rail = [['bots', 'Conversas', () => onPage(null), page === null], ['office', 'Escritório', () => openPage('office'), page === 'office'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
   const faceOf = tab => tab.kind === 'room' ? <Icon name="bots" size={16} color={C.muted} /> : <Avatar bot={bots.find(item => item.id === tab.id) || { name: '?' }} size={20} animated={false} />;
   return <View style={s.desk}>

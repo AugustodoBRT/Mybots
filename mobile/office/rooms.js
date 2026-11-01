@@ -65,94 +65,153 @@ function desk(g, c) {
 }
 function beanbag(g, c) { const m = add(g, new T.SphereGeometry(0.55, 24, 16), mat(c, { roughness: 0.95 }), 0, 0.32, 0, 0, 0, 0, [1.15, 0.6, 1.05]); add(g, new T.SphereGeometry(0.35, 18, 12), mat(c, { roughness: 0.95 }), 0, 0.52, -0.32, 0, 0, 0, [1.3, 0.9, 0.6]); return m; }
 
-/** Builds one room. `members` are the app's bots in it. Returns the spots the engine walks the bots to, and the obstacles. */
-export function buildRoom(scene, { id, name, members, origin = [0, 0], lobby = false }) {
-  const r = rng(hashStr('sala#' + id)), n = Math.max(1, members.length);
-  const W = Math.min(17, Math.max(8.5, 6.5 + n * 1.55)), D = Math.min(13, Math.max(7.5, 6 + n * 0.85));
-  const root = new T.Group(); root.position.set(origin[0], 0, origin[1]); scene.add(root);
-  const hues = members.map(b => specFromFace(b.face, b.name || b.id).hue);
-  const accent = hues.length ? hues[Math.floor(r() * hues.length)] : 35;
-  const floorA = ['#2b2d33', '#2e2a27', '#272a2e', '#2c2a31'][Math.floor(r() * 4)], floorB = new T.Color(floorA).offsetHSL(0, 0, -0.025).getStyle();
-  const wallC = new T.Color().setHSL(accent / 360, 0.08 + r() * 0.08, 0.2 + r() * 0.04).getStyle();
-  // Floor slab with an amber rim, checker tiles, and rocks floating under it.
-  add(root, rbox(W + 0.4, 0.55, D + 0.4, 0.12), mat('#22242b'), 0, -0.3, 0); add(root, rbox(W + 0.5, 0.04, D + 0.5, 0.01), mat('#ffd393', { emissive: '#ffb55b', emissiveIntensity: 1.2 }), 0, -0.52, 0);
-  const tiles = document.createElement('canvas'); tiles.width = tiles.height = 256; { const q = tiles.getContext('2d'); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { q.fillStyle = (i + j) % 2 ? floorA : floorB; q.fillRect(i * 64, j * 64, 64, 64); } q.strokeStyle = 'rgba(255,255,255,.05)'; q.lineWidth = 2; for (let i = 0; i <= 4; i++) { q.beginPath(); q.moveTo(i * 64, 0); q.lineTo(i * 64, 256); q.moveTo(0, i * 64); q.lineTo(256, i * 64); q.stroke(); } }
-  const tex = new T.CanvasTexture(tiles); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(W / 3.2, D / 3.2); tex.colorSpace = T.SRGBColorSpace;
-  const floor = new T.Mesh(new T.PlaneGeometry(W, D), new T.MeshStandardMaterial({ map: tex, roughness: 0.6 })); floor.rotation.x = -Math.PI / 2; floor.position.y = 0.002; floor.receiveShadow = true; root.add(floor);
-  for (let i = 0; i < 8; i++) { const o = add(root, new T.DodecahedronGeometry(0.4 + r() * 0.6, 0), mat(i % 2 ? '#25262e' : '#39343b', { roughness: 1 }), (r() - 0.5) * (W - 1), -0.9 - r() * 0.8, (r() - 0.5) * (D - 1), r(), r(), r()); o.scale.y = 0.8 + r(); }
-  // Walls (north and west), with wooden rails, and a window to space on the north wall.
-  const wood = mat('#6a4f36', { roughness: 0.55 });
-  add(root, rbox(W + 0.4, 3.2, 0.18, 0.03), mat(wallC), 0, 1.6, -D / 2 - 0.09); add(root, rbox(0.18, 3.2, D + 0.4, 0.03), mat(wallC), -W / 2 - 0.09, 1.6, 0);
-  add(root, rbox(W + 0.4, 0.12, 0.26, 0.02), wood, 0, 3.24, -D / 2 - 0.05); add(root, rbox(0.26, 0.12, D + 0.4, 0.02), wood, -W / 2 - 0.05, 3.24, 0);
-  add(root, rbox(W, 0.1, 0.12, 0.01), wood, 0, 0.1, -D / 2 + 0.03); add(root, rbox(0.12, 0.1, D, 0.01), wood, -W / 2 + 0.03, 0.1, 0);
-  const win = document.createElement('canvas'); win.width = 256; win.height = 128; { const q = win.getContext('2d'); q.fillStyle = '#080b16'; q.fillRect(0, 0, 256, 128); const gr = q.createRadialGradient(190, 30, 4, 190, 30, 150); gr.addColorStop(0, `hsl(${accent},35%,26%)`); gr.addColorStop(1, '#0b0d19'); q.fillStyle = gr; q.fillRect(0, 0, 256, 128); for (let i = 0; i < 50; i++) { q.fillStyle = `rgba(235,232,255,${0.3 + r() * 0.7})`; q.fillRect(r() * 256, r() * 128, 1.5, 1.5); } }
-  const wt = new T.CanvasTexture(win); wt.colorSpace = T.SRGBColorSpace; const wx = W / 2 - 2.2;
-  add(root, rbox(2.6, 1.4, 0.1, 0.04), mat('#1b1d22'), wx, 2.2, -D / 2 + 0.02); const pane = new T.Mesh(new T.PlaneGeometry(2.4, 1.2), new T.MeshBasicMaterial({ map: wt })); pane.position.set(wx, 2.2, -D / 2 + 0.08); root.add(pane);
-  // The approval door on the west wall: where a bot waits for you.
-  const doorZ = D / 2 - 1.6;
-  add(root, rbox(0.08, 2.3, 1.1, 0.04), mat('#191d27'), -W / 2 + 0.05, 1.15, doorZ); const frameM = mat('#ffd393', { emissive: '#ffb55b', emissiveIntensity: 0.6 });
-  for (const dz of [-0.55, 0.55]) add(root, rbox(0.06, 2.3, 0.05, 0.01), frameM, -W / 2 + 0.1, 1.15, doorZ + dz); add(root, rbox(0.06, 0.05, 1.15, 0.01), frameM, -W / 2 + 0.1, 2.3, doorZ);
-  // Rug in the room's color.
-  const rug = new T.Mesh(new T.CircleGeometry(Math.min(W, D) * 0.22, 64), mat(new T.Color().setHSL(accent / 360, 0.28, 0.15).getStyle(), { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0.6, 0.012, D * 0.12); rug.receiveShadow = true; root.add(rug);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-  const obstacles = [], items = [], desks = new Map(), beds = new Map(), screens = new Map(), ticks = [];
-  const block = (x, z, w, d) => obstacles.push([x - w / 2, x + w / 2, z - d / 2, z + d / 2]);
-  const place = (build, x, z, ry, author, color) => { const g = new T.Group(); g.position.set(x, 0, z); g.rotation.y = ry; root.add(g); const out = build(g, color); if (g.userData.tick) ticks.push(g.userData.tick); items.push({ group: g, author, x, z }); return out; };
-  // Desks along the north wall (two rows if needed), each with its bot's color on the screen.
-  const perRow = Math.max(1, Math.floor((W - 3.2) / 2.3)), deskOf = [];
-  members.forEach((bot, i) => {
-    const row = Math.floor(i / perRow), col = i % perRow, cols = Math.min(perRow, members.length - row * perRow);
-    const x = -((cols - 1) * 2.3) / 2 + col * 2.3 - 0.4, z = -D / 2 + 1.05 + row * 2.9;
-    const color = new T.Color().setHSL(hues[i] / 360, 0.6, 0.55).getStyle();
-    const screen = place(desk, x, z, 0, bot.id, color); screens.set(bot.id, screen);
-    block(x, z, 2.0, 0.95); block(x, z + 0.95, 0.75, 0.7); desks.set(bot.id, { pos: [x, 0.66, z + 0.95], yaw: Math.PI });
-    deskOf.push(z);
-  });
-  const deskBack = Math.max(...deskOf, -D / 2) + 1.6;
-  // Slots along the edges (west wall south of the desks, east and south edges) for beanbags and decor.
-  const slots = [];
-  for (let x = -W / 2 + 2.4; x <= W / 2 - 1; x += 1.45) slots.push({ x, z: D / 2 - 0.75, ry: Math.PI, edge: 'south' });
-  for (let z = deskBack + 0.4; z <= D / 2 - 1.5; z += 1.4) slots.push({ x: W / 2 - 0.75, z, ry: -Math.PI / 2, edge: 'east' });
-  for (let z = deskBack + 0.2; z <= doorZ - 1.2; z += 1.4) slots.push({ x: -W / 2 + 0.75, z, ry: Math.PI / 2, edge: 'west' });
-  const take = prefer => { const i = slots.findIndex(s => !s.used && (!prefer || s.edge === prefer)); const k = i >= 0 ? i : slots.findIndex(s => !s.used); if (k < 0) return null; slots[k].used = true; return slots[k]; };
-  // A beanbag for each bot, in its color: where it sleeps when it is disconnected.
-  members.forEach((bot, i) => { const s = take('south'); if (!s) return; const color = new T.Color().setHSL(hues[i] / 360, 0.35, 0.42).getStyle(); place(beanbag, s.x, s.z, s.ry, bot.id, color); block(s.x, s.z, 1.2, 1.1); beds.set(bot.id, { pos: [s.x, 0.42, s.z - 0.05], yaw: Math.PI / 2 }); });
-  // What each bot brings, then a few things of the room's own.
-  const things = members.map((bot, i) => ({ kind: themeOf(bot, r), author: bot.id, color: new T.Color().setHSL(hues[i] / 360, 0.55, 0.55).getStyle() }));
-  for (let i = 0; i < 2 + Math.floor(r() * 2); i++) things.push({ kind: ['plant', 'lamp', 'plant'][i % 3], author: null, color: '#62896a' });
-  for (const thing of things) { const s = take(thing.kind === 'lamp' ? 'west' : 'east'); if (!s) break; const [w, d] = BUILD[thing.kind](new T.Group(), thing.color); place(BUILD[thing.kind], s.x, s.z, s.ry, thing.author, thing.color); block(s.x, s.z, Math.max(w, d) + 0.1, Math.max(w, d) + 0.1); }
-  // A plant in the free corner by the window.
-  place(BUILD.plant, W / 2 - 0.6, -D / 2 + 0.6, 0, null, '#62896a'); block(W / 2 - 0.6, -D / 2 + 0.6, 0.8, 0.8);
-
-  const bounds = [-W / 2 + 0.45, W / 2 - 0.45, -D / 2 + 0.45, D / 2 - 0.45];
-  const blocked = (x, z) => x < bounds[0] || x > bounds[1] || z < bounds[2] || z > bounds[3] || obstacles.some(b => x > b[0] - 0.32 && x < b[1] + 0.32 && z > b[2] - 0.32 && z < b[3] + 0.32);
-  const door = { pos: [-W / 2 + 0.95, 0, doorZ], yaw: -Math.PI / 2 };
-  const wander = []; for (let i = 0; i < 120 && wander.length < 10 + n * 3; i++) { const x = (r() - 0.5) * (W - 2), z = (r() - 0.5) * (D - 2); if (!blocked(x, z) && !wander.some(w => Math.hypot(w[0] - x, w[2] - z) < 1.1)) wander.push([x, 0, z]); }
-  if (!wander.length) wander.push([0, 0, D * 0.12]);
-  function update(t, working) { for (const tick of ticks) tick(t); for (const [botId, screen] of screens) { const on = working.has(botId); screen.material.emissiveIntensity = on ? 0.55 + Math.sin(t * 9 + botId.length) * 0.06 : 0.04; } }
-  // Shared geometries and materials stay cached for the next rooms; only this room's textures are freed.
-  function dispose() { scene.remove(root); tex.dispose(); wt.dispose(); }
-  return { id, name, lobby, root, size: [W, D], origin, desks, beds, door, wander, blocked, items, update, dispose };
-}
-
-// A* on a 0.25 grid in the room's local coordinates, with corners cut where the straight line is free.
-export function findPath(room, from, to) {
-  const STEP = 0.25, key = (x, z) => x + ',' + z, cell = p => [Math.round(p[0] / STEP), Math.round(p[2] / STEP)];
-  const start = cell(from), goal = cell(to), gk = key(...goal), sk = key(...start);
-  const open = [{ x: start[0], z: start[1], g: 0, f: 0 }], best = new Map([[sk, 0]]), parent = new Map(); let found = false, guard = 0;
-  while (open.length && guard++ < 6000) {
-    open.sort((a, b) => a.f - b.f); const n = open.shift(), nk = key(n.x, n.z); if (nk === gk) { found = true; break; }
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-      const x = n.x + dx, z = n.z + dz, k = key(x, z);
-      if (k !== gk && room.blocked(x * STEP, z * STEP)) continue;
-      const g = n.g + Math.hypot(dx, dz); if (g >= (best.get(k) ?? Infinity)) continue;
-      best.set(k, g); parent.set(k, nk); open.push({ x, z, g, f: g + Math.hypot(x - goal[0], z - goal[1]) });
-    }
+/**
+ * The whole floor, built from the app's rooms: rooms of different sizes (they grow with their members), side by side in
+ * rows, joined by doors in the shared walls and by a hall below each row and a corridor along the west side, all on one
+ * floating slab. `infos` are { id, name, members, lobby } in the order the rooms were made. The room's id is its seed.
+ */
+export function buildBuilding(scene, infos) {
+  const SPINE = 2.4, HALL = 2.4, STEP = 0.25, DOOR = 1.8;
+  const rooms = infos.map(info => { const r = rng(hashStr('sala#' + info.id)), n = Math.max(1, info.members.length);
+    return { ...info, n, r, W: clamp(5.4 + n * 1.45 + (r() - 0.5) * 2.2, 5.6, 15), D: clamp(4.9 + n * 0.85 + (r() - 0.5) * 2.2, 5.2, 11.5) }; });
+  // Rows: left to right until the row gets as wide as a loose square of all the rooms.
+  const area = rooms.reduce((s, r) => s + r.W * r.D, 0), target = Math.max(15, Math.sqrt(area) * 1.55), rows = []; let row = null;
+  for (const room of rooms) { if (!row || (row.w + room.W > target && row.rooms.length)) rows.push(row = { rooms: [], w: 0, d: 0 }); row.rooms.push(room); row.w += room.W; row.d = Math.max(row.d, room.D); }
+  let z0 = 0; const rects = [];   // walkable rectangles [x0, z0, x1, z1]
+  for (const rw of rows) {
+    let x = SPINE; rw.z0 = z0;
+    for (const room of rw.rooms) { room.x0 = x; room.z0 = z0; room.x1 = x + room.W; room.z1 = z0 + room.D; room.cx = x + room.W / 2; room.cz = z0 + room.D / 2; x += room.W; rects.push([room.x0, room.z0, room.x1, room.z1]); rects.push([room.x0, room.z1, room.x1, z0 + rw.d + HALL]); }
+    rw.bottom = z0 + rw.d + HALL; z0 = rw.bottom;
   }
-  if (!found) return [from, to];
-  const pts = []; let k = gk; while (k && k !== sk) { const [x, z] = k.split(',').map(Number); pts.unshift([x * STEP, 0, z * STEP]); k = parent.get(k); }
-  pts.unshift(from); pts[pts.length - 1] = to;
-  const free = (a, b) => { const d = Math.hypot(b[0] - a[0], b[2] - a[2]), n = Math.ceil(d / 0.1); for (let i = 1; i < n; i++) { const x = a[0] + (b[0] - a[0]) * i / n, z = a[2] + (b[2] - a[2]) * i / n; if (room.blocked(x, z)) return false; } return true; };
-  const out = [pts[0]]; let i = 0; while (i < pts.length - 1) { let j = pts.length - 1; while (j > i + 1 && !free(pts[i], pts[j])) j--; out.push(pts[j]); i = j; }
-  return out;
+  const bottom = z0, right = Math.max(...rows.map(rw => SPINE + rw.w)); rects.push([0, 0, SPINE, bottom]);
+  // Doors: one in each room's south wall (into the hall) and one in every shared wall between neighbors.
+  for (const rw of rows) rw.rooms.forEach((room, i) => {
+    const r = room.r; room.southDoor = clamp(room.cx + (r() - 0.5) * (room.W - 4), room.x0 + 1.6, room.x1 - 1.6); room.doors = [];
+    const next = rw.rooms[i + 1]; if (next) { const zc = Math.min(room.z1, next.z1) - 1.7 - r() * 1.2; room.eastDoor = next.westDoor = zc; }
+  });
+  const root = new T.Group(); scene.add(root);
+  const wood = mat('#6a4f36', { roughness: 0.55 });
+
+  // ---- floor slab under every walkable rectangle, with a warm rim, and rocks floating below
+  const floorTex = (a, b, rep) => { const c = document.createElement('canvas'); c.width = c.height = 256; const q = c.getContext('2d'); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { q.fillStyle = (i + j) % 2 ? a : b; q.fillRect(i * 64, j * 64, 64, 64); } q.strokeStyle = 'rgba(255,255,255,.05)'; q.lineWidth = 2; for (let i = 0; i <= 4; i++) { q.beginPath(); q.moveTo(i * 64, 0); q.lineTo(i * 64, 256); q.moveTo(0, i * 64); q.lineTo(256, i * 64); q.stroke(); } const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.colorSpace = T.SRGBColorSpace; return t; };
+  const textures = [];
+  const slab = (x0, z0, x1, z1, tex, tint) => { const w = x1 - x0, d = z1 - z0; add(root, rbox(w + 0.1, 0.55, d + 0.1, 0.1), mat('#22242b'), (x0 + x1) / 2, -0.3, (z0 + z1) / 2);
+    const f = new T.Mesh(new T.PlaneGeometry(w, d), new T.MeshStandardMaterial({ map: tex, roughness: 0.6, color: tint || '#fff' })); f.rotation.x = -Math.PI / 2; f.position.set((x0 + x1) / 2, 0.002, (z0 + z1) / 2); f.receiveShadow = true; root.add(f); };
+  for (const room of rooms) { const r = room.r, a = ['#2b2d33', '#2e2a27', '#272a2e', '#2c2a31'][Math.floor(r() * 4)], b = new T.Color(a).offsetHSL(0, 0, -0.025).getStyle(); const tex = floorTex(a, b, [room.W / 3.2, room.D / 3.2]); textures.push(tex); room.floorTex = tex; slab(room.x0, room.z0, room.x1, room.z1, tex); }
+  const hallTex = floorTex('#34363e', '#2f3138', [1, 1]); textures.push(hallTex);
+  for (const rw of rows) for (const room of rw.rooms) { hallTex.repeat.set(room.W / 3.2, 0.8); slab(room.x0, room.z1, room.x1, rw.bottom, hallTex, '#cfd2da'); }
+  slab(0, 0, SPINE, bottom, hallTex, '#cfd2da');
+  // Warm rim along the outer edge of the whole slab (south and east, the visible sides).
+  const rim = mat('#ffd393', { emissive: '#ffb55b', emissiveIntensity: 1.2 });
+  add(root, rbox(right, 0.05, 0.08, 0.01), rim, right / 2, -0.52, bottom + 0.05); add(root, rbox(0.08, 0.05, bottom, 0.01), rim, right + 0.05, -0.52, bottom / 2);
+  { const r = rng(7731); for (let i = 0; i < 6 + rooms.length * 2; i++) { const o = add(root, new T.DodecahedronGeometry(0.5 + r() * 1.1, 0), mat(i % 2 ? '#25262e' : '#39343b', { roughness: 1 }), r() * right, -1 - r() * 1.4, r() * bottom, r(), r(), r()); o.scale.y = 0.9 + r() * 1.4; } }
+
+  // ---- walls: north (tall) and west (tall) of every room, south (low) with a door, and a short wall between the hall and the spine
+  const solids = [];   // [x0, z0, x1, z1] wall rectangles, for the walking grid
+  const T_ = 0.2;
+  const wall = (x0, z0, x1, z1, height, color, gaps = [], axis) => {
+    // axis 'x': wall runs along x at z = z0; axis 'z': along z at x = x0. gaps: [center, width] along the wall.
+    const a = axis === 'x' ? x0 : z0, b = axis === 'x' ? x1 : z1, sorted = gaps.slice().sort((p, q) => p[0] - q[0]); let cur = a;
+    const piece = (s, e) => { if (e - s < 0.02) return; const len = e - s, c = (s + e) / 2; if (axis === 'x') { add(root, rbox(len, height, T_, 0.02), mat(color), c, height / 2, z0); solids.push([s, z0 - T_ / 2, e, z0 + T_ / 2]); } else { add(root, rbox(T_, height, len, 0.02), mat(color), x0, height / 2, c); solids.push([x0 - T_ / 2, s, x0 + T_ / 2, e]); } };
+    for (const [c, w] of sorted) { piece(cur, c - w / 2); cur = c + w / 2; } piece(cur, b);
+    // trim along the top
+    if (height > 2) { const len = b - a; if (axis === 'x') add(root, rbox(len, 0.1, T_ + 0.1, 0.01), wood, (a + b) / 2, height + 0.05, z0); else add(root, rbox(T_ + 0.1, 0.1, len, 0.01), wood, x0, height + 0.05, (a + b) / 2); }
+  };
+  const frames = [];
+  const doorFrame = (x, z, axis, lit) => { const m = new T.MeshStandardMaterial({ color: '#ffd393', emissive: '#ffb55b', emissiveIntensity: 0.4, roughness: 0.5 }); if (lit) frames.push({ m, room: lit });
+    if (axis === 'x') { for (const dx of [-DOOR / 2, DOOR / 2]) add(root, rbox(0.08, 2.3, 0.28, 0.01), m, x + dx, 1.15, z); add(root, rbox(DOOR + 0.1, 0.08, 0.28, 0.01), m, x, 2.3, z); } else { for (const dz of [-DOOR / 2, DOOR / 2]) add(root, rbox(0.28, 2.3, 0.08, 0.01), m, x, 1.15, z + dz); add(root, rbox(0.28, 0.08, DOOR + 0.1, 0.01), m, x, 2.3, z); } };
+  for (const rw of rows) rw.rooms.forEach((room, i) => {
+    const r = room.r, wallC = new T.Color().setHSL((specHue(room) % 360) / 360, 0.08 + r() * 0.08, 0.2 + r() * 0.04).getStyle(); room.wallC = wallC;
+    wall(room.x0, room.z0, room.x1, room.z0, 3.2, wallC, [], 'x');                                       // north
+    wall(room.x0, room.z0, room.x0, room.z1, 3.2, wallC, room.westDoor != null ? [[room.westDoor, DOOR]] : [], 'z');   // west
+    wall(room.x0, room.z1, room.x1, room.z1, 0.95, wallC, [[room.southDoor, DOOR]], 'x');               // south, low
+    wall(room.x0, room.z1 - 0.05, room.x1, room.z1 - 0.05, 0.05, '#4a3a28', [[room.southDoor, DOOR]], 'x');
+    doorFrame(room.southDoor, room.z1, 'x', room);
+    if (room.westDoor != null) doorFrame(room.x0, room.westDoor, 'z', null);
+    // a window on the north wall, looking at the stars, tinted by the room's color
+    const win = document.createElement('canvas'); win.width = 256; win.height = 128; { const q = win.getContext('2d'), h = specHue(room); q.fillStyle = '#080b16'; q.fillRect(0, 0, 256, 128); const gr = q.createRadialGradient(190, 30, 4, 190, 30, 150); gr.addColorStop(0, `hsl(${h},35%,26%)`); gr.addColorStop(1, '#0b0d19'); q.fillStyle = gr; q.fillRect(0, 0, 256, 128); for (let k = 0; k < 50; k++) { q.fillStyle = `rgba(235,232,255,${0.3 + r() * 0.7})`; q.fillRect(r() * 256, r() * 128, 1.5, 1.5); } }
+    const wt = new T.CanvasTexture(win); wt.colorSpace = T.SRGBColorSpace; textures.push(wt); const wx = room.x1 - 2.2 - r() * Math.max(0, room.W - 6) * 0.4;
+    add(root, rbox(2.6, 1.4, 0.1, 0.04), mat('#1b1d22'), wx, 2.2, room.z0 + 0.02); const pane = new T.Mesh(new T.PlaneGeometry(2.4, 1.2), new T.MeshBasicMaterial({ map: wt })); pane.position.set(wx, 2.2, room.z0 + 0.08); root.add(pane);
+  });
+  function specHue(room) { const hs = room.members.map(b => specFromFace(b.face, b.name || b.id).hue); return hs.length ? hs[Math.floor(room.r() * hs.length)] : 35; }
+  // the corridor's west wall and the hall's south edge stay open (the camera looks at them)
+  wall(0, 0, 0, bottom, 3.2, '#2c2e35', [], 'z'); wall(0, 0, SPINE, 0, 3.2, '#2c2e35', [], 'x');
+
+  // ---- the walking grid of the whole floor
+  const gx0 = -1, gz0 = -1, nx = Math.ceil((right + 2) / STEP), nz = Math.ceil((bottom + 2) / STEP), free = new Uint8Array(nx * nz), solid = new Uint8Array(nx * nz);
+  const cellOf = (x, z) => [Math.round((x - gx0) / STEP), Math.round((z - gz0) / STEP)];
+  for (const [a, b, c, d] of rects) { const [i0, j0] = cellOf(a, b), [i1, j1] = cellOf(c, d); for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (i >= 0 && j >= 0 && i < nx && j < nz) free[j * nx + i] = 1; }
+  const stamp = (x0, z0, x1, z1) => { const [i0, j0] = cellOf(x0, z0), [i1, j1] = cellOf(x1, z1); for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (i >= 0 && j >= 0 && i < nx && j < nz) solid[j * nx + i] = 1; };
+  for (const s of solids) stamp(...s);
+
+  // ---- each room's furniture (the decoration is a function of the room's seed and who is in it)
+  const entries = new Map();
+  for (const room of rooms) {
+    const r = room.r, g = new T.Group(); g.position.set(room.cx, 0, room.cz); root.add(g);
+    const W = room.W, D = room.D, members = room.members, hues = members.map(b => specFromFace(b.face, b.name || b.id).hue), accent = hues.length ? hues[Math.floor(r() * hues.length)] : 35;
+    const gapsS = [room.southDoor - room.cx], gapsW = room.westDoor != null ? [room.westDoor - room.cz] : [], gapsE = room.eastDoor != null ? [room.eastDoor - room.cz] : [];
+    const obstacles = [], items = [], desks = new Map(), beds = new Map(), screens = new Map(), ticks = [];
+    // rug
+    const rug = new T.Mesh(new T.CircleGeometry(Math.min(W, D) * 0.2, 48), mat(new T.Color().setHSL(accent / 360, 0.28, 0.15).getStyle(), { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0.4, 0.012, D * 0.08); rug.receiveShadow = true; g.add(rug);
+    const block = (x, z, w, d) => obstacles.push([x - w / 2, x + w / 2, z - d / 2, z + d / 2]);
+    const place = (build, x, z, ry, author, color) => { const gg = new T.Group(); gg.position.set(x, 0, z); gg.rotation.y = ry; g.add(gg); const out = build(gg, color); if (gg.userData.tick) ticks.push(gg.userData.tick); items.push({ group: gg, author, x: room.cx + x, z: room.cz + z }); return out; };
+    const perRow = Math.max(1, Math.floor((W - 3.2) / 2.3)), deskZ = [];
+    members.forEach((bot, i) => { const row = Math.floor(i / perRow), col = i % perRow, cols = Math.min(perRow, members.length - row * perRow), x = -((cols - 1) * 2.3) / 2 + col * 2.3 - 0.3, z = -D / 2 + 1.05 + row * 2.9, color = new T.Color().setHSL(hues[i] / 360, 0.6, 0.55).getStyle();
+      screens.set(bot.id, place(desk, x, z, 0, bot.id, color)); block(x, z, 2.0, 0.95); block(x, z + 0.95, 0.75, 0.7); desks.set(bot.id, { pos: [room.cx + x, 0.66, room.cz + z + 0.95], yaw: Math.PI }); deskZ.push(z); });
+    const deskBack = Math.max(...deskZ, -D / 2) + 1.7, slots = [], nearGap = (v, gaps, span) => gaps.some(gp => Math.abs(v - gp) < span);
+    for (let x = -W / 2 + 1.1; x <= W / 2 - 1; x += 1.45) if (!nearGap(x, gapsS, 1.5)) slots.push({ x, z: D / 2 - 0.75, ry: Math.PI, edge: 'south' });
+    for (let z = deskBack + 0.4; z <= D / 2 - 1.6; z += 1.4) if (!nearGap(z, gapsE, 1.4)) slots.push({ x: W / 2 - 0.75, z, ry: -Math.PI / 2, edge: 'east' });
+    for (let z = deskBack + 0.2; z <= D / 2 - 1.6; z += 1.4) if (!nearGap(z, gapsW, 1.4)) slots.push({ x: -W / 2 + 0.75, z, ry: Math.PI / 2, edge: 'west' });
+    const take = prefer => { const i = slots.findIndex(s => !s.used && (!prefer || s.edge === prefer)), k = i >= 0 ? i : slots.findIndex(s => !s.used); if (k < 0) return null; slots[k].used = true; return slots[k]; };
+    members.forEach((bot, i) => { const s = take('south') || take(); if (!s) return; place(beanbag, s.x, s.z, s.ry, bot.id, new T.Color().setHSL(hues[i] / 360, 0.35, 0.42).getStyle()); block(s.x, s.z, 1.2, 1.1); beds.set(bot.id, { pos: [room.cx + s.x, 0.42, room.cz + s.z - 0.05], yaw: Math.PI / 2 }); });
+    const things = members.map((bot, i) => ({ kind: themeOf(bot, r), author: bot.id, color: new T.Color().setHSL(hues[i] / 360, 0.55, 0.55).getStyle() }));
+    for (let i = 0; i < 1 + Math.floor(r() * 3); i++) things.push({ kind: ['plant', 'lamp', 'plant'][i % 3], author: null, color: '#62896a' });
+    for (const thing of things) { const s = take(thing.kind === 'lamp' ? 'west' : 'east'); if (!s) break; const [w, d] = BUILD[thing.kind](new T.Group(), thing.color); place(BUILD[thing.kind], s.x, s.z, s.ry, thing.author, thing.color); block(s.x, s.z, Math.max(w, d) + 0.1, Math.max(w, d) + 0.1); }
+    place(BUILD.plant, W / 2 - 0.6, -D / 2 + 0.6, 0, null, '#62896a'); block(W / 2 - 0.6, -D / 2 + 0.6, 0.8, 0.8);
+    for (const [a, b, c, d] of obstacles) stamp(room.cx + a - 0.1, room.cz + b - 0.1, room.cx + c + 0.1, room.cz + d + 0.1);
+    entries.set(room.id, { room, items, desks, beds, screens, ticks, door: { pos: [room.southDoor, 0, room.z1 - 1.15], yaw: 0 }, obstacles });
+  }
+  // dilate the solids by one cell (the bots' body) and make the grid
+  const blockedCell = new Uint8Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { let b = !free[j * nx + i] || solid[j * nx + i]; if (!b) for (let dj = -1; dj <= 1 && !b; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz || !free[jj * nx + ii] || solid[jj * nx + ii]) { b = true; break; } } blockedCell[j * nx + i] = b ? 1 : 0; }
+  const blocked = (x, z) => { const [i, j] = cellOf(x, z); return i < 0 || j < 0 || i >= nx || j >= nz || blockedCell[j * nx + i] === 1; };
+
+  const out = [];
+  for (const [id, e] of entries) {
+    const room = e.room, wander = [], r = rng(hashStr('passeio#' + id));
+    for (let i = 0; i < 160 && wander.length < 8 + room.n * 3; i++) { const x = room.x0 + 0.6 + r() * (room.W - 1.2), z = room.z0 + 0.6 + r() * (room.D - 1.2); if (!blocked(x, z) && !wander.some(w => Math.hypot(w[0] - x, w[2] - z) < 1.1)) wander.push([x, 0, z]); }
+    if (!wander.length) wander.push([room.cx, 0, room.cz]);
+    out.push({ id, name: room.name, lobby: room.lobby, size: [room.W, room.D], origin: [room.cx, room.cz], rect: [room.x0, room.z0, room.x1, room.z1], desks: e.desks, beds: e.beds, door: e.door, wander, items: e.items, screens: e.screens, ticks: e.ticks, building: null, doorMat: frames.find(f => f.room === room)?.m });
+  }
+  const hall = [Math.min(...rects.map(r => r[0])), 0, right, bottom];
+  const heap = { push(h, n) { h.push(n); let i = h.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (h[p].f <= h[i].f) break; [h[p], h[i]] = [h[i], h[p]]; i = p; } }, pop(h) { const top = h[0], last = h.pop(); if (h.length) { h[0] = last; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < h.length && h[l].f < h[m].f) m = l; if (r < h.length && h[r].f < h[m].f) m = r; if (m === i) break; [h[m], h[i]] = [h[i], h[m]]; i = m; } } return top; } };
+  // A* over the whole floor (8 neighbors, no corner cutting), then the straight stretches are pulled tight.
+  function findPath(from, to) {
+    const key = (i, j) => j * nx + i, s = cellOf(from[0], from[2]), g = cellOf(to[0], to[2]), gk = key(...g), sk = key(...s);
+    const open = [{ i: s[0], j: s[1], g: 0, f: 0 }], best = new Map([[sk, 0]]), parent = new Map(); let found = false, guard = 0;
+    while (open.length && guard++ < 60000) {
+      const n = heap.pop(open), nk = key(n.i, n.j); if (nk === gk) { found = true; break; } if (n.g > best.get(nk)) continue;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        const i = n.i + di, j = n.j + dj, k = key(i, j);
+        if (i < 0 || j < 0 || i >= nx || j >= nz) continue;
+        if (k !== gk && blockedCell[k]) continue;
+        if (di && dj && (blockedCell[key(n.i + di, n.j)] || blockedCell[key(n.i, n.j + dj)])) continue;
+        const gg = n.g + Math.hypot(di, dj); if (gg >= (best.get(k) ?? Infinity)) continue;
+        best.set(k, gg); parent.set(k, nk); heap.push(open, { i, j, g: gg, f: gg + Math.hypot(i - g[0], j - g[1]) });
+      }
+    }
+    if (!found) return [from, to];
+    const pts = []; let k = gk; while (k != null && k !== sk) { pts.unshift([gx0 + (k % nx) * STEP, 0, gz0 + Math.floor(k / nx) * STEP]); k = parent.get(k); }
+    pts.unshift(from); pts[pts.length - 1] = to;
+    const clear = (a, b) => { const d = Math.hypot(b[0] - a[0], b[2] - a[2]), n = Math.ceil(d / 0.1); for (let q = 1; q < n; q++) if (blocked(a[0] + (b[0] - a[0]) * q / n, a[2] + (b[2] - a[2]) * q / n)) return false; return true; };
+    const res = [pts[0]]; let a = 0; while (a < pts.length - 1) { let b = pts.length - 1; while (b > a + 1 && !clear(pts[a], pts[b])) b--; res.push(pts[b]); a = b; } return res;
+  }
+  const roomAt = (x, z) => out.find(r => x >= r.rect[0] && x <= r.rect[2] && z >= r.rect[1] && z <= r.rect[3]) || null;
+  function update(t, working, waiting) {
+    for (const room of out) { for (const tick of room.ticks) tick(t); for (const [botId, screen] of room.screens) { const on = working.has(botId); screen.material.emissiveIntensity = on ? 0.55 + Math.sin(t * 9 + botId.length) * 0.06 : 0.04; } if (room.doorMat) room.doorMat.emissiveIntensity = waiting.has(room.id) ? 1.6 + Math.sin(t * 5) * 0.5 : 0.4; }
+  }
+  function dispose() { scene.remove(root); for (const t of textures) t.dispose(); }
+  return { rooms: out, bounds: [0, 0, right, bottom], blocked, findPath, roomAt, update, dispose, root };
 }

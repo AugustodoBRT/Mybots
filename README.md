@@ -60,7 +60,7 @@ flowchart LR
     App["App MyBots<br/>(React Native)"]
     subgraph Termux
       Sup["Supervisor<br/>Node + SQLite"]
-      AI["Codex CLI<br/>ou Claude Code"]
+      AI["Codex, Claude Code,<br/>Antigravity ou opencode"]
     end
     Web["Navegador dos bots<br/>(WebView compartilhada)"]
   end
@@ -72,7 +72,7 @@ flowchart LR
 
 - O **app** é a interface: conversas, perfis, aprovações, atividade, arquivos e o navegador ao vivo.
 - O **supervisor** roda no Termux e guarda tudo num SQLite no próprio celular: fila de tarefas, rotinas, pendências, memórias e permissões. Ele expõe as ferramentas aos modelos por MCP e decide o que precisa de aprovação.
-- Os modelos usam o **Codex** (`pkg install codex`) ou o **Claude Code**, já conectados à sua conta. O MyBots não lê nem copia as credenciais deles.
+- Os modelos usam o **Codex** (`pkg install codex`), o **Claude Code**, o **Antigravity** (`agy`) ou o **opencode**, já conectados à sua conta (os três últimos rodam no computador e, no celular, num Debian do proot). O MyBots não lê nem copia as credenciais deles.
 
 ## Instalação
 
@@ -85,7 +85,7 @@ flowchart LR
    ```
 4. Abra o MyBots, escolha **Só no celular** e conceda **Executar comandos no Termux**. Na primeira vez, o app instala e testa o supervisor sozinho.
 
-> Guias detalhados: [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
+> Guias detalhados: [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 
 ## Desenvolvimento
 

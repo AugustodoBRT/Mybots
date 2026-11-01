@@ -65,6 +65,17 @@ export CODEX_BIN="$root/codex-wrapper"
 chmod 700 "$root/claude-wrapper"
 export CLAUDE_BIN="$root/claude-wrapper"
 "$CLAUDE_BIN" --version >> "$root/ambiente-supervisor.txt" 2>&1 || printf 'Claude Code: não encontrado\n' >> "$root/ambiente-supervisor.txt"
+# Antigravity and opencode: like Claude, a native one or the one in the proot Debian (docs/agy-opencode-termux.md).
+for tool in agy opencode; do
+  {
+    printf '#!%s\n' "$BASH"
+    cat "$install/supervisor/$tool-wrapper.sh"
+  } > "$root/$tool-wrapper"
+  chmod 700 "$root/$tool-wrapper"
+done
+export AGY_BIN="$root/agy-wrapper" OPENCODE_BIN="$root/opencode-wrapper" MYBOTS_MCP_NODE=node
+"$AGY_BIN" --version >> "$root/ambiente-supervisor.txt" 2>&1 || printf 'Antigravity: não encontrado\n' >> "$root/ambiente-supervisor.txt"
+"$OPENCODE_BIN" --version >> "$root/ambiente-supervisor.txt" 2>&1 || printf 'opencode: não encontrado\n' >> "$root/ambiente-supervisor.txt"
 export MYBOTS_HOME="$root"
 export MYBOTS_RELEASE="$release"
 if command -v termux-wake-lock >/dev/null 2>&1; then termux-wake-lock >/dev/null 2>&1 || true; fi

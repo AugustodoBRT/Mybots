@@ -31,7 +31,7 @@ Objetivo: o bot poder usar **agy** e **opencode** além de Codex e Claude, com a
 **Fase 3 — ferramentas e aprovações**
 - MCP `mybots-tools` nos dois; pedido de permissão do MyBots para ações de risco; mesmas regras de `tool-policy` (pastas liberadas, caminhos sensíveis).
 
-**Fase 4 — Termux**
+**Fase 4 — Termux (feita na v0.48.1; ver `docs/agy-opencode-termux.md`)**
 - Ver se `agy`/`opencode` rodam no Termux (Android arm64): binário nativo, `npm i -g opencode-ai`, ou pelo `wrap` (proot) como o Claude. Documentar em `docs/` e no `scripts/`. Conferir no emulador.
 
 **Entrega a cada fase**: versão, `npm test`, APK, Release, push e PC (regra da pessoa).

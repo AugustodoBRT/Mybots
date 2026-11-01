@@ -1408,3 +1408,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - Sessões: o banco aceita também `ses_…` do opencode. Custo: agy e opencode não têm preço de API (estimativa 0). Sem janelas de limite (5 h/7 dias) para eles.
 - Conferido de verdade neste PC: conversa, retomada da sessão, ferramenta `task_create_item` com cartão de aprovação e execução dentro do bubblewrap, para os dois CLIs. Testes novos em `tests/agy-opencode.test.mjs` (CLIs falsos).
 - **Não feito ainda**: Termux (fase 4), aprovações do agy/opencode pelo cartão do MyBots em ações do computador (eles rodam livres), imagens anexadas direto ao modelo, tela de Uso com os novos.
+
+## 0.48.1 (versionCode 105) — agy e opencode no Termux (fase 4)
+- `supervisor/agy-wrapper.sh` e `supervisor/opencode-wrapper.sh` (nativo no PATH, senão o do Debian do proot-distro; o token do turno entra por `env`, pois o proot-distro limpa o ambiente). O pareamento (`mybots-pair.sh`) os cria em `~/.mybots` e exporta `AGY_BIN`, `OPENCODE_BIN` e `MYBOTS_MCP_NODE=node`; `mybots-restart.sh` repete. O pacote do supervisor leva os dois scripts. Guia em `docs/agy-opencode-termux.md`.
+- opencode passou a receber o `mybots-tools` por MCP **remoto** (HTTP `/mcp` + token), sem precisar de node dentro do Debian. O agy continua com MCP stdio (o `agy mcp add` é global; o token vai no ambiente); o nó dentro do Debian vem de `MYBOTS_MCP_NODE`.
+- Wrapper que sai com 127 (programa ausente) aparece como "Instale…", não como falta de login.
+- Verificado no emulador x86_64 (Termux + proot Debian, opencode 1.18.30 copiado deste PC): catálogo, conversa e `task_create_item` com cartão de aprovação. **Não verificado**: agy no Termux (login Google interativo) e ARM64 real.
+- Lição: um `supervisor.lock` vazio (processo morto durante a escrita) trava a subida com "Não foi possível iniciar o supervisor"; apagar o arquivo resolve.

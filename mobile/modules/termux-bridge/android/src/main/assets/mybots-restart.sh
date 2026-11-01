@@ -19,6 +19,8 @@ if [ ! -f "$install/tests-passed" ] || [ ! -x "$root/codex-wrapper" ] || [ -z "$
 fi
 export CODEX_BIN="$root/codex-wrapper"
 if [ -x "$root/claude-wrapper" ]; then export CLAUDE_BIN="$root/claude-wrapper"; fi
+if [ -x "$root/agy-wrapper" ]; then export AGY_BIN="$root/agy-wrapper" MYBOTS_MCP_NODE=node; fi
+if [ -x "$root/opencode-wrapper" ]; then export OPENCODE_BIN="$root/opencode-wrapper"; fi
 export MYBOTS_HOME="$root"
 export MYBOTS_RELEASE="$release"
 unset MYBOTS_IMPORT || true

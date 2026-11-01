@@ -264,7 +264,7 @@ Para executar o teste do escritório, configure `MYBOTS_TEST_BROWSER` com o cami
 - O provedor de IA é simulado nos testes de interface; não são disparadas tarefas pagas.
 - Aprovação e cancelamento foram exercitados no escritório contra um supervisor isolado; o controle de navegador ainda precisa de cenário específico nesta tela.
 - Não foi realizado benchmark em uma máquina de referência nem teste prolongado com 50 bots.
-- A etapa de tarefas e rascunhos foi preparada como versão 0.51.0 / versionCode 109, com APK ARM64 e a assinatura anterior. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
+- A etapa de tarefas e rascunhos foi publicada na Release v109 (0.51.0 / versionCode 109), com APK ARM64 e a assinatura anterior. A janela real do PC foi atualizada e a aba Tarefas conferida. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
 
 ## Arquivos principais
 

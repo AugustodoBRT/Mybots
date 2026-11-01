@@ -264,7 +264,7 @@ Para executar o teste do escritório, configure `MYBOTS_TEST_BROWSER` com o cami
 - O provedor de IA é simulado nos testes de interface; não são disparadas tarefas pagas.
 - Aprovação, cancelamento e navegador reutilizam componentes existentes, mas ainda precisam de cenários completos específicos desta tela.
 - Não foi realizado benchmark em uma máquina de referência nem teste prolongado com 50 bots.
-- Publicação preparada como versão 0.50.0 / versionCode 108, com APK ARM64 e a assinatura anterior. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
+- Versão 0.50.0 / versionCode 108 publicada na Release v108, com APK ARM64 e a assinatura anterior. PC atualizado e janela real recarregada com o novo escritório. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
 
 ## Arquivos principais
 

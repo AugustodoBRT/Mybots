@@ -1428,3 +1428,14 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - Os bots **andam de uma sala para outra** pelas portas: caminho A* numa grade única do andar (0,25 de passo), com portas, móveis e paredes como obstáculos (`findPath` do prédio, `roomAt`). Sem voo entre salas. Quem espera aprovação fica na porta da própria sala (o batente brilha); livres passeiam também por outras salas (18% das vezes).
 - A câmera enquadra o andar todo ("Ver tudo"), e de novo ao mudar o tamanho da área enquanto a pessoa não mexeu.
 - Conferido com os 11 bots reais (Escritório pequeno e Estúdio grande, ligados) e num teste com 10 bots em 3 salas. Não conferido: dezenas de salas e o desempenho delas.
+
+## 0.50.0 (versionCode 108) — Escritório vivo e trabalho integrado no PC
+
+- Selecionar um bot na cena ou na lista abre sua conversa dentro do escritório; botões das salas abrem a conversa da equipe. Painel ajustável/recolhível com busca, aprovações e acesso à criação de bots/salas. As prévias de arquivos continuam dentro do aplicativo, sem desmontar a cena.
+- Rascunhos individuais preservados ao trocar bots pela navegação desktop; conclusão de envio não apaga o rascunho de outro bot selecionado. Conversa recolhida não captura arquivos colados/arrastados.
+- Navegação: corrigida a ordem das coordenadas dos móveis, removido o trajeto direto quando não há caminho, validação nas fronteiras das células para não cortar quinas e destinos resolvidos para locais navegáveis.
+- Ambiente: salas dimensionadas pelas fileiras de mesas, piso menos contrastado, iluminação mais uniforme, janelas visíveis, sofás, mesas de apoio e decoração. Bots com corpo mais definido e transições suaves.
+- Plano completo e checklists em `docs/planos/escritorio-vivo.md`; capturas de referência em `docs/screenshots/escritorio-conversa-pc.png` e `escritorio-conversa-estreito.png`.
+- Validação: **345 testes aprovados, nenhum pulado**, incluindo navegação com 1/8/24 bots, mensagem/resposta dentro da cena, rascunhos, arquivo, sala, manutenção do canvas e janela estreita. O escritório 3D permanece exclusivo do PC; o APK recebe os ajustes compartilhados de conversa.
+- APK ARM64 compilado offline, versão 108 / 0.50.0; certificado SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`, compatível com as versões anteriores. SHA-256 do APK: `c49c05280890110ccea2f4f5b2a701c9b54dfd832281a9b7bc1b36ccf570218a`.
+- Emulador x86_64: instalação por cima e abertura da versão 108 conferidas. A validação de conexão ao Termux ficou limitada: o ambiente preservado tem endpoint antigo sem serviço acessível e o aplicativo mostra “O backup contém um bot inválido” nos dados locais anteriores. Não foram apagados os dados do emulador nem considerada essa conferência como teste de execução completo. O teste integrado web usa supervisor isolado e passou.

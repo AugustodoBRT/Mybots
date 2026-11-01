@@ -8,7 +8,7 @@ import { createBot } from './bot.js';
 import { buildBuilding } from './rooms.js';
 import { rng } from '../../lib/mimo.mjs';
 
-const TAU = Math.PI * 2, HOP = 0.58, SPEED = 1.35;
+const TAU = Math.PI * 2, HOP = 0.7, SPEED = 1.15;
 const smooth = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 const angleLerp = (a, b, k) => { const d = ((b - a + Math.PI * 3) % TAU) - Math.PI; return a + d * k; };
 const SEEN = 'mybots.office.seen';
@@ -23,11 +23,11 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
   Object.assign(renderer.domElement.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', display: 'block', cursor: 'grab' });
   container.append(renderer.domElement);
   const labels = document.createElement('div'); Object.assign(labels.style, { position: 'absolute', inset: '0', pointerEvents: 'none', overflow: 'hidden' }); container.append(labels);
-  const scene = new T.Scene(); scene.background = new T.Color('#06070a');
-  scene.add(new T.HemisphereLight('#a9acd6', '#3b2c20', 1.25));
-  const key = new T.DirectionalLight('#ffe3bf', 2.0); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; scene.add(key, key.target);
+  const scene = new T.Scene(); scene.background = new T.Color('#121c29');
+  scene.add(new T.HemisphereLight('#d1e4ff', '#84735d', 2.2));
+  const key = new T.DirectionalLight('#ffe7cc', 3.0); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; scene.add(key, key.target);
   // Stars on a far shell around everything.
-  { const r = rng(4411), n = 2600, p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const rad = 70 + r() * 50, a = r() * TAU, b = Math.acos(2 * r() - 1); p.set([rad * Math.sin(b) * Math.cos(a), rad * Math.cos(b) * 0.9, rad * Math.sin(b) * Math.sin(a)], i * 3); }
+  { const r = rng(4411), n = 650, p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const rad = 70 + r() * 50, a = r() * TAU, b = Math.acos(2 * r() - 1); p.set([rad * Math.sin(b) * Math.cos(a), rad * Math.cos(b) * 0.9, rad * Math.sin(b) * Math.sin(a)], i * 3); }
     const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(p, 3)); const stars = new T.Points(g, new T.PointsMaterial({ color: '#e8e6ff', size: 1.5 * dpr, sizeAttenuation: false, transparent: true, opacity: 0.8 })); stars.frustumCulled = false; scene.add(stars); }
 
   // Isometric camera; the view (center + zoom) is what the person drags and scrolls.
@@ -82,15 +82,17 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       let a = agents.get(bot.id);
       if (!a || a.faceKey !== JSON.stringify(bot.face || null) + bot.name) {
         if (a) { a.visual.dispose(); a.tag.remove(); a.bubble.remove(); }
-        const tag = document.createElement('div'), bubble = document.createElement('div');
+        const tag = document.createElement('button'), bubble = document.createElement('div');
         Object.assign(tag.style, { position: 'absolute', left: 0, top: 0, padding: '3px 10px', borderRadius: '999px', background: '#0a0b0ee8', border: '1px solid #6d6c733f', color: '#f6f3ed', font: '650 11px Inter,system-ui,sans-serif', whiteSpace: 'nowrap' });
         Object.assign(bubble.style, { position: 'absolute', left: 0, top: 0, maxWidth: '240px', padding: '7px 11px', borderRadius: '12px', background: '#f6f3ed', color: '#202126', font: '650 11px/15px Inter,system-ui,sans-serif', boxShadow: '0 3px 15px #0004', opacity: 0, transition: 'opacity .25s' });
+        tag.type = 'button'; tag.style.pointerEvents = 'auto'; tag.style.cursor = 'pointer'; tag.onclick = () => onBotClick(bot.id);
         labels.append(tag, bubble); tag.textContent = bot.name;
         const home = rooms.get(homeOf(bot, snap)) || [...rooms.values()][0];
         a = { id: bot.id, faceKey: JSON.stringify(bot.face || null) + bot.name, visual: createBot(bot, scene, { particles: budget, index: i }), tag, bubble, index: i, pos: home ? home.wander[i % home.wander.length].slice() : [0, 0, 0], path: null, seg: 0, segT: 0, yaw: Math.PI / 4, state: 'idle', next: 0, r: rng(i * 31 + 7), lastState: 'idle', since: now() };
         agents.set(bot.id, a);
       }
-      a.bot = bot; a.tag.textContent = bot.name; a.home = homeOf(bot, snap);
+      a.bot = bot; a.tag.textContent = bot.name; a.tag.setAttribute('aria-label', `Selecionar bot ${bot.name}`); a.home = homeOf(bot, snap);
+      if (building.blocked(a.pos[0], a.pos[2])) a.pos = building.nearestFree(a.pos) || a.pos;
       if (bot.state !== a.state) { a.lastState = a.state; a.state = bot.state; a.since = now(); a.path = null; a.talk = null; if (a.lastState === 'working' && bot.state === 'idle') a.doneUntil = now() + 4; }
       a.text = bot.text || '';
     });
@@ -116,21 +118,22 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
 
   function step(a, dt, t) {
     if (!building) return {};
-    const goal = goalOf(a, t), target = goal.spot.pos, here = building.roomAt(a.pos[0], a.pos[2]);
+    const goal = goalOf(a, t), target = building.nearestFree(goal.spot.pos), here = building.roomAt(a.pos[0], a.pos[2]);
+    if (!target) return {};
     const dist = Math.hypot(target[0] - a.pos[0], target[2] - a.pos[2]);
-    if (!a.path && dist > 0.15) { a.path = building.findPath([a.pos[0], 0, a.pos[2]], [target[0], 0, target[2]]); a.seg = 1; a.segT = 0; a.goal = target; }
+    if (!a.path && dist > 0.08 && t >= (a.retryAt || 0)) { a.path = building.findPath([a.pos[0], 0, a.pos[2]], [target[0], 0, target[2]]); a.seg = 1; a.segT = 0; a.goal = target; if (!a.path) a.retryAt = t + 1; }
     if (a.path && Math.hypot(a.goal[0] - target[0], a.goal[2] - target[2]) > 0.05) a.path = null;
     let jump = 0, squash = 1, moving = false;
     if (a.path) {
       // Hops: anticipation, flight, landing; the body moves only in the air.
       a.segT += dt; const phase = (a.segT % HOP) / HOP, air = phase > 0.14 && phase < 0.84, k = (phase - 0.14) / 0.7;
       const p = a.path[Math.min(a.seg, a.path.length - 1)], dx = p[0] - a.pos[0], dz = p[2] - a.pos[2], d = Math.hypot(dx, dz);
-      if (air && d > 0.001) { const m = Math.min(d, SPEED * dt * 1.4); a.pos[0] += dx / d * m; a.pos[2] += dz / d * m; a.yaw = angleLerp(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 12)); }
-      jump = air ? Math.sin(k * Math.PI) * 0.32 : 0;
-      squash = phase < 0.14 ? 1 - 0.18 * Math.sin(phase / 0.14 * Math.PI) : air ? 1 + 0.14 * Math.sin(k * Math.PI) : 1 - 0.16 * Math.sin((phase - 0.84) / 0.16 * Math.PI);
+      if (air && d > 0.001) { const m = Math.min(d, SPEED * dt * 1.4); const x = a.pos[0] + dx / d * m, z = a.pos[2] + dz / d * m; if (!building.blocked(x, z)) { a.pos[0] = x; a.pos[2] = z; } a.yaw = angleLerp(a.yaw, Math.atan2(dx, dz), Math.min(1, dt * 12)); }
+      jump = air ? Math.sin(k * Math.PI) * 0.19 : 0;
+      squash = phase < 0.14 ? 1 - 0.12 * Math.sin(phase / 0.14 * Math.PI) : air ? 1 + 0.09 * Math.sin(k * Math.PI) : 1 - 0.10 * Math.sin((phase - 0.84) / 0.16 * Math.PI);
       moving = true; a.pos[1] = 0;
-      if (d < 0.05) { a.seg++; if (a.seg >= a.path.length) { a.path = null; a.pos = [target[0], target[1] || 0, target[2]]; } }
-    } else a.pos[1] = target[1] || 0;
+      if (d < 0.05) { a.pos[0] = p[0]; a.pos[2] = p[2]; a.seg++; if (a.seg >= a.path.length) { a.path = null; a.pos = [p[0], 0, p[2]]; } }
+    } else { const height = dist < 0.12 ? goal.spot.pos[1] || 0 : 0; a.pos[1] += (height - a.pos[1]) * Math.min(1, dt * 8); }
     // Free bots in the same room meet now and then for a little chat.
     if (a.state === 'idle' && !moving && !a.talk && here && a.r() < dt * 0.06) {
       const other = [...agents.values()].find(b => b !== a && b.state === 'idle' && !b.talk && !b.path && building.roomAt(b.pos[0], b.pos[2]) === here);
@@ -146,7 +149,7 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       a.yaw = angleLerp(a.yaw, want, Math.min(1, dt * 4));
     }
     a.world = a.pos; a.goalKind = goal.kind;
-    return { moving, jump, squash, lying: goal.kind === 'bed' && !moving, warm: goal.kind === 'desk' && !moving, talking: goal.kind === 'talk' && !moving };
+    return { moving, jump, squash, lying: goal.kind === 'bed' && !moving && dist < 0.12, warm: goal.kind === 'desk' && !moving && dist < 0.12, talking: goal.kind === 'talk' && !moving };
   }
 
   const project = v => { const p = v.clone().project(camera); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; };
@@ -173,14 +176,14 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       // Name below, a bubble above for work steps and approvals.
       const base = project(new T.Vector3(a.world[0], a.world[1], a.world[2])), head = project(new T.Vector3(a.world[0], cy + a.visual.height * 0.5 + 0.15, a.world[2]));
       const tw = a.tag.offsetWidth, th = a.tag.offsetHeight; let tx = base[0] - tw / 2, ty = base[1] + 10;
-      for (let k = 0; k < 5; k++) { const hit = boxes.find(b => tx < b[2] && tx + tw > b[0] && ty < b[3] && ty + th > b[1]); if (!hit) break; ty = hit[3] + 2; }
+      for (let k = 0; k < agents.size + 1; k++) { const hit = boxes.find(b => tx < b[2] && tx + tw > b[0] && ty < b[3] && ty + th > b[1]); if (!hit) break; ty = hit[3] + 2; }
       boxes.push([tx, ty, tx + tw, ty + th]);
       const visible = base[0] > -60 && base[0] < W + 60 && base[1] > -60 && base[1] < H + 60;
-      a.tag.style.transform = `translate(${tx}px,${ty}px)`; a.tag.style.opacity = visible && view.zoom > 0.35 ? 1 : 0;
+      a.tag.style.transform = `translate(${tx}px,${ty}px)`; a.tag.style.opacity = visible && view.zoom > 0.35 ? 1 : 0; a.tag.style.visibility = visible && view.zoom > 0.35 ? 'visible' : 'hidden';
       const say = s.talking ? '…' : a.state === 'waiting' ? 'Preciso da sua aprovação' : a.state === 'working' && !s.moving ? (a.text || 'Trabalhando…') : a.state === 'sleeping' && s.lying ? 'z z' : '';
       if (a.bubble.textContent !== say) a.bubble.textContent = say;
       const bw = a.bubble.offsetWidth, bh = a.bubble.offsetHeight; let bx = head[0] - bw / 2, by = head[1] - bh - 8;
-      for (let k = 0; k < 5; k++) { const hit = boxes.find(b => bx < b[2] && bx + bw > b[0] && by < b[3] && by + bh > b[1]); if (!hit) break; by = hit[1] - bh - 3; }
+      for (let k = 0; k < agents.size + 1; k++) { const hit = boxes.find(b => bx < b[2] && bx + bw > b[0] && by < b[3] && by + bh > b[1]); if (!hit) break; by = hit[1] - bh - 3; }
       if (say) boxes.push([bx, by, bx + bw, by + bh]);
       a.bubble.style.transform = `translate(${bx}px,${by}px)`; a.bubble.style.opacity = say && visible && view.zoom > 0.45 ? (say === 'z z' ? 0.75 : 1) : 0;
       a.bubble.style.background = say === 'z z' ? 'transparent' : '#f6f3ed'; a.bubble.style.color = say === 'z z' ? '#c4b8fa' : '#202126'; a.bubble.style.boxShadow = say === 'z z' ? 'none' : '0 3px 15px #0004';

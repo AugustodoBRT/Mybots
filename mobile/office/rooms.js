@@ -75,7 +75,8 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 export function buildBuilding(scene, infos) {
   const SPINE = 2.4, HALL = 2.4, STEP = 0.25, DOOR = 1.8;
   const rooms = infos.map(info => { const r = rng(hashStr('sala#' + info.id)), n = Math.max(1, info.members.length);
-    return { ...info, n, r, W: clamp(5.4 + n * 1.45 + (r() - 0.5) * 2.2, 5.6, 15), D: clamp(4.9 + n * 0.85 + (r() - 0.5) * 2.2, 5.2, 11.5) }; });
+    const W = clamp(8 + n * 0.8, 9, 17), perRow = Math.max(1, Math.floor((W - 3.2) / 2.6));
+    return { ...info, n, r, W, D: Math.max(9, 3.3 * Math.ceil(n / perRow) + 5.6) }; });
   // Rows: left to right until the row gets as wide as a loose square of all the rooms.
   const area = rooms.reduce((s, r) => s + r.W * r.D, 0), target = Math.max(15, Math.sqrt(area) * 1.55), rows = []; let row = null;
   for (const room of rooms) { if (!row || (row.w + room.W > target && row.rooms.length)) rows.push(row = { rooms: [], w: 0, d: 0 }); row.rooms.push(room); row.w += room.W; row.d = Math.max(row.d, room.D); }
@@ -95,11 +96,11 @@ export function buildBuilding(scene, infos) {
   const wood = mat('#6a4f36', { roughness: 0.55 });
 
   // ---- floor slab under every walkable rectangle, with a warm rim, and rocks floating below
-  const floorTex = (a, b, rep) => { const c = document.createElement('canvas'); c.width = c.height = 256; const q = c.getContext('2d'); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { q.fillStyle = (i + j) % 2 ? a : b; q.fillRect(i * 64, j * 64, 64, 64); } q.strokeStyle = 'rgba(255,255,255,.05)'; q.lineWidth = 2; for (let i = 0; i <= 4; i++) { q.beginPath(); q.moveTo(i * 64, 0); q.lineTo(i * 64, 256); q.moveTo(0, i * 64); q.lineTo(256, i * 64); q.stroke(); } const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.colorSpace = T.SRGBColorSpace; return t; };
+  const floorTex = (a, b, rep) => { const c = document.createElement('canvas'); c.width = c.height = 256; const q = c.getContext('2d'); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { q.fillStyle = j % 2 ? a : b; q.fillRect(i * 64, j * 64, 64, 64); } q.strokeStyle = 'rgba(255,255,255,.05)'; q.lineWidth = 2; for (let i = 0; i <= 4; i++) { q.beginPath(); q.moveTo(i * 64, 0); q.lineTo(i * 64, 256); q.moveTo(0, i * 64); q.lineTo(256, i * 64); q.stroke(); } const t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.colorSpace = T.SRGBColorSpace; return t; };
   const textures = [];
   const slab = (x0, z0, x1, z1, tex, tint) => { const w = x1 - x0, d = z1 - z0; add(root, rbox(w + 0.1, 0.55, d + 0.1, 0.1), mat('#22242b'), (x0 + x1) / 2, -0.3, (z0 + z1) / 2);
     const f = new T.Mesh(new T.PlaneGeometry(w, d), new T.MeshStandardMaterial({ map: tex, roughness: 0.6, color: tint || '#fff' })); f.rotation.x = -Math.PI / 2; f.position.set((x0 + x1) / 2, 0.002, (z0 + z1) / 2); f.receiveShadow = true; root.add(f); };
-  for (const room of rooms) { const r = room.r, a = ['#2b2d33', '#2e2a27', '#272a2e', '#2c2a31'][Math.floor(r() * 4)], b = new T.Color(a).offsetHSL(0, 0, -0.025).getStyle(); const tex = floorTex(a, b, [room.W / 3.2, room.D / 3.2]); textures.push(tex); room.floorTex = tex; slab(room.x0, room.z0, room.x1, room.z1, tex); }
+  for (const room of rooms) { const r = room.r, a = ['#797e79', '#878074', '#76818a', '#817d8a'][Math.floor(r() * 4)], b = new T.Color(a).offsetHSL(0, 0, -0.008).getStyle(); const tex = floorTex(a, b, [room.W / 3.2, room.D / 3.2]); textures.push(tex); room.floorTex = tex; slab(room.x0, room.z0, room.x1, room.z1, tex); }
   const hallTex = floorTex('#34363e', '#2f3138', [1, 1]); textures.push(hallTex);
   for (const rw of rows) for (const room of rw.rooms) { hallTex.repeat.set(room.W / 3.2, 0.8); slab(room.x0, room.z1, room.x1, rw.bottom, hallTex, '#cfd2da'); }
   slab(0, 0, SPINE, bottom, hallTex, '#cfd2da');
@@ -123,7 +124,7 @@ export function buildBuilding(scene, infos) {
   const doorFrame = (x, z, axis, lit) => { const m = new T.MeshStandardMaterial({ color: '#ffd393', emissive: '#ffb55b', emissiveIntensity: 0.4, roughness: 0.5 }); if (lit) frames.push({ m, room: lit });
     if (axis === 'x') { for (const dx of [-DOOR / 2, DOOR / 2]) add(root, rbox(0.08, 2.3, 0.28, 0.01), m, x + dx, 1.15, z); add(root, rbox(DOOR + 0.1, 0.08, 0.28, 0.01), m, x, 2.3, z); } else { for (const dz of [-DOOR / 2, DOOR / 2]) add(root, rbox(0.28, 2.3, 0.08, 0.01), m, x, 1.15, z + dz); add(root, rbox(0.28, 0.08, DOOR + 0.1, 0.01), m, x, 2.3, z); } };
   for (const rw of rows) rw.rooms.forEach((room, i) => {
-    const r = room.r, wallC = new T.Color().setHSL((specHue(room) % 360) / 360, 0.08 + r() * 0.08, 0.2 + r() * 0.04).getStyle(); room.wallC = wallC;
+    const r = room.r, wallC = new T.Color().setHSL((specHue(room) % 360) / 360, 0.08 + r() * 0.08, 0.36 + r() * 0.04).getStyle(); room.wallC = wallC;
     wall(room.x0, room.z0, room.x1, room.z0, 3.2, wallC, [], 'x');                                       // north
     wall(room.x0, room.z0, room.x0, room.z1, 3.2, wallC, room.westDoor != null ? [[room.westDoor, DOOR]] : [], 'z');   // west
     wall(room.x0, room.z1, room.x1, room.z1, 0.95, wallC, [[room.southDoor, DOOR]], 'x');               // south, low
@@ -133,7 +134,7 @@ export function buildBuilding(scene, infos) {
     // a window on the north wall, looking at the stars, tinted by the room's color
     const win = document.createElement('canvas'); win.width = 256; win.height = 128; { const q = win.getContext('2d'), h = specHue(room); q.fillStyle = '#080b16'; q.fillRect(0, 0, 256, 128); const gr = q.createRadialGradient(190, 30, 4, 190, 30, 150); gr.addColorStop(0, `hsl(${h},35%,26%)`); gr.addColorStop(1, '#0b0d19'); q.fillStyle = gr; q.fillRect(0, 0, 256, 128); for (let k = 0; k < 50; k++) { q.fillStyle = `rgba(235,232,255,${0.3 + r() * 0.7})`; q.fillRect(r() * 256, r() * 128, 1.5, 1.5); } }
     const wt = new T.CanvasTexture(win); wt.colorSpace = T.SRGBColorSpace; textures.push(wt); const wx = room.x1 - 2.2 - r() * Math.max(0, room.W - 6) * 0.4;
-    add(root, rbox(2.6, 1.4, 0.1, 0.04), mat('#1b1d22'), wx, 2.2, room.z0 + 0.02); const pane = new T.Mesh(new T.PlaneGeometry(2.4, 1.2), new T.MeshBasicMaterial({ map: wt })); pane.position.set(wx, 2.2, room.z0 + 0.08); root.add(pane);
+    add(root, rbox(2.6, 1.4, 0.1, 0.04), mat('#1b1d22'), wx, 2.2, room.z0 + 0.16); const pane = new T.Mesh(new T.PlaneGeometry(2.4, 1.2), new T.MeshBasicMaterial({ map: wt })); pane.position.set(wx, 2.2, room.z0 + 0.23); root.add(pane);
   });
   function specHue(room) { const hs = room.members.map(b => specFromFace(b.face, b.name || b.id).hue); return hs.length ? hs[Math.floor(room.r() * hs.length)] : 35; }
   // the corridor's west wall and the hall's south edge stay open (the camera looks at them)
@@ -154,41 +155,78 @@ export function buildBuilding(scene, infos) {
     const gapsS = [room.southDoor - room.cx], gapsW = room.westDoor != null ? [room.westDoor - room.cz] : [], gapsE = room.eastDoor != null ? [room.eastDoor - room.cz] : [];
     const obstacles = [], items = [], desks = new Map(), beds = new Map(), screens = new Map(), ticks = [];
     // rug
-    const rug = new T.Mesh(new T.CircleGeometry(Math.min(W, D) * 0.2, 48), mat(new T.Color().setHSL(accent / 360, 0.28, 0.15).getStyle(), { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0.4, 0.012, D * 0.08); rug.receiveShadow = true; g.add(rug);
+    const rug = new T.Mesh(new T.CircleGeometry(Math.min(W, D) * 0.2, 48), mat(new T.Color().setHSL(accent / 360, 0.24, 0.32).getStyle(), { roughness: 1 })); rug.rotation.x = -Math.PI / 2; rug.position.set(0.4, 0.012, D * 0.08); rug.receiveShadow = true; g.add(rug);
     const block = (x, z, w, d) => obstacles.push([x - w / 2, x + w / 2, z - d / 2, z + d / 2]);
     const place = (build, x, z, ry, author, color) => { const gg = new T.Group(); gg.position.set(x, 0, z); gg.rotation.y = ry; g.add(gg); const out = build(gg, color); if (gg.userData.tick) ticks.push(gg.userData.tick); items.push({ group: gg, author, x: room.cx + x, z: room.cz + z }); return out; };
-    const perRow = Math.max(1, Math.floor((W - 3.2) / 2.3)), deskZ = [];
-    members.forEach((bot, i) => { const row = Math.floor(i / perRow), col = i % perRow, cols = Math.min(perRow, members.length - row * perRow), x = -((cols - 1) * 2.3) / 2 + col * 2.3 - 0.3, z = -D / 2 + 1.05 + row * 2.9, color = new T.Color().setHSL(hues[i] / 360, 0.6, 0.55).getStyle();
-      screens.set(bot.id, place(desk, x, z, 0, bot.id, color)); block(x, z, 2.0, 0.95); block(x, z + 0.95, 0.75, 0.7); desks.set(bot.id, { pos: [room.cx + x, 0.66, room.cz + z + 0.95], yaw: Math.PI }); deskZ.push(z); });
+    const perRow = Math.max(1, Math.floor((W - 3.2) / 2.6)), deskZ = [];
+    members.forEach((bot, i) => { const row = Math.floor(i / perRow), col = i % perRow, cols = Math.min(perRow, members.length - row * perRow), x = -((cols - 1) * 2.6) / 2 + col * 2.6 - 0.3, z = -D / 2 + 1.05 + row * 3.3, color = new T.Color().setHSL(hues[i] / 360, 0.6, 0.55).getStyle();
+      screens.set(bot.id, place(desk, x, z, 0, bot.id, color)); block(x, z, 2.0, 0.95); desks.set(bot.id, { pos: [room.cx + x, 0.66, room.cz + z + 0.95], yaw: Math.PI }); deskZ.push(z); });
     const deskBack = Math.max(...deskZ, -D / 2) + 1.7, slots = [], nearGap = (v, gaps, span) => gaps.some(gp => Math.abs(v - gp) < span);
     for (let x = -W / 2 + 1.1; x <= W / 2 - 1; x += 1.45) if (!nearGap(x, gapsS, 1.5)) slots.push({ x, z: D / 2 - 0.75, ry: Math.PI, edge: 'south' });
     for (let z = deskBack + 0.4; z <= D / 2 - 1.6; z += 1.4) if (!nearGap(z, gapsE, 1.4)) slots.push({ x: W / 2 - 0.75, z, ry: -Math.PI / 2, edge: 'east' });
     for (let z = deskBack + 0.2; z <= D / 2 - 1.6; z += 1.4) if (!nearGap(z, gapsW, 1.4)) slots.push({ x: -W / 2 + 0.75, z, ry: Math.PI / 2, edge: 'west' });
     const take = prefer => { const i = slots.findIndex(s => !s.used && (!prefer || s.edge === prefer)), k = i >= 0 ? i : slots.findIndex(s => !s.used); if (k < 0) return null; slots[k].used = true; return slots[k]; };
-    members.forEach((bot, i) => { const s = take('south') || take(); if (!s) return; place(beanbag, s.x, s.z, s.ry, bot.id, new T.Color().setHSL(hues[i] / 360, 0.35, 0.42).getStyle()); block(s.x, s.z, 1.2, 1.1); beds.set(bot.id, { pos: [room.cx + s.x, 0.42, room.cz + s.z - 0.05], yaw: Math.PI / 2 }); });
+    members.forEach((bot, i) => { const s = take('south') || take(); if (!s) return; place(beanbag, s.x, s.z, s.ry, bot.id, new T.Color().setHSL(hues[i] / 360, 0.35, 0.42).getStyle()); beds.set(bot.id, { pos: [room.cx + s.x, 0.42, room.cz + s.z - 0.05], yaw: Math.PI / 2 }); });
     const things = members.map((bot, i) => ({ kind: themeOf(bot, r), author: bot.id, color: new T.Color().setHSL(hues[i] / 360, 0.55, 0.55).getStyle() }));
-    for (let i = 0; i < 1 + Math.floor(r() * 3); i++) things.push({ kind: ['plant', 'lamp', 'plant'][i % 3], author: null, color: '#62896a' });
-    for (const thing of things) { const s = take(thing.kind === 'lamp' ? 'west' : 'east'); if (!s) break; const [w, d] = BUILD[thing.kind](new T.Group(), thing.color); place(BUILD[thing.kind], s.x, s.z, s.ry, thing.author, thing.color); block(s.x, s.z, Math.max(w, d) + 0.1, Math.max(w, d) + 0.1); }
+    for (let i = 0; i < 5; i++) things.push({ kind: ['plant', 'lamp', 'plant'][i % 3], author: null, color: '#62896a' });
+    for (const thing of things) { const s = take(thing.kind === 'lamp' ? 'west' : 'east'); if (!s) break; const [w, d] = place(BUILD[thing.kind], s.x, s.z, s.ry, thing.author, thing.color); block(s.x, s.z, Math.max(w, d) + 0.1, Math.max(w, d) + 0.1); }
+    // A furnished lounge in the clear band behind the workstations.
+    const loungeZ = deskBack + 0.65;
+    place((gg) => {
+      add(gg, rbox(2.2, 0.45, 0.85, 0.14), mat('#607b78'), 0, 0.4, 0);
+      add(gg, rbox(2.2, 0.65, 0.18, 0.08), mat('#6f918a'), 0, 0.85, -0.38);
+      for (const x of [-1, 1]) add(gg, rbox(0.2, 0.5, 0.85, 0.08), mat('#78978e'), x, 0.65, 0);
+      for (const x of [-0.55, 0.55]) add(gg, rbox(0.55, 0.32, 0.16, 0.07), mat('#e1bd83'), x, 0.85, -0.2);
+    }, -W / 2 + 2.1, loungeZ, 0, null);
+    block(-W / 2 + 2.1, loungeZ, 2.2, 0.9);
+    place((gg) => {
+      add(gg, rbox(1.25, 0.1, 0.7, 0.08), mat('#be9870'), 0, 0.5, 0);
+      for (const x of [-0.45, 0.45]) add(gg, rbox(0.07, 0.45, 0.5, 0.02), mat('#384b50'), x, 0.23, 0);
+      add(gg, rbox(0.32, 0.04, 0.24, 0.01), mat('#d2c7ad'), 0.2, 0.58, 0);
+    }, -W / 2 + 2.1, loungeZ + 1.25, 0, null);
+    block(-W / 2 + 2.1, loungeZ + 1.25, 1.25, 0.7);
+    // Broad, soft room fill and architectural lighting rather than isolated hot spots.
+    const fill = new T.PointLight('#ffe3bc', 14, Math.max(W, D) * 1.4, 2);
+    fill.position.set(0, 4.5, 0); g.add(fill);
+    add(g, rbox(W - 0.8, 0.045, 0.07, 0.01), mat('#fff0cf', { emissive: '#ffe0a4', emissiveIntensity: 1.4 }), 0, 2.95, -D / 2 + 0.15);
+    add(g, rbox(1.8, 0.9, 0.08, 0.03), mat('#d2c7ad'), -W / 2 + 1.4, 2.05, -D / 2 + 0.16);
+    for (let k = 0; k < 3; k++) add(g, rbox(0.28, 0.3 + k * 0.12, 0.025, 0.01), mat(['#698c89', '#d0a364', '#b47969'][k]), -W / 2 + 0.9 + k * 0.5, 2.05, -D / 2 + 0.21);
     place(BUILD.plant, W / 2 - 0.6, -D / 2 + 0.6, 0, null, '#62896a'); block(W / 2 - 0.6, -D / 2 + 0.6, 0.8, 0.8);
-    for (const [a, b, c, d] of obstacles) stamp(room.cx + a - 0.1, room.cz + b - 0.1, room.cx + c + 0.1, room.cz + d + 0.1);
+    for (const [a, b, c, d] of obstacles) stamp(room.cx + a, room.cz + c, room.cx + b, room.cz + d);
     entries.set(room.id, { room, items, desks, beds, screens, ticks, door: { pos: [room.southDoor, 0, room.z1 - 1.15], yaw: 0 }, obstacles });
   }
-  // dilate the solids by one cell (the bots' body) and make the grid
+  // Dilate the solids by two cells (the bots' body) and make the grid
   const blockedCell = new Uint8Array(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { let b = !free[j * nx + i] || solid[j * nx + i]; if (!b) for (let dj = -1; dj <= 1 && !b; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz || !free[jj * nx + ii] || solid[jj * nx + ii]) { b = true; break; } } blockedCell[j * nx + i] = b ? 1 : 0; }
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { let b = !free[j * nx + i] || solid[j * nx + i]; if (!b) for (let dj = -2; dj <= 2 && !b; dj++) for (let di = -2; di <= 2; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz || !free[jj * nx + ii] || solid[jj * nx + ii]) { b = true; break; } } blockedCell[j * nx + i] = b ? 1 : 0; }
   const blocked = (x, z) => { const [i, j] = cellOf(x, z); return i < 0 || j < 0 || i >= nx || j >= nz || blockedCell[j * nx + i] === 1; };
 
+  const nearestCache = new Map();
+  const nearestFree = p => {
+    if (!blocked(p[0], p[2])) return p.slice();
+    const cacheKey = `${p[0]},${p[2]}`;
+    if (nearestCache.has(cacheKey)) return nearestCache.get(cacheKey)?.slice() || null;
+    let best = null, distance = Infinity;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      if (blockedCell[j * nx + i]) continue;
+      const x = gx0 + i * STEP, z = gz0 + j * STEP, d = (x - p[0]) ** 2 + (z - p[2]) ** 2;
+      if (d < distance) { best = [x, 0, z]; distance = d; }
+    }
+    if (nearestCache.size > 2048) nearestCache.clear();
+    nearestCache.set(cacheKey, best);
+    return best?.slice() || null;
+  };
   const out = [];
   for (const [id, e] of entries) {
     const room = e.room, wander = [], r = rng(hashStr('passeio#' + id));
     for (let i = 0; i < 160 && wander.length < 8 + room.n * 3; i++) { const x = room.x0 + 0.6 + r() * (room.W - 1.2), z = room.z0 + 0.6 + r() * (room.D - 1.2); if (!blocked(x, z) && !wander.some(w => Math.hypot(w[0] - x, w[2] - z) < 1.1)) wander.push([x, 0, z]); }
-    if (!wander.length) wander.push([room.cx, 0, room.cz]);
+    if (!wander.length) { const p = nearestFree([room.cx, 0, room.cz]); if (p) wander.push(p); }
     out.push({ id, name: room.name, lobby: room.lobby, size: [room.W, room.D], origin: [room.cx, room.cz], rect: [room.x0, room.z0, room.x1, room.z1], desks: e.desks, beds: e.beds, door: e.door, wander, items: e.items, screens: e.screens, ticks: e.ticks, building: null, doorMat: frames.find(f => f.room === room)?.m });
   }
   const hall = [Math.min(...rects.map(r => r[0])), 0, right, bottom];
   const heap = { push(h, n) { h.push(n); let i = h.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (h[p].f <= h[i].f) break; [h[p], h[i]] = [h[i], h[p]]; i = p; } }, pop(h) { const top = h[0], last = h.pop(); if (h.length) { h[0] = last; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < h.length && h[l].f < h[m].f) m = l; if (r < h.length && h[r].f < h[m].f) m = r; if (m === i) break; [h[m], h[i]] = [h[i], h[m]]; i = m; } } return top; } };
   // A* over the whole floor (8 neighbors, no corner cutting), then the straight stretches are pulled tight.
   function findPath(from, to) {
+    if (blocked(from[0], from[2]) || blocked(to[0], to[2])) return null;
     const key = (i, j) => j * nx + i, s = cellOf(from[0], from[2]), g = cellOf(to[0], to[2]), gk = key(...g), sk = key(...s);
     const open = [{ i: s[0], j: s[1], g: 0, f: 0 }], best = new Map([[sk, 0]]), parent = new Map(); let found = false, guard = 0;
     while (open.length && guard++ < 60000) {
@@ -196,16 +234,30 @@ export function buildBuilding(scene, infos) {
       for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         const i = n.i + di, j = n.j + dj, k = key(i, j);
         if (i < 0 || j < 0 || i >= nx || j >= nz) continue;
-        if (k !== gk && blockedCell[k]) continue;
+        if (blockedCell[k]) continue;
         if (di && dj && (blockedCell[key(n.i + di, n.j)] || blockedCell[key(n.i, n.j + dj)])) continue;
         const gg = n.g + Math.hypot(di, dj); if (gg >= (best.get(k) ?? Infinity)) continue;
         best.set(k, gg); parent.set(k, nk); heap.push(open, { i, j, g: gg, f: gg + Math.hypot(i - g[0], j - g[1]) });
       }
     }
-    if (!found) return [from, to];
+    if (!found) return null;
     const pts = []; let k = gk; while (k != null && k !== sk) { pts.unshift([gx0 + (k % nx) * STEP, 0, gz0 + Math.floor(k / nx) * STEP]); k = parent.get(k); }
-    pts.unshift(from); pts[pts.length - 1] = to;
-    const clear = (a, b) => { const d = Math.hypot(b[0] - a[0], b[2] - a[2]), n = Math.ceil(d / 0.1); for (let q = 1; q < n; q++) if (blocked(a[0] + (b[0] - a[0]) * q / n, a[2] + (b[2] - a[2]) * q / n)) return false; return true; };
+    pts.unshift([gx0 + s[0] * STEP, 0, gz0 + s[1] * STEP]); pts.unshift(from); pts.push(to);
+    // Check every crossed grid boundary and interval; fixed sampling misses thin corners.
+    const clear = (a, b) => {
+      const times = [0, 1];
+      for (const [axis, origin] of [[0, gx0], [2, gz0]]) {
+        const delta = b[axis] - a[axis]; if (Math.abs(delta) < 1e-9) continue;
+        const lo = Math.min(a[axis], b[axis]), hi = Math.max(a[axis], b[axis]);
+        for (let k = Math.ceil((lo - origin) / STEP - 0.5); origin + (k + 0.5) * STEP < hi; k++) {
+          const t = (origin + (k + 0.5) * STEP - a[axis]) / delta; if (t > 0 && t < 1) times.push(t);
+        }
+      }
+      times.sort((x, y) => x - y);
+      const hit = t => blocked(a[0] + (b[0] - a[0]) * t, a[2] + (b[2] - a[2]) * t);
+      for (let i = 0; i < times.length; i++) if (hit(times[i]) || (i && hit((times[i - 1] + times[i]) / 2))) return false;
+      return true;
+    };
     const res = [pts[0]]; let a = 0; while (a < pts.length - 1) { let b = pts.length - 1; while (b > a + 1 && !clear(pts[a], pts[b])) b--; res.push(pts[b]); a = b; } return res;
   }
   const roomAt = (x, z) => out.find(r => x >= r.rect[0] && x <= r.rect[2] && z >= r.rect[1] && z <= r.rect[3]) || null;
@@ -213,5 +265,5 @@ export function buildBuilding(scene, infos) {
     for (const room of out) { for (const tick of room.ticks) tick(t); for (const [botId, screen] of room.screens) { const on = working.has(botId); screen.material.emissiveIntensity = on ? 0.55 + Math.sin(t * 9 + botId.length) * 0.06 : 0.04; } if (room.doorMat) room.doorMat.emissiveIntensity = waiting.has(room.id) ? 1.6 + Math.sin(t * 5) * 0.5 : 0.4; }
   }
   function dispose() { scene.remove(root); for (const t of textures) t.dispose(); }
-  return { rooms: out, bounds: [0, 0, right, bottom], blocked, findPath, roomAt, update, dispose, root };
+  return { rooms: out, bounds: [0, 0, right, bottom], blocked, nearestFree, findPath, roomAt, update, dispose, root };
 }

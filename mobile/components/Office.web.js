@@ -1,9 +1,9 @@
 // The Escritório page of the computer's window: the 3D offices (office/engine.js) with the bots acting on their real
 // state, the list of what each one is doing beside it, and a few numbers below.
-import { useEffect, useMemo, useRef, createElement } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
-import { C, F, Icon } from '../theme';
-import { Avatar, botLine } from './shared';
+import { useEffect, useMemo, useRef, useState, createElement, cloneElement } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput, PanResponder, useWindowDimensions } from 'react-native';
+import { C, F } from '../theme';
+import { Avatar, botLine, ApprovalCard } from './shared';
 
 // The app's state for each bot → what the scene shows.
 const STATE = { working: 'working', waiting: 'waiting', sleeping: 'sleeping', idle: 'idle' };
@@ -18,56 +18,89 @@ function snapshotOf(data) {
     rooms: (data?.rooms || []).map(room => ({ id: room.id, name: room.name, botIds: room.botIds || [], active: room.active || [] }))
   };
 }
-const tokens = n => n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')} mi` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(n);
+const buttonStyle = ({ hovered }) => ({ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: hovered ? C.surface2 : C.surface, borderWidth: 1, borderColor: C.line });
 
-export default function Office({ data, onOpen, onRoom }) {
+export default function Office({ data, onOpen, onRoom, conversation, selectionKey, selectionName, onRespond, approvalBusy, onCreate, onNewRoom }) {
   const host = useRef(null), office = useRef(null);
+  const [panel, setPanel] = useState('team'), [query, setQuery] = useState(''), [panelWidth, setPanelWidth] = useState(440), [sceneError, setSceneError] = useState('');
+  const { width } = useWindowDimensions(), stacked = width < 1050;
   const snap = useMemo(() => snapshotOf(data), [data]);
+  const latest = useRef({}); latest.current = { snap, onOpen };
+  const selectBot = id => { latest.current.onOpen?.(id); setPanel('conversation'); };
+  const selectRoom = id => { onRoom?.(id); office.current?.focus(id); setPanel('conversation'); };
   useEffect(() => {
     let alive = true, made = null;
-    // three.js is loaded only when the page opens.
-    import('../office/engine.js').then(({ createOffice }) => { if (!alive || !host.current) return; made = office.current = createOffice(host.current, { onBotClick: id => onOpen?.(id) }); made.update(snap); });
+    import('../office/engine.js').then(({ createOffice }) => {
+      if (!alive || !host.current) return;
+      made = office.current = createOffice(host.current, { onBotClick: id => { latest.current.onOpen?.(id); setPanel('conversation'); } });
+      made.update(latest.current.snap);
+    }).catch(() => { if (alive) setSceneError('Não foi possível carregar a cena. Você pode continuar pela lista de bots.'); });
     return () => { alive = false; made?.dispose(); office.current = null; };
   }, []);
   useEffect(() => { office.current?.update(snap); }, [snap]);
-  const bots = (data?.bots || []).filter(bot => !bot.deletedAt), lines = bots.map(bot => ({ bot, line: botLine(bot, data), state: snap.bots.find(item => item.id === bot.id) }));
+  useEffect(() => { if (selectionKey) setPanel('conversation'); }, [selectionKey]);
+  const resizeStart = useRef(panelWidth);
+  const divider = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => { resizeStart.current = latest.current.panelWidth; },
+    onPanResponderMove: (_, gesture) => setPanelWidth(Math.max(360, Math.min(640, resizeStart.current - gesture.dx))) }), []);
+  latest.current.panelWidth = panelWidth;
+  const bots = (data?.bots || []).filter(bot => !bot.deletedAt), approvals = data?.approvals || [];
   const count = state => snap.bots.filter(bot => bot.state === state).length;
-  const today = Object.values(data?.usage?.bots || {}).reduce((sum, item) => sum + (item.today?.input || 0) + (item.today?.output || 0), 0);
+  const needle = query.trim().toLocaleLowerCase('pt-BR');
   const order = { waiting: 0, working: 1, idle: 2, sleeping: 3 };
-  lines.sort((a, b) => order[a.state?.state] - order[b.state?.state]);
-  const stat = (label, value, detail, tone) => <View key={label} style={{ flex: 1, minWidth: 150, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 13 }}>
-    <Text style={{ color: C.muted, fontFamily: F.s, fontSize: 12 }}>{label}</Text><Text style={{ color: tone || C.text, fontFamily: F.b, fontSize: 24, marginTop: 4 }}>{value}</Text><Text style={{ color: C.faint, fontFamily: F.m, fontSize: 11, marginTop: 2 }} numberOfLines={1}>{detail}</Text></View>;
-  return <View style={{ flex: 1, flexDirection: 'row', gap: 16, padding: 18, backgroundColor: C.bg, minHeight: 0 }}>
-    <View style={{ flex: 1, minWidth: 0, gap: 14 }}>
-      <View style={{ flex: 1, borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: C.line, backgroundColor: '#06070a' }}>
-        {createElement('div', { ref: host, style: { position: 'absolute', inset: 0 } })}
-        <View pointerEvents="box-none" style={{ position: 'absolute', top: 14, left: 14, right: 14, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: '#0b0c0ee6', borderWidth: 1, borderColor: C.line }}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.good }} /><Text style={{ color: C.text, fontFamily: F.b, fontSize: 12.5 }}>{bots.length} bots · {count('working')} trabalhando</Text></View>
-          <Pressable accessibilityRole="button" onPress={() => office.current?.fit()} style={({ hovered }) => ({ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: hovered ? C.surface2 : '#0b0c0ee6', borderWidth: 1, borderColor: C.line })}><Text style={{ color: C.text2, fontFamily: F.s, fontSize: 12 }}>Ver tudo</Text></Pressable>
-          {(data?.rooms || []).map(room => <Pressable key={room.id} accessibilityRole="button" onPress={() => office.current?.focus(room.id)} style={({ hovered }) => ({ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99, backgroundColor: hovered ? C.surface2 : '#0b0c0ee6', borderWidth: 1, borderColor: C.line })}><Text style={{ color: C.text2, fontFamily: F.s, fontSize: 12 }}>{room.name}</Text></Pressable>)}
-        </View>
-        <Text pointerEvents="none" style={{ position: 'absolute', bottom: 12, left: 16, color: C.faint, fontFamily: F.m, fontSize: 11 }}>Arraste para andar · role para aproximar · clique duplo numa sala · clique num bot para abrir a conversa</Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-        {stat('Trabalhando agora', String(count('working')), count('working') ? lines.filter(l => l.state?.state === 'working').map(l => l.bot.name).slice(0, 3).join(', ') : 'Ninguém no momento', C.accent)}
-        {stat('Esperando você', String(count('waiting')), count('waiting') ? 'Abra Atividade para decidir' : 'Tudo em dia', count('waiting') ? '#ff9f7a' : null)}
-        {stat('Dormindo', String(count('sleeping')), 'Desconectados', null)}
-        {stat('Tokens hoje', tokens(today), `${(data?.rooms || []).length} salas · ${bots.length} bots`, null)}
-      </View>
+  const lines = bots.map(bot => ({ bot, line: botLine(bot, data), state: snap.bots.find(item => item.id === bot.id) }))
+    .filter(({ bot }) => !needle || bot.name.toLocaleLowerCase('pt-BR').includes(needle))
+    .sort((a, b) => order[a.state?.state] - order[b.state?.state]);
+  const action = (label, onPress, extra = {}) => <Pressable accessibilityRole="button" onPress={onPress} style={buttonStyle} {...extra}><Text style={{ color: C.text, fontFamily: F.s, fontSize: 12, maxWidth: 190 }} numberOfLines={1}>{label}</Text></Pressable>;
+  return <View style={{ flex: 1, padding: 12, gap: 10, backgroundColor: C.bg, minHeight: 0 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <Text style={{ color: C.text, fontFamily: F.b, fontSize: 17, marginRight: 8 }}>Escritório</Text>
+      <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12 }}>{bots.length} bots · {count('working')} trabalhando</Text>
+      <View style={{ flex: 1 }} />
+      {action(approvals.length ? `${approvals.length} pendências` : 'Equipe', () => setPanel('team'))}
+      {selectionKey ? action('Conversa', () => setPanel('conversation')) : null}
+      {action('Novo bot', onCreate)}
+      {action('Nova sala', onNewRoom, { disabled: bots.length < 2, accessibilityState: { disabled: bots.length < 2 } })}
     </View>
-    <View style={{ width: 340, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, borderRadius: 22, paddingVertical: 18, paddingHorizontal: 12 }}>
-      <Text style={{ color: C.text, fontFamily: F.b, fontSize: 18, marginHorizontal: 8 }}>Agora no escritório</Text>
-      <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12, margin: 8, marginTop: 4 }}>o que cada bot está fazendo</Text>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingTop: 6 }}>
-        {lines.map(({ bot, line, state }) => { const s = state?.state || 'idle'; return <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Abrir ${bot.name}`} onPress={() => onOpen?.(bot.id)} style={({ hovered }) => ({ flexDirection: 'row', gap: 10, alignItems: 'center', padding: 11, borderRadius: 16, borderWidth: 1, borderColor: s === 'working' ? C.accent + '55' : C.line, backgroundColor: hovered ? C.surface2 : s === 'working' ? '#221f18' : C.bg2 })}>
-          <Avatar bot={bot} size={42} state={line.state} animated={false} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={{ color: C.text, fontFamily: F.b, fontSize: 13.5 }} numberOfLines={1}>{bot.name}</Text><Text style={{ color: COLOR[s], fontFamily: F.s, fontSize: 11 }}>● {LABEL[s]}</Text></View>
-            <Text style={{ color: C.text2, fontFamily: F.m, fontSize: 12, marginTop: 3 }} numberOfLines={2}>{state?.text || line.text}</Text>
-          </View></Pressable>; })}
-        {!bots.length ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12, margin: 8 }}>Nenhum bot ainda. Crie um e ele aparece aqui.</Text> : null}
-      </ScrollView>
+    <View style={{ flex: 1, minHeight: 0, flexDirection: stacked ? 'column' : 'row', gap: stacked ? 10 : 0 }}>
+      <View style={{ flex: 1, minWidth: 0, minHeight: stacked ? 220 : 0, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: C.line, backgroundColor: '#121c29' }}>
+        {createElement('div', { ref: host, style: { position: 'absolute', inset: 0 }, 'aria-label': 'Cena do escritório' })}
+        <View pointerEvents="box-none" style={{ position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {action('Ver tudo', () => office.current?.fit())}
+          {(data?.rooms || []).map(room => <View key={room.id}>{action(room.name, () => selectRoom(room.id), { accessibilityLabel: `Abrir sala ${room.name}` })}</View>)}
+        </View>
+        {sceneError ? <View style={{ padding: 24, marginTop: 60, backgroundColor: C.surface }}><Text style={{ color: C.text }}>{sceneError}</Text></View> : null}
+        <Text pointerEvents="none" style={{ position: 'absolute', bottom: 12, left: 14, right: 14, color: '#c0c9d6', fontFamily: F.m, fontSize: 11 }}>Arraste para explorar · role para aproximar · selecione um bot para trabalhar aqui</Text>
+      </View>
+      {!stacked && panel ? <View {...divider.panHandlers} accessibilityRole="adjustable" accessibilityLabel="Largura do painel do escritório" style={{ width: 10, cursor: 'col-resize', justifyContent: 'center', alignItems: 'center' }}><View style={{ width: 3, height: 36, backgroundColor: C.line, borderRadius: 3 }} /></View> : null}
+      <View style={{ display: panel ? 'flex' : 'none', width: stacked ? '100%' : panelWidth, flex: stacked ? 1.2 : undefined, minHeight: 0, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderBottomWidth: 1, borderBottomColor: C.line }}>
+          {action('Equipe', () => setPanel('team'), { accessibilityState: { selected: panel === 'team' } })}
+          {selectionKey ? action(selectionName || 'Conversa', () => setPanel('conversation'), { accessibilityState: { selected: panel === 'conversation' } }) : null}
+          <View style={{ flex: 1 }} />
+          {action('Recolher', () => setPanel(null), { accessibilityLabel: 'Recolher painel do escritório' })}
+        </View>
+        <View style={{ flex: 1, minHeight: 0, display: panel === 'conversation' && conversation ? 'flex' : 'none' }}>{conversation ? cloneElement(conversation, { interactive: panel === 'conversation' }) : null}</View>
+        <View style={{ flex: 1, minHeight: 0, display: panel === 'team' || !conversation ? 'flex' : 'none' }}>
+          <TextInput accessibilityLabel="Buscar bots no escritório" placeholder="Buscar bot pelo nome" placeholderTextColor={C.faint} value={query} onChangeText={setQuery}
+            style={{ margin: 12, padding: 12, borderRadius: 12, backgroundColor: C.bg, color: C.text, borderWidth: 1, borderColor: C.line, fontFamily: F.m }} />
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingTop: 0, gap: 10 }}>
+            {approvals.length ? <Text style={{ color: C.text, fontFamily: F.b, fontSize: 14 }}>Precisa de você</Text> : null}
+            {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+            <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12 }}>Selecione um bot para conversar sem sair do escritório.</Text>
+            {lines.map(({ bot, line, state }) => { const s = state?.state || 'idle'; return <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Conversar com ${bot.name} no escritório`} onPress={() => selectBot(bot.id)}
+              style={({ hovered }) => ({ flexDirection: 'row', gap: 10, alignItems: 'center', padding: 11, borderRadius: 14, borderWidth: 1, borderColor: selectionKey === `bot:${bot.id}` ? C.accent : C.line, backgroundColor: hovered ? C.surface2 : C.bg2 })}>
+              <Avatar bot={bot} size={38} state={line.state} animated={false} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: C.text, fontFamily: F.b, fontSize: 13 }}>{bot.name}</Text>
+                <Text style={{ color: COLOR[s], fontFamily: F.s, fontSize: 11, marginTop: 2 }}>{LABEL[s]}</Text>
+                <Text style={{ color: C.text2, fontFamily: F.m, fontSize: 12, marginTop: 3 }} numberOfLines={2}>{state?.text || line.text}</Text>
+              </View>
+            </Pressable>; })}
+            {!lines.length ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12 }}>{bots.length ? 'Nenhum bot com esse nome.' : 'Crie seu primeiro bot para começar.'}</Text> : null}
+          </ScrollView>
+        </View>
+      </View>
     </View>
   </View>;
 }

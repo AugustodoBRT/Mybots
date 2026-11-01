@@ -20,7 +20,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 // stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
-function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ interactive = true, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
@@ -58,7 +58,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   }, [incoming]);
   // The computer's window keeps the bot's browser in its right bar: it asks for it there and tells here whether it is open.
   const openBrowser = () => (desktop ? desktopBus.emit('browser-open', { botId: bot.id }) : setBrowserOpen(true));
-  useEffect(() => { if (assumed) openBrowser(); }, [assumed]);
+  useEffect(() => { if (assumed && interactive) openBrowser(); }, [assumed, interactive]);
   useEffect(() => desktopBus.on('browser-state', state => { if (desktop && state.botId === bot.id) setBrowserOpen(Boolean(state.open)); }), [bot.id]);
   // Tablets and the computer's window: the browser sits beside the conversation instead of above it.
   const [width, setWidth] = useState(0);
@@ -81,7 +81,7 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
   // Files dropped anywhere in the window, or pasted with Ctrl+V (a screenshot, a copied picture or file), attach to the open conversation.
   const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles; const [dragging, setDragging] = useState(false);
   useEffect(() => {
-    if (!desktop) return undefined;
+    if (!desktop || !interactive) return undefined;
     let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files'));
     const enter = event => { if (has(event)) { depth++; setDragging(true); } };
     const over = event => { if (has(event)) event.preventDefault(); };
@@ -95,8 +95,8 @@ function ChatView({ drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, dat
     };
     const events = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop], ['paste', paste]];
     for (const [name, handler] of events) globalThis.addEventListener(name, handler);
-    return () => { for (const [name, handler] of events) globalThis.removeEventListener(name, handler); };
-  }, []);
+    return () => { for (const [name, handler] of events) globalThis.removeEventListener(name, handler); setDragging(false); };
+  }, [interactive]);
   const attach = async () => {
     setComposerError('');
     try {

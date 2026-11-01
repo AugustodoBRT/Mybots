@@ -101,7 +101,7 @@ void main(){
   vec3 col = vDust > .5 ? hsl(uHue, .76, .72) : hsl(uHue, .54, l) * vShade;
   col = mix(col, vec3(1., .74, .42), uWarm * .14);
   col = mix(col, hsl(uHue, .35, .05), vSocket);
-  float alpha = vDust > .5 ? .6 : .86;
+  float alpha = vDust > .5 ? .35 : .32;
   // The app's colors are sRGB; the renderer works in linear light.
   col = pow(col, vec3(2.2));
   gl_FragColor = vec4(col, alpha * (1. - smoothstep(.16, .25, d) * .5));
@@ -124,20 +124,37 @@ void main(){ float d = length(gl_PointCoord - .5); if (d > .5) discard; float k 
  * lying (asleep), warm (lit by its monitor), moving. Particle count is chosen by the engine from how many bots there are.
  */
 export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
-  const spec = specFromFace(bot.face, bot.name || bot.id), base = 0.6, N = Math.max(800, Math.round(particles));
+  const spec = specFromFace(bot.face, bot.name || bot.id), base = 0.46, N = Math.max(800, Math.round(particles));
   const P = buildParticles(spec, N), g = new T.BufferGeometry();
   const pos = new Float32Array(N * 3), grain = new Float32Array(N * 4), dust = new Float32Array(N);
   for (let i = 0; i < N; i++) { pos.set([P.x[i], P.y[i], P.z[i]], i * 3); grain.set([P.ph[i], P.speed[i], P.size[i] * spec.dot, P.light[i]], i * 4); dust[i] = P.dust[i]; }
   g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('aGrain', new T.BufferAttribute(grain, 4)); g.setAttribute('aDust', new T.BufferAttribute(dust, 1));
   const color = new T.Color().setHSL(spec.hue / 360, 0.62, 0.66);
-  const shared = { uTime: { value: 0 }, uFlow: { value: 0.024 }, uEnergy: { value: 1 }, uScaleXYZ: { value: new T.Vector3(spec.sx, spec.sy, spec.sz) }, uPixel: { value: 2 } };
+  const shared = { uTime: { value: 0 }, uFlow: { value: 0.010 }, uEnergy: { value: 1 }, uScaleXYZ: { value: new T.Vector3(spec.sx, spec.sy, spec.sz) }, uPixel: { value: 2 } };
   const u = { ...shared, uShake: { value: 0 }, uTanE: { value: 0.62 }, uHoleA: { value: Array.from({ length: MAX_HOLES }, () => new T.Vector4()) }, uHoleB: { value: Array.from({ length: MAX_HOLES }, () => new T.Vector4()) }, uHoles: { value: 0 },
     uLightW: { value: new T.Vector3(-7, 14, 9).normalize() }, uHue: { value: spec.hue }, uDim: { value: 0 }, uWarm: { value: 0 } };
-  const material = new T.ShaderMaterial({ uniforms: u, vertexShader, fragmentShader, transparent: true, depthWrite: true }); material.toneMapped = false;
+  const material = new T.ShaderMaterial({ uniforms: u, vertexShader, fragmentShader, transparent: true, depthWrite: false }); material.toneMapped = false;
   const glowU = { ...shared, uColor: { value: color.clone() }, uGlow: { value: 0.012 } };
   const glowMat = new T.ShaderMaterial({ uniforms: glowU, vertexShader: glowVertex, fragmentShader: glowFragment, transparent: true, depthWrite: false, blending: T.AdditiveBlending }); glowMat.toneMapped = false;
   const pts = new T.Points(g, material), glowPts = new T.Points(g, glowMat); pts.frustumCulled = glowPts.frustumCulled = false; glowPts.renderOrder = 2;
   const body = new T.Group(), group = new T.Group(); body.add(glowPts, pts); group.add(body); group.rotation.order = 'YXZ'; scene.add(group);
+  // A quiet solid silhouette underneath the grains keeps small bots readable.
+  const shellGeo = new T.SphereGeometry(1, 32, 24), vertices = shellGeo.attributes.position;
+  for (let i = 0; i < vertices.count; i++) {
+    const x = vertices.getX(i), y = vertices.getY(i), z = vertices.getZ(i);
+    const length = (Math.abs(x) ** spec.squar + Math.abs(y) ** spec.squar + Math.abs(z) ** spec.squar) ** (1 / spec.squar);
+    vertices.setXYZ(i, x / length * spec.sx * 0.97, y / length * spec.sy * 0.97, z / length * spec.sz * 0.97);
+  }
+  shellGeo.computeVertexNormals();
+  const shellMat = new T.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.05 });
+  const shell = new T.Mesh(shellGeo, shellMat); shell.castShadow = true; body.add(shell);
+  const face = new T.Group(); face.position.set(0, 0.16, spec.sz * 0.96); face.rotation.x = -0.24; body.add(face);
+  const ink = new T.MeshBasicMaterial({ color: '#172431' }), eyeGeo = new T.SphereGeometry(1, 16, 12);
+  const eyes = (spec.eyes === 1 ? [0] : [-0.34 * spec.eyeGap, 0.34 * spec.eyeGap]).map(x => {
+    const eye = new T.Mesh(eyeGeo, ink); eye.position.set(x * spec.sx, -spec.eyeY * spec.sy, 0.02); face.add(eye); return eye;
+  });
+  if (spec.eyes === 3) { const eye = new T.Mesh(eyeGeo, ink); eye.position.set(0, -spec.eyeY * spec.sy + 0.32, 0.02); face.add(eye); eyes.push(eye); }
+  const mouth = new T.Mesh(eyeGeo, ink); mouth.position.set(0, -0.34 * spec.sy, 0.025); face.add(mouth);
   // Soft contact shadow and a little light of its own color on what is around it.
   const shadow = new T.Mesh(new T.CircleGeometry(0.62, 28), new T.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.4, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
@@ -153,14 +170,22 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
   const trail = new T.Points(trailGeo, trailMat); trail.frustumCulled = false; scene.add(trail);
   let seed = index * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 
+  let previousTime = null;
+  const expression = { ...moodOf('normal') };
   function update(view, t, pixel) {
-    const c = moodOf(view.mood || 'normal');
+    const desired = moodOf(view.mood || 'normal'), blend = 1 - Math.exp(-Math.min(0.05, previousTime == null ? 0.016 : t - previousTime) * 9); previousTime = t;
+    for (const key of Object.keys(desired)) expression[key] = typeof desired[key] === 'number' ? expression[key] + (desired[key] - expression[key]) * blend : desired[key];
+    const c = expression;
     const bc = (t + spec.seed.length * 0.37 + index * 0.9) % 5.2, blink = bc > 4.9 ? 1 - Math.sin((bc - 4.9) / 0.3 * Math.PI) * 0.96 : 1;
+    const [, eyeWidth, eyeHeight] = EYE_STYLES[spec.eyeStyle];
+    eyes.forEach((eye, i) => { const third = i === 2, size = spec.eyes === 1 ? 1.3 : 1; eye.scale.set((third ? 0.075 : eyeWidth * 0.75 * size) * c.ew, Math.max(0.018, (third ? 0.10 : eyeHeight * 0.75 * size) * c.eo * blink), 0.045); });
+    mouth.visible = spec.mouth !== 'nenhuma' || c.mo > 0.1; mouth.scale.set(0.11 + c.mo * 0.07, 0.026 + c.mo * 0.08, 0.035);
+    shellMat.color.setHSL((c.hm > 0 ? c.hue : spec.hue) / 360, 0.46, view.lying ? 0.38 : 0.59);
     const holes = holesFor(spec, c, blink); u.uHoles.value = holes.length;
     holes.forEach(([x, y, w, h, angle, curve, amount], i) => { u.uHoleA.value[i].set(x, y, w, h); u.uHoleB.value[i].set(Math.cos(angle), Math.sin(angle), curve, amount); });
     const hue = c.hm > 0 ? c.hue : spec.hue;
     u.uHue.value = hue; u.uDim.value = c.dim; u.uShake.value = c.shake; u.uWarm.value = view.warm ? 1 : 0;
-    shared.uTime.value = t; shared.uEnergy.value = 0.65 + 0.6 * c.en; shared.uPixel.value = pixel * 1.55;
+    shared.uTime.value = t; shared.uEnergy.value = 0.65 + 0.6 * c.en; shared.uPixel.value = pixel * 1.05;
     glowU.uColor.value.setHSL(hue / 360, 0.7, 0.62); glowU.uGlow.value = view.lying ? 0.006 : view.mood === 'concluido' ? 0.02 : 0.012;
     group.rotation.set(view.lying ? -1.2 : view.lean || 0, view.yaw, view.roll || 0);
     const breath = 1 + Math.sin(t * 2 * (0.6 + c.en * 0.4) + index) * 0.017, sq = (view.squash || 1) * c.squash * breath;
@@ -169,13 +194,13 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
     group.visible = view.visible !== false;
     shadow.position.set(view.pos[0], (view.floor ?? view.pos[1]) + 0.02, view.pos[2]); shadow.scale.setScalar(1 - Math.min(0.6, (view.jump || 0) * 0.4)); shadow.material.opacity = view.flying ? 0 : 0.42 - (view.jump || 0) * 0.25; shadow.visible = group.visible;
     const cy = group.position.y + (view.lying ? 0 : spec.sy * base);
-    light.position.set(group.position.x, cy, group.position.z); light.color.copy(glowU.uColor.value); light.intensity = view.lying ? 0.5 : 1.4; light.visible = group.visible;
+    light.position.set(group.position.x, cy, group.position.z); light.color.copy(glowU.uColor.value); light.intensity = view.lying ? 0.12 : 0.35; light.visible = group.visible;
     // Drop trail grains while in the air or flying; age all of them.
     if ((view.moving || view.flying) && t - lastDrop > 0.016) { lastDrop = t; for (let k = 0; k < 3; k++) { const i = next; next = (next + 1) % count; born[i] = t; trailPos.set([group.position.x + (rnd() - 0.5) * 0.4, group.position.y + 0.12 + rnd() * 0.5, group.position.z + (rnd() - 0.5) * 0.4], i * 3); } }
     for (let i = 0; i < count; i++) { const age = t - born[i]; trailAlpha[i] = age < 1.1 ? (1 - age / 1.1) * 0.75 : 0; if (age < 1.1) trailPos[i * 3 + 1] += 0.0025; }
     trailMat.uniforms.pixel.value = pixel; trailGeo.attributes.position.needsUpdate = true; trailGeo.attributes.alpha.needsUpdate = true;
     return cy;
   }
-  function dispose() { for (const o of [group, shadow, light, trail]) scene.remove(o); g.dispose(); material.dispose(); glowMat.dispose(); trailGeo.dispose(); trailMat.dispose(); shadow.geometry.dispose(); shadow.material.dispose(); }
+  function dispose() { for (const o of [group, shadow, light, trail]) scene.remove(o); shellGeo.dispose(); shellMat.dispose(); eyeGeo.dispose(); ink.dispose(); g.dispose(); material.dispose(); glowMat.dispose(); trailGeo.dispose(); trailMat.dispose(); shadow.geometry.dispose(); shadow.material.dispose(); }
   return { spec, update, dispose, height: spec.sy * base * 2, color };
 }

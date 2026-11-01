@@ -111,7 +111,7 @@ function placeLabels(states) {
   for (const s of states) {
     const { tag, bubble, sleep } = labels.get(s.name), bot = bots.find(b => b.name === s.name);
     const base = project(new T.Vector3(s.pos[0], s.pos[1], s.pos[2]));
-    const head = project(new T.Vector3(bot.group.position.x, bot.group.position.y + 0.72 * bot.spec.sy, bot.group.position.z));
+    const head = project(new T.Vector3(bot.group.position.x, bot.group.position.y + bot.height() + 0.12, bot.group.position.z));
     const inside = base[0] > 10 && base[0] < W - 10 && base[1] > 10 && base[1] < H - 10;
     tag.textContent = s.state === 'concluido' ? `${s.name} · concluído` : s.name; tag.classList.toggle('done', s.state === 'concluido');
     const tw = tag.offsetWidth, th = tag.offsetHeight; let tx = base[0] - tw / 2, ty = base[1] + 14;

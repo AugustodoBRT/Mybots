@@ -51,7 +51,7 @@ export function makeWorld(scene,quality){
   // seats facing the monitors, open on camera side
   cyl(.07,.48,'#4b4b52',x,.32,-1.95);for(let k=0;k<5;k++){const a=k*TAU/5;box(.06,.05,.55,dark,x+Math.sin(a)*.22,.095,-1.95+Math.cos(a)*.22,.01,a);sphere(.06,'#111317',x+Math.sin(a)*.43,.07,-1.95+Math.cos(a)*.43)}
   box(.75,.18,.74,'#4b4754',x,.61,-1.95,.085);
-  box(.72,.62,.14,'#45424d',x,.98,-1.57,.07);for(const dx of [-.42,.42]){box(.045,.38,.045,dark,x+dx,.8,-1.83);box(.12,.06,.5,'#33333b',x+dx,1,-1.91,.025)}
+  box(.72,.4,.14,'#45424d',x,.86,-1.57,.07);for(const dx of [-.42,.42]){box(.045,.38,.045,dark,x+dx,.8,-1.83);box(.12,.06,.5,'#33333b',x+dx,1,-1.91,.025)}
   shadow(x,-2.7,3,2.7);
   const l=new T.PointLight('#ffc67b',2,3.2,2);l.position.set(x,1.85,-2.5);scene.add(l);glow('#f4ae59',x,1.8,-3.05,1.8,.1);
  }

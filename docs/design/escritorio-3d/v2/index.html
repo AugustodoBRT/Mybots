@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Escritório · MyBots</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/geometries/":"./vendor/"}}</script>
+</head><body>
+<main id="app">
+<header><div class="heading"><span class="office-icon">▦</span><h1>Escritório</h1><span class="subtitle">Um pequeno universo de ideias.</span></div><div class="controls"><span class="demo">Demonstração</span><button id="play" aria-label="Pausar animação">Pausar</button><label>Qualidade <select id="quality"><option value="high">Alta</option><option value="low">Leve</option></select></label></div></header>
+<section class="layout">
+<div class="left">
+<section id="scene" aria-label="Escritório 3D com seis bots de partículas"><div id="space"></div><div id="canvas-host"></div><div class="vignette"></div><div id="labels"></div><div class="chip"><i class="dot green"></i><span id="team-count">6 bots · 2 trabalhando</span></div><div class="chip devices">Celular <i class="dot green"></i> online <span></span> PC <i class="dot green"></i> online</div><div id="chapter"><i></i><span>Um lugar para fazer acontecer.</span></div><div id="loading">Preparando o escritório…</div></section>
+<section class="stats" aria-label="Resumo do escritório">
+<article class="stat"><div>Tokens hoje</div><strong id="tokens">412 mil</strong><small>▲ 18% sobre ontem</small><svg viewBox="0 0 130 36" aria-hidden="true"><path d="M2 30L15 24L28 27L42 14L55 20L69 10L82 15L96 4L109 12L126 2"/></svg></article>
+<article class="stat"><div>Tarefas concluídas</div><strong id="tasks">26</strong><small>3 na fila agora</small><span class="stat-mark">✓</span></article>
+<article class="stat"><div>Tempo trabalhando</div><strong>3 h 12 min</strong><small>Lucas e Maniaco agora</small><span class="stat-mark clock-icon">◷</span></article>
+<article class="stat approval"><div>Aprovações pendentes</div><strong id="approvals">0</strong><small id="approval-detail">Tudo em dia</small><span class="stat-mark">↗</span></article>
+</section>
+<section class="rank"><h2>Quem trabalhou mais <span>· últimos 7 dias</span></h2><div id="bars"></div></section>
+</div>
+<aside class="panel"><h2>Agora no escritório</h2><p>o que cada bot está fazendo</p><div id="bot-list"></div><footer><i class="dot green"></i> Cada um no seu ritmo. Todos com você.</footer></aside>
+</section></main>
+<script type="module" src="scene.mjs"></script>
+</body></html>

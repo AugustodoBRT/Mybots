@@ -1,0 +1,133 @@
+<!doctype html><meta charset=utf-8>
+<style>
+:root{--T:#F6F3ED;--M:#9A9CA3;--A:#EABB75;--S1:#16171A;--S2:#1D1E22;--L:#2B2D31}
+*{box-sizing:border-box}body{margin:0;background:#0b0c0e;color:var(--T);font:500 13px Inter,system-ui,sans-serif;width:1500px;height:940px;padding:24px;display:grid;grid-template-columns:1040px 1fr;gap:18px}
+.left{display:grid;grid-template-rows:560px auto 1fr;gap:18px;min-width:0}
+#scene{position:relative;border-radius:22px;overflow:hidden;background:#06070a;border:1px solid var(--L)}
+#scene canvas{display:block}
+.chip{position:absolute;top:14px;left:16px;padding:7px 14px;border-radius:99px;background:rgba(13,14,16,.72);border:1px solid var(--L);font-weight:600}
+.chip2{left:auto;right:16px;color:var(--M);font-size:11.5px}
+.tag{position:absolute;transform:translate(-50%,0);padding:3px 11px;border-radius:99px;background:rgba(13,14,16,.82);border:1px solid var(--L);font-weight:600;font-size:12px;white-space:nowrap}
+.bub{position:absolute;transform:translate(-50%,-100%);padding:6px 12px;border-radius:12px;background:#F6F3ED;color:#16171A;font-weight:600;font-size:12px;white-space:nowrap}
+.bub:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:#F6F3ED}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:var(--S1);border:1px solid var(--L);border-radius:16px;padding:14px 16px;height:96px}
+.card small{color:var(--M);font-weight:600;font-size:12px}.card b{display:block;font-size:26px;margin-top:6px}.card span{color:var(--M);font-size:11.5px}
+.rank{background:var(--S1);border:1px solid var(--L);border-radius:16px;padding:16px 18px}.rank h4{margin:0 0 10px;font-size:13px}
+.row{display:grid;grid-template-columns:172px 1fr;align-items:center;height:22px;font-size:12px}.bar{height:13px;border-radius:7px;background:#6b5a3a;display:flex;align-items:center}.row.top .bar{background:var(--A)}.bar i{margin-left:100%;padding-left:10px;font-style:normal;color:var(--M);font-size:11px;white-space:nowrap}
+.panel{background:var(--S1);border:1px solid var(--L);border-radius:22px;padding:22px 14px;overflow:hidden}.panel h3{margin:0 8px;font-size:16px}.panel p{margin:4px 8px 14px;color:var(--M);font-size:12px}
+.item{display:grid;grid-template-columns:62px 1fr;gap:6px;background:var(--S2);border:1px solid var(--L);border-radius:16px;padding:10px 12px;margin-bottom:12px;height:92px}.item.hot{background:#221f18;border-color:rgba(234,187,117,.35)}
+.item canvas{width:56px;height:56px;align-self:center}.item strong{font-size:14px}.item em{font-style:normal;font-size:11.5px;font-weight:600;margin-left:8px}.item div div{color:#d6d4cf;font-size:12.5px;margin-top:5px;line-height:1.35}.item small{color:var(--M);font-size:11px}
+</style>
+<div class=left>
+ <div id=scene><div class=chip>● 6 bots · 2 trabalhando</div><div class="chip chip2">Celular ● online &nbsp; PC ● online</div></div>
+ <div class=cards>
+  <div class=card><small>Tokens hoje</small><b>412 mil</b><span>▲ 18% sobre ontem</span></div>
+  <div class=card><small>Tarefas concluídas</small><b>27</b><span>3 na fila agora</span></div>
+  <div class=card><small>Tempo trabalhando</small><b>3 h 12 min</b><span>Lucas e Maniaco agora</span></div>
+  <div class=card><small>Aprovações pendentes</small><b>1</b><span>Clara espera você</span></div>
+ </div>
+ <div class=rank><h4>Quem trabalhou mais · últimos 7 dias</h4>
+  <div class="row top"><span>Lucas</span><div class=bar style="width:92%"><i>148 mil</i></div></div>
+  <div class="row top"><span>Maniaco</span><div class=bar style="width:74%"><i>118 mil</i></div></div>
+  <div class=row><span>Produtor de Terror</span><div class=bar style="width:55%"><i>88 mil</i></div></div>
+  <div class=row><span>Nina</span><div class=bar style="width:34%"><i>54 mil</i></div></div>
+  <div class=row><span>Clara</span><div class=bar style="width:20%"><i>32 mil</i></div></div>
+  <div class=row><span>Teo</span><div class=bar style="width:8%"><i>12 mil</i></div></div></div>
+</div>
+<div class=panel><h3>Agora no escritório</h3><p>o que cada bot está fazendo</p><div id=list></div></div>
+<script type=importmap>{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type=module>
+import * as THREE from 'three';
+import {Mimo,specFromFace,buildParticles,EYE_STYLES,rng} from '/lib/mimo.mjs';
+import {paintFrame} from '/lib/mimo-canvas.mjs';
+const W=1040,H=560, scene=document.getElementById('scene');
+const R=new THREE.WebGLRenderer({antialias:true,alpha:false});R.setPixelRatio(1.5);R.setSize(W,H);R.shadowMap.enabled=true;R.shadowMap.type=THREE.PCFSoftShadowMap;R.toneMapping=THREE.ACESFilmicToneMapping;R.toneMappingExposure=1.05;scene.prepend(R.domElement);
+const S=new THREE.Scene();S.background=new THREE.Color('#06070a');
+const asp=W/H,fr=8.2;const cam=new THREE.OrthographicCamera(-fr*asp,fr*asp,fr,-fr,0.1,100);cam.position.set(15,14,15);cam.lookAt(0.4,0.2,0.2);cam.zoom=1.34;cam.updateProjectionMatrix();
+// lights
+S.add(new THREE.HemisphereLight('#a3a8d0','#3a2e22',1.5));
+const sun=new THREE.DirectionalLight('#ffe6c4',1.5);sun.position.set(-6,12,8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-10,right:10,top:10,bottom:-10,near:1,far:40});sun.shadow.bias=-0.0005;S.add(sun);
+const under=new THREE.PointLight('#EABB75',60,16,1.6);under.position.set(0,-2.4,0);S.add(under);
+// stars
+{const n=900,p=new Float32Array(n*3),rn=rng(5);for(let i=0;i<n;i++){const r=30+rn()*40,a=rn()*6.283,b=Math.acos(2*rn()-1);p[i*3]=r*Math.sin(b)*Math.cos(a);p[i*3+1]=r*Math.cos(b)*0.8;p[i*3+2]=r*Math.sin(b)*Math.sin(a)}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));S.add(new THREE.Points(g,new THREE.PointsMaterial({color:'#ffffff',size:1.6,sizeAttenuation:false,transparent:true,opacity:.8})))}
+const M=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.7,metalness:.05,...o});
+const box=(w,h,d,mat,x,y,z,cast=true)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;S.add(m);return m};
+const cyl=(r,h,mat,x,y,z,seg=24)=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;S.add(m);return m};
+// floor texture
+const tc=document.createElement('canvas');tc.width=tc.height=512;{const q=tc.getContext('2d');for(let i=0;i<8;i++)for(let j=0;j<8;j++){q.fillStyle=(i+j)%2?'#2b2d33':'#25272c';q.fillRect(i*64,j*64,64,64)}q.strokeStyle='rgba(255,255,255,.06)';q.lineWidth=2;for(let i=0;i<=8;i++){q.beginPath();q.moveTo(i*64,0);q.lineTo(i*64,512);q.moveTo(0,i*64);q.lineTo(512,i*64);q.stroke()}}
+const tex=new THREE.CanvasTexture(tc);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2.5,2);tex.anisotropy=8;tex.colorSpace=THREE.SRGBColorSpace;
+const floor=box(10,0.5,8,M('#fff',{map:tex,roughness:.55}),0,-0.25,0);
+box(10.3,0.18,8.3,M('#17181b'),0,-0.58,0);
+// rocks under the island
+for(const [x,z,s,h] of [[-2.5,-1,1.7,2.6],[1.8,1.2,2.1,3.4],[3.5,-2,1.1,1.8],[-3.5,2.2,1.2,2]]){const m=new THREE.Mesh(new THREE.ConeGeometry(s,h,6),M('#202127',{roughness:.95}));m.position.set(x,-0.67-h/2,z);m.rotation.y=x;m.castShadow=true;S.add(m)}
+// walls (north and west), with a trim
+const wallM=M('#33353c',{roughness:.85}),trim=M('#4a3b2c');
+box(10,3.2,0.25,wallM,0,1.6,-4.12);box(0.25,3.2,8,wallM,-5.12,1.6,0);box(10.4,0.14,0.34,trim,0,0.07,-4.1);box(0.34,0.14,8.2,trim,-5.1,0.07,0);box(10.4,0.12,0.4,M('#1c1d21'),0,3.26,-4.12);box(0.4,0.12,8.2,M('#1c1d21'),-5.12,3.26,0);
+// window on north wall (looks at space)
+box(2.2,1.5,0.06,new THREE.MeshBasicMaterial({color:'#05060a'}),3.1,1.9,-3.96);for(const [w,h,x,y] of [[2.3,.08,3.1,2.68],[2.3,.08,3.1,1.12],[.08,1.6,2,1.9],[.08,1.6,4.2,1.9],[.06,1.5,3.1,1.9]])box(w,h,.1,trim,x,y,-3.93);
+{const n=40,p=new Float32Array(n*3);for(let i=0;i<n;i++){p[i*3]=2.1+Math.random()*2;p[i*3+1]=1.2+Math.random()*1.4;p[i*3+2]=-3.92}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));S.add(new THREE.Points(g,new THREE.PointsMaterial({color:'#fff',size:2,sizeAttenuation:false})))}
+// clock
+{const m=new THREE.Mesh(new THREE.TorusGeometry(.35,.05,12,32),M('#EABB75',{emissive:'#EABB75',emissiveIntensity:.5}));m.position.set(-.5,2.3,-3.95);S.add(m);box(.05,.3,.04,M('#EABB75'),-.5,2.4,-3.93,false);box(.22,.04,.04,M('#EABB75'),-.4,2.3,-3.93,false)}
+// rug
+{const m=new THREE.Mesh(new THREE.CylinderGeometry(1.9,1.9,0.02,48),M('#3a3047',{roughness:1}));m.position.set(0,0.011,0.9);m.receiveShadow=true;S.add(m);const m2=new THREE.Mesh(new THREE.CylinderGeometry(1.45,1.45,0.025,48),M('#4a3d5e',{roughness:1}));m2.position.set(0,0.014,0.9);S.add(m2)}
+// desks
+const wood=M('#6a5238',{roughness:.6}),dark=M('#2a2c32'),metal=M('#44474f',{roughness:.4,metalness:.5});
+function desk(x,on){box(2.2,.12,1,wood,x,1.02,-2.9);for(const dx of[-.95,.95])box(.1,1,.9,M('#4a3a28'),x+dx,.5,-2.9);
+ box(.12,.35,.12,metal,x,1.25,-3.25);const scr=M(on?'#2a1d0c':'#101114',{emissive:on?'#EABB75':'#000',emissiveIntensity:on?.9:0});box(1.1,.68,.07,dark,x,1.72,-3.27);const f=new THREE.Mesh(new THREE.PlaneGeometry(.98,.56),scr);f.position.set(x,1.72,-3.235);S.add(f);
+ box(.7,.03,.26,M('#1b1c20'),x,1.1,-2.65,false);
+ if(on){const l=new THREE.PointLight('#EABB75',2.6,5,1.5);l.position.set(x,1.8,-2.4);S.add(l)}
+ // chair
+ cyl(.07,.55,metal,x,.3,-1.9);box(.7,.12,.7,M('#34303d'),x,.62,-1.9);box(.7,.7,.1,M('#34303d'),x,1.0,-1.55)}
+desk(-2.9,true);desk(0,true);desk(2.9,false);
+// bookshelf west
+box(.5,2.6,2.2,M('#4a3a28'),-4.7,1.3,-1.2);for(let i=0;i<4;i++)box(.52,.06,2.1,M('#2d2419'),-4.68,.4+i*.62,-1.2);
+{const cols=['#a0824f','#5d6a78','#8a4f4f','#6f7f5d','#7a5c3a','#c9a26b'];let k=0;for(let i=0;i<4;i++)for(let j=0;j<7;j++){const h=.35+((i*7+j)*37%10)/40;box(.32,h,.18,M(cols[(k++)%6]),-4.55,.46+i*.62+h/2,-2.05+j*.27,false)}}
+// coffee counter
+box(.7,.9,1.4,M('#3a3d44'),-4.55,.45,1.8);box(.35,.45,.4,M('#1f2024'),-4.55,1.12,1.7);box(.38,.08,.42,M('#EABB75',{emissive:'#EABB75',emissiveIntensity:.8}),-4.55,1.37,1.7,false);
+// sofa
+const sf=M('#4a3f66',{roughness:.9});box(2.6,.55,1.1,sf,3.6,.28,2.8);box(2.6,.8,.28,sf,3.6,.75,3.28);box(.3,.8,1.1,sf,2.4,.5,2.8);box(.3,.8,1.1,sf,4.8,.5,2.8);for(const dx of[-.6,.6])box(1.1,.2,.9,M('#5a4d7c',{roughness:1}),3.6+dx,.62,2.8);
+// plant
+cyl(.32,.5,M('#4a3a2e'),4.5,.25,-3.2);for(let i=0;i<9;i++){const m=new THREE.Mesh(new THREE.IcosahedronGeometry(.28,1),M(['#3f6b4c','#4e8a60','#34594a'][i%3],{roughness:.9}));m.position.set(4.5+Math.cos(i*2.1)*.28,.9+((i*13)%7)*.12,-3.2+Math.sin(i*2.1)*.28);m.castShadow=true;S.add(m)}
+// lamp
+cyl(.04,1.4,metal,-3.9,.7,3.4);{const m=new THREE.Mesh(new THREE.SphereGeometry(.22,16,12),new THREE.MeshBasicMaterial({color:'#ffd89a'}));m.position.set(-3.9,1.5,3.4);S.add(m);const l=new THREE.PointLight('#ffcf8a',5,7,1.6);l.position.set(-3.9,1.5,3.4);S.add(l)}
+// ---- bots as real 3D particle bodies
+const hue=h=>new THREE.Color().setHSL(h/360,0.62,0.62);
+const bots=[];
+function makeBot(name,mood){
+  const spec=specFromFace(null,name),N=5600,A=buildParticles(spec,N),g=new THREE.BufferGeometry();
+  const pos=[],col=[],base=[];const st=EYE_STYLES[spec.eyeStyle],rx=st[1]*2.4,ry=st[2]*2.4,gap=0.38*spec.eyeGap;
+  const sleepy=mood==='dormindo',eyeR=sleepy?[rx*1.0,0.05]:mood==='trabalhando'?[rx*0.8,ry*0.8]:[rx,ry];
+  for(let i=0;i<N;i++){let x=A.x[i]*spec.sx,y=-A.y[i]*spec.sy,z=A.z[i]*(spec.sz||1);
+   if(z>0.25*(spec.sz||1)){const ey=-spec.eyeY;for(const sx of(spec.eyes===1?[0]:spec.eyes===3?[-gap*1.3,0,gap*1.3]:[-gap,gap])){const dx=(x-sx)/eyeR[0],dy=(y-ey)/eyeR[1];if(dx*dx+dy*dy<1){x=NaN}}
+    if(spec.mouth!=='nenhuma'&&Math.abs(x)<0.2&&Math.abs(y-(-0.45))<0.05)x=NaN}
+   if(x!==x)continue;pos.push(x,y,z);const c=hue(spec.hue).offsetHSL(0,0,(A.light[i]-.5)*.2);col.push(c.r,c.g,c.b)}
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const pts=new THREE.Points(g,new THREE.PointsMaterial({size:2.9,sizeAttenuation:false,vertexColors:true,transparent:true,opacity:1,toneMapped:false}));
+  const grp=new THREE.Group();grp.add(pts);grp.scale.setScalar(.44);const sh=new THREE.Mesh(new THREE.CircleGeometry(.5,24),new THREE.MeshBasicMaterial({color:'#000',transparent:true,opacity:.35}));sh.rotation.x=-Math.PI/2;sh.position.y=.02;S.add(sh);
+  S.add(grp);const b={name,spec,grp,sh,color:hue(spec.hue),mood};bots.push(b);return b}
+const place=(b,x,y,z,ry,extra={})=>{b.grp.position.set(x,y+.44*(b.spec.sy||1)*1.0,z);b.grp.rotation.y=ry;Object.assign(b.grp.rotation,extra);b.sh.position.set(x,.03,z);b.sh.scale.setScalar(1)};
+const lucas=makeBot('Lucas','trabalhando'),mani=makeBot('Maniaco','trabalhando'),clara=makeBot('Clara','esperando'),teo=makeBot('Teo','dormindo'),nina=makeBot('Nina','normal'),prod=makeBot('Produtor de Terror','concluido');
+place(lucas,-2.9,.5,-1.95,1.95);place(mani,0,.5,-1.95,1.95);place(clara,2.9,0,-1.7,Math.PI*.25);
+place(teo,3.6,.65,2.85,Math.PI*.3,{z:.12});
+// Nina mid-hop, walking east from the coffee machine
+const ninaT=0.55,ninaX=-3.0+ninaT*3.4,ninaZ=1.9-ninaT*.5;place(nina,ninaX,Math.abs(Math.sin(ninaT*Math.PI*2))*.55+.02,ninaZ,Math.PI/2);nina.sh.scale.setScalar(.75);
+// the one that finished floats outside, in space
+place(prod,7.2,2.6,-3.2,Math.PI*.25);prod.sh.visible=false;prod.grp.scale.setScalar(.34);
+// trail: the particles Nina leaves behind her hops
+{const n=260,p=new Float32Array(n*3),c=new Float32Array(n*3),rn=rng(11);for(let i=0;i<n;i++){const t=Math.max(0,ninaT-rn()*.55),k=t;const hopY=Math.abs(Math.sin(k*Math.PI*2))*.55;const life=(ninaT-t)/.55;p[i*3]=-3.0+k*3.4+(rn()-.5)*.35;p[i*3+1]=.06+(hopY*.35+rn()*.25)*(1-life*.3)+life*.25*rn();p[i*3+2]=1.9-k*.5+(rn()-.5)*.35;const cc=nina.color.clone().multiplyScalar(1-life*.75);c[i*3]=cc.r;c[i*3+1]=cc.g;c[i*3+2]=cc.b}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));g.setAttribute('color',new THREE.BufferAttribute(c,3));S.add(new THREE.Points(g,new THREE.PointsMaterial({size:4,sizeAttenuation:false,vertexColors:true,transparent:true,opacity:.9,toneMapped:false})))}
+// small sparkles around the finished bot, and "zz" tint handled in labels
+{const n=40,p=new Float32Array(n*3),rn=rng(3);for(let i=0;i<n;i++){const a=rn()*6.283,r=.5+rn()*.5;p[i*3]=7.2+Math.cos(a)*r;p[i*3+1]=2.3+rn()*1.1;p[i*3+2]=-3.2+Math.sin(a)*r}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));S.add(new THREE.Points(g,new THREE.PointsMaterial({color:'#EABB75',size:3.4,sizeAttenuation:false,toneMapped:false})))}
+R.render(S,cam);
+// labels projected to the screen
+const proj=(x,y,z)=>{const v=new THREE.Vector3(x,y,z).project(cam);return[(v.x+1)/2*W,(1-v.y)/2*H]};
+const label=(txt,x,y,z,cls,dy=0)=>{const[px,py]=proj(x,y,z),d=document.createElement('div');d.className=cls;d.textContent=txt;d.style.left=px+'px';d.style.top=(py+dy)+'px';scene.append(d)};
+for(const [b,x,z,msg] of [[lucas,-2.9,-1.95,'Montando o relatório de álgebra'],[mani,0,-1.95,'Navegando: SIGAA'],[clara,2.9,-1.7,'Preciso da sua aprovação']]){label(b.name,x,0,z+0.9,'tag',2);label(msg,x,2.5,z,'bub')}
+label('Teo · dormindo',3.6,0,3.9,'tag',2);label('Nina',ninaX,0,ninaZ+.8,'tag',2);label('indo ao café',ninaX,0,ninaZ+.8,'tag',26);label('Produtor de Terror · concluído',7.2,1.7,-3.2,'tag',0);
+// side list
+const rows=[['Lucas','trabalhando','Montando o relatório de álgebra','há 12 min · 3 passos',1,'#EABB75'],['Maniaco','trabalhando','Navegando no SIGAA e lendo as notas','há 4 min · navegador',1,'#EABB75'],['Clara','esperando','Quer enviar um e-mail e precisa da sua aprovação','há 1 min',0,'#ff9f7a'],['Nina','normal','Pausa: terminou a lista de exercícios','há 6 min',0,'#9A9CA3'],['Produtor de Terror','concluido','Entregou o roteiro v2','há 20 min',0,'#6dd49a'],['Teo','dormindo','Dormindo; a próxima rotina é às 08:00','desde 23:10',0,'#9aa0ff']];
+for(const [n,m,what,t,hot,col] of rows){const el=document.createElement('div');el.className='item'+(hot?' hot':'');el.innerHTML=`<canvas width=112 height=112></canvas><div><strong>${n}</strong><em style="color:${col}">● ${m}</em><div>${what}</div><small>${t}</small></div>`;document.getElementById('list').append(el);
+ const q=el.querySelector('canvas').getContext('2d');q.scale(2,2);const mi=new Mimo(specFromFace(null,n),{n:2600,fill:.96,vfill:.9});mi.snap(m);paintFrame(q,mi.compute(56,56,{light:false,energy:.6,dt:1,minR:.32}))}
+document.title='ok';
+</script>

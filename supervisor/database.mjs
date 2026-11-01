@@ -1,3 +1,4 @@
+import { PROVIDER_NAMES } from '../lib/models.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,6 +8,8 @@ import { validateProfile, browserMode, TOOL_DEFINITIONS, toolArguments } from '.
 import { validateBackup, mergeBotLists, deleteLocalBot } from '../mobile/local.js';
 
 export const now = () => new Date().toISOString();
+// An IA's session: Codex, Claude and Antigravity use a UUID; opencode, "ses_" and letters/digits.
+export const sessionId = value => uuid(value) || (typeof value === 'string' && /^ses_[A-Za-z0-9]{8,60}$/.test(value));
 export const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
 // The two kinds of conversation: a bot's private chat and a room. Both are read in pages by rowid and only appended to.
@@ -213,7 +216,7 @@ export class Database {
   roomTurn(taskId) { return this.get('SELECT * FROM room_turns WHERE task_id=?', taskId); }
   roomSession(roomId, botId) { return this.get('SELECT session_id FROM room_sessions WHERE room_id=? AND bot_id=?', roomId, botId)?.session_id; }
   setRoomSession(roomId, botId, id) {
-    if (!uuid(id)) throw new Error('Sessão inválida.');
+    if (!sessionId(id)) throw new Error('Sessão inválida.');
     this.run('INSERT INTO room_sessions VALUES(?,?,?,?) ON CONFLICT(room_id, bot_id) DO UPDATE SET session_id=excluded.session_id, updated_at=excluded.updated_at', roomId, botId, id, now());
   }
   /** A bot's answer in a room becomes a message of the room (or an error line), never of its private chat. */
@@ -407,7 +410,7 @@ export class Database {
     this.notify('bot.updated', { botId: bot.id });
   }
   session(botId, id) {
-    if (!uuid(id)) throw new Error('Sessão inválida.');
+    if (!sessionId(id)) throw new Error('Sessão inválida.');
     this.run('INSERT INTO codex_sessions VALUES(?,?,?) ON CONFLICT(bot_id) DO UPDATE SET session_id=excluded.session_id, updated_at=excluded.updated_at', botId, id, now());
   }
   record(kind, detail, botId = null, taskId = null) {
@@ -535,7 +538,7 @@ export class Database {
     if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total', free: 'Livre' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
-    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${updated.provider === 'claude' ? 'Claude' : 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
+    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
     return updated;
   }
   delete(id) {

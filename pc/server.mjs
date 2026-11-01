@@ -12,6 +12,8 @@ import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
+import { Agy } from '../lib/agy.mjs';
+import { Opencode } from '../lib/opencode.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
 const { discover, enabledFor } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
@@ -110,9 +112,11 @@ export function gpuDevices(dev = '/dev') {
 // Folders with keys, passwords and the other IA's login. Every IA turn here runs in a bubblewrap view of the disk where
 // they are empty, so no command or file read can reach them, whatever the IA decides.
 const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone', '.config/google-chrome'];
+// Where each IA keeps its login: a turn of one IA cannot see the others'.
+const OTHER_LOGINS = [['codex', '.codex'], ['claude', '.claude'], ['agy', '.gemini'], ['opencode', '.local/share/opencode']];
 export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev' } = {}) {
   if (!bwrap) return null;
-  const hidden = [...new Set([...HIDDEN, provider === 'claude' ? '.codex' : '.claude'].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
+  const hidden = [...new Set([...HIDDEN, ...OTHER_LOGINS.filter(([key]) => key !== (provider || 'codex')).map(([, path]) => path)].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
   // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
   // prevents reaching the host's sockets and browser profiles through another process's root directory.
   const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
@@ -127,13 +131,13 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
     ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set(sockets)].flatMap(path => ['--ro-bind', '/dev/null', path]), ...folders, ...devices];
 }
 
-const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude') };
+const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude'), agy: new Agy(), opencode: new Opencode() };
 /** Which IAs are logged in on this computer, and their models, for the phone to show and check. */
 async function localStatus() {
   const connections = {}, models = [];
   for (const [key, client] of Object.entries(local)) {
     connections[key] = await client.status().catch(() => ({ available: false, loggedIn: false }));
-    if (connections[key].loggedIn) models.push(...(await client.models().catch(() => [])).map(item => ({ ...item, provider: key === 'claude' ? 'claude' : item.provider })));
+    if (connections[key].loggedIn) models.push(...(await client.models().catch(() => [])).map(item => ({ ...item, provider: key === 'codex' ? item.provider : key })));
   }
   return { connections, models };
 }

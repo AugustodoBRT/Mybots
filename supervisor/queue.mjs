@@ -1,8 +1,11 @@
 import { EventEmitter } from 'node:events';
 import runner from '../lib/codex-runner.cjs';
 import claudeRunner from '../lib/claude-runner.cjs';
+import agyRunner from '../lib/agy-runner.cjs';
+import opencodeRunner from '../lib/opencode-runner.cjs';
 import { promptFor } from '../mobile/local.js';
 import { friendlyError } from '../lib/codex.mjs';
+import { PROVIDERS, PROVIDER_NAMES } from '../lib/models.mjs';
 import { now } from './database.mjs';
 import { processIdentity, stopOrphan } from './process.mjs';
 import { browserMode } from './tool-policy.mjs';
@@ -10,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 export const runReply = (bot, prompt, options) => bot.provider === 'claude'
   ? claudeRunner.runReply(bot, prompt, { ...options, binary: process.env.CLAUDE_BIN || 'claude' })
+  : bot.provider === 'agy' ? agyRunner.runReply(bot, prompt, { ...options, binary: process.env.AGY_BIN || 'agy' })
+  : bot.provider === 'opencode' ? opencodeRunner.runReply(bot, prompt, { ...options, binary: process.env.OPENCODE_BIN || 'opencode' })
   : runner.runReply(bot, prompt, { ...options, binary: process.env.CODEX_BIN || 'codex' });
 
 // Why a running turn was stopped by the supervisor instead of the person, and what the conversation says.
@@ -24,7 +29,7 @@ const STEER_NOTE = 'A pessoa interrompeu a tarefa em andamento para corrigir o r
 
 // A subscription limit (or quota) ending, as the runners' errors and the raw CLI output say it.
 // The IA no longer has the session the app kept for the bot (its file was removed, or the run died before saving it).
-const SESSION_GONE = /no rollout found for thread|no conversation found with session id/i;
+const SESSION_GONE = /no rollout found for thread|no conversation found with session id|abriu outra (conversa|sessão)|session not found/i;
 const LIMIT = /usage.limit|limite de uso|rate.limit|limit reached|insufficient_quota|\bquota\b|\b429\b/i;
 
 // How much of a private chat a new IA session reads at most (promptFor keeps what fits in its size budget).
@@ -134,7 +139,7 @@ export class Queue extends EventEmitter {
         const pictures = next.lane === 'phone' && this.tools?.attachments ? (this.db.message(task.message_id)?.attachments || []).filter(file => /^image\/(png|jpe?g|webp|gif)$/i.test(file.mime || '') && file.size <= 10 * 1024 * 1024).slice(0, 4).map(file => this.tools.attachments.path(file.id)) : [];
         const attempt = (runBot, runPrompt, spare) => execute(runBot, runPrompt, {
           signal: controller.signal,
-          ...(runBot.provider !== 'claude' && pictures.length ? { images: pictures } : {}),
+          ...((!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
           onDelta: text => { if (!controller.signal.aborted) draftOf(text); },
           workspace: capability?.workspace,
           tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
@@ -176,7 +181,7 @@ export class Queue extends EventEmitter {
           if (!reserve) throw error;
           capability?.close(); capability = this.tools?.open(task, controller.signal, next.lane);
           const spare = { ...owner, ...reserve, codexSessionId: undefined, ...(browserMode(owner) === 'claude' ? { browserMode: 'shared' } : {}) };
-          this.db.record('model_fallback', `Limite do ${owner.provider === 'claude' ? 'Claude' : 'Codex'} atingido; respondendo com o ${reserve.provider === 'claude' ? 'Claude' : 'Codex'}.`, owner.id, task.id);
+          this.db.record('model_fallback', `Limite do ${PROVIDER_NAMES[owner.provider] || 'Codex'} atingido; respondendo com o ${PROVIDER_NAMES[reserve.provider] || 'Codex'}.`, owner.id, task.id);
           try { reply = await attempt(spare, promptFor(this.chat(spare, task.message_id), task.message_id, { tools: Boolean(this.tools) }), true); }
           catch (second) { delete second.codexSessionId; throw second; }
           // Its session is the other CLI's: drop the bot's own so its next turn starts fresh from the saved history.
@@ -205,7 +210,7 @@ export class Queue extends EventEmitter {
   /** The reserve model of a bot, when it is another provider's (the limit is the subscription's) and still valid. */
   reserve(bot) {
     const item = bot.fallback;
-    if (!item || !['codex', 'claude'].includes(item.provider) || item.provider === (bot.provider || 'codex') || typeof item.model !== 'string') return null;
+    if (!item || !PROVIDERS.includes(item.provider) || item.provider === (bot.provider || 'codex') || typeof item.model !== 'string') return null;
     return { provider: item.provider, model: item.model, reasoningEffort: item.reasoningEffort };
   }
   /** The bot with the part of its chat the prompt needs: the message alone in a resumed session, else the latest ones. */

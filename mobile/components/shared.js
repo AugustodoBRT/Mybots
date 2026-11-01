@@ -180,7 +180,7 @@ export function ChoiceField({ label, value, disabled, onPress }) {
   </Pressable>;
 }
 
-export const PROVIDER_NAMES = { codex: 'Codex', claude: 'Claude' };
+export const PROVIDER_NAMES = { codex: 'Codex', claude: 'Claude', agy: 'Antigravity', opencode: 'opencode' };
 
 export const providerOf = item => item?.provider || 'codex';
 
@@ -193,7 +193,7 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   const provider = providerOf(model || selection);
   const available = models.filter(item => providerOf(item) === provider);
   const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
-  const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : 'Codex no Termux') }));
+  const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex no Termux') }));
   const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next); };
   const effortOptions = model ? (model.efforts.length
     ? model.efforts.map(value => ({ value, label: EFFORT_NAMES[value] || value }))
@@ -469,7 +469,7 @@ export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry 
   const [scanning, setScanning] = useState(false); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
   const [permission, requestPermission] = useCameraPermissions(); const reading = useRef(false);
   const node = nodes.find(item => item.id === computer?.id);
-  const logged = Object.entries(node?.connections || {}).filter(([, value]) => value.loggedIn).map(([key]) => key === 'claude' ? 'Claude' : 'Codex');
+  const logged = Object.entries(node?.connections || {}).filter(([, value]) => value.loggedIn).map(([key]) => PROVIDER_NAMES[key] || key);
   const scan = async () => {
     setNote('');
     const allowed = permission?.granted || (await requestPermission()).granted;

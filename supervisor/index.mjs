@@ -11,6 +11,8 @@ import { Tools, notifyUser } from './tools.mjs';
 import { processIdentity } from './process.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
+import { Agy } from '../lib/agy.mjs';
+import { Opencode } from '../lib/opencode.mjs';
 import { PROMPT_VERSION } from '../mobile/local.js';
 import { Rooms } from './rooms.mjs';
 import { Team } from './team.mjs';
@@ -40,7 +42,7 @@ import { create as createFile } from './creator.mjs';
 const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
-  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, execute, heartbeatMs = 60000, notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
+  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
   process.umask(0o077);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = join(directory, 'supervisor.lock');
@@ -74,7 +76,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     queue.recover();
     const instanceId = randomUUID();
     let models = [], modelsError = '', checking, lastCheck = 0, closed = false, accountConnectors = null;
-    const connections = { codex: { available: false, loggedIn: false, message: 'Verificando o Codex…' }, ...(claude ? { claude: { available: false, loggedIn: false, message: 'Verificando o Claude…' } } : {}) };
+    const connections = { codex: { available: false, loggedIn: false, message: 'Verificando o Codex…' }, ...(claude ? { claude: { available: false, loggedIn: false, message: 'Verificando o Claude…' } } : {}), ...(agy ? { agy: { available: false, loggedIn: false, message: 'Verificando o Antigravity…' } } : {}), ...(opencode ? { opencode: { available: false, loggedIn: false, message: 'Verificando o opencode…' } } : {}) };
     // The app keeps one summary line; per-provider details are in `connections`.
     const summary = () => {
       const ready = Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
@@ -292,8 +294,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const ttl = Object.values(connections).every(item => item.loggedIn) ? 300000 : 30000;
       if (!force && lastCheck && Date.now() - lastCheck < ttl) return;
       checking = (async () => {
-        const [codexStatus, claudeStatus] = await Promise.all([codex.status(), claude?.status()]);
-        connections.codex = codexStatus; if (claude) connections.claude = claudeStatus;
+        const [codexStatus, claudeStatus, agyStatus, opencodeStatus] = await Promise.all([codex.status(), claude?.status(), agy?.status(), opencode?.status()]);
+        connections.codex = codexStatus; if (claude) connections.claude = claudeStatus; if (agy) connections.agy = agyStatus; if (opencode) connections.opencode = opencodeStatus;
         const catalog = [];
         if (codexStatus.loggedIn) {
           try { catalog.push(...(await codex.models()).map(item => ({ ...item, provider: 'codex' }))); modelsError = ''; }
@@ -302,6 +304,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         }
         // Claude stays listed even when missing or logged out, so the app can show why it cannot answer yet.
         if (claude) catalog.push(...await claude.models());
+        if (agy && agyStatus.loggedIn) catalog.push(...await agy.models().catch(() => []));
+        if (opencode && opencodeStatus.loggedIn) catalog.push(...await opencode.models().catch(() => []));
         models = catalog;
         lastCheck = Date.now();
       })().finally(() => { checking = null; broadcast('connection.changed'); });
@@ -405,7 +409,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'agent.skills': { if (link.status().state !== 'online') return { skills: [], offline: true, message: 'O computador está desconectado: as skills dele aparecem quando ele voltar.' }; return { skills: ((await link.skills()).skills || []) }; }
         case 'bot.update': { const bot = db.requireBot(params.botId); if (Array.isArray(params.skills) && params.skills.length) { const known = new Set(((await link.skills().catch(() => { throw new Error('Conecte o computador para ligar skills: é lá que elas ficam.'); })).skills || []).map(item => item.path)); if (params.skills.some(item => !known.has(item?.path))) throw new Error('Essa skill não está mais no computador.'); } if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const chosen = selectionFor(catalog(), { ...bot, ...params });
           // The reserve model must be a real model of the other provider (a limit belongs to the subscription).
-          if (params.fallback) { const reserve = { ...selectionFor(catalog(), params.fallback), provider: params.fallback.provider }; if (reserve.provider === (chosen.provider || 'codex')) throw new Error('O modelo reserva precisa ser de outra IA (Codex ou Claude).'); params.fallback = reserve; }
+          if (params.fallback) { const reserve = { ...selectionFor(catalog(), params.fallback), provider: params.fallback.provider }; if (reserve.provider === (chosen.provider || 'codex')) throw new Error('O modelo reserva precisa ser de outra IA.'); params.fallback = reserve; }
           const updated = db.configure(bot.id, chosen, params); link.control(browser.status().control); broadcast('activity.new'); return updated; }
         case 'bot.delete': db.delete(params.botId); broadcast('activity.new'); return { deleted: true };
         case 'bots.merge': db.merge(params.bots); broadcast('activity.new'); return { merged: true };

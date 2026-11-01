@@ -1,3 +1,4 @@
+import { PROVIDERS } from '../lib/models.mjs';
 import { now } from './database.mjs';
 
 /**
@@ -27,7 +28,7 @@ export class Nodes {
   /** Only what the app shows and the checks need: logged in or not, and the model list. */
   clean({ connections, models }) {
     const status = value => ({ available: Boolean(value?.available), loggedIn: Boolean(value?.loggedIn), message: typeof value?.message === 'string' ? value.message.slice(0, 200) : '' });
-    return { connections: Object.fromEntries(['codex', 'claude'].filter(key => connections?.[key]).map(key => [key, status(connections[key])])), models: Array.isArray(models) ? models.slice(0, 80) : [] };
+    return { connections: Object.fromEntries(PROVIDERS.filter(key => connections?.[key]).map(key => [key, status(connections[key])])), models: Array.isArray(models) ? models.slice(0, 200) : [] };
   }
   update(id, fields) { const node = this.online.get(id); if (node) Object.assign(node, this.clean({ connections: fields.connections ?? node.connections, models: fields.models ?? node.models })); }
   disconnect(id, node = this.online.get(id)) {

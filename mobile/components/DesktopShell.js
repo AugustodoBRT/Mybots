@@ -203,10 +203,18 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
     const listen = event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true); }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); onCreate(); }
-      else if (event.key === 'Escape') { setPalette(false); setMenu(null); setHelp(false); if (full) setFull(false); else { setSide(old => ({ ...old, open: false })); onFileClose?.(); } }
+      else if (event.key === 'Escape' && !event.defaultPrevented) {
+        if (palette) setPalette(false);
+        else if (menu) setMenu(null);
+        else if (help) setHelp(false);
+        else if (full) setFull(false);
+        else if (fileOpen) { onFileClose?.(); setSide(old => ({ ...old, open: false })); }
+        else if (side.open) setSide(old => ({ ...old, open: false }));
+        else if (!globalThis.document?.querySelector('[role="dialog"][aria-modal="true"]') && page === 'office') desktopBus.emit('office-escape');
+      }
     };
     globalThis.addEventListener?.('keydown', listen); return () => globalThis.removeEventListener?.('keydown', listen);
-  }, [onCreate, onFileClose, full]);
+  }, [onCreate, onFileClose, full, palette, menu, help, fileOpen, side.open, page]);
   const divider = useMemo(() => { let start = 264; return PanResponder.create({ onStartShouldSetPanResponder: () => true, onPanResponderGrant: () => { start = listWidthRef.current; },
     onPanResponderMove: (_, gesture) => setListWidth(Math.max(220, Math.min(360, start + gesture.dx))) }); }, []);
   const listWidthRef = useRef(264); listWidthRef.current = listWidth;

@@ -89,6 +89,15 @@ function AppMain() {
   useEffect(() => { localCacheRef.current = localCache; }, [localCache]);
   const [selected, setSelected] = useState(null);
   const desktopDrafts = useRef(new Map());
+  const [conversationDrafts, setConversationDrafts] = useState({});
+  const draftField = (key, field, fallback) => ({
+    value: conversationDrafts[key]?.[field] ?? fallback,
+    set: update => setConversationDrafts(old => {
+      const previous = old[key]?.[field] ?? fallback;
+      const value = typeof update === 'function' ? update(previous) : update;
+      return { ...old, [key]: { ...old[key], [field]: value } };
+    })
+  });
   const selectedBotRef = useRef(selected); selectedBotRef.current = selected;
   // The open room, and the create/edit sheet (null closed, {} new, {room} editing).
   const [roomId, setRoomId] = useState(null);
@@ -700,10 +709,13 @@ function AppMain() {
     const target = data.bots.find(item => item.id === share.botId);
     if (target) pickShare(target); else setShare({ ...share, botId: null });
   }, [share, data?.bots]);
-  const roomView = data && room ? <RoomScreen onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
-          onSend={async (text, files = []) => { await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: files.map(({ name, mime, data }) => ({ name, mime, data })) } : {}) }); await loadSupervisorState(); }}
+  const roomText = room && desktop ? draftField(`room:${room.id}`, 'text', '') : null;
+  const roomFiles = room && desktop ? draftField(`room:${room.id}`, 'files', []) : null;
+  const botFiles = bot && desktop ? draftField(`bot:${bot.id}`, 'files', []) : null;
+  const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
+          onSend={async (text, files = []) => { const attachments = await Promise.all(files.map(async ({ name, mime, data, blob }) => ({ name, mime, data: blob ? await blobBase64(blob) : data }))); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
-  const chatView = data && bot && !room ? <ChatScreen onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
+  const chatView = data && bot && !room ? <ChatScreen savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={desktop ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
@@ -730,7 +742,8 @@ function AppMain() {
     settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />,
     office: <Office data={data} onOpen={openDesktopBot} onRoom={openDesktopRoom}
       selectionKey={room ? `room:${room.id}` : bot ? `bot:${bot.id}` : null} selectionName={room?.name || bot?.name}
-      conversation={roomView || chatView} onRespond={respondApproval} approvalBusy={approvalBusy}
+      conversation={roomView || chatView} onRespond={respondApproval} approvalBusy={approvalBusy} onCancelTask={cancelTask}
+      taskMessages={chatsRef.current[room?.id || bot?.id]?.messages || []}
       onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})} />
   } : {};
   const profileSheet = data ? <BotProfile inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}

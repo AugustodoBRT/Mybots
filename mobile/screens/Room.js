@@ -13,14 +13,17 @@ import { FileChip } from '../RichMessage';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 import { desktop, readingColumn } from '../desktop';
 
-function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
+function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const openFile = useLiveCallback(onFile);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null); const hold = useLiveCallback(message => setHeld(message));
   const messages = useMemo(() => [...room.messages].reverse(), [room.messages]);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll(); const input = useRef(null);
-  const [draft, setDraft] = useState(''); const [sending, setSending] = useState(false); const [error, setError] = useState(''); const [files, setFiles] = useState([]);
+  const [localDraft, setLocalDraft] = useState(''); const [localFiles, setLocalFiles] = useState([]);
+  const draft = savedDraft ? savedDraft.value : localDraft, setDraft = savedDraft ? savedDraft.set : setLocalDraft;
+  const files = savedFiles ? savedFiles.value : localFiles, setFiles = savedFiles ? savedFiles.set : setLocalFiles;
+  const [sending, setSending] = useState(false); const [error, setError] = useState('');
   const members = room.botIds.map(id => data.bots.find(bot => bot.id === id)).filter(Boolean);
   const byId = Object.fromEntries(members.map(bot => [bot.id, bot]));
   // The room's loaded pages; older ones come on demand, a page at a time.
@@ -40,6 +43,16 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       if (files.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
       setFiles(old => [...old, file]);
     } catch (e) { setError(nativeMessage(e)); }
+  };
+  const attachWeb = () => {
+    const picker = globalThis.document.createElement('input'); picker.type = 'file'; picker.multiple = true;
+    picker.onchange = () => {
+      const picked = Array.from(picker.files || []);
+      if (files.length + picked.length > 5) { setError('Uma mensagem leva até 5 arquivos.'); return; }
+      if (picked.some(file => !file.size)) { setError('O arquivo está vazio.'); return; }
+      if (files.reduce((sum, file) => sum + file.size, 0) + picked.reduce((sum, file) => sum + file.size, 0) > 10 * 1024 * 1024) { setError('Os anexos de uma mensagem podem somar até 10 MB.'); return; }
+      setError(''); setFiles(old => [...old, ...picked.map(file => ({ name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file }))]);
+    }; picker.click();
   };
   const mention = bot => { setDraft(old => (old.trim() ? old.replace(/\s*$/, ' ') : '') + `@${bot.name} `); input.current?.focus(); };
   const retry = useLiveCallback((text, message) => { const asked = shown.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); });
@@ -87,7 +100,7 @@ function RoomView({ drafts, onPin, room, data, onBack, onSend, onEdit, onCancel,
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
       <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
-        onAttach={phone ? attach : null} attachDisabled={sending || files.length >= 5}
+        onAttach={phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= 5}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>

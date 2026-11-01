@@ -22,8 +22,24 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 test('escritório: conversa, rascunhos, envio, arquivo e sala sem desmontar a cena', { skip: !hasChrome, timeout: 600000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-pcwin-')); const ui = join(directory, 'ui');
   await run('npx', ['expo', 'export', '--platform', 'web', '--output-dir', ui], { cwd: new URL('../mobile', import.meta.url).pathname, timeout: 400000, maxBuffer: 1 << 26 });
-  const app = await createSupervisor({ directory: join(directory, 'sup'), port: 0, codex, execute: async () => ({ text: 'Pronto.', ...selection }) });
-  const bots = []; for (const name of ['Atlas', 'Clara', 'Nico']) bots.push(await app.rpc('bot.create', { name, instructions: `Bot ${name}.`, access: 'ask', face: { seed: name }, ...selection }));
+  const execute = async (bot, prompt, { tools, signal, onProgress }) => {
+    const input = JSON.parse(app.db.task(tools.taskId).payload).text || '';
+    if (input === 'Aprovação real') {
+      onProgress?.({ step: 'Preparando proposta' });
+      const call = async (body, session) => { const response = await fetch(tools.endpoint + '/mcp', { method: 'POST', headers: { Authorization: 'Bearer ' + tools.token, 'Content-Type': 'application/json', ...(session ? { 'Mcp-Session-Id': session } : {}) }, body: JSON.stringify(body) }); return { session: response.headers.get('mcp-session-id'), body: await response.json() }; };
+      const init = await call({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+      const result = await call({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'task_create_item', arguments: { title: 'Conferir projeto' } } }, init.session);
+      if (result.body.error || result.body.result?.isError) throw new Error(JSON.stringify(result.body));
+    }
+    if (input === 'Teste cancelamento') {
+      onProgress?.({ step: 'Esperando cancelamento' });
+      await new Promise((resolve, reject) => { if (signal.aborted) reject(new Error('parado')); else signal.addEventListener('abort', () => reject(new Error('parado')), { once: true }); });
+    }
+    return { text: 'Pronto.', ...selection };
+  };
+  const app = await createSupervisor({ directory: join(directory, 'sup'), port: 0, codex, execute });
+  const bots = []; for (const name of ['Atlas', 'Clara', 'Nico']) bots.push(await app.rpc('bot.create', { name, instructions: `Bot ${name}.`, face: { seed: name }, ...selection }));
+  app.tools.grant(bots[0].id, 'task.create_item', true);
   const previewDoc = app.tools.attachments.store(bots[0].id, { name: 'revisao.md', mime: 'text/markdown', bytes: Buffer.from('# Revisão visual\n\nArquivo dentro do app.') });
   const previewImage = app.tools.attachments.store(bots[0].id, { name: 'amostra.png', mime: 'image/png', bytes: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ncAAAAASUVORK5CYII=', 'base64') });
   const previewVideo = app.tools.attachments.store(bots[0].id, { name: 'previa.webm', mime: 'video/webm', bytes: await readFile(new URL('./fixtures/preview.webm', import.meta.url)) });
@@ -75,12 +91,50 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByLabel('Abrir arquivo revisao.md').click();
   await seen('Revisão visual');
   assert.ok(await page.getByLabel('Cena do escritório', { exact: true }).isVisible());
-  await page.getByLabel('Fechar prévia').click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByText('Revisão visual', { exact: true }).count(), 0);
+  assert.ok(await page.getByLabel('Recolher painel do escritório').isVisible());
   await page.getByLabel('Abrir sala Estudos', { exact: true }).click();
   await page.getByLabel('Mensagem para a sala', { exact: true }).fill('Rascunho da sala');
   await page.getByLabel('Recolher painel do escritório').click();
   await page.getByRole('button', { name: 'Conversa', exact: true }).click();
   assert.equal(await page.getByLabel('Mensagem para a sala').inputValue(), 'Rascunho da sala');
+  // A room's text and attachment survive switching away and back, and can actually be sent.
+  const roomChooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
+  await (await roomChooser).setFiles({ name: 'sala.txt', mimeType: 'text/plain', buffer: Buffer.from('anexo da sala') });
+  await seen('sala.txt');
+  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByLabel('Conversar com Atlas no escritório').click();
+  const botChooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
+  await (await botChooser).setFiles({ name: 'bot.txt', mimeType: 'text/plain', buffer: Buffer.from('anexo do bot') });
+  await seen('bot.txt');
+  await page.getByLabel('Abrir sala Estudos', { exact: true }).click();
+  assert.equal(await page.getByLabel('Mensagem para a sala').inputValue(), 'Rascunho da sala');
+  await seen('sala.txt');
+  await page.getByLabel('Enviar mensagem', { exact: true }).click();
+  await page.getByText('Rascunho da sala', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByLabel('Conversar com Atlas no escritório').click();
+  await seen('bot.txt');
+  await page.getByLabel('Remover bot.txt').click();
+  await composer.fill('Aprovação real'); await page.getByLabel('Enviar mensagem', { exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
+  await page.getByLabel('Tarefas de Atlas').getByText('Aguardando sua decisão', { exact: true }).first().waitFor(); await page.getByLabel('Tarefas de Atlas').getByText('Aprovação real', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Aprovar', exact: true }).click();
+  await page.waitForFunction(() => !document.body.innerText.includes('Aguardando sua decisão'), null, { timeout: 30000 });
+  assert.equal(app.db.all('SELECT * FROM pending_items').some(item => item.bot_id === bots[0].id), true);
+  await page.getByRole('button', { name: 'Atlas', exact: true }).click();
+  await composer.fill('Teste cancelamento'); await page.getByLabel('Enviar mensagem', { exact: true }).click();
+  await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
+  await page.getByLabel('Tarefas de Atlas').getByText('Esperando cancelamento', { exact: true }).waitFor(); await page.getByLabel('Tarefas de Atlas').getByText('Teste cancelamento', { exact: true }).waitFor();
+  if (process.env.MYBOTS_OFFICE_SCREENSHOT) await page.screenshot({ path: process.env.MYBOTS_OFFICE_SCREENSHOT.replace('.png', '-task.png') });
+  await page.getByRole('button', { name: 'Parar tarefa de Atlas' }).click();
+  await page.waitForFunction(() => !document.body.innerText.includes('Esperando cancelamento'), null, { timeout: 30000 });
+  assert.ok(app.db.tasks().some(task => task.bot_id === bots[0].id && task.state === 'cancelled'));
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByLabel('Recolher painel do escritório').isVisible(), false);
+  await page.getByRole('button', { name: 'Conversa', exact: true }).click();
+  await page.getByLabel('Abrir sala Estudos', { exact: true }).click();
   assert.ok(await page.evaluate(() => window.officeCanvas === document.querySelector('[aria-label="Cena do escritório"] canvas')), 'scene stays mounted');
   if (process.env.MYBOTS_OFFICE_SCREENSHOT) await page.screenshot({ path: process.env.MYBOTS_OFFICE_SCREENSHOT.replace('.png', '-wide.png') });
   await page.setViewportSize({ width: 900, height: 900 });

@@ -20,7 +20,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 // stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
-function ChatView({ interactive = true, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
@@ -41,12 +41,13 @@ function ChatView({ interactive = true, drafts, onQueuePause, onSteer, onCancelT
   // A bot answering from the computer browses in its own Chrome there, shown live here and in the computer's window.
   const pcBrowser = Boolean(desktop) || remote || data.browser?.pages?.[bot.id]?.where === 'pc';
   const browsing = phone || (desktop && pcBrowser);
-  const [files, setFiles] = useState([]); const [composerError, setComposerError] = useState('');
+  const [localFiles, setLocalFiles] = useState([]); const files = savedFiles ? savedFiles.value : localFiles, setFiles = savedFiles ? savedFiles.set : setLocalFiles;
+  const [composerError, setComposerError] = useState('');
   // The bot's own browser panel; it stays open while the person has taken over.
   const [browserOpen, setBrowserOpen] = useState(false); const [browserKey, setBrowserKey] = useState(0);
   const help = data.browser?.help?.[bot.id];
   const assumed = data.browser?.control?.[bot.id] === 'person';
-  useEffect(() => { setFiles([]); setComposerError(''); setBrowserOpen(false); }, [bot.id]);
+  useEffect(() => { if (!savedFiles) setFiles([]); setComposerError(''); setBrowserOpen(false); }, [bot.id]);
   // Files shared from another app land in the tray, ready to send with a message.
   useEffect(() => {
     if (!incoming) return;

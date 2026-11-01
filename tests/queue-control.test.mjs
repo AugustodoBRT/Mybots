@@ -33,6 +33,7 @@ async function setup(t) {
 test('pausing the line lets the running turn finish but starts nothing new until resumed', async t => {
   const { app, bot, runner, send } = await setup(t);
   await send('primeira'); await until(() => runner.calls.length === 1);
+  assert.equal((await app.rpc('state.get')).tasks.find(task => task.state === 'running')?.preview, 'primeira');
   await send('segunda'); await send('terceira');
   assert.deepEqual((await app.rpc('queue.pause', { botId: bot.id })).paused, true);
   assert.deepEqual((await app.rpc('state.get')).pausedQueues, [bot.id]);

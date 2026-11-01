@@ -63,13 +63,14 @@ Transformar o escritório na tela principal de trabalho do MyBots: acompanhar bo
 - [x] Buscar bots pelo nome no painel Equipe.
 - [x] Oferecer acesso à equipe caso a cena não consiga carregar.
 - [x] Usar os dados e callbacks atuais quando o carregamento assíncrono da cena terminar.
-- [ ] Preservar rascunhos de salas ao trocar de sala ou de conversa.
-- [ ] Preservar anexos não enviados ao trocar de conversa.
+- [x] Preservar rascunhos de salas ao trocar de sala ou de conversa durante a sessão.
+- [x] Preservar anexos não enviados ao trocar de conversa durante a sessão; salas aceitam anexos no PC até 10 MB no total.
 - [ ] Persistir câmera, seleção, tamanho do painel e rascunhos após fechar/reabrir o aplicativo.
-- [ ] Implementar um painel dedicado de tarefa, separado do histórico da conversa.
+- [x] Implementar painel de tarefas com estado, responsável, pedido, etapa, aprovações e ação para parar, além da última resposta disponível.
 - [ ] Implementar abas próprias de Arquivos e Navegador no painel contextual do escritório.
-- [ ] Validar nesta tela o ciclo completo de aprovação, cancelamento e controle de navegador.
-- [ ] Definir fechamento por Esc respeitando a ordem entre prévia, menus e painel contextual.
+- [x] Validar nesta tela aprovação e cancelamento contra um supervisor de teste.
+- [ ] Validar controle de navegador a partir do escritório.
+- [x] Fechar com Esc a prévia antes do painel contextual, preservando a conversa; controles de largura também acessíveis por botões.
 
 ## Experiência desejada
 
@@ -79,7 +80,7 @@ Transformar o escritório na tela principal de trabalho do MyBots: acompanhar bo
 |---|---|---|
 | Barra superior | Resumo, pendências, criação e busca | Resumo, pendências e criação implementados; busca na equipe |
 | Centro | Escritório com espaço amplo | Implementado |
-| Painel contextual | Conversa, tarefa, arquivos e navegador | Conversa integrada; demais abas próprias pendentes |
+| Painel contextual | Conversa, tarefa, arquivos e navegador | Conversa e tarefas integradas; abas próprias de arquivos e navegador pendentes |
 | Faixa inferior recolhível | Eventos recentes, entregas e tarefas acompanhadas | Pendente |
 | Comando rápido | Mensagem para bot ou sala selecionada | Composer da conversa integrado; comando independente pendente |
 
@@ -97,7 +98,7 @@ A seleção deve permanecer ao consultar arquivos ou outras ferramentas. O ambie
 | Clicar em uma pendência | Acessar decisão com contexto | Cartões disponíveis no painel Equipe |
 | Clicar numa entrega | Abrir resultado | Arquivos no histórico integrados; entrega na cena pendente |
 | Buscar bot | Selecionar por nome e localizar no ambiente | Lista pesquisável pronta; destaque/localização pendentes |
-| Esc | Fechar apenas a camada superior | Coordenação do painel do escritório pendente |
+| Esc | Fechar apenas a camada superior | Prévia e painel contextual integrados; demais modais usam seus controles existentes |
 
 ### Informação por nível de zoom
 
@@ -233,12 +234,11 @@ Recolher o painel já amplia a cena, mas ainda não equivale ao sistema completo
 
 ### Próxima sequência recomendada
 
-1. Completar validação de aprovações/cancelamento e o painel dedicado de tarefa.
-2. Preservar rascunhos de salas e anexos; resolver Esc e acesso por teclado.
-3. Adicionar indicação de seleção, informações contextuais e uma faixa discreta de eventos/entregas.
-4. Implementar reserva de destinos e comportamentos locais mais variados.
-5. Introduzir as três primeiras famílias de salas com prévia e persistência versionada.
-6. Evoluir edição manual, colaboração visível e otimização com medidas reais.
+1. Adicionar indicação de seleção, informações contextuais e uma faixa discreta de eventos/entregas.
+2. Implementar reserva de destinos e comportamentos locais mais variados.
+3. Introduzir as três primeiras famílias de salas com prévia e persistência versionada.
+4. Evoluir edição manual, colaboração visível e otimização com medidas reais.
+5. Validar controle de navegador e ampliar a navegação por teclado.
 
 ## Validação e evidências
 
@@ -257,19 +257,19 @@ Para executar o teste do escritório, configure `MYBOTS_TEST_BROWSER` com o cami
 - O teste de interface também confirmou seleção pelo nome na cena e que uma conversa recolhida não captura arquivos colados.
 - Exportação web concluída durante o teste de integração.
 - Revisão visual realizada em 1440 × 900 e 900 × 900.
-- Capturas: `docs/screenshots/escritorio-conversa-pc.png` e `docs/screenshots/escritorio-conversa-estreito.png`.
+- Capturas: `docs/screenshots/escritorio-conversa-pc.png`, `docs/screenshots/escritorio-conversa-estreito.png` e `docs/screenshots/escritorio-tarefas-pc.png`.
 
 ### Limites da validação
 
 - O provedor de IA é simulado nos testes de interface; não são disparadas tarefas pagas.
-- Aprovação, cancelamento e navegador reutilizam componentes existentes, mas ainda precisam de cenários completos específicos desta tela.
+- Aprovação e cancelamento foram exercitados no escritório contra um supervisor isolado; o controle de navegador ainda precisa de cenário específico nesta tela.
 - Não foi realizado benchmark em uma máquina de referência nem teste prolongado com 50 bots.
-- Versão 0.50.0 / versionCode 108 publicada na Release v108, com APK ARM64 e a assinatura anterior. PC atualizado e janela real recarregada com o novo escritório. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
+- A etapa de tarefas e rascunhos foi preparada como versão 0.51.0 / versionCode 109, com APK ARM64 e a assinatura anterior. Instalação e abertura conferidas no emulador; conexão ao Termux limitada por endpoint antigo e dados locais inválidos preservados. Detalhes de entrega em `docs/progresso.md`.
 
 ## Arquivos principais
 
 - `mobile/App.js`: integração com as conversas e preservação de rascunhos individuais.
-- `mobile/components/Office.web.js`: cena, equipe, busca, aprovações e painel contextual.
+- `mobile/components/Office.web.js` e `OfficeTasks.js`: cena, equipe, busca, tarefas, aprovações e painel contextual.
 - `mobile/screens/Chat.js`: suspensão de captura de arquivos quando a conversa está oculta.
 - `mobile/office/engine.js`: interação na cena, estado visual e movimentação.
 - `mobile/office/rooms.js`: ambiente procedural e navegação.

@@ -83,7 +83,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
     // A waiting turn shows what it will say (shortened), so the person can pick which to cancel.
-    const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => ({ ...task, ...(task.state === 'queued' ? { preview: String(JSON.parse(payload).text || '').slice(0, 100), ...(JSON.parse(payload).steer ? { steer: true } : {}) } : {}), ...(queue.steps.has(task.id) ? { step: queue.steps.get(task.id) } : {}) }));
+    const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => ({ ...task, ...(['queued', 'running', 'waiting_approval'].includes(task.state) ? { preview: String(JSON.parse(payload).text || '').slice(0, 500), ...(JSON.parse(payload).steer ? { steer: true } : {}) } : {}), ...(queue.steps.has(task.id) ? { step: queue.steps.get(task.id) } : {}) }));
     // Home-screen widget pollers: woken on any change, they answer only when the widget's summary changed.
     const widgetPollers = new Set();
     let seq = 0;

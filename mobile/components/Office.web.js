@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, createElement, cloneElement } fro
 import { View, Text, Pressable, ScrollView, TextInput, PanResponder, useWindowDimensions } from 'react-native';
 import { C, F } from '../theme';
 import { Avatar, botLine, ApprovalCard } from './shared';
+import { desktopBus } from '../desktop';
+import OfficeTasks from './OfficeTasks';
 
 // The app's state for each bot → what the scene shows.
 const STATE = { working: 'working', waiting: 'waiting', sleeping: 'sleeping', idle: 'idle' };
@@ -20,7 +22,7 @@ function snapshotOf(data) {
 }
 const buttonStyle = ({ hovered }) => ({ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: hovered ? C.surface2 : C.surface, borderWidth: 1, borderColor: C.line });
 
-export default function Office({ data, onOpen, onRoom, conversation, selectionKey, selectionName, onRespond, approvalBusy, onCreate, onNewRoom }) {
+export default function Office({ data, onOpen, onRoom, conversation, selectionKey, selectionName, onRespond, approvalBusy, onCancelTask, taskMessages, onCreate, onNewRoom }) {
   const host = useRef(null), office = useRef(null);
   const [panel, setPanel] = useState('team'), [query, setQuery] = useState(''), [panelWidth, setPanelWidth] = useState(440), [sceneError, setSceneError] = useState('');
   const { width } = useWindowDimensions(), stacked = width < 1050;
@@ -39,6 +41,7 @@ export default function Office({ data, onOpen, onRoom, conversation, selectionKe
   }, []);
   useEffect(() => { office.current?.update(snap); }, [snap]);
   useEffect(() => { if (selectionKey) setPanel('conversation'); }, [selectionKey]);
+  useEffect(() => desktopBus.on('office-escape', () => setPanel(null)), []);
   const resizeStart = useRef(panelWidth);
   const divider = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: () => { resizeStart.current = latest.current.panelWidth; },
@@ -77,10 +80,14 @@ export default function Office({ data, onOpen, onRoom, conversation, selectionKe
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderBottomWidth: 1, borderBottomColor: C.line }}>
           {action('Equipe', () => setPanel('team'), { accessibilityState: { selected: panel === 'team' } })}
           {selectionKey ? action(selectionName || 'Conversa', () => setPanel('conversation'), { accessibilityState: { selected: panel === 'conversation' } }) : null}
+          {selectionKey ? action('Tarefas', () => setPanel('tasks'), { accessibilityState: { selected: panel === 'tasks' } }) : null}
+          {!stacked ? action('−', () => setPanelWidth(value => Math.max(360, value - 40)), { accessibilityLabel: 'Diminuir painel do escritório' }) : null}
+          {!stacked ? action('+', () => setPanelWidth(value => Math.min(640, value + 40)), { accessibilityLabel: 'Aumentar painel do escritório' }) : null}
           <View style={{ flex: 1 }} />
           {action('Recolher', () => setPanel(null), { accessibilityLabel: 'Recolher painel do escritório' })}
         </View>
         <View style={{ flex: 1, minHeight: 0, display: panel === 'conversation' && conversation ? 'flex' : 'none' }}>{conversation ? cloneElement(conversation, { interactive: panel === 'conversation' }) : null}</View>
+        {panel === 'tasks' && selectionKey ? <OfficeTasks data={data} selectionKey={selectionKey} selectionName={selectionName} messages={taskMessages} onRespond={onRespond} approvalBusy={approvalBusy} onCancelTask={onCancelTask} /> : null}
         <View style={{ flex: 1, minHeight: 0, display: panel === 'team' || !conversation ? 'flex' : 'none' }}>
           <TextInput accessibilityLabel="Buscar bots no escritório" placeholder="Buscar bot pelo nome" placeholderTextColor={C.faint} value={query} onChangeText={setQuery}
             style={{ margin: 12, padding: 12, borderRadius: 12, backgroundColor: C.bg, color: C.text, borderWidth: 1, borderColor: C.line, fontFamily: F.m }} />

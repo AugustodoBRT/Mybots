@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { createSupervisor } from '../supervisor/index.mjs';
 import { defaultBotAccess, googleAccountUrl, browserAccountGuidance, validateBackup } from '../mobile/local.js';
 import { DESKTOP_METHODS } from '../supervisor/link.mjs';
+import { SupervisorClient } from '../mobile/supervisor-client.js';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
 const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }] };
@@ -111,6 +112,19 @@ test('multiple Google accounts persist independently, selection resets sessions,
   assert.ok(opened.every(command => command.profile === 'shared'));
   assert.equal(googleAccountUrl('https://example.com/?authuser=0', 'x@example.com'), 'https://example.com/?authuser=0');
   assert.match(browserAccountGuidance(f.app.db.requireBot(a.id)), /nunca use outra conta silenciosamente/);
+});
+
+test('Google account selection requires confirmation from the phone, including older supervisors that ignore the field', async t => {
+  const f = await setup(t), bot = await f.make(), client = new SupervisorClient();
+  client.call = async () => ({ id: bot.id, name: bot.name });
+  await assert.rejects(client.setGoogleAccount(bot.id, 'outra@example.com'), /não foi salva.*Atualize o MyBots no celular/);
+  client.call = (...args) => f.app.rpc(...args);
+  await assert.rejects(client.setGoogleAccount(bot.id, 'invalido'), /e-mail completo/);
+  await client.setGoogleAccount(bot.id, ' Outra@Example.com ');
+  assert.equal(f.app.state().bots.find(item => item.id === bot.id).googleAccount, 'outra@example.com');
+  assert.deepEqual(f.app.state().googleAccounts, ['outra@example.com']);
+  await client.setGoogleAccount(bot.id, '');
+  assert.equal(f.app.db.requireBot(bot.id).googleAccount, '');
 });
 
 test('adding a Google login opens the existing browser and hands it to the person without exposing passwords', async t => {

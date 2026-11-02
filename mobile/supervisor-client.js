@@ -1,6 +1,14 @@
-import { createId } from './local.js';
+import { createId, validGoogleAccount } from './local.js';
 
 export class SupervisorClient {
+  async setGoogleAccount(botId, account) {
+    const googleAccount = account.trim().toLowerCase();
+    if (googleAccount && !validGoogleAccount(googleAccount)) throw new Error('Informe o e-mail completo da conta Google.');
+    const updated = await this.call('bot.update', { botId, googleAccount });
+    // Older phone supervisors accept bot.update but silently ignore unknown fields.
+    if (updated?.googleAccount !== googleAccount) throw new Error('A conta não foi salva. Atualize o MyBots no celular e abra o app nele para concluir a atualização. Depois, tente adicionar novamente.');
+    return updated;
+  }
   constructor({ WebSocketClass = globalThis.WebSocket, onEvent = () => {}, onConnection = () => {} } = {}) {
     this.WebSocketClass = WebSocketClass; this.onEvent = onEvent; this.onConnection = onConnection;
     this.pending = new Map(); this.serial = Promise.resolve(); this.closed = true; this.retries = 0;

@@ -63,6 +63,7 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
       </View>
       {bot && phone && <View style={s.tabs}>{tabs.map(([key, label, icon]) => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }} onPress={() => setTab(key)} style={[s.tab, tab === key && s.tabActive]}>
         <Icon name={icon} size={16} color={tab === key ? C.accent : C.muted} /><Text numberOfLines={1} style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text></Pressable>)}</View>}
+      {error ? <Text accessibilityRole="alert" style={[s.error, { marginHorizontal: 20, marginBottom: 10 }]}>{error}</Text> : null}
       <ScrollView ref={scroll} style={s.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
         {tab === 'profile' && <>
           <View style={s.preview}>
@@ -152,7 +153,6 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
             {item.dueLabel ? <Text style={s.routineTrigger}>Prazo {item.dueLabel}</Text> : null}{item.details ? <Text style={s.itemText}>{item.details}</Text> : null}{item.source ? <Text style={s.hint}>Fonte: {item.source}</Text> : null}
             {item.state === 'open' && <Pressable accessibilityRole="button" disabled={saving} onPress={() => act(() => onComplete(item.id))} style={s.smallButton}><Icon name="check" size={14} color={C.accent} /><Text style={s.link}>Marcar como concluída</Text></Pressable>}</View>)
             : <View style={s.emptyBox}><Icon name="list" size={26} color={C.faint} /><Text style={s.empty}>As pendências criadas pelo bot aparecem aqui.</Text></View>}</>}
-        {error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}
       </ScrollView>
     </View>);
 }

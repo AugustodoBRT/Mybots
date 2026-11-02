@@ -711,7 +711,7 @@ function AppMain() {
       routines={(data.routines || []).filter(item => item.botId === profileId)}
       negotiations={data.negotiations || []} onNegotiation={async (method, params) => { await supervisor.current.call(method, params); await loadSupervisorState(); }}
       googleAccounts={data.googleAccounts || []}
-      onGoogleAccount={async googleAccount => { await supervisor.current.call('bot.update', { botId: profileId, googleAccount }); await profileChanged(); }}
+      onGoogleAccount={async googleAccount => { await supervisor.current.setGoogleAccount(profileId, googleAccount); await profileChanged(); }}
       onGoogleLogin={account => googleLogin(profileId, account)}
       onPhoneControl={async on => { await supervisor.current.call('bot.phoneControl', { botId: profileId, on }); await profileChanged(); }}
       loadAgentSkills={() => supervisor.current.call('agent.skills', {})}

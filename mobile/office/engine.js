@@ -63,7 +63,7 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       rooms.set(room.id, room);
       // A room seen for the first time is decorated in front of you, one thing at a time, each brought by its bot.
       if (!room.lobby && !seen.has(room.id)) { room.building = { order: room.items.map((item, i) => ({ ...item, at: t + 0.6 + i * 0.55 })) }; room.items.forEach(item => item.group.scale.setScalar(0.001)); markSeen(room.id); }
-      const el = document.createElement('div'); el.textContent = room.name; Object.assign(el.style, { position: 'absolute', left: 0, top: 0, padding: '5px 12px', borderRadius: '999px', background: '#0b0c0ed9', border: '1px solid #34343a', color: '#f6f3ed', font: '600 12px Inter,system-ui,sans-serif', whiteSpace: 'nowrap' }); labels.append(el); roomLabels.set(room.id, el);
+      const el = document.createElement('div'); el.textContent = room.name; Object.assign(el.style, { position: 'absolute', left: 0, top: 0, padding: '3px 9px', borderRadius: '8px', background: 'rgba(16, 18, 23, 0.76)', border: '1px solid rgba(255, 255, 255, 0.09)', color: '#9ca3af', font: '700 10px Inter,system-ui,sans-serif', letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap', backdropFilter: 'blur(8px)' }); labels.append(el); roomLabels.set(room.id, el);
     }
     for (const a of agents.values()) { a.path = null; a.wander = null; a.talk = null; a.home = null; }
     if (!view.moved) fit();
@@ -82,16 +82,22 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       let a = agents.get(bot.id);
       if (!a || a.faceKey !== JSON.stringify(bot.face || null) + bot.name) {
         if (a) { a.visual.dispose(); a.tag.remove(); a.bubble.remove(); }
-        const tag = document.createElement('button'), bubble = document.createElement('div');
-        Object.assign(tag.style, { position: 'absolute', left: 0, top: 0, padding: '3px 10px', borderRadius: '999px', background: '#0a0b0ee8', border: '1px solid #6d6c733f', color: '#f6f3ed', font: '650 11px Inter,system-ui,sans-serif', whiteSpace: 'nowrap' });
-        Object.assign(bubble.style, { position: 'absolute', left: 0, top: 0, maxWidth: '240px', padding: '7px 11px', borderRadius: '12px', background: '#f6f3ed', color: '#202126', font: '650 11px/15px Inter,system-ui,sans-serif', boxShadow: '0 3px 15px #0004', opacity: 0, transition: 'opacity .25s' });
+        const tag = document.createElement('button'), bubble = document.createElement('div'), dot = document.createElement('span'), nameEl = document.createElement('span');
+        Object.assign(tag.style, { position: 'absolute', left: 0, top: 0, display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 9px', borderRadius: '999px', background: 'rgba(18, 20, 26, 0.88)', border: '1px solid rgba(255, 255, 255, 0.14)', color: '#f3f4f6', font: '600 11px Inter,system-ui,sans-serif', whiteSpace: 'nowrap', boxShadow: '0 6px 16px rgba(0, 0, 0, 0.38)', backdropFilter: 'blur(8px)' });
+        Object.assign(dot.style, { width: '6px', height: '6px', borderRadius: '999px', background: '#6b7280', flexShrink: '0' });
+        Object.assign(bubble.style, { position: 'absolute', left: 0, top: 0, maxWidth: '240px', padding: '7px 11px', borderRadius: '12px', background: '#f6f3ed', color: '#202126', font: '650 11px/15px Inter,system-ui,sans-serif', boxShadow: '0 6px 20px rgba(0,0,0,0.35)', opacity: 0, transition: 'opacity .25s' });
         tag.type = 'button'; tag.style.pointerEvents = 'auto'; tag.style.cursor = 'pointer'; tag.onclick = () => onBotClick(bot.id);
-        labels.append(tag, bubble); tag.textContent = bot.name;
+        tag.onmouseenter = () => { if (a) a.hovered = true; }; tag.onmouseleave = () => { if (a) a.hovered = false; };
+        nameEl.textContent = bot.name; tag.append(dot, nameEl); labels.append(tag, bubble);
         const home = rooms.get(homeOf(bot, snap)) || [...rooms.values()][0];
-        a = { id: bot.id, faceKey: JSON.stringify(bot.face || null) + bot.name, visual: createBot(bot, scene, { particles: budget, index: i }), tag, bubble, index: i, pos: home ? home.wander[i % home.wander.length].slice() : [0, 0, 0], path: null, seg: 0, segT: 0, yaw: Math.PI / 4, state: 'idle', next: 0, r: rng(i * 31 + 7), lastState: 'idle', since: now() };
+        a = { id: bot.id, faceKey: JSON.stringify(bot.face || null) + bot.name, visual: createBot(bot, scene, { particles: budget, index: i }), tag, dot, nameEl, bubble, index: i, pos: home ? home.wander[i % home.wander.length].slice() : [0, 0, 0], path: null, seg: 0, segT: 0, yaw: Math.PI / 4, state: 'idle', next: 0, r: rng(i * 31 + 7), lastState: 'idle', since: now(), hovered: false };
         agents.set(bot.id, a);
       }
-      a.bot = bot; a.tag.textContent = bot.name; a.tag.setAttribute('aria-label', `Selecionar bot ${bot.name}`); a.home = homeOf(bot, snap);
+      a.bot = bot; if (a.nameEl) a.nameEl.textContent = bot.name; else a.tag.textContent = bot.name;
+      const dotColor = bot.state === 'waiting' ? '#eab308' : bot.state === 'working' ? '#22c55e' : bot.state === 'sleeping' ? '#a78bfa' : '#6b7280';
+      if (a.dot) { a.dot.style.background = dotColor; a.dot.style.boxShadow = bot.state === 'working' || bot.state === 'waiting' ? `0 0 6px ${dotColor}` : 'none'; }
+      a.tag.style.borderColor = bot.state === 'waiting' ? 'rgba(234, 179, 8, 0.5)' : bot.state === 'working' ? 'rgba(34, 197, 94, 0.42)' : 'rgba(255, 255, 255, 0.12)';
+      a.tag.setAttribute('aria-label', `Selecionar bot ${bot.name}`); a.home = homeOf(bot, snap);
       if (building.blocked(a.pos[0], a.pos[2])) a.pos = building.nearestFree(a.pos) || a.pos;
       if (bot.state !== a.state) { a.lastState = a.state; a.state = bot.state; a.since = now(); a.path = null; a.talk = null; if (a.lastState === 'working' && bot.state === 'idle') a.doneUntil = now() + 4; }
       a.text = bot.text || '';
@@ -179,7 +185,8 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
       for (let k = 0; k < agents.size + 1; k++) { const hit = boxes.find(b => tx < b[2] && tx + tw > b[0] && ty < b[3] && ty + th > b[1]); if (!hit) break; ty = hit[3] + 2; }
       boxes.push([tx, ty, tx + tw, ty + th]);
       const visible = base[0] > -60 && base[0] < W + 60 && base[1] > -60 && base[1] < H + 60;
-      a.tag.style.transform = `translate(${tx}px,${ty}px)`; a.tag.style.opacity = visible && view.zoom > 0.35 ? 1 : 0; a.tag.style.visibility = visible && view.zoom > 0.35 ? 'visible' : 'hidden';
+      const activeOrFew = a.state !== 'idle' || a.hovered || agents.size <= 5;
+      a.tag.style.transform = `translate(${tx}px,${ty}px)`; a.tag.style.opacity = visible && view.zoom > 0.35 ? (activeOrFew ? 1 : 0.58) : 0; a.tag.style.visibility = visible && view.zoom > 0.35 ? 'visible' : 'hidden';
       const say = s.talking ? '…' : a.state === 'waiting' ? 'Preciso da sua aprovação' : a.state === 'working' && !s.moving ? (a.text || 'Trabalhando…') : a.state === 'sleeping' && s.lying ? 'z z' : '';
       if (a.bubble.textContent !== say) a.bubble.textContent = say;
       const bw = a.bubble.offsetWidth, bh = a.bubble.offsetHeight; let bx = head[0] - bw / 2, by = head[1] - bh - 8;
@@ -207,6 +214,7 @@ export function createOffice(container, { onBotClick = () => {} } = {}) {
   return {
     update(next) { snapshot = next; rebuild(next); syncAgents(next); },
     fit() { view.moved = false; view.target = null; fit(); },
+    zoomBy(k) { view.zoom = Math.max(0.2, Math.min(3, view.zoom * k)); view.moved = true; view.target = null; placeCamera(); },
     debug() { return [...agents.values()].map(a => ({ id: a.id, room: a.home, state: a.state, goal: a.goalKind, pos: a.pos.map(v => +v.toFixed(2)), path: a.path?.length || 0 })); },
     focus(roomId) { const room = rooms.get(roomId); if (!room) return; view.target = { center: new T.Vector3(room.origin[0], 0.6, room.origin[1]), zoom: Math.min(1.3, 11 / Math.max(...room.size)) }; view.moved = true; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', visibility); for (const a of agents.values()) a.visual.dispose(); building?.dispose(); renderer.dispose(); canvas.remove(); labels.remove(); }

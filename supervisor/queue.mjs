@@ -8,6 +8,7 @@ import { friendlyError } from '../lib/codex.mjs';
 import { PROVIDERS, PROVIDER_NAMES } from '../lib/models.mjs';
 import { now } from './database.mjs';
 import { processIdentity, stopOrphan } from './process.mjs';
+import { browserAccountGuidance } from '../mobile/local.js';
 import { browserMode } from './tool-policy.mjs';
 import { fileURLToPath } from 'node:url';
 
@@ -128,16 +129,14 @@ export class Queue extends EventEmitter {
         const owner = this.db.requireBot(task.bot_id);
         const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;
         // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
-        const picked = this.tools ? this.tools.accountApps(bot.id) : [];
-        const connectors = Boolean(this.tools) && this.tools.policy(bot.id, 'account.connectors') !== 'deny' && picked.length > 0;
-        const connectorDeny = connectors && bot.provider === 'claude' ? (await this.accountServers?.() || []).filter(name => !picked.includes(name)) : [];
+        const connectors = false, connectorDeny = [];
         const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId) }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools) });
         // The reply as it is being written: the owner of the draft is the room (with the bot) or the private chat.
         const draftOf = text => { this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), text }); };
         // One try of the turn with `runBot`: the bot itself, or its reserve model when the subscription limit ended.
         // The pictures of the person's message go straight to a Codex bot that runs here on the phone (a bot on the computer, or Claude, reads them with attachment_read).
         const pictures = next.lane === 'phone' && this.tools?.attachments ? (this.db.message(task.message_id)?.attachments || []).filter(file => /^image\/(png|jpe?g|webp|gif)$/i.test(file.mime || '') && file.size <= 10 * 1024 * 1024).slice(0, 4).map(file => this.tools.attachments.path(file.id)) : [];
-        const attempt = (runBot, runPrompt, spare) => execute(runBot, runPrompt, {
+        const attempt = (runBot, runPrompt, spare) => execute(runBot, (this.tools ? browserAccountGuidance(runBot) + '\n\n' : '') + runPrompt, {
           signal: controller.signal,
           ...((!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
           onDelta: text => { if (!controller.signal.aborted) draftOf(text); },

@@ -4,7 +4,8 @@ import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
 import { termuxAvailable, passwordsList } from '../termux';
 import { desktop } from '../desktop';
-import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, EmailConnection, AccountConnections, AppConnections, UpdateCard, offline } from './shared';
+import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
+import { GoogleAccounts } from './GoogleAccounts';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
@@ -33,7 +34,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
   const categories = useMemo(() => [
-    { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência, e-mail e apps` : 'Seu nome, aparência, e-mail e apps', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'conectores', 'claude', 'codex', 'mcp'] },
+    { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', ...bots.map(bot => bot.name)] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale'] }] : []),
@@ -47,25 +48,20 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     if (key === 'account') return <>
       {phone ? <PersonName name={data?.person?.name} onSave={async name => { await a.call('person.update', { name }); await a.reload(); }} /> : null}
       {phone ? <ThemeChoice value={data?.person?.theme || 'dark'} onSave={async theme => { await a.call('person.update', { theme }); await a.reload(); }} /> : null}
-      {desktop ? null : <EmailConnection email={data?.email} busy={a.busy} onAction={(method, params) => a.maintenance(async () => {
-        const result = await a.call(method, params); await a.reload(); a.setText(result?.message || 'Conta de e-mail desconectada.');
-      })} />}
-      <AccountConnections load={async refresh => a.call('account.connectors', { refresh })} />
-      {desktop ? null : <AppConnections apps={data?.apps} busy={a.busy} onAction={(method, params) => a.maintenance(async () => {
-        const result = await a.call(method, params); await a.reload();
-        a.setText(method === 'app.remove' ? 'App desconectado; os bots perderam o acesso a ele.' : result?.status === 'connected' ? `${result.name}: ${result.tools.length} ferramentas disponíveis. Libere no perfil de cada bot.` : result?.message || 'Pronto.');
-      })} />}
+      <GoogleAccounts accounts={data?.googleAccounts || []} bots={bots} busy={a.busy}
+        onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}
+        onLogin={async (botId, account) => { onClose(); await a.googleLogin(botId, account); }} />
     </>;
     if (key === 'bots') return <>
       {bots.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Perfil de ${bot.name}`} onPress={() => { onClose(); a.openProfile(bot); }} style={({ pressed }) => [s.botRow, pressed && { opacity: 0.7 }]}>
         <Avatar bot={bot} size={44} animated={false} state={offline(data, bot.id) ? 'sleeping' : 'idle'} />
-        <View style={{ flex: 1 }}><Text style={s.rowTitle} numberOfLines={1}>{bot.name}</Text><Text style={s.rowSummary} numberOfLines={1}>{{ basic: 'Pouco acesso', ask: 'Pergunta antes', full: 'Acesso total', free: 'Livre' }[bot.access] || 'Acesso personalizado'}</Text></View>
+        <View style={{ flex: 1 }}><Text style={s.rowTitle} numberOfLines={1}>{bot.name}</Text><Text style={s.rowSummary} numberOfLines={1}>{bot.phoneControl ? 'Acesso total · controla o celular' : 'Acesso total'}</Text></View>
         <Icon name="right" size={16} color={C.faint} />
       </Pressable>)}
       <PrimaryButton icon="plus" tone="ghost" title="Novo bot" disabled={!data?.models?.length} onPress={() => { onClose(); a.onCreate(); }} style={{ marginTop: 14 }} />
     </>;
     if (key === 'phone') return desktop ? <><DesktopPair call={a.call} />
-      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup, e-mail por senha de app e senhas de sites ficam nos Ajustes do app do celular.</Text></View></>
+      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.</Text></View></>
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
     if (key === 'computer') return <ComputerPanel computer={data?.computer} nodes={data?.nodes}
       onPair={async link => { const result = await a.call('computer.pair', { link }); await a.reload(); return result; }}

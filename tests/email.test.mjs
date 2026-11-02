@@ -93,32 +93,13 @@ test('IMAP connector: wrong password saves nothing, cursor starts now, new mail 
   assert.ok(!f.imap.state.commands.some(command => /abcd/.test(command)));
 });
 
-test('email tools need a grant, decode text, strip HTML, mark content untrusted and never change grants', async t => {
-  const f = await setup(t);
-  await f.state.app.rpc('connectors.install', { data: (await readFile(asset)).toString('base64') });
-  await f.state.app.rpc('secrets.unlock', { key: f.key }); await f.configure();
-  const app = f.state.app; const bot = app.db.create({ name: 'Leitor' }, selection); const other = app.db.create({ name: 'Outro' }, selection);
-  const run = botId => { const task = app.db.start(app.db.enqueue(botId, randomUUID(), 'Oi', selection).id); const cap = app.tools.open(task); const bridgeId = randomUUID(); app.tools.context(cap.token, bridgeId, true);
-    t.after(() => cap.close()); return (tool, args) => app.tools.call(cap.token, { bridgeId, callId: randomUUID(), tool, args }); };
-  const call = run(bot.id); const denied = run(other.id);
-  await assert.rejects(call('email.search', { query: 'fatura' }), /negada/);
-  app.tools.grant(bot.id, 'email.search', true); app.tools.grant(bot.id, 'email.read', true);
-  await assert.rejects(denied('email.search', { query: 'fatura' }), /negada/);
-  const found = await call('email.search', { query: 'fatura', since: '2026-01-01' });
-  assert.equal(found.untrusted, true); assert.deepEqual(found.messages.map(item => item.uid), [12]);
-  assert.equal(found.messages[0].from, 'Banco Exemplo <fatura@banco.example>');
-  assert.ok(f.imap.state.commands.some(command => /X-GM-RAW/.test(command)));
-  const all = await call('email.search', { since: '2026-01-01', limit: 2 });
-  assert.deepEqual(all.messages.map(item => item.uid), [13, 12]);
-  const plain = await call('email.read', { uid: 11 });
-  assert.equal(plain.subject, 'Reunião mudou para sábado'); assert.match(plain.text, /sábado às 15h/); assert.equal(plain.untrusted, true);
-  const html = await call('email.read', { uid: 12 });
-  assert.match(html.text, /Fatura de março vence em 10\/04 & já está disponível/); assert.match(html.text, /ver fatura \(https:\/\/banco\.example\/f\)/);
-  assert.equal((await call('email.read', { uid: 13 })).text, 'Aula de terca as 7h.');
-  await assert.rejects(call('email.read', { uid: 'um' }), /uid/); await assert.rejects(call('email.search', { since: 'ontem' }), /AAAA-MM-DD/);
-  // The malicious line was read as data: grants are unchanged and no approval was opened.
-  assert.deepEqual(app.tools.grants(bot.id).filter(item => item.allowed && !item.defaultAllowed).map(item => item.name).sort(), ['email.read', 'email.search']);
-  assert.equal(app.state().approvals.length, 0);
+test('retired IMAP tools are hidden and direct calls require the browser instead', async t => {
+  const f = await setup(t); const app = f.state.app;
+  const bot = app.db.create({ name: 'E-mail' }, selection);
+  const task = app.db.start(app.db.enqueue(bot.id, randomUUID(), 'Leia', selection).id), cap = app.tools.open(task), bridgeId = randomUUID();
+  app.tools.context(cap.token, bridgeId, true); t.after(cap.close);
+  assert.ok(!app.tools.toolList(cap.token, bridgeId).some(tool => tool.name === 'email_search'));
+  await assert.rejects(app.tools.callMcp(cap.token, { bridgeId, callId: randomUUID(), name: 'email_search', args: {} }), /navegador/);
 });
 
 test('offline server and HTML conversion are reported without leaking server text', async t => {

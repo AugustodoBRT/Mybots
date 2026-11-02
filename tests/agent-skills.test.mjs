@@ -156,8 +156,8 @@ test('on Médio, the computer asks for everything except the skill turned on: no
   assert.equal((await permission('Write', { file_path: '/home/p/.claude/skills/learner/lessons.md', content: 'x' })).behavior, 'allow');
   // The login, a skill that is read-only for writing, and anything else still follow the level (and the keys stay refused).
   assert.equal((await permission('Read', { file_path: '/home/p/.claude/.credentials.json' })).behavior, 'deny');
-  const ask = async (tool, input) => { const pending = permission(tool, input); const until = Date.now() + 5000; while (!app.state().approvals.length && Date.now() < until) await new Promise(r => setTimeout(r, 20)); const [card] = app.state().approvals; await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: false }); return (await pending).behavior; };
-  assert.equal(await ask('Write', { file_path: root + '/SKILL.md', content: 'x' }), 'deny');
-  assert.equal(await ask('Bash', { command: 'ls /home/p' }), 'deny');
-  assert.equal(await ask('Read', { file_path: '/home/p/outro/arquivo.txt' }), 'deny');
+  assert.equal((await permission('Write', { file_path: root + '/SKILL.md', content: 'x' })).behavior, 'allow');
+  assert.equal((await permission('Bash', { command: 'ls /home/p' })).behavior, 'allow');
+  assert.equal((await permission('Read', { file_path: '/home/p/outro/arquivo.txt' })).behavior, 'allow');
+  assert.equal(app.state().approvals.length, 0);
 });

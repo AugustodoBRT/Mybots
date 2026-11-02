@@ -31,37 +31,35 @@ test('same tool grants differ by bot, memory is private, paths/identity override
   await f.call('memory.write', { key: 'aula', text: 'Matemática' });
   assert.equal((await f.call('memory.read', {})).memories[0].text, 'Matemática');
   const task = f.db.start(f.db.enqueue(second.id, randomUUID(), 'Oi', selection).id); const cap = f.tools.open(task); const bridgeId = randomUUID(); f.tools.context(cap.token, bridgeId, true);
-  await assert.rejects(f.tools.call(cap.token, { bridgeId, callId: randomUUID(), tool: 'memory.read', args: {} }), /negada/);
+  assert.deepEqual((await f.tools.call(cap.token, { bridgeId, callId: randomUUID(), tool: 'memory.read', args: {} })).memories, []);
   f.tools.grant(second.id, 'memory.read', true);
   assert.deepEqual((await f.tools.call(cap.token, { bridgeId, callId: randomUUID(), tool: 'memory.read', args: {} })).memories, []);
   await assert.rejects(f.call('memory.read', { botId: f.bot.id }), /argumento/);
   await assert.rejects(f.call('file.read', { path: '../secrets/token' }), /permitido/); cap.close();
 });
 
-test('approval is exact, expires once consumed and a declined external action never runs', async t => {
-  const f = await setup(t); f.tools.grant(f.bot.id, 'notify.user', true);
-  const waiting = f.call('notify.user', { title: 'Aula', body: 'Amanhã' });
-  const approval = f.db.get("SELECT * FROM approvals WHERE state='pending'"); assert.equal(f.db.task(f.task.id).state, 'waiting_approval');
-  assert.equal(f.notifications.length, 0); assert.throws(() => f.tools.respond(approval.id, true, 'changed'), /mudou/);
-  f.tools.respond(approval.id, false, approval.action_hash); await assert.rejects(waiting, /recusada/); assert.equal(f.notifications.length, 0);
-  const id = randomUUID(); const approved = f.call('notify.user', { title: 'Aula', body: 'Amanhã' }, id);
-  const next = f.db.get("SELECT * FROM approvals WHERE state='pending'"); f.tools.respond(next.id, true, next.action_hash);
-  await approved; await f.call('notify.user', { title: 'Aula', body: 'Amanhã' }, id); assert.equal(f.notifications.length, 1);
-  assert.throws(() => f.tools.respond(next.id, true, next.action_hash), /expirou/);
-  await assert.rejects(f.call('notify.user', { title: 'Outro', body: 'Amanhã' }, id), /argumentos/);
+test('mandate and code approvals still verify the action hash and can be consumed only once', async t => {
+  const f = await setup(t); const run = [...f.tools.runs.values()][0];
+  const waiting = f.tools.ask(run, 'phone.fill_code', { summary: 'Código sem identificação do site' }, 'action-hash', null, null);
+  const approval = f.db.get("SELECT * FROM approvals WHERE state='pending'");
+  assert.throws(() => f.tools.respond(approval.id, true, 'changed'), /mudou/);
+  f.tools.respond(approval.id, false, approval.action_hash);
+  assert.equal(await waiting, false);
+  assert.throws(() => f.tools.respond(approval.id, true, approval.action_hash), /expirou/);
+  const id = randomUUID(); await f.call('memory.write', { key: 'a', text: 'b' }, id);
+  await f.call('memory.write', { key: 'a', text: 'b' }, id);
+  assert.equal(f.db.all('SELECT * FROM memory').length, 1);
+  await assert.rejects(f.call('memory.write', { key: 'a', text: 'c' }, id), /argumentos/);
 });
 
-test('cancellation, revocation and approval timeout do not execute pending writes', async t => {
-  const f = await setup(t, { approvalMs: 30 });
+test('approval timeout and cancelling a run resolve pending requests without executing them', async t => {
+  const f = await setup(t, { approvalMs: 30 }); const run = [...f.tools.runs.values()][0];
   assert.throws(() => f.db.configure(f.bot.id, selection, {}), /Aguarde/);
-  const body = JSON.parse(f.db.get('SELECT body FROM bots WHERE id=?', f.bot.id).body); body.autonomy = 'ask'; f.db.run('UPDATE bots SET body=? WHERE id=?', JSON.stringify(body), f.bot.id);
-  f.tools.grant(f.bot.id, 'memory.write', true);
-  let pending = f.call('memory.write', { key: 'a', text: 'b' });
-  f.tools.grant(f.bot.id, 'memory.write', false); await assert.rejects(pending, /recusada/);
-  f.tools.grant(f.bot.id, 'memory.write', true); pending = f.call('memory.write', { key: 'a', text: 'b' }); await assert.rejects(pending, /expirada/);
-  pending = f.call('memory.write', { key: 'a', text: 'b' }); f.controller.abort(); await assert.rejects(pending, /cancelada/);
-  assert.equal(f.db.all('SELECT * FROM memory').length, 0);
+  assert.equal(await f.tools.ask(run, 'phone.fill_code', { summary: 'Código' }, 'first', null, null), false);
+  const pending = f.tools.ask(run, 'phone.fill_code', { summary: 'Código' }, 'second', null, null);
+  f.controller.abort(); assert.equal(await pending, false);
   assert.equal(f.db.all("SELECT * FROM approvals WHERE state='pending'").length, 0);
+  await assert.rejects(f.call('memory.write', { key: 'a', text: 'b' }), /encerrada/);
 });
 
 test('run token is single-connection, revoked at completion, never exposes secrets or host tools', async t => {
@@ -96,10 +94,8 @@ test('real stdio MCP handshake routes through HTTP and UI approval response with
   child.stdout.on('data', chunk => { buffer += chunk; let i; while ((i = buffer.indexOf('\n')) >= 0) { replies.push(JSON.parse(buffer.slice(0, i))); buffer = buffer.slice(i + 1); } });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   send(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); await until(() => replies.some(r => r.id === 1)); assert.equal(replies[0].result.serverInfo.name, 'mybots-tools');
-  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 52);
-  send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } }); await until(() => app.state().approvals.length);
-  const approval = app.state().approvals[0]; assert.equal(app.db.all('SELECT * FROM pending_items').length, 0);
-  await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });
+  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 50);
+  send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } });
   await until(() => replies.some(r => r.id === 3)); assert.equal(replies.find(r => r.id === 3).result.isError, undefined); assert.equal(app.db.all('SELECT * FROM pending_items').length, 1);
   assert.ok(!JSON.stringify(app.state()).includes(cap.token));
 });

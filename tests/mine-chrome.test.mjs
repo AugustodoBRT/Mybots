@@ -38,9 +38,9 @@ test('Meu Chrome: endpoint is loopback only, malformed files refused; modes vali
   const bot = db.create({ name: 'Antigo' }, { provider: 'claude', model: 'haiku', reasoningEffort: 'low' });
   const legacy = { ...bot, mainChrome: true }; delete legacy.browserMode;
   db.putBot(legacy);
-  assert.equal(db.requireBot(bot.id).browserMode, 'claude'); assert.equal(db.requireBot(bot.id).mainChrome, undefined);
+  assert.equal(db.requireBot(bot.id).browserMode, 'shared'); assert.equal(db.requireBot(bot.id).mainChrome, undefined);
   db.session(bot.id, randomUUID()); db.configure(bot.id, { provider: 'claude' }, { browserMode: 'mine' });
-  assert.equal(db.requireBot(bot.id).codexSessionId, undefined);
+  assert.ok(db.requireBot(bot.id).codexSessionId);
   const pc = new PcBrowser(directory, { mineProfile: join(directory, 'ausente') }); const id = randomUUID(); pc.configure(id, 'mine');
   assert.deepEqual(await pc.command(id, 'view', { on: false }), { watching: false }); assert.equal(pc.workers.size, 0);
   const unstarted = new BrowserSession('/ausente', { mode: 'mine' }); assert.deepEqual(await unstarted.command('login_cancel'), { cancelled: true }); assert.equal(unstarted.browser, undefined);

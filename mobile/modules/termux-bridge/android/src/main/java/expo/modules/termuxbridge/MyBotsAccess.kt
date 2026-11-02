@@ -267,7 +267,7 @@ internal object PhoneControl {
   private var takeButton: TextView? = null
   private var mark: MarkView? = null
 
-  private fun service(): MyBotsAccess = MyBotsAccess.instance ?: throw IllegalStateException("O controle do celular está desligado. A pessoa liga em Ajustes → Controle do celular, no MyBots (acessibilidade do Android).")
+  private fun service(): MyBotsAccess = MyBotsAccess.instance ?: throw IllegalStateException("O controle do celular está desligado. No MyBots do celular, abra o perfil do bot → Acesso → Ligar o controle (acessibilidade do Android).")
 
   /** A queued command from the supervisor (phone lane). Stop, take-over and end come through immediate() instead. */
   fun run(context: Context, command: JSONObject): JSONObject {
@@ -276,7 +276,7 @@ internal object PhoneControl {
     val args = command.optJSONObject("args") ?: JSONObject()
     val taskId = args.optString("taskId")
     if (taskId.isEmpty() || taskId in stopped) throw Stopped()
-    if (!FreeGuard.allows(context, args.optString("botId"))) throw IllegalStateException("Este bot não está no nível Livre neste celular. Só a pessoa escolhe esse nível, no app.")
+    if (!args.optBoolean("phoneControl")) throw IllegalStateException("O controle do celular está desligado para este bot.")
     if (person) throw IllegalStateException("A pessoa assumiu o celular. Espere ela tocar em “Devolver ao bot”.")
     val service = service()
     begin(context, service, taskId, args.optString("botName").take(40))

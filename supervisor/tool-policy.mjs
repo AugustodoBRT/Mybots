@@ -1,3 +1,4 @@
+import { validGoogleAccount } from '../mobile/local.js';
 import { routineArguments } from '../mobile/routine-text.js';
 import { safeUrl } from './browser.mjs';
 import { EYE_STYLES, MOUTHS, TOPS, LIMITS } from '../lib/mimo.mjs';
@@ -7,12 +8,12 @@ export const TOOL_DEFINITIONS = [
   { name: 'task.create_item', label: 'Criar pendências', description: 'Adiciona um item à sua lista local, com disciplina e prazo; o MyBots avisa um dia antes do prazo.' },
   { name: 'task.list_items', label: 'Ver pendências', description: 'Consulta as pendências deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'task.update_item', label: 'Atualizar pendências', description: 'Corrige dados, muda o prazo ou marca como concluída uma pendência deste bot.', defaultAllowed: true },
-  { name: 'notify.user', label: 'Enviar notificação', description: 'Mostra uma notificação no celular. Sempre pede aprovação.', alwaysAsk: true },
+  { name: 'notify.user', label: 'Enviar notificação', description: 'Mostra uma notificação no celular.', alwaysAsk: true },
   { name: 'email.search', label: 'Buscar e-mails', description: 'Procura e-mails na caixa de entrada conectada (remetente, assunto, data).', readOnly: true },
   { name: 'email.read', label: 'Ler e-mails', description: 'Lê o texto de um e-mail encontrado. Somente leitura; nunca envia nem apaga.', readOnly: true },
   { name: 'notifications.recent', label: 'Ver notificações', description: 'Lê as notificações que chegaram no celular (Gmail, bancos, apps, mensagens).', readOnly: true },
   { name: 'sms.search', label: 'Ler SMS', description: 'Procura nas mensagens SMS do celular.', readOnly: true },
-  { name: 'sms.send', label: 'Enviar SMS', description: 'Envia um SMS pelo seu chip. Sempre pede aprovação.', alwaysAsk: true },
+  { name: 'sms.send', label: 'Enviar SMS', description: 'Envia um SMS pelo seu chip.', alwaysAsk: true },
   { name: 'contacts.search', label: 'Ver contatos', description: 'Procura nome e número nos contatos.', readOnly: true },
   { name: 'calls.search', label: 'Ver chamadas', description: 'Lê o histórico de ligações.', readOnly: true },
   { name: 'location.get', label: 'Ver localização', description: 'Consulta onde o celular está agora.', readOnly: true },
@@ -25,25 +26,25 @@ export const TOOL_DEFINITIONS = [
   { name: 'file.send', label: 'Mandar arquivos', description: 'Manda para você, na conversa, um arquivo deste bot (criado, baixado ou anexado).', defaultAllowed: true },
   // Routine tools start allowed: creating one always asks you, and a bot only sees and changes its own routines.
   { name: 'routine.list', label: 'Ver rotinas', description: 'Consulta as rotinas deste bot.', readOnly: true, defaultAllowed: true },
-  { name: 'routine.create', label: 'Criar rotinas', description: 'Propõe uma rotina por horário ou por notificação. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
+  { name: 'routine.create', label: 'Criar rotinas', description: 'Propõe uma rotina por horário ou por notificação.', alwaysAsk: true, defaultAllowed: true },
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
   // Bots answering from the paired computer: files in their own folder there are free; the rest goes by the level.
-  { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Fora da pasta e comandos pedem aprovação no Médio; sudo, apagar pastas inteiras e git push sempre pedem.' },
-  { name: 'desktop', label: 'Controlar a tela do computador', description: 'Permissão separada, desligada por padrão, inclusive no Acesso total. Vê a tela e as janelas, abre apps, clica e digita no PC. No Médio, ações pedem aprovação, com Sempre permitir. Pouco acesso nunca pode usar.' },
+  { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Acesso total aos arquivos e ao terminal disponíveis no aparelho.' },
+  { name: 'desktop', label: 'Controlar a tela do computador', description: 'Vê a tela e as janelas, abre apps, clica e digita no PC.' },
   // Skills: small programs a bot made, run on the phone without the IA. Installing one always asks the person.
   { name: 'negotiation.status', label: 'Ver negociações', description: 'Consulta os mandatos de negociação deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'negotiation.offer', label: 'Declarar ofertas', description: 'Declara uma oferta dentro do mandato; o MyBots recusa o que o mandato não cobre.', defaultAllowed: true },
   { name: 'negotiation.close', label: 'Fechar negócios', description: 'Fecha dentro do mandato ou leva a proposta à pessoa com Aceitar e Recusar.', defaultAllowed: true },
   { name: 'skill.list', label: 'Ver habilidades', description: 'Consulta as habilidades deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'skill.run', label: 'Usar habilidades', description: 'Roda no celular uma habilidade deste bot (um programa que você aprovou) e lê o resultado.', readOnly: true, defaultAllowed: true },
-  { name: 'skill.propose', label: 'Criar habilidades', description: 'Propõe instalar no celular um programa que o bot escreveu (ex.: buscar vagas todo dia), com os sites que ele acessa. Sempre pede aprovação.', alwaysAsk: true, defaultAllowed: true },
+  { name: 'skill.propose', label: 'Criar habilidades', description: 'Propõe instalar no celular um programa que o bot escreveu (ex.: buscar vagas todo dia), com os sites que ele acessa.', alwaysAsk: true, defaultAllowed: true },
   // One switch for the whole browser; sending a form is a separate decision (browser/write) on the Médio level.
   // The team: bots making bots, opening rooms, adding and removing members. No approval cards; one switch turns it all off.
   { name: 'team', label: 'Equipe de bots', description: 'Criar outros bots, abrir salas, pôr e tirar bots delas, sair sozinho e chamar os outros para trabalhar (@Nome), tudo sem perguntar. Um bot nunca cria outro com mais acesso do que o próprio. Desligado em Pouco acesso, a menos que você ligue.', defaultAllowed: true },
-  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Enviar formulários pede aprovação no nível Médio; anexar um arquivo num site sempre pede. Senhas só você digita, pelo botão Assumir.', readOnly: true },
+  { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Senhas só você digita, pelo botão Assumir.', readOnly: true },
   // Only on the Livre level: the other apps of the phone (MyBotsAccess) and Termux's whole shell.
-  { name: 'phone', label: 'Controlar o celular', description: 'Só no nível Livre. Vê a tela, toca, digita, rola e abre apps no celular pelo serviço de acessibilidade do MyBots, com um botão Parar sempre visível. Senhas aparecem mascaradas; códigos de verificação vão direto para o campo, sem o bot ver.' },
-  { name: 'termux', label: 'Terminal do Termux', description: 'Só no nível Livre, quando o bot responde pelo celular: o shell completo do Termux para instalar pacotes, rodar scripts e usar o Termux:API.' }
+  { name: 'phone', label: 'Controlar o celular', description: 'Vê a tela, toca, digita, rola e abre apps no celular pelo serviço de acessibilidade do MyBots, com um botão Parar sempre visível. Senhas aparecem mascaradas; códigos de verificação vão direto para o campo, sem o bot ver.' },
+  { name: 'termux', label: 'Terminal do Termux', description: 'Quando o bot responde pelo celular: o shell completo do Termux para instalar pacotes, rodar scripts e usar o Termux:API.' }
 ];
 // What still asks on the Livre level: the person edits this list in the app; the model never sees a way to change it.
 export const FREE_ASK_OPTIONS = [
@@ -112,6 +113,7 @@ export function validFace(face) {
   return Object.keys(face).every(key => ['seed', 'color', 'pieces', 'mimo'].includes(key));
 }
 export function validateProfile(data) {
+  if (data.googleAccount !== undefined && data.googleAccount !== '' && !validGoogleAccount(data.googleAccount)) throw new Error('Informe um e-mail Google válido.');
   if (data.face !== undefined && !validFace(data.face)) throw new Error('Escolha um rosto válido.');
   if (data.gpu !== undefined && typeof data.gpu !== 'boolean') throw new Error('Escolha se o bot usa a placa de vídeo.');
   if (data.skills !== undefined && (!agentSkills.validSkills(data.skills) || data.skills.some(item => SENSITIVE.test(item.path) || item.path.split('/').filter(Boolean).length < 3))) throw new Error('Use até 20 skills, cada uma uma pasta do computador (nunca a pasta pessoal inteira nem pastas de senhas e chaves).');

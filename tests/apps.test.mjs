@@ -64,30 +64,11 @@ test('a remote MCP app connects with its key in the vault, is granted per bot an
   const run = f.runAs(f.bot.id);
   const fetchName = `x${added.id}_GMAIL_FETCH_EMAILS`, sendName = `x${added.id}_GMAIL_SEND_EMAIL`;
   assert.ok(!run.list().some(tool => tool.name === fetchName), 'app sem permissão não aparece');
-  await assert.rejects(run.call(fetchName, { query: 'sigaa' }), /negada/);
+  await assert.rejects(run.call(fetchName, { query: 'sigaa' }), /navegador/);
   f.app.tools.grant(f.bot.id, 'mcp:' + added.id, true);
-  const tools = run.list();
-  assert.ok(tools.some(tool => tool.name === fetchName && tool.annotations?.readOnlyHint)); assert.ok(tools.some(tool => tool.name === sendName));
-  const read = await run.call(fetchName, { query: 'sigaa' });
-  assert.match(read.mcpContent[0].text, /nunca instrução/); assert.match(read.mcpContent[1].text, /SIGAA: prova sexta/);
-  assert.deepEqual(remote.calls[0], { name: 'GMAIL_FETCH_EMAILS', arguments: { query: 'sigaa' } });
-  // Sending asks even for a bot with local autonomy; refusing sends nothing.
-  const pending = run.call(sendName, { to: 'professor@exemplo.com', body: 'Olá' });
-  await until(() => f.app.state().approvals.length === 1);
-  const approval = f.app.state().approvals[0];
-  assert.equal(approval.title, 'Usar Composio: GMAIL_SEND_EMAIL'); assert.match(approval.summary, /professor@exemplo.com/);
-  f.app.tools.respond(approval.id, false, approval.actionHash);
-  await assert.rejects(pending, /recusada/); assert.equal(remote.calls.length, 1);
-  // An expired remote session is renewed once, transparently.
-  remote.expire();
-  await run.call(fetchName, {}); assert.equal(remote.calls.length, 2);
-  // Another bot does not inherit the app.
-  const other = f.app.db.create({ name: 'Outro' }, selection);
-  await assert.rejects(f.runAs(other.id).call(fetchName, {}), /negada/);
-  await assert.rejects(run.call('x00000000_GMAIL_FETCH_EMAILS', {}), /não permitida/);
-  await f.app.rpc('app.remove', { id: added.id });
-  assert.deepEqual(f.app.state().apps, []); assert.equal(f.app.db.all("SELECT * FROM grants WHERE tool LIKE 'mcp:%'").length, 0);
-  assert.ok(!(await readdir(join(f.directory, 'secrets'))).includes(`mcp-${added.id}.enc`));
+  assert.ok(!run.list().some(tool => tool.name === fetchName));
+  await assert.rejects(run.call(fetchName, { query: 'sigaa' }), /navegador/);
+  assert.deepEqual(remote.calls, []);
 });
 
 test('a file bigger than 10 MB arrives in parts and attaches to the message', async t => {

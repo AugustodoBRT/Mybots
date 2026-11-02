@@ -44,31 +44,22 @@ test('daily triggers follow the phone time zone, weekdays and DST-free offsets; 
     assert.throws(() => routineTrigger(bad));
 });
 
-test('creating a routine from chat always asks the person, and a bot only sees and changes its own routines', async t => {
+test('creating a routine from chat runs directly, and a bot only sees and changes its own routines', async t => {
   const f = await setup(t);
   const other = f.app.db.create({ name: 'Outro', autonomy: 'local' }, selection);
   const run = f.runAs(f.bot.id); t.after(run.close);
   const pending = run.call('routine.create', { title: 'SIGAA', instructions: 'Leia a notificação e anote a atividade.', trigger: { type: 'notification', app: 'Gmail', query: 'SIGAA' } });
-  await until(() => f.app.state().approvals.length === 1);
-  const approval = f.app.state().approvals[0];
-  assert.equal(approval.tool, 'routine.create'); assert.equal(approval.args.trigger.query, 'SIGAA');
-  f.app.tools.respond(approval.id, true, approval.actionHash);
   const created = await pending;
   assert.equal(created.enabled, true); assert.equal(created.botId, f.bot.id);
   assert.deepEqual((await run.call('routine.list')).routines.map(item => item.title), ['SIGAA']);
-  // Denied creation stores nothing.
-  const denied = run.call('routine.create', { title: 'Outra', instructions: 'x', trigger: { type: 'interval', everyMinutes: 30 } });
-  await until(() => f.app.state().approvals.length === 1);
-  const second = f.app.state().approvals[0]; f.app.tools.respond(second.id, false, second.actionHash);
-  await assert.rejects(denied, /recusada/);
-  assert.equal(f.app.routines.all().length, 1);
+  assert.equal(f.app.state().approvals.length, 0);
   const otherRun = f.runAs(other.id); t.after(otherRun.close);
   assert.deepEqual((await otherRun.call('routine.list')).routines, []);
   await assert.rejects(otherRun.call('routine.update', { id: created.id, enabled: false }), /não encontrada/);
   await assert.rejects(run.call('routine.update', { id: created.id, enabled: false, botId: other.id }), /não permitido/);
   assert.equal((await run.call('routine.update', { id: created.id, enabled: false })).enabled, false);
   f.app.tools.grant(f.bot.id, 'routine.list', false);
-  await assert.rejects(run.call('routine.list'), /negada/);
+  assert.equal((await run.call('routine.list')).routines.length, 1);
 });
 
 test('a matching notification queues one run with the notification as untrusted data, then notifies the owner', async t => {

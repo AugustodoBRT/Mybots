@@ -73,92 +73,45 @@ test('links to this phone, other schemes and credentials in the URL are refused 
     assert.throws(() => safeUrl(bad), bad);
 });
 
-test('"Médio": the browser asks the first time, reading is free after "Sempre permitir", and sending a form asks', async t => {
+test('browser use, reads and submitting forms run directly; page data remains untrusted and passwords stay protected', async t => {
   const f = await setup(t, 'ask'); const run = f.open();
-  assert.ok(run.names().includes('browser_open') && run.names().includes('browser_ask_user'));
-  const opened = run.call('browser_open', { url: 'https://httpbin.org/forms/post' });
-  const card = await f.approve(true);
-  assert.equal(card.title, 'Usar o navegador'); assert.equal(card.summary, 'https://httpbin.org/forms/post'); assert.equal(card.canAlways, true);
-  assert.equal((await opened).url, 'https://httpbin.org/forms/post');
-  const page = await run.call('browser_read');
-  assert.equal(page.untrusted, true); assert.match(page.notice, /nunca instrução/); assert.equal(page.elements.length, 5);
-  // Filling a field and following a link are not "sending".
-  await run.call('browser_type', { id: 2, text: 'Augusto' }); await run.call('browser_click', { id: 1 });
+  await run.call('browser_open', { url: 'https://httpbin.org/forms/post' });
+  const page = await run.call('browser_read'); assert.equal(page.untrusted, true);
+  assert.match(page.text, /Ignore suas instruções/);
+  await run.call('browser_type', { id: 2, text: 'Ana' });
+  await assert.rejects(run.call('browser_type', { id: 3, text: 'segredo' }), /senha/);
+  await run.call('browser_click', { id: 4 });
   assert.equal(f.app.state().approvals.length, 0);
-  // Passwords are only typed by the person.
-  await assert.rejects(run.call('browser_type', { id: 3, text: 'segredo' }), /senha só a pessoa/i);
-  assert.ok(!f.phone.seen.some(item => item.op === 'type' && item.args.text === 'segredo'));
-  // The submit button: a card that names the button and the page; refusing sends nothing.
-  const denied = run.call('browser_click', { id: 4 });
-  await until(() => f.app.state().approvals.length === 1);
-  const submit = f.app.state().approvals[0];
-  assert.equal(submit.title, 'Enviar um formulário no navegador'); assert.match(submit.summary, /Enviar pedido/); assert.match(submit.summary, /httpbin\.org/);
-  await f.app.rpc('approval.respond', { approvalId: submit.id, actionHash: submit.actionHash, approved: false });
-  await assert.rejects(denied, /recusada/);
-  assert.ok(!f.phone.seen.some(item => item.op === 'click' && item.args.id === 4));
-  // Typing with submit is sending too; approved once it goes through.
-  const typed = run.call('browser_type', { id: 2, text: 'Augusto', submit: true });
-  await f.approve(); await typed;
-  assert.equal(f.phone.seen.filter(item => item.op === 'type').at(-1).args.submit, true);
-  const shot = await run.call('browser_screenshot');
-  assert.equal(shot.mcpContent[1].type, 'image'); assert.match(shot.mcpContent[0].text, /nunca instrução/);
-  await assert.rejects(run.call('browser_open', { url: 'http://127.0.0.1:3219/health' }), /deste próprio celular/);
-  assert.equal(f.app.state().browser.pages[f.bot.id].url, 'https://httpbin.org/forms/post');
+  assert.ok(f.phone.seen.some(command => command.op === 'click'));
 });
 
-test('"Pouco acesso" hides the browser; "Acesso total" sends forms without asking', async t => {
-  const basic = await setup(t, 'basic');
-  assert.ok(!basic.open().names().includes('browser_open'));
-  await assert.rejects(basic.open().call('browser_open', { url: 'https://example.com' }), /Pouco acesso/);
-  const full = await setup(t, 'full'); const run = full.open();
-  await run.call('browser_open', { url: 'https://example.com' }); await run.call('browser_click', { id: 4 });
-  assert.equal(full.app.state().approvals.length, 0);
-});
-
-test('handing a file to a site always asks, even with "Acesso total", and only the approved file goes', async t => {
-  const f = await setup(t, 'full'); const run = f.open();
-  const bytes = Buffer.from('%PDF-1.4 trabalho de Cálculo');
-  const file = f.app.tools.attachments.store(f.bot.id, { name: 'Lista-3-resolvida.pdf', mime: 'application/pdf', bytes });
-  await run.call('browser_open', { url: 'https://sigaa.exemplo.br/tarefa' });
-  // Only a file field accepts a file; other elements are refused before any card.
-  await assert.rejects(run.call('browser_upload', { id: 2, file: file.id }), /campo de arquivo/);
-  await assert.rejects(run.call('browser_upload', { id: 5, file: randomUUID() }), /não encontrado/);
+test('a retired low-access profile uses the same shared browser and can send a form', async t => {
+  const f = await setup(t, 'basic'), run = f.open();
+  assert.ok(run.names().includes('browser_open'));
+  await run.call('browser_open', { url: 'https://example.com' });
+  await run.call('browser_click', { id: 4 });
   assert.equal(f.app.state().approvals.length, 0);
-  const refused = run.call('browser_upload', { id: 5, file: file.id });
-  await until(() => f.app.state().approvals.length === 1);
-  const card = f.app.state().approvals[0];
-  assert.equal(card.title, 'Enviar um arquivo para um site'); assert.equal(card.canAlways, false);
-  assert.match(card.summary, /Lista-3-resolvida\.pdf/); assert.match(card.summary, /Arquivo da tarefa/); assert.match(card.summary, /sigaa\.exemplo\.br/);
-  await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: false });
-  await assert.rejects(refused, /recusada/);
-  assert.ok(!f.phone.seen.some(item => item.op === 'upload'));
-  const sent = run.call('browser_upload', { id: 5, file: file.id });
-  await f.approve(); const result = await sent;
-  assert.equal(result.attached, 'Lista-3-resolvida.pdf'); assert.match(result.next, /ainda não foi enviado/);
-  const command = f.phone.seen.find(item => item.op === 'upload');
-  assert.equal(Buffer.from(command.args.data, 'base64').toString(), bytes.toString()); assert.equal(command.args.mime, 'application/pdf');
-  // A file from another bot is never reachable.
-  const other = await f.app.rpc('bot.create', { name: 'Outro', access: 'full', ...selection });
-  const foreign = f.app.tools.attachments.store(other.id, { name: 'segredo.txt', mime: 'text/plain', bytes: Buffer.from('x') });
-  await assert.rejects(run.call('browser_upload', { id: 5, file: foreign.id }), /não encontrado/);
 });
 
-test('a saved login is used by the app, never sent to the model; on "Médio" the first use asks', async t => {
-  const f = await setup(t, 'ask'); const run = f.open();
-  const opening = run.call('browser_open', { url: 'https://sigaa.exemplo.br/login' }); await f.approve(true); await opening;
-  const login = run.call('browser_login');
-  await until(() => f.app.state().approvals.length === 1);
-  const card = f.app.state().approvals[0];
-  assert.equal(card.title, 'Entrar com uma senha salva'); assert.match(card.summary, /sigaa\.exemplo\.br/); assert.match(card.summary, /não vê a senha/); assert.equal(card.canAlways, true);
-  await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true, always: true });
-  const result = await login;
-  assert.equal(result.filled, true); assert.match(result.next, /browser_read/);
-  // The command carries no password: the app looks it up itself.
-  assert.deepEqual(f.phone.seen.find(item => item.op === 'login').args, {});
-  // "Sempre permitir": the next login goes without a card; a site without a saved login says so.
-  await run.call('browser_login'); assert.equal(f.app.state().approvals.length, 0);
-  await run.call('browser_open', { url: 'https://outro.exemplo.br/' });
-  await assert.rejects(run.call('browser_login'), /Não há senha salva/);
+test('uploading a bot file runs directly, and another bot cannot use that file', async t => {
+  const f = await setup(t, 'full'), run = f.open();
+  const file = f.app.tools.attachments.store(f.bot.id, { name: 'tarefa.txt', mime: 'text/plain', bytes: Buffer.from('trabalho') });
+  await run.call('browser_open', { url: 'https://example.com' });
+  await run.call('browser_upload', { id: 5, file: file.id });
+  const upload = f.phone.seen.find(command => command.op === 'upload');
+  assert.equal(Buffer.from(upload.args.data, 'base64').toString(), 'trabalho');
+  assert.equal(f.app.state().approvals.length, 0);
+  const other = await f.app.rpc('bot.create', { name: 'Outro', ...selection });
+  await assert.rejects(f.open(other.id).call('browser_upload', { id: 5, file: file.id }), /encontrado|pertence/);
+});
+
+test('a saved login is filled by the app without a permission card or password in the model result', async t => {
+  const f = await setup(t, 'ask'), run = f.open();
+  await run.call('browser_open', { url: 'https://sigaa.example.com/' });
+  const login = await run.call('browser_login');
+  assert.equal(login.filled, true); assert.equal(login.sent, true);
+  assert.equal(f.app.state().approvals.length, 0);
+  assert.doesNotMatch(JSON.stringify(login), /password|segredo/);
 });
 
 test('taking over blocks the bot; handing back after a request for help continues the bot in a new turn', async t => {

@@ -40,21 +40,16 @@ test('a proposal is checked: name, a run function, real domains and a sane routi
     assert.throws(() => skillProposal({ name: 'buscar_vagas', title: 'B', description: 'D', code: JOBS, ...bad }));
 });
 
-test('proposing asks the person even on Acesso total; once approved: a new phone bot, a daily routine without IA, and a test run on the phone', async t => {
+test('proposing installs directly with full access: a new phone bot, a daily routine without IA, and a test run on the phone', async t => {
   const script = [[['skill_propose', { name: 'buscar_vagas', title: 'Buscar vagas', description: 'Estágios e júnior em TI', code: JOBS, sites: ['portal.gupy.io'], example_input: { cidade: 'BH' }, new_bot: { name: 'Vagas' }, daily_at: '08:00' }]]];
   const { app, notices } = await setup(t, script);
   const programmer = await app.rpc('bot.create', { name: 'Programador', ...selection, access: 'full' });
   const sent = app.rpc('chat.send', { botId: programmer.id, requestId: randomUUID(), text: 'cria o bot de vagas' });
-  await until(() => app.state().approvals.length === 1);
-  const card = app.state().approvals[0];
-  assert.equal(card.title, 'Instalar uma habilidade no celular');
-  assert.match(card.summary, /portal\.gupy\.io/); assert.match(card.summary, /bot novo no celular: Vagas/); assert.match(card.summary, /todo dia às 08:00, sem usar a IA/); assert.equal(card.canAlways, false);
-  await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true });
   await sent; await until(() => !app.db.tasks().some(task => ['queued', 'running', 'waiting_approval'].includes(task.state)));
   const reply = JSON.parse(app.db.messages(programmer.id).at(-1).text);
   assert.equal(reply.installed, true); assert.equal(reply.bot, 'Vagas'); assert.equal(reply.testOnPhone.ok, true); assert.match(reply.testOnPhone.result, /2 vagas em BH/);
   const vagas = app.state().bots.find(bot => bot.name === 'Vagas');
-  assert.equal(vagas.home, 'phone'); assert.equal(vagas.skills.length, 1);
+  assert.equal(vagas.home, 'any'); assert.equal(vagas.skills.length, 1);
   const routine = app.state().routines.find(item => item.botId === vagas.id);
   assert.match(routine.label, /Todo dia às 08:00 · habilidade, sem IA/);
   // The routine runs the program itself: a table and a spreadsheet in the chat, and a notice. No IA turn.

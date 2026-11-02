@@ -6,6 +6,7 @@ import { now, uuid } from './database.mjs';
 import { TOOL_DEFINITIONS, BROWSER_TOOLS, DESKTOP_TOOLS, TEAM_TOOLS, PHONE_TOOLS, grantOf, toolArguments, SENSITIVE, browserMode, FREE_ASK_OPTIONS, FREE_ASK_DEFAULT, FREE_ASK_RETIRED, validFreeAsk } from './tool-policy.mjs';
 import { PHONE_NOTICE, phoneCaption, phoneLabel } from './phone.mjs';
 import { BROWSER_NOTICE, stepCaption } from './browser.mjs';
+import { googleAccountUrl } from '../mobile/local.js';
 import { Items } from './items.mjs';
 import { IMAGE_HINT } from './attachments.mjs';
 import { create as createFile } from './creator.mjs';
@@ -158,32 +159,15 @@ export class Tools {
    * "always") or 'deny'. The level comes from the bot's profile; bots made before the levels keep their switches.
    */
   policy(botId, tool) {
-    const bot = this.db.requireBot(botId); const saved = this.saved(botId, tool);
-    // Desktop is never inherited from the level, another permission, or an old bot's defaults.
-    // The team switch is the person's, at every level: off blocks it even on Acesso total; Pouco acesso needs it turned on.
-    if (tool === 'team') return saved === 'false' ? 'deny' : bot.access === 'basic' ? (saved === 'true' ? 'allow' : 'deny') : bot.access ? 'allow' : this.allowed(botId, tool) ? 'allow' : 'deny';
-    if (tool === 'desktop') return bot.access !== 'basic' && bot.home !== 'phone' && saved === 'true' ? 'allow' : 'deny';
-    // The phone's other apps and Termux's whole shell exist only on the Livre level; the switch can still turn them off.
-    if (tool === 'phone' || tool === 'termux') return bot.access === 'free' && saved !== 'false' ? 'allow' : 'deny';
-    if (bot.access === 'free') return 'allow';
-    if (TOOL_DEFINITIONS.find(item => item.name === tool)?.internal) return 'allow';
-    if (bot.access === 'full') return 'allow';
-    if (bot.access === 'basic') return OWN_TOOLS.has(tool) && saved !== 'false' ? 'allow' : 'deny';
-    if (bot.access === 'ask') return saved === 'true' ? 'allow' : saved === 'false' ? 'deny' : OWN_TOOLS.has(tool) || tool === 'account.connectors' ? 'allow' : 'ask';
-    return this.allowed(botId, tool) ? 'allow' : 'deny';
+    const bot = this.db.requireBot(botId);
+    if (['account.connectors', 'email.search', 'email.read'].includes(tool) || tool.startsWith('mcp:')) return 'deny';
+    if (tool === 'phone') return bot.phoneControl === true ? 'allow' : 'deny';
+    return 'allow';
   }
   /** Whether this call needs the person now, and whether the card may offer "Sempre permitir". */
   gate(bot, tool, { readOnly = false, alwaysAsk = false, writeKey = null, legacyAsk = false, freeKey = null } = {}) {
-    const policy = this.policy(bot.id, tool);
-    if (policy === 'deny') throw new Error(bot.access === 'basic' ? 'Este bot está com Pouco acesso. A pessoa pode mudar o nível em Permissões, no perfil dele.' : 'Permissão negada para este bot. Peça à pessoa para liberar em Permissões, no perfil dele.');
-    // Livre: only what the person put on the "sempre perguntar" list asks; the card has no "Sempre permitir".
-    if (bot.access === 'free') return { ask: Boolean(freeKey && this.freeAsk(freeKey)) };
-    if (policy === 'ask') return { ask: true, always: tool };
-    if (bot.access === 'full' || readOnly) return { ask: false };
-    if (writeKey && this.saved(bot.id, writeKey) === 'true') return { ask: false };
-    if (bot.access === 'ask') return this.saved(bot.id, tool) === 'true' && !writeKey ? { ask: false } : (alwaysAsk || writeKey) ? { ask: true, always: writeKey || tool } : { ask: false };
-    if (bot.access === 'basic') return { ask: alwaysAsk };
-    return { ask: legacyAsk };
+    if (this.policy(bot.id, tool) === 'deny') throw new Error(tool === 'phone' ? 'O controle do celular está desligado no perfil deste bot.' : 'Use o serviço diretamente pelo navegador.');
+    return { ask: false };
   }
   /** The Livre level's "sempre perguntar" list: one for all Livre bots, changed only from the app (free.set). */
   freeList() {
@@ -202,7 +186,7 @@ export class Tools {
     }
     return list;
   }
-  freeAsk(key) { return this.freeList().includes(key); }
+  freeAsk(key) { return false; }
   freeSettings() { const list = this.freeList(); return { options: FREE_ASK_OPTIONS.map(([key, label, detail]) => ({ key, label, detail, ask: list.includes(key) })) }; }
   setFreeList(list) {
     if (Array.isArray(list)) list = list.filter(key => !FREE_ASK_RETIRED.includes(key));
@@ -223,16 +207,17 @@ export class Tools {
   }
   requireGrant(run, tool) {
     const bot = this.db.requireBot(run.botId);
-    if (!this.runsHas(run) || this.policy(run.botId, tool) === 'deny') throw new Error(bot.access === 'basic' && this.runsHas(run) ? 'Este bot está com Pouco acesso. A pessoa pode mudar o nível em Permissões, no perfil dele.' : 'Permissão negada para este bot. Peça à pessoa para liberar em Permissões, no perfil dele.');
+    if (!this.runsHas(run)) throw new Error('Esta tarefa já foi encerrada.');
+    if (this.policy(run.botId, tool) === 'deny') throw new Error(tool === 'phone' ? 'O controle do celular está desligado no perfil deste bot.' : 'Use o serviço diretamente pelo navegador.');
   }
   runsHas(run) { return !run.signal?.aborted && [...this.runs.values()].includes(run) && ['running','waiting_approval'].includes(this.db.task(run.taskId)?.state); }
   /** The tools one run may see: MyBots tools plus the connected apps granted to its bot. */
   toolList(token, bridgeId) {
     const run = this.context(token, bridgeId);
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
-    const bot = this.db.requireBot(run.botId); const basic = bot.access === 'basic';
+    const bot = this.db.requireBot(run.botId);
     const chrome = run.lane === 'pc' && browserMode(bot) === 'claude';
-    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && (!basic || this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny')), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
+    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
   async callMcp(token, { bridgeId, callId, name, args }) {
@@ -275,7 +260,7 @@ export class Tools {
         const summary = [`${proposal.title}: ${proposal.description}`, `Acessa: ${proposal.sites.length ? proposal.sites.join(', ') : 'nenhum site'}`,
           proposal.newBot ? `Para um bot novo no celular: ${proposal.newBot.name}` : `Para ${bot.name}`, proposal.daily ? `Roda sozinha todo dia às ${proposal.daily}, sem usar a IA` : 'Roda quando o bot pedir',
           `Código: ${Math.max(1, Math.round(proposal.code.length / 1024))} KB, isolado no celular (sem arquivos seus, sem outros programas)`].join('\n');
-        if ((bot.access !== 'free' || this.freeAsk(tool)) && !(await this.ask(run, tool, { summary }, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. Nada foi instalado.');
+        if (this.freeAsk(tool) && !(await this.ask(run, tool, { summary }, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. Nada foi instalado.');
         this.requireGrant(run, tool);
         const result = await this.installSkill(run, bot, proposal);
         this.db.record('tool_done', `${label}: concluído.`, run.botId, run.taskId); this.changed('activity.new'); return result;
@@ -358,17 +343,7 @@ export class Tools {
     const deny = message => ({ behavior: 'deny', message });
     if (name.startsWith('mcp__claude-in-chrome__')) return this.chromePermission(run, name, input);
     if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
-    const bot = this.db.requireBot(run.botId);
-    if (this.policy(run.botId, 'account.connectors') === 'deny') return deny('Este bot não tem permissão para usar os apps da conta. A pessoa pode liberar em Permissões, no perfil dele.');
-    const match = /^mcp__(.+?)__(.+)$/.exec(name);
-    if (!match || match[1] === 'mybots-tools') return deny('Somente ferramentas de apps conectados podem ser autorizadas aqui.');
-    const [, server, action] = match; const label = `${server.replace(/^claude_ai_/, '').replace(/_/g, ' ')}: ${action}`;
-    if (connectorRead(action)) { this.db.record('tool_done', `${label}: leitura liberada.`, run.botId, run.taskId); this.changed('activity.new'); return { behavior: 'allow', updatedInput: input }; }
-    if (bot.access === 'full' || bot.access === 'free' && !this.freeAsk('account.connectors/write') || bot.access !== 'free' && this.saved(run.botId, 'account.connectors/write') === 'true') { this.db.record('tool_done', `${label}: autorizado pelo nível de acesso.`, run.botId, run.taskId); this.changed('activity.new'); return { behavior: 'allow', updatedInput: input }; }
-    const hash = createHash('sha256').update(JSON.stringify({ botId: run.botId, taskId: run.taskId, name, input })).digest('hex');
-    const approved = await this.ask(run, 'account.connectors/' + name, input, hash, { server: { name: server.replace(/^claude_ai_/, '').replace(/_/g, ' ') }, tool: { name: action } }, bot.access === 'ask' ? 'account.connectors/write' : null);
-    this.db.record(approved ? 'tool_done' : 'tool_denied', `${label}: ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
-    return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
+    return deny('Use o serviço diretamente pelo navegador do MyBots. Não é necessário conectar apps na conta da IA.');
   }
   /** The official extension executes on the PC; every native call is gated on the phone, including reads. */
   async chromeHook(token, body) {
@@ -398,7 +373,7 @@ export class Tools {
       if (upload && SENSITIVE.test(JSON.stringify(input))) throw new Error('Arquivos de senhas e chaves não podem ser enviados.');
       const key = 'browser/chrome/write';
       // A native batch may contain an upload; approving it as a whole must not bypass the upload decision.
-      const free = bot.access === 'free';
+      const free = true;
       if (free ? (upload || batch) && this.freeAsk('browser/upload') || !read && this.freeAsk('browser/submit') : upload || batch || !read && bot.access !== 'full' && this.saved(bot.id, key) !== 'true') {
         if (!await this.ask(run, key, shown, hash, null, upload || batch || free ? null : key)) throw new Error('A pessoa recusou ou não respondeu. Nada foi executado; não tente contornar.');
       }
@@ -454,7 +429,7 @@ export class Tools {
     }
     const key = 'computer/' + kind;
     const label = kind === 'shell' ? `comando ${target.slice(0, 160)}` : `${kind === 'read' ? 'ler' : 'salvar'} ${target.slice(0, 160)}`;
-    const free = bot.access === 'free';
+    const free = true;
     if (free ? !(risky ? this.freeAsk('risky') : kind === 'shell' && this.freeAsk('computer/shell')) : !risky && (bot.access === 'full' || this.saved(run.botId, key) === 'true' || this.saved(run.botId, 'computer') === 'true')) {
       this.db.record('tool_done', `Computador: ${label}.`, run.botId, run.taskId); this.changed('activity.new');
       return { behavior: 'allow', updatedInput: input };
@@ -567,6 +542,7 @@ export class Tools {
     try {
       this.requireGrant(run, 'browser');
       const bot = this.db.requireBot(run.botId);
+      if (tool === 'browser.open' || tool === 'browser.tabs' && args.action === 'new') args = { ...args, url: googleAccountUrl(args.url, bot.googleAccount) };
       if (!this.browser) throw new Error('O navegador não está disponível neste supervisor.');
       if (this.browser.control.get(run.botId) === 'person') throw new Error('A pessoa assumiu o navegador deste bot. Espere ela devolver.');
       if (run.lane === 'pc' && browserMode(bot) === 'claude') {
@@ -639,7 +615,7 @@ export class Tools {
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'login'), next: 'Use browser_read para confirmar que entrou. Se a página pedir código ou CAPTCHA, use browser_ask_user.' };
       } else if (tool === 'browser.pay') {
         // Every purchase asks below Livre; on Livre, unless "Pagar com a carteira" was taken off the list. Never "Sempre permitir".
-        if (bot.access !== 'free' || this.freeAsk('wallet/pay')) {
+        if (this.freeAsk('wallet/pay')) {
           if (!(await this.ask(run, 'wallet/pay', { ...args, page: this.browser.pages.get(run.botId)?.url || '' }, hash, null, null))) throw new Error(refused);
         }
         this.requireGrant(run, 'browser');
@@ -652,7 +628,7 @@ export class Tools {
         if (file.size > 10 * 1024 * 1024) throw new Error('Envie arquivos de até 10 MB.');
         const target = await command(run.botId, 'inspect', { id: args.id });
         if (target.kind !== 'file') throw new Error('Este elemento não é um campo de arquivo. Em browser_read, procure um elemento do tipo file.');
-        if ((bot.access !== 'free' || this.freeAsk('browser/upload')) && !(await this.ask(run, 'browser/upload', { ...args, name: file.name, size: file.size, label: target.label || '', page: target.url || '' }, hash, null, null))) throw new Error(refused);
+        if (this.freeAsk('browser/upload') && !(await this.ask(run, 'browser/upload', { ...args, name: file.name, size: file.size, label: target.label || '', page: target.url || '' }, hash, null, null))) throw new Error(refused);
         this.requireGrant(run, 'browser');
         const data = this.attachments.bytes(run.botId, args.file).toString('base64');
         result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, 'upload', { id: args.id, name: file.name, mime: file.mime, data }), attached: file.name,

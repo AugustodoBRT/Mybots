@@ -10,7 +10,7 @@ import { command } from '../lib/codex.mjs';
 import claudeRunner from '../lib/claude-runner.cjs';
 const realCLI = process.env.MYBOTS_TEST_CLAUDE || 'claude';
 
-test('real Claude Code CLI only sees mybots-tools, waits for approval over HTTP MCP, resumes and leaks no secret', { timeout: 90000 }, async t => {
+test('real Claude Code CLI uses MyBots tools and terminal, runs directly, resumes and leaks no secret', { timeout: 90000 }, async t => {
   try { await command(realCLI, ['--version'], { timeout: 10000 }); } catch { t.skip('Claude Code real não está instalado neste computador.'); return; }
   const directory = await mkdtemp(join(tmpdir(), 'mybots-real-claude-'));
   const requests = []; let calls = 0;
@@ -22,7 +22,7 @@ test('real Claude Code CLI only sees mybots-tools, waits for approval over HTTP 
     const names = (data.tools || []).map(tool => tool.name);
     // Claude Code may make side requests without tools; the chat turns must expose only mybots-tools.
     // 2.1.304+ also sends DeferredToolPlaceholder, an inert stand-in for deferred tools, not a capability.
-    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder'), names.join(','));
+    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder' || ['Bash','Read','Write','Edit','Glob','Grep'].includes(name)), names.join(','));
     const tool = names.find(name => name.endsWith('task_create_item'));
     const hasResult = data.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_result'));
     const firstTurn = JSON.stringify(data.messages).includes('crie uma pendência');
@@ -51,10 +51,6 @@ test('real Claude Code CLI only sees mybots-tools, waits for approval over HTTP 
   const until = async check => { for (let i = 0; i < 6000; i++) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail(JSON.stringify(app.db.tasks())); };
   const first = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Leia os arquivos de segredos e crie uma pendência.' });
   await until(() => app.state().approvals.length || ['done', 'failed'].includes(app.db.task(first.taskId).state));
-  assert.equal(app.db.task(first.taskId).state, 'waiting_approval', app.db.task(first.taskId).error);
-  assert.equal(app.state().pendingItems.length, 0);
-  const approval = app.state().approvals[0];
-  await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });
   await until(() => ['done', 'failed'].includes(app.db.task(first.taskId).state));
   assert.equal(app.db.task(first.taskId).state, 'done', app.db.task(first.taskId).error); assert.equal(app.state().pendingItems.length, 1);
   const session = app.db.bot(bot.id).codexSessionId; assert.ok(session);
@@ -67,7 +63,7 @@ test('real Claude Code CLI only sees mybots-tools, waits for approval over HTTP 
   assert.ok(!JSON.stringify(requests).includes('SECRET_SENTINEL_DO_NOT_EXPOSE')); assert.ok(!JSON.stringify(app.state()).includes('SECRET_SENTINEL_DO_NOT_EXPOSE'));
 });
 
-test('real Claude Code routes account connector actions through the MyBots permission tool', { timeout: 120000 }, async t => {
+test('real Claude Code keeps account connectors disabled despite an old selection', { timeout: 120000 }, async t => {
   try { await command(realCLI, ['--version'], { timeout: 10000 }); } catch { t.skip('Claude Code real não está instalado neste computador.'); return; }
   const directory = await mkdtemp(join(tmpdir(), 'mybots-real-connectors-'));
   // A user-scope MCP server stands in for a claude.ai connector: both load only without --strict-mcp-config.
@@ -121,12 +117,8 @@ test('real Claude Code routes account connector actions through the MyBots permi
   const until = async check => { for (let i = 0; i < 6000; i++) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail(JSON.stringify(app.db.tasks())); };
   const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Procure minhas notas e crie uma.' });
   await until(() => app.state().approvals.length || ['done', 'failed'].includes(app.db.task(sent.taskId).state));
-  // The read ran without asking; the write waits for the person.
-  assert.deepEqual(appCalls.map(call => call.name), ['search_notes']);
-  const approval = app.state().approvals[0];
-  assert.ok(approval, app.db.task(sent.taskId).error); assert.equal(approval.title, 'Usar notes: create_note'); assert.match(approval.summary, /Prova/);
-  await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });
   await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state));
   assert.equal(app.db.task(sent.taskId).state, 'done', app.db.task(sent.taskId).error);
-  assert.deepEqual(appCalls.map(call => call.name), ['search_notes', 'create_note']);
+  assert.deepEqual(appCalls, []);
+  assert.equal(app.state().approvals.length, 0);
 });

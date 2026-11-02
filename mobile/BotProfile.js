@@ -1,4 +1,3 @@
-import { browserMode } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Keyboard, Switch, StyleSheet } from 'react-native';
 import BotAvatar from './BotAvatar';
@@ -10,20 +9,6 @@ import { plainText } from './markdown';
 import NegotiationPanel from './NegotiationPanel';
 import { column, dialogBackdrop, dialogShape, noHandle } from './desktop';
 const when = value => new Date(value).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-// The access levels, like Claude Code's permission modes; switches stay under "Ajustes finos". Livre is chosen only
-// here, on the phone, after its warning.
-export const ACCESS = [
-  ['basic', 'Pouco acesso', 'Conversa, memória, pendências, anexos e rotinas. Nada do celular nem das suas contas.'],
-  ['ask', 'Médio', 'Pode tudo, mas pergunta na primeira vez que precisar (ler notificações, mandar SMS…). Responda “Sempre permitir” e ele não pergunta de novo.'],
-  ['full', 'Acesso total', 'Faz tudo sem perguntar: ler notificações, e-mails, SMS, mandar notificações e mensagens, agir nos apps da sua conta.'],
-  ['free', 'Livre', 'Faz praticamente tudo o que você faz no celular: mexe nos outros apps, usa o terminal do Termux e não pede licença, só o que estiver em “Sempre perguntar”. Tudo fica na Atividade e o botão Parar fica sempre na tela.']
-];
-// Where the bot lives, like a person who is online only where they are.
-export const HOMES = [
-  ['phone', 'Celular', 'Sempre online enquanto o celular está ligado. Para lembretes, faculdade, e-mails e rotinas.'],
-  ['pc', 'Computador', 'Online só com o computador ligado. Para programar e mexer no PC. Com ele desligado, suas mensagens esperam.'],
-  ['any', 'Onde estiver', 'Sempre online. Quando o computador liga, ele passa a trabalhar lá e ganha os poderes do PC.']
-];
 /**
  * Android draws the app edge to edge, so the window does not shrink for the keyboard: the sheet leaves its height
  * free at the bottom and scrolls the field being typed in into view.
@@ -43,15 +28,14 @@ export function useKeyboardRoom(scroll) {
   }, []);
   return height;
 }
-const STATE = { allow: 'Liberado', ask: 'Pergunta antes', deny: 'Bloqueado' };
-export default function BotProfile({ initialTab, visible, bot, models, defaultSelection, grants = [], memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, nodes = [], skills = [], onSkill, accountApps = [], accountServers = [], onApps, onFolders, loadAgentSkills, onAgentSkills, onGpu, onFallback, FallbackSettings, onBrowserMode, onClose, onSave, onGrant, onAccess, onComplete, onRoutine, onDelete, ModelSettings, freeChoice = false, freeSettings = null, onFreeAsk, PhoneControl, inline = false }) {
-  const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: bot.avatar || 'orbit', ...(bot.face ? { face: bot.face } : {}), autonomy: bot.autonomy || 'ask', access: bot.access, home: bot.home || 'phone', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'ask', home: 'phone', ...defaultSelection };
+export default function BotProfile({ initialTab, visible, bot, models, defaultSelection, memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, skills = [], onSkill, loadAgentSkills, onAgentSkills, onFallback, FallbackSettings, googleAccounts = [], onGoogleAccount, onGoogleLogin, onPhoneControl, onClose, onSave, onComplete, onRoutine, onDelete, ModelSettings, PhoneControl, inline = false }) {
+  const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, color: bot.color, avatar: bot.avatar || 'orbit', ...(bot.face ? { face: bot.face } : {}), autonomy: bot.autonomy || 'ask', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
-  const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [fine, setFine] = useState(false); const [openRoutine, setOpenRoutine] = useState(null); const [folder, setFolder] = useState('');
+  const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [account, setAccount] = useState(''); const [openRoutine, setOpenRoutine] = useState(null);
   useEffect(() => {
     if (!visible) return;
     setForm(initialForm());
-    setError(''); setTab(initialTab || 'profile');
+    setError(''); setAccount(''); setTab(initialTab || 'profile');
   }, [visible, bot?.id]);
   const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
   const act = async action => { setSaving(true); setError(''); try { await action(); } catch (e) { setError(e.message); } finally { setSaving(false); } };
@@ -64,9 +48,9 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
   </Pressable>;
   // Skills (folders with SKILL.md) found on the computer: the bot only gets the ones turned on here.
   const [catalog, setCatalog] = useState(null); const [skillsOpen, setSkillsOpen] = useState(false);
-  const onComputer = Boolean(phone && bot && bot.home && bot.home !== 'phone');
+  const onComputer = Boolean(phone && bot);
   useEffect(() => { if (visible && skillsOpen && onComputer && loadAgentSkills) { setCatalog(null); loadAgentSkills().then(setCatalog, error => setCatalog({ skills: [], message: error.message })); } }, [visible, skillsOpen, onComputer, bot?.id]);
-  const setSkill = (skill, change) => { const current = bot.skills || []; const rest = current.filter(item => item.path !== skill.path); const mine = current.find(item => item.path === skill.path); return act(() => onAgentSkills(change === null ? rest : [...rest, { path: skill.path, write: false, ...mine, ...change }])); };
+  const setSkill = (skill, change) => { const current = bot.skills || []; const rest = current.filter(item => item.path !== skill.path); const mine = current.find(item => item.path === skill.path); return act(() => onAgentSkills(change === null ? rest : [...rest, { path: skill.path, write: true, ...mine, ...change }])); };
   const toggle = (value, onChange, label) => <Switch accessibilityLabel={label} value={value} disabled={saving} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={value ? C.accent : C.muted} onValueChange={onChange} />;
   // On the computer the profile lives inside the window's right bar instead of a dialog.
   const frame = sheet => inline ? (visible ? <View style={{ flex: 1 }}>{sheet}</View> : null)
@@ -99,96 +83,44 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
           <Text style={s.label}>Inteligência</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider) => setForm(old => ({ ...old, model, reasoningEffort, provider }))} />
           {bot && phone && onFallback && FallbackSettings ? <FallbackSettings models={models} bot={bot} disabled={saving || active} onChange={fallback => act(() => onFallback(fallback))} /> : null}
           <Text style={s.label}>Rosto</Text><FacePicker name={form.name} face={form.face || { seed: (bot?.name || form.name || 'bot').trim(), color: botColor(form) }} onChange={face => field('face', face)} showStage={false} />
-          {phone && <><Text style={s.label}>Onde ele vive</Text>{HOMES.map(([key, title, detail]) => radio(form.home === key, title, detail, () => field('home', key), { disabled: saving || active }))}
-            {form.home !== 'phone' && !nodes.length ? <Text style={s.hint}>Nenhum computador conectado ainda. Até ele chegar, {form.home === 'pc' ? 'as mensagens para este bot ficam esperando' : 'este bot trabalha no celular'}.</Text> : null}</>}
-          {phone && !bot && <><Text style={s.label}>Nível de acesso</Text>{ACCESS.filter(([key]) => key !== 'free').map(([key, title, detail]) => radio(form.access === key, title, detail, () => field('access', key), { warn: key === 'full' }))}<Text style={s.hint}>Dá para mudar depois, em Acesso.</Text></>}
           {active && <Text style={s.hint}>Aguarde ou cancele a tarefa para salvar o perfil.</Text>}
           <Pressable accessibilityRole="button" disabled={!canSave} onPress={() => act(() => onSave({ ...form, face: form.face || { seed: (bot?.name || form.name || 'bot').trim() } }))} style={({ pressed }) => [s.primary, !canSave && s.disabled, pressed && s.pressed]}>
             <Icon name={bot ? 'check' : 'spark'} size={19} color={C.accentInk} stroke={2.4} /><Text style={s.primaryText}>{saving ? 'Salvando…' : bot ? 'Salvar alterações' : 'Criar meu bot'}</Text></Pressable>
           {bot && <Pressable accessibilityRole="button" disabled={saving || active} onPress={onDelete} style={s.delete}><Icon name="trash" size={16} color={C.red} /><Text style={s.deleteText}>Apagar bot e conversa</Text></Pressable>}
         </>}
-        {tab === 'tools' && <><Text style={s.sectionTitle}>Quanto {bot?.name} pode fazer?</Text>
-          {ACCESS.filter(([key]) => key !== 'free' || freeChoice || bot?.access === 'free').map(([key, title, detail]) => radio(bot?.access === key, title, detail, () => act(() => onAccess(key)), { warn: key === 'full' || key === 'free', disabled: saving || active || key === 'free' && !freeChoice }))}
-          {!freeChoice && bot?.access !== 'free' && phone ? <Text style={s.hint}>O nível Livre se escolhe no app do celular.</Text> : null}
-          {!bot?.access ? <Text style={s.hint}>Este bot usa a configuração personalizada antiga (os interruptores abaixo). Escolha um nível para simplificar.</Text> : null}
-          {active ? <Text style={s.hint}>Aguarde a resposta terminar para mudar o nível.</Text> : null}
-          {bot?.access === 'free' ? <>
-            {PhoneControl ? <PhoneControl /> : null}
-            <Text style={s.label}>Sempre perguntar (nível Livre)</Text>
-            <View style={s.group}>
-              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>No Livre, só o que estiver ligado aqui pede sua aprovação, num cartão como o de sempre. Vale para todos os bots no nível Livre e só muda por aqui, no app; o bot não consegue mudar. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA continua com você, e o MyBots, instalar apps e dar permissões nunca são feitos por bots.{bot.provider !== 'claude' ? ' No Codex, o MyBots não consegue perguntar comando a comando no Termux: com “Comandos no Termux” ligado, ele fica sem terminal no celular, e “Comandos perigosos” vale só como instrução.' : ''}</Text>
-              {(freeSettings?.options || []).map((item, index, list) => <View key={item.key} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
-                <View style={s.permissionCopy}><Text style={s.itemTitle}>{item.label}</Text>{item.detail ? <Text style={s.hint}>{item.detail}</Text> : null}</View>
-                {toggle(item.ask, on => act(() => onFreeAsk(item.key, on)), item.label)}
-              </View>)}
-              {!freeSettings ? <Text style={[s.hint, { padding: 14 }]}>Carregando…</Text> : null}
-            </View></> : null}
-          {phone && bot?.provider === 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
-            <Text style={s.label}>Apps da sua conta do Claude</Text>
-            <View style={s.group}>
-              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Marque só o que {bot.name} usa. Cada app carrega todas as ferramentas dele em cada passo da resposta (de 5 a 20 mil tokens cada); os desmarcados ficam fora.</Text>
-              {[...new Set([...accountServers, ...accountApps])].map((name, index, list) => <View key={name} style={[s.permission, index === list.length - 1 && { borderBottomWidth: 0 }]}>
-                <View style={s.permissionCopy}><Text style={s.itemTitle}>{name}</Text></View>
-                {toggle(accountApps.includes(name), on => act(() => onApps(on ? [...accountApps, name] : accountApps.filter(item => item !== name))), name)}
-              </View>)}
-              {!accountServers.length && !accountApps.length ? <Text style={[s.hint, { padding: 14 }]}>A lista aparece depois da primeira resposta de um bot com Claude, ou em Ajustes → Apps da sua conta → Atualizar.</Text> : null}
-            </View></> : null}
-          {phone && bot && bot.provider !== 'claude' && grants.find(item => item.name === 'account.connectors')?.state !== 'deny' ? <>
-            <Text style={s.label}>Apps da sua conta do Codex</Text>
-            <View style={s.group}>
-              <View style={[s.permission, { borderBottomWidth: 0 }]}>
-                <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar os apps conectados (Indeed, Gmail, Agenda…)</Text>
-                  <Text style={s.hint}>São os apps que você ligou na sua conta do ChatGPT/Codex. Ligado, {bot.name} pode usá-los; desligado, não vê nenhum. Cada app usado gasta mais tokens por resposta.</Text></View>
-                {toggle(accountApps.length > 0, on => act(() => onApps(on ? ['ChatGPT'] : [])), 'Apps da conta do Codex')}
-              </View>
-            </View></> : null}
-          {phone && bot ? <>
-            <Text style={s.label}>Navegador</Text>
-            {[
-              ['shared', 'Navegador compartilhado', 'O padrão. Um navegador para todos os bots, com abas próprias de cada um: um login feito por um bot (ou por você, ao assumir) vale para os outros. Os bots agem logados nessas contas.'],
-              ['separate', 'Navegador separado', 'Só deste bot, sem os logins dos outros. Use para isolar um bot.'],
-              ...(bot.home !== 'phone' && bot.provider === 'claude' ? [['claude', 'Claude in Chrome', 'Integração oficial do Claude, com extensão no seu Chrome e logins compartilhados.']] : [])
-            ].map(([mode, title, detail]) => radio(browserMode(bot) === mode, title, detail, () => act(() => onBrowserMode(mode)), { disabled: saving || active || mode !== 'separate' && bot.access === 'basic' || mode === 'claude' && grants.find(item => item.name === 'browser')?.state !== 'allow' }))}
-            {['shared', 'separate'].includes(browserMode(bot)) ? <Text style={s.hint}>{bot.home === 'phone' ? 'Este bot navega no celular.' : bot.home === 'pc' ? 'Este bot navega no computador.' : 'Este bot navega no aparelho onde estiver respondendo.'} O navegador do computador e o do celular são diferentes: um login feito no computador não vale no celular, e vice-versa. Entre uma vez em cada um, se precisar dos dois.{bot.access === 'basic' ? ' Em Pouco acesso o navegador é sempre separado.' : ''}</Text> : null}
-            {bot.home !== 'phone' && bot.provider === 'claude' && grants.find(item => item.name === 'browser')?.state !== 'allow' ? <Text style={s.hint}>Libere Navegador em Ajustes finos para usar o Claude in Chrome.</Text> : null}
-          </> : null}
-          {phone && bot && bot.home && bot.home !== 'phone' && grants.find(item => item.name === 'computer')?.state !== 'deny' ? <>
-            <Text style={s.label}>Pastas no computador</Text>
-            <View style={s.group}>
-              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>{bot.name} vê, cria e edita livremente na pasta dele (~/MyBots/{bot.name}) e nestas.{bot.access === 'full' ? ' Com Acesso total, também no resto da sua pasta pessoal.' : ' Fora delas, ler e salvar pedem sua aprovação.'} Senhas e chaves (como ~/.ssh) ficam sempre escondidas.</Text>
-              {(bot.folders || []).map(path => <View key={path} style={s.permission}>
-                <Icon name="list" size={16} color={C.accent} /><View style={s.permissionCopy}><Text style={s.itemTitle}>{path}</Text></View>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Tirar ${path}`} hitSlop={8} disabled={saving || active} onPress={() => act(() => onFolders((bot.folders || []).filter(item => item !== path)))}><Icon name="trash" size={16} color={C.faint} /></Pressable>
-              </View>)}
-              <View style={[s.permission, { borderBottomWidth: 0 }]}>
-                <TextInput accessibilityLabel="Nova pasta no computador" value={folder} onChangeText={setFolder} placeholder="~/vscodeProjects" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} selectionColor={C.accent} style={[s.input, { flex: 1, minHeight: 44, paddingVertical: 8 }]} />
-                <Pressable accessibilityRole="button" disabled={saving || active || !folder.trim()} onPress={() => act(async () => { await onFolders([...new Set([...(bot.folders || []), folder.trim().replace(/\/+$/, '')])]); setFolder(''); })} style={[s.smallButton, { marginTop: 0 }, (!folder.trim() || active) && s.disabled]}><Icon name="plus" size={14} color={C.accent} /><Text style={s.link}>Liberar</Text></Pressable>
-              </View>
-            </View></> : null}
+        {tab === 'tools' && <>
+          <Text style={s.sectionTitle}>Acesso</Text>
+          <Text style={s.hint}>Acesso total por padrão, no celular e no computador. Se algum recurso não estiver disponível, o bot avisa na conversa.</Text>
+          <View style={s.group}><View style={[s.permission, { borderBottomWidth: 0 }]}>
+            <View style={s.permissionCopy}><Text style={s.itemTitle}>Controlar o celular</Text><Text style={s.hint}>Permite ver a tela e usar os outros apps do celular. Você pode interromper pelo botão Parar.</Text></View>
+            {toggle(bot?.phoneControl === true, on => act(() => onPhoneControl(on)), 'Controlar o celular')}
+          </View></View>
+          {bot?.phoneControl && PhoneControl ? <PhoneControl /> : null}
+          <Text style={s.label}>Conta Google</Text>
+          <Text style={s.hint}>Gmail, Agenda, Drive e outros serviços abrem direto no navegador. Escolha a conta que este bot deve usar. Se faltar login, ele pede para você entrar.</Text>
+          {radio(!bot?.googleAccount, 'Conta já aberta no navegador', '', () => act(() => onGoogleAccount('')), { disabled: saving || active })}
+          {[...new Set([...googleAccounts, bot?.googleAccount].filter(Boolean))].map(email => radio(bot?.googleAccount === email, email, '', () => act(() => onGoogleAccount(email)), { disabled: saving || active }))}
+          <View style={[s.permission, { borderBottomWidth: 0 }]}>
+            <TextInput accessibilityLabel="E-mail de outra conta Google" value={account} onChangeText={setAccount} placeholder="Outra conta Google" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" style={[s.input, { flex: 1 }]} />
+            <Pressable accessibilityRole="button" disabled={saving || active || !account.trim()} onPress={() => act(async () => { await onGoogleAccount(account.trim().toLowerCase()); setAccount(''); })}><Text style={s.link}>Adicionar</Text></Pressable>
+          </View>
+          {bot?.googleAccount ? <Pressable accessibilityRole="button" disabled={saving || active} onPress={() => act(() => onGoogleLogin(bot.googleAccount))} style={s.smallButton}><Icon name="globe" size={16} color={C.accent} /><Text style={s.link}>Entrar nesta conta no navegador</Text></Pressable> : null}
+          <Text style={s.hint}>Você pode manter várias contas conectadas no mesmo navegador. Os logins do celular e do PC são separados; entre em cada aparelho quando necessário.</Text>
           {onComputer && onAgentSkills ? <>
             <Pressable accessibilityRole="button" onPress={() => setSkillsOpen(value => !value)} style={s.disclosure}><Text style={s.link}>Skills{(bot.skills || []).length ? ` · ${(bot.skills || []).length} ligada${(bot.skills || []).length === 1 ? '' : 's'}` : ''}</Text><Icon name={skillsOpen ? 'down' : 'back'} size={15} color={C.accent} /></Pressable>
             {skillsOpen && <View style={s.group}>
-              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Skills são pastas com instruções e scripts que ficam no computador (as de ~/.claude, ~/.codex e ~/.agents). {bot.name} só usa as que você ligar aqui, do mesmo jeito no Claude e no Codex, e só enxerga a pasta da skill, nunca o resto de ~/.claude ou ~/.codex.</Text>
+              <Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Skills são pastas com instruções e scripts que ficam no computador (as de ~/.claude, ~/.codex e ~/.agents). {bot.name} usa as que você escolher aqui, do mesmo jeito no Claude e no Codex.</Text>
               {catalog === null ? <Text style={[s.hint, { padding: 14 }]}>Procurando no computador…</Text> : catalog.skills.length === 0 ? <Text style={[s.hint, { padding: 14 }]}>{catalog.message || 'Nenhuma skill encontrada no computador.'}</Text> : catalog.skills.map(skill => {
                 const mine = (bot.skills || []).find(item => item.path === skill.path);
                 return <View key={skill.path} style={[s.permission, { alignItems: 'flex-start' }]}>
                   <View style={s.permissionCopy}><Text style={s.itemTitle}>{skill.name}</Text>{skill.source ? <Text style={[s.hint, { color: C.faint }]}>{skill.source}</Text> : null}<Text style={s.hint} numberOfLines={mine ? undefined : 2}>{skill.description || 'Sem descrição.'}</Text>
-                    {mine ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}><Switch accessibilityLabel={`${skill.name} pode ser melhorada`} value={Boolean(mine.write)} disabled={saving || active} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={mine.write ? C.accent : C.muted} onValueChange={write => setSkill(skill, { write })} /><Text style={[s.hint, { flex: 1 }]}>Pode melhorar a skill (gravar nela o que aprender)</Text></View> : null}
                   </View>
                   <Switch accessibilityLabel={`Ligar ${skill.name}`} value={Boolean(mine)} disabled={saving || active} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={mine ? C.accent : C.muted} onValueChange={on => setSkill(skill, on ? {} : null)} />
                 </View>;
               })}
-              <View style={[s.permission, { borderBottomWidth: 0, alignItems: 'flex-start' }]}>
-                <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar a placa de vídeo</Text><Text style={s.hint}>Abre o acesso à GPU do computador para este bot (renderizar vídeo, por exemplo). Fica desligado por padrão: sem isso, o bot não enxerga a placa. Num bot Codex, ligar isso também tira o isolamento próprio do Codex: ele passa a poder gravar em qualquer lugar da sua pasta pessoal (senhas e chaves continuam escondidas).</Text></View>
-                <Switch accessibilityLabel="Usar a placa de vídeo" value={bot.gpu === true} disabled={saving || active} trackColor={{ false: C.line2, true: C.accent + '88' }} thumbColor={bot.gpu === true ? C.accent : C.muted} onValueChange={on => act(() => onGpu(on))} />
-              </View>
             </View>}</> : null}
-          <Pressable accessibilityRole="button" onPress={() => setFine(value => !value)} style={s.disclosure}><Text style={s.link}>Ajustes finos</Text><Icon name={fine || !bot?.access ? 'back' : 'down'} size={15} color={C.accent} /></Pressable>
-          {(fine || !bot?.access) && <View style={s.group}><Text style={[s.hint, { padding: 14, paddingBottom: 4 }]}>Cada interruptor vale por cima do nível. Desligar uma ferramenta também cancela a aprovação que estiver aberta.</Text>
-            {grants.map((grant, index) => <View key={grant.name} style={[s.permission, index === grants.length - 1 && { borderBottomWidth: 0 }]}><View style={s.permissionCopy}><Text style={s.itemTitle}>{grant.label}</Text><Text style={s.hint}>{grant.description}</Text>{bot?.access ? <Text style={[s.stateTag, grant.state === 'allow' ? s.stateAllow : grant.state === 'ask' ? s.stateAsk : s.stateDeny]}>{STATE[grant.state]}</Text> : null}</View>
-              {toggle(bot?.access ? grant.state === 'allow' : grant.allowed, allowed => act(() => onGrant(grant.name, allowed)), grant.label)}</View>)}</View>}
-          <View style={s.security}><Icon name="shield" size={20} color={C.accent} /><View style={{ flex: 1 }}><Text style={s.itemTitle}>Um bot não herda acessos de outro.</Text><Text style={s.hint}>{bot?.access === 'free' ? 'No Livre, só este bot ganha o terminal do Termux e o controle do celular; senhas, cartões, códigos e os arquivos do supervisor continuam fora do alcance dele.' : 'Sem terminal e sem ler os arquivos do celular.'} Cada ação fica registrada na Atividade.</Text></View></View></>}
-        {tab === 'routines' && <><Text style={s.sectionTitle}>O que {bot?.name} faz sozinho</Text><Text style={s.hint}>Peça na conversa, por exemplo: “todo dia às 8h me resume os e-mails” ou “quando chegar notificação do SIGAA, anote a atividade”. Você aprova cada rotina antes de ela existir.</Text>
+        </>}
+        {tab === 'routines' && <><Text style={s.sectionTitle}>O que {bot?.name} faz sozinho</Text><Text style={s.hint}>Peça na conversa, por exemplo: “todo dia às 8h me resume os e-mails” ou “quando chegar notificação do SIGAA, anote a atividade”. Você pode consultar e pausar as rotinas aqui.</Text>
           {routines.length ? routines.map(item => <View key={item.id} style={s.item}>
             <View style={s.routineHead}><View style={s.itemIcon}><Icon name={item.trigger?.type === 'notification' ? 'bell' : 'clock'} size={17} color={item.enabled ? C.sky : C.faint} /></View><Text style={[s.itemTitle, { flex: 1 }]}>{item.title}</Text>{toggle(item.enabled, enabled => act(() => onRoutine('routine.update', item.id, { enabled })), `Rotina ${item.title} ${item.enabled ? 'ativa' : 'pausada'}`)}</View>
             <Text style={s.routineTrigger}>{item.label}</Text>

@@ -62,17 +62,17 @@ test('o resumo do widget leva os bichos dos bots e da marca', async t => {
   assert.equal(summary.brand.spec.seed, 'MyBots'); assert.equal(summary.brand.mood, 'normal');
 });
 
-test('o assistente de novo bot cria com o corpo escolhido, nível e onde vive', async t => {
+test('o assistente de novo bot cria com o corpo escolhido, acesso total e presença automática', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-newbot-'));
   const app = await createSupervisor({ directory, port: 0, codex, execute: async () => ({ text: 'ok', ...selection }) });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const face = { seed: 'Zeca-ab12', color: '#FFB27A', mimo: { squar: 6, sx: 1.1, sy: 0.95, eyes: 3, eyeStyle: 'oval', eyeGap: 1.1, mouth: 'dentes', top: 'gato', blush: true } };
   for (const access of ['basic', 'ask', 'full']) for (const home of ['phone', 'pc', 'any']) {
     const bot = await app.rpc('bot.create', { name: `Zeca ${access}${home}`, instructions: 'Seja direto.', color: 'green', avatar: 'orbit', autonomy: 'ask', access, home, face, ...selection });
-    assert.deepEqual([bot.access, bot.home, bot.face], [access, home, face]);
+    assert.deepEqual([bot.access, bot.home, bot.face], ['full', 'any', face]);
   }
   // the level Livre is applied after creation (the app shows its warning first), never in the same call as the face
   const bot = await app.rpc('bot.create', { name: 'Livre', access: 'ask', face, ...selection });
   await app.rpc('bot.update', { botId: bot.id, access: 'free' });
-  assert.equal((await app.rpc('state.get')).bots.find(item => item.id === bot.id).access, 'free');
+  assert.equal((await app.rpc('state.get')).bots.find(item => item.id === bot.id).access, 'full');
 });

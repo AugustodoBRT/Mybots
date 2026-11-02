@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { costOf } from '../lib/pricing.mjs';
 import { validateProfile, browserMode, TOOL_DEFINITIONS, toolArguments } from './tool-policy.mjs';
-import { validateBackup, mergeBotLists, deleteLocalBot } from '../mobile/local.js';
+import { validateBackup, mergeBotLists, deleteLocalBot, defaultBotAccess, validGoogleAccount } from '../mobile/local.js';
 
 export const now = () => new Date().toISOString();
 // An IA's session: Codex, Claude and Antigravity use a UUID; opencode, "ses_" and letters/digits.
@@ -241,6 +241,22 @@ export class Database {
     });
   }
   /** How the person wants to be called (home-screen greeting) and the look they chose (dark, light or the system's). */
+  googleAccounts() {
+    try { const saved = JSON.parse(this.get("SELECT value FROM metadata WHERE key='google.accounts'")?.value || '[]'); return Array.isArray(saved) ? saved.filter(validGoogleAccount) : []; } catch { return []; }
+  }
+  addGoogleAccount(account) {
+    if (!validGoogleAccount(account)) throw new Error('Informe o e-mail da conta Google.');
+    const accounts = [...new Set([...this.googleAccounts(), account.trim().toLowerCase()])];
+    if (accounts.length > 50) throw new Error('Use até 50 contas Google.');
+    this.run("INSERT INTO metadata VALUES('google.accounts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(accounts));
+    return accounts;
+  }
+  setPhoneControl(id, on) {
+    if (typeof on !== 'boolean') throw new Error('Escolha se o bot pode controlar o celular.');
+    const bot = { ...this.requireBot(id), phoneControl: on, updatedAt: now() };
+    this.transaction(() => { this.putBot(bot); this.run('DELETE FROM codex_sessions WHERE bot_id=?', id); this.run('DELETE FROM room_sessions WHERE bot_id=?', id); this.record('grant_changed', `Controle do celular: ${on ? 'ligado' : 'desligado'}.`, id); });
+    return bot;
+  }
   person() {
     const theme = this.get("SELECT value FROM metadata WHERE key='person.theme'")?.value;
     return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '', ...(theme ? { theme } : {}) };
@@ -300,8 +316,10 @@ export class Database {
   bot(id) {
     const row = this.get('SELECT body FROM bots WHERE id=?', id);
     if (!row) return null;
-    const bot = JSON.parse(row.body);
-    bot.browserMode = browserMode(bot); if (bot.access === 'basic' && bot.browserMode === 'shared') bot.browserMode = 'separate'; delete bot.mainChrome; delete bot.messages;
+    const stored = JSON.parse(row.body);
+    if (stored.phoneControl === undefined && stored.access === 'free' && this.get('SELECT body FROM grants WHERE bot_id=? AND tool=?', id, 'phone')?.body === 'false') stored.phoneControl = false;
+    const bot = defaultBotAccess(stored);
+    bot.browserMode = browserMode(bot); delete bot.mainChrome; delete bot.messages;
     const session = this.get('SELECT session_id FROM codex_sessions WHERE bot_id=?', id);
     if (session) bot.codexSessionId = session.session_id;
     return bot;
@@ -417,7 +435,7 @@ export class Database {
     this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
   }
   /** Everything, with every message: backups and export. The app's state is lighter (see the supervisor's state()). */
-  snapshot() { return { schema: 1, mode: 'phone', supervisorMigrated: true, bots: this.bots().map(bot => ({ ...bot, messages: this.messages(bot.id) })), roomsState: { schema: 1, rooms: this.rooms().map(room => ({ ...room, messages: this.roomMessages(room.id) })) }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
+  snapshot() { return { schema: 1, googleAccounts: this.googleAccounts(), mode: 'phone', supervisorMigrated: true, bots: this.bots().map(bot => ({ ...bot, messages: this.messages(bot.id) })), roomsState: { schema: 1, rooms: this.rooms().map(room => ({ ...room, messages: this.roomMessages(room.id) })) }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
     schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
   } }; }
   validateTools(snapshot) {
@@ -468,9 +486,11 @@ export class Database {
   }
   restore(snapshot) {
     validateBackup(snapshot); this.validateTools(snapshot);
+    if (snapshot.googleAccounts !== undefined && (!Array.isArray(snapshot.googleAccounts) || snapshot.googleAccounts.length > 50 || !snapshot.googleAccounts.every(validGoogleAccount))) throw new Error('Contas Google inválidas no backup.');
     if (this.activeTasks().length) throw new Error('Aguarde ou cancele as tarefas antes de restaurar.');
     this.backup();
     this.transaction(() => {
+      if (snapshot.googleAccounts) this.run("INSERT INTO metadata VALUES('google.accounts',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(snapshot.googleAccounts));
       const stamp = now();
       const restored = new Set(snapshot.bots.map(bot => bot.id));
       for (const bot of this.bots()) if (!restored.has(bot.id)) { this.putBot({ ...bot, deletedAt: stamp, updatedAt: stamp, codexSessionId: undefined }); this.replaceMessages(bot.id, []); }
@@ -511,22 +531,22 @@ export class Database {
       !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
     const stamp = now();
     const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', ...(data.face ? { face: data.face } : {}), autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
-    this.transaction(() => { this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
+    Object.assign(bot, defaultBotAccess(bot), { googleAccount: data.googleAccount || '' });
+    this.transaction(() => { if (bot.googleAccount) this.addGoogleAccount(bot.googleAccount); this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
     return bot;
   }
   configure(id, selection, changes = {}) {
     const bot = this.requireBot(id);
+    validateProfile({ ...changes, provider: selection.provider || bot.provider });
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','face','autonomy','access','home','folders','browserMode','skills','gpu']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','face','autonomy','access','home','folders','browserMode','skills','gpu','googleAccount']) if (changes[field] !== undefined) updated[field] = changes[field];
     // The reserve model for when the subscription's limit ends (null removes it); only another provider's makes sense.
     if (changes.fallback !== undefined) { if (changes.fallback === null) delete updated.fallback; else updated.fallback = { provider: changes.fallback.provider, model: changes.fallback.model, reasoningEffort: changes.fallback.reasoningEffort }; }
     if (updated.fallback && updated.fallback.provider === (updated.provider || 'codex')) delete updated.fallback;
     if (changes.mainChrome !== undefined && changes.browserMode === undefined) updated.browserMode = changes.mainChrome && updated.provider === 'claude' ? 'claude' : 'shared';
     if (changes.provider === 'codex' && changes.browserMode === undefined && updated.browserMode === 'claude') updated.browserMode = 'shared';
-    updated.browserMode = browserMode(updated);
-    // "Pouco acesso" never acts logged in to the person's accounts: its browser is separate.
-    if (updated.access === 'basic') updated.browserMode = 'separate';
+    Object.assign(updated, defaultBotAccess(updated));
     validateProfile(updated);
     if (typeof updated.name !== 'string' || !updated.name.trim() || updated.name.trim().length > 40 || typeof updated.instructions !== 'string' || updated.instructions.length > 2000 || !['green','blue','purple','orange'].includes(updated.color)) throw new Error('Informe nome, personalidade e cor válidos.');
     updated.name = updated.name.trim(); updated.instructions = updated.instructions.trim();
@@ -535,10 +555,10 @@ export class Database {
     // A new access level, like a new grant, needs a fresh session so the bot stops repeating "I have no access".
     // Moving to another device also starts a new session there: an IA session lives on the machine that made it.
     const moved = (updated.home || 'phone') !== (bot.home || 'phone') || browserMode(updated) !== browserMode(bot);
-    if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access) delete updated.codexSessionId;
+    if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access || updated.googleAccount !== bot.googleAccount) delete updated.codexSessionId;
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total', free: 'Livre' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
-    this.transaction(() => { this.putBot(updated); this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
+    this.transaction(() => { if (updated.googleAccount) this.addGoogleAccount(updated.googleAccount); this.putBot(updated); if (updated.googleAccount !== bot.googleAccount) this.run('DELETE FROM room_sessions WHERE bot_id=?', id); this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
     return updated;
   }
   delete(id) {

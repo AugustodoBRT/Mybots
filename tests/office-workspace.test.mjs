@@ -119,9 +119,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByLabel('Remover bot.txt').click();
   await composer.fill('Aprovação real'); await page.getByLabel('Enviar mensagem', { exact: true }).click();
   await page.getByRole('button', { name: 'Tarefas', exact: true }).click();
-  await page.getByLabel('Tarefas de Atlas').getByText('Aguardando sua decisão', { exact: true }).first().waitFor(); await page.getByLabel('Tarefas de Atlas').getByText('Aprovação real', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Aprovar', exact: true }).click();
-  await page.waitForFunction(() => !document.body.innerText.includes('Aguardando sua decisão'), null, { timeout: 30000 });
+  for (let attempt = 0; attempt < 200 && !app.db.all('SELECT * FROM pending_items').some(item => item.bot_id === bots[0].id); attempt++) await page.waitForTimeout(20);
+  assert.equal(app.state().approvals.length, 0);
   assert.equal(app.db.all('SELECT * FROM pending_items').some(item => item.bot_id === bots[0].id), true);
   await page.getByRole('button', { name: 'Atlas', exact: true }).click();
   await composer.fill('Teste cancelamento'); await page.getByLabel('Enviar mensagem', { exact: true }).click();

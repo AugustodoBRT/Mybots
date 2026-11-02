@@ -26,40 +26,22 @@ async function setup(t, access) {
   return { app, bot, open, sent, approvals: () => app.state().approvals };
 }
 
-test('"Pouco acesso" keeps the bot to its own memory, items and routines, and hides the rest', async t => {
+test('retired access levels now all allow browser and device tools, while keeping private memory', async t => {
   const f = await setup(t, 'basic'); const run = f.open();
-  assert.ok(run.names().includes('memory_write')); assert.ok(!run.names().includes('notifications_recent')); assert.ok(!run.names().includes('sms_send'));
-  assert.deepEqual(await run.call('memory_write', { key: 'cor', text: 'verde' }), { saved: true, key: 'cor' });
-  await assert.rejects(run.call('notifications_recent', {}), /Pouco acesso/);
+  assert.ok(run.names().includes('browser_open')); assert.ok(run.names().includes('sms_search'));
+  assert.ok(!run.names().includes('email_search')); assert.ok(!run.names().includes('phone_screen'));
+  await run.call('memory_write', { key: 'nome', text: 'Ana' });
+  assert.equal((await run.call('memory_read', {})).memories[0].text, 'Ana');
   assert.equal(f.approvals().length, 0);
 });
 
-test('"Médio" asks the first time, "Sempre permitir" switches it on, and an action keeps its own approval', async t => {
+test('old per-tool switches and the retired Médio level do not restrict total access', async t => {
   const f = await setup(t, 'ask'); const run = f.open();
-  assert.ok(run.names().includes('notifications_recent'));
-  // Own data needs no question.
-  await run.call('memory_write', { key: 'cor', text: 'verde' }); assert.equal(f.approvals().length, 0);
-  const first = run.call('notifications_recent', {});
-  await until(() => f.approvals().length === 1);
-  const card = f.approvals()[0]; assert.equal(card.canAlways, true);
-  await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true, always: true });
-  assert.ok(Array.isArray((await first).notifications));
-  await run.call('notifications_recent', { app: 'Gmail' }); assert.equal(f.approvals().length, 0, 'não pergunta de novo');
-  assert.equal(f.app.tools.grants(f.bot.id).find(item => item.name === 'notifications.recent').state, 'allow');
-  // Sending an SMS: once only, then always.
-  const sms = run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
-  await until(() => f.approvals().length === 1);
-  const smsCard = f.approvals()[0]; await f.app.rpc('approval.respond', { approvalId: smsCard.id, actionHash: smsCard.actionHash, approved: true });
-  await sms;
-  const again = run.call('sms_send', { number: '+5531999990000', text: 'De novo' });
-  await until(() => f.approvals().length === 1);
-  const second = f.approvals()[0]; await f.app.rpc('approval.respond', { approvalId: second.id, actionHash: second.actionHash, approved: true, always: true });
-  await again;
-  await run.call('sms_send', { number: '+5531999990000', text: 'Sem perguntar' }); assert.equal(f.approvals().length, 0);
-  assert.equal(f.sent.filter(item => item.command === 'termux-sms-send').length, 3);
-  // A switch turned off in fine-tuning still wins over the level.
   f.app.tools.grant(f.bot.id, 'sms.send', false);
-  await assert.rejects(f.open().call('sms_send', { number: '+5531999990000', text: 'x' }), /negada/);
+  await run.call('notifications_recent', {});
+  await run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
+  assert.equal(f.approvals().length, 0);
+  assert.ok(f.sent.some(item => item.command === 'termux-sms-send'));
 });
 
 test('"Acesso total" runs everything without asking, including notifications and SMS', async t => {
@@ -71,23 +53,13 @@ test('"Acesso total" runs everything without asking, including notifications and
   assert.ok(f.sent.some(item => item.title === 'Oi') && f.sent.some(item => item.command === 'termux-sms-send'));
 });
 
-test('account connectors follow the level: Médio asks before writes (with always), Total allows, Pouco blocks', async t => {
-  const decide = async (access, remember) => {
+test('account connector requests direct every bot to its browser', async t => {
+  for (const access of ['basic', 'ask', 'full']) {
     const f = await setup(t, access); const run = f.open();
-    const answer = run.call('permission', { tool_name: 'mcp__claude_ai_Gmail__send_email', input: { to: 'a@b.c' } });
-    if (access === 'ask') {
-      await until(() => f.approvals().length === 1);
-      const card = f.approvals()[0]; assert.equal(card.canAlways, true);
-      await f.app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true, always: remember });
-    }
-    const first = await answer;
-    const reads = await run.call('permission', { tool_name: 'mcp__claude_ai_Gmail__search_emails', input: {} });
-    const next = access === 'ask' && remember ? await run.call('permission', { tool_name: 'mcp__claude_ai_Gmail__send_email', input: { to: 'x@y.z' } }) : null;
-    return { first: first.behavior, reads: reads.behavior, next: next?.behavior, asked: f.approvals().length };
-  };
-  assert.deepEqual(await decide('full'), { first: 'allow', reads: 'allow', next: undefined, asked: 0 });
-  assert.deepEqual(await decide('ask', true), { first: 'allow', reads: 'allow', next: 'allow', asked: 0 });
-  assert.deepEqual(await decide('basic'), { first: 'deny', reads: 'deny', next: undefined, asked: 0 });
+    const answer = await run.call('permission', { tool_name: 'mcp__claude_ai_Gmail__send_email', input: { to: 'a@b.c' } });
+    assert.equal(answer.behavior, 'deny'); assert.match(answer.message, /navegador/);
+    assert.equal(f.approvals().length, 0);
+  }
 });
 
 test('bot notifications go to the MyBots app when it is polling, and fall back to Termux:API otherwise', async t => {
@@ -115,7 +87,8 @@ test('an approval reaches the notification with Aprovar/Recusar, once and only f
   const take = async () => { const { items } = await poll(); for (const item of items) await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) }); return items; };
   // The app is polling; a pending SMS approval comes with its hash and an approve works exactly once.
   const waiting = poll(); await new Promise(r => setTimeout(r, 50));
-  const sms = run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
+  const context = [...f.app.tools.runs.values()].at(-1);
+  const sms = f.app.tools.ask(context, 'sms.send', { number: '+5531999990000', text: 'Oi' }, 'first-action', null, null).then(async approved => { if (approved) return run.call('sms_send', { number: '+5531999990000', text: 'Oi' }); });
   const [item] = (await waiting).items;
   assert.ok(item.approvalId && item.actionHash && item.text.includes('Oi')); assert.equal(item.canReply, undefined);
   await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) });
@@ -125,12 +98,12 @@ test('an approval reaches the notification with Aprovar/Recusar, once and only f
   await sms; assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
   assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: item.actionHash })).status, 400, 'não vale duas vezes');
   // Recusar leaves the action undone, and the card is dismissed on the phone.
-  const second = run.call('sms_send', { number: '+5531999990000', text: 'Outro' }).catch(error => error);
+  const second = f.app.tools.ask(context, 'sms.send', { number: '+5531999990000', text: 'Outro' }, 'second-action', null, null);
   let next, dismissed = [];
   for (let i = 0; i < 6 && !next; i++) { for (const entry of await take()) { if (entry.approvalId) next = entry; if (entry.dismiss) dismissed.push(entry); } }
   assert.ok(next, 'o segundo cartão chegou');
   assert.equal((await act({ type: 'reject', approvalId: next.approvalId, actionHash: next.actionHash })).status, 200);
-  assert.ok(await second instanceof Error); assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
+  assert.equal(await second, false); assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
   for (let i = 0; i < 6 && !dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId); i++) dismissed.push(...(await take()).filter(entry => entry.dismiss));
   assert.ok(dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId), 'o aviso sai da tela');
 });

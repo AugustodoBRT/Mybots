@@ -42,10 +42,8 @@ export class Nodes {
   computer() { return [...this.online.values()][0] || null; }
   /** Where a bot's next turn runs: 'phone', 'pc', or null while it waits for the computer. */
   lane(bot) {
-    const home = bot?.home || 'phone';
-    if (home === 'phone') return 'phone';
-    if (this.computer()) return 'pc';
-    return home === 'any' ? 'phone' : null;
+    const computer = this.computer();
+    return computer?.connections?.[bot?.provider || 'codex']?.loggedIn ? 'pc' : 'phone';
   }
   executor(lane) { return lane === 'pc' ? this.computer()?.execute || null : null; }
   /** How the app shows a bot: online and where, or offline with the last time its computer was seen. */

@@ -23,86 +23,50 @@ async function setup(t) {
   return { get app() { return app; }, ran, reply, make, send, restart };
 }
 
-test('a bot of the computer sleeps while it is off; its message waits and runs there once it connects', async t => {
+test('every bot responds on the phone while the PC is off and moves to the computer when it connects', async t => {
   const f = await setup(t);
-  const phone = await f.make('Faculdade'); const pc = await f.make('Programador', 'pc'); const any = await f.make('Pesquisa', 'any');
-  assert.equal(phone.home, 'phone');
-  let state = f.app.state();
-  assert.deepEqual(state.presence[phone.id], { online: true, where: 'phone' });
-  assert.deepEqual(state.presence[pc.id], { online: false, where: null, lastSeen: null });
-  assert.deepEqual(state.presence[any.id], { online: true, where: 'phone' });
-
-  const waiting = await f.send(pc, 'Cria um projeto');
-  await f.send(phone, 'Oi'); await f.send(any, 'Pesquisa algo');
-  await until(() => f.ran.length === 2);
-  assert.deepEqual(f.ran.map(item => item.where), ['phone', 'phone']);
-  assert.equal(f.app.db.task(waiting.taskId).state, 'queued');
-
-  const leave = f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, name: 'Notebook', execute: f.reply('pc') });
-  await until(() => f.app.db.task(waiting.taskId).state === 'done');
-  assert.deepEqual(f.ran.at(-1), { bot: 'Programador', where: 'pc' });
-  state = f.app.state();
-  assert.deepEqual(state.presence[pc.id], { online: true, where: 'pc' });
-  assert.deepEqual(state.presence[any.id], { online: true, where: 'pc' });
-  assert.equal(state.nodes[0].online, true);
-  assert.match(state.activity.find(item => item.kind === 'node_connected').detail, /Notebook conectado: 1 bot ficou online/);
-
+  const bots = await Promise.all([f.make('Faculdade'), f.make('Programador', 'pc'), f.make('Pesquisa', 'any')]);
+  for (const bot of bots) {
+    assert.equal(bot.home, 'any');
+    assert.deepEqual(f.app.state().presence[bot.id], { online: true, where: 'phone' });
+    await f.send(bot, 'Oi');
+  }
+  await until(() => f.ran.length === 3);
+  assert.ok(f.ran.every(item => item.where === 'phone'));
+  const leave = f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, execute: f.reply('pc') });
+  const task = await f.send(bots[0], 'Continue');
+  await until(() => f.app.db.task(task.taskId).state === 'done');
+  assert.equal(f.ran.at(-1).where, 'pc');
   leave();
-  state = f.app.state();
-  assert.equal(state.presence[pc.id].online, false);
-  assert.ok(Date.parse(state.presence[pc.id].lastSeen) > 0);
-  assert.deepEqual(state.presence[any.id], { online: true, where: 'phone' });
+  assert.deepEqual(f.app.state().presence[bots[0].id], { online: true, where: 'phone' });
 });
 
-test('the computer and the phone answer at the same time, but one bot never answers two turns at once', async t => {
-  const f = await setup(t);
-  const phone = await f.make('Faculdade'); const any = await f.make('Pesquisa', 'any');
+test('bots can work concurrently on the active device, but one bot never answers two turns at once', async t => {
+  const f = await setup(t), a = await f.make('A'), b = await f.make('B');
   let release; const gate = new Promise(resolve => { release = resolve; });
-  f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, execute: async bot => { f.ran.push({ bot: bot.name, where: 'pc' }); await gate; return { text: 'ok', ...selection, codexSessionId: randomUUID() }; } });
-  const first = await f.send(any, 'Tarefa longa'); const second = await f.send(any, 'Outra');
-  await until(() => f.ran.length === 1);
-  const quick = await f.send(phone, 'Oi');
-  await until(() => f.app.db.task(quick.taskId).state === 'done');
-  assert.equal(f.app.db.task(first.taskId).state, 'running');
-  assert.equal(f.app.db.task(second.taskId).state, 'queued');
-  release();
-  await until(() => f.app.db.task(second.taskId).state === 'done');
-  assert.deepEqual(f.ran.filter(item => item.bot === 'Pesquisa').map(item => item.where), ['pc', 'pc']);
+  f.app.nodes.connect({ id: 'pc', connections: { codex: { loggedIn: true } }, execute: async bot => { f.ran.push({ bot: bot.name }); await gate; return { text: 'Ok', ...selection }; } });
+  const first = await f.send(a, 'Primeira'), second = await f.send(a, 'Segunda'), third = await f.send(b, 'Outra');
+  await until(() => f.ran.length === 2);
+  assert.equal(f.app.db.task(first.taskId).state, 'running'); assert.equal(f.app.db.task(second.taskId).state, 'queued'); assert.equal(f.app.db.task(third.taskId).state, 'running');
+  release(); await until(() => f.app.db.task(second.taskId).state === 'done');
 });
 
-test('if the computer goes away mid-answer the turn is interrupted, not replayed; waiting turns keep waiting', async t => {
-  const f = await setup(t);
-  const pc = await f.make('Programador', 'pc');
+test('disconnecting interrupts the running PC turn, while the next turn proceeds on the phone', async t => {
+  const f = await setup(t), bot = await f.make('Programador', 'pc');
   let calls = 0;
-  const leave = f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, execute: (bot, prompt, { signal }) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('fechado')))); } });
-  const running = await f.send(pc, 'Compila tudo'); const next = await f.send(pc, 'Depois roda os testes');
-  await until(() => f.app.db.task(running.taskId).state === 'running');
-  leave();
-  await until(() => f.app.db.task(running.taskId).state === 'failed');
-  assert.match(f.app.db.task(running.taskId).error, /computador desconectou/);
-  assert.equal(f.app.db.task(next.taskId).state, 'queued');
-  assert.equal(calls, 1);
-  // A waiting turn can be cancelled like any queued one.
-  await f.app.rpc('task.cancel', { taskId: next.taskId });
-  assert.equal(f.app.db.task(next.taskId).state, 'cancelled');
+  const leave = f.app.nodes.connect({ id: 'pc', connections: { codex: { loggedIn: true } }, execute: (bot, prompt, { signal }) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('fechado')))); } });
+  const first = await f.send(bot, 'Demorada'); await until(() => calls === 1);
+  const next = await f.send(bot, 'Próxima'); leave();
+  await until(() => f.app.db.task(first.taskId).state === 'failed');
+  await until(() => f.app.db.task(next.taskId).state === 'done');
+  assert.equal(calls, 1); assert.equal(f.ran.at(-1).where, 'phone');
 });
 
-test('"visto por último" survives a restart; a waiting turn does not keep the phone awake; moving a bot starts a new session', async t => {
-  const f = await setup(t);
-  const pc = await f.make('Programador', 'pc'); const phone = await f.make('Faculdade');
+test('known computer details survive restart while all bots stay available on the phone', async t => {
+  const f = await setup(t), bot = await f.make('Programador', 'pc');
   f.app.nodes.connect({ id: 'notebook', connections: { codex: { loggedIn: true } }, name: 'Notebook', execute: f.reply('pc') })();
-  await f.send(pc, 'Espera o PC');
   const app = await f.restart();
-  const state = app.state();
-  assert.equal(state.nodes[0].name, 'Notebook'); assert.equal(state.nodes[0].online, false);
-  assert.equal(state.presence[pc.id].lastSeen, state.nodes[0].lastSeen);
-  const wake = await fetch(`http://127.0.0.1:${app.port}/device/wake`, { method: 'POST', headers: { Authorization: `Bearer ${app.token}`, 'Content-Type': 'application/json' }, body: '{}' }).then(response => response.json());
-  assert.equal(wake.busy, false);
-  // Changing where a bot lives waits for its line and then drops the session (it belongs to the other machine).
-  await assert.rejects(app.rpc('bot.update', { botId: pc.id, home: 'phone' }), /Aguarde/);
-  await f.send(phone, 'Oi'); await until(() => app.db.bot(phone.id).codexSessionId);
-  const moved = await app.rpc('bot.update', { botId: phone.id, home: 'any' });
-  assert.equal(moved.home, 'any'); assert.equal(moved.codexSessionId, undefined);
-  assert.match(app.state().activity[0].detail, /Agora vive onde estiver ligado/);
-  await assert.rejects(app.rpc('bot.update', { botId: phone.id, home: 'nuvem' }), /onde o bot vive/);
+  assert.equal(app.state().nodes[0].name, 'Notebook'); assert.equal(app.state().nodes[0].online, false);
+  assert.deepEqual(app.state().presence[bot.id], { online: true, where: 'phone' });
+  const turn = await f.send(bot, 'Oi'); await until(() => app.db.task(turn.taskId).state === 'done');
 });

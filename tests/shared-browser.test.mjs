@@ -16,7 +16,7 @@ import { Database } from '../supervisor/database.mjs';
 const chrome = { skip: !existsSync('/usr/bin/google-chrome-stable'), timeout: 60000 };
 const wait = async check => { for (let n = 0; n < 300; n++) { if (await check()) return; await new Promise(r => setTimeout(r, 20)); } assert.fail('Estado esperado não chegou.'); };
 
-test('modes: shared is the default, old own bots move to it, Pouco acesso stays separate; phone commands carry the profile', async t => {
+test('modes: shared is the default, old own bots move to it, old restricted profiles also share the browser; phone commands carry the profile', async t => {
   assert.equal(browserMode({}), 'shared'); assert.equal(browserMode({ browserMode: 'own' }), 'shared'); assert.equal(browserMode({ browserMode: 'separate' }), 'separate');
   validateProfile({ browserMode: 'separate' }); validateProfile({ browserMode: 'own' }); assert.throws(() => validateProfile({ browserMode: 'named' }));
   const directory = await mkdtemp(join(tmpdir(), 'mybots-shared-modes-')), db = new Database(join(directory, 'db'));
@@ -25,8 +25,8 @@ test('modes: shared is the default, old own bots move to it, Pouco acesso stays 
   const old = db.create({ name: 'Antigo' }, selection); db.putBot({ ...old, browserMode: 'own' });
   assert.equal(db.requireBot(old.id).browserMode, 'shared');
   assert.equal(db.create({ name: 'Novo' }, selection).browserMode, 'shared');
-  assert.equal(db.create({ name: 'Pouco', access: 'basic' }, selection).browserMode, 'separate');
-  assert.equal(db.configure(old.id, selection, { access: 'basic' }).browserMode, 'separate');
+  assert.equal(db.create({ name: 'Pouco', access: 'basic' }, selection).browserMode, 'shared');
+  assert.equal(db.configure(old.id, selection, { access: 'basic' }).browserMode, 'shared');
   const backup = { schema: 1, bots: [{ id: randomUUID(), name: 'B', instructions: '', color: 'green', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), messages: [], browserMode: 'separate' }] };
   validateBackup(backup); validateBackup({ ...backup, bots: [{ ...backup.bots[0], browserMode: 'own' }] });
   const shared = randomUUID(), separate = randomUUID(), sent = [];

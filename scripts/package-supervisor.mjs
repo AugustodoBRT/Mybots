@@ -13,7 +13,7 @@ try {
   cpSync(join(root, 'supervisor/node_modules/ws'), join(temporary, 'supervisor/node_modules/ws'), { recursive: true, filter: source => !source.endsWith('README.md') });
   for (const file of ['codex.mjs','codex-runner.cjs','claude.mjs','claude-runner.cjs','models.mjs','agent-skills.cjs','stream-batch.cjs','cli-run.cjs','agy.mjs','agy-runner.cjs','opencode.mjs','opencode-runner.cjs','mimo.mjs','pricing.mjs']) cpSync(join(root,'lib',file), join(temporary,'lib',file));
   for (const file of ['local.js','supervisor-client.js','routine-text.js','markdown.js','file-references.js']) cpSync(join(root,'mobile',file), join(temporary,'mobile',file));
-  for (const file of ['supervisor.test.mjs','tools.test.mjs','claude.test.mjs','routines.test.mjs','apps.test.mjs','access.test.mjs']) cpSync(join(root,'tests',file), join(temporary,'tests',file));
+  for (const file of ['supervisor.test.mjs','tools.test.mjs','claude.test.mjs','routines.test.mjs','apps.test.mjs','access.test.mjs','default-access.test.mjs']) cpSync(join(root,'tests',file), join(temporary,'tests',file));
   writeFileSync(join(temporary,'package.json'), JSON.stringify({ type: 'module' }));
   // Explicit file lists exclude app data, credentials, signing keys and development caches.
   const asset = join(root, 'mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz');

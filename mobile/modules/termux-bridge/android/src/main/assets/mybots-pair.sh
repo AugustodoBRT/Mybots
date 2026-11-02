@@ -40,7 +40,7 @@ if [ ! -f "$install/supervisor/index.mjs" ]; then
   tar -xzf "$archive" -C "$install"
 fi
 if [ ! -f "$install/tests-passed" ]; then
-  "$node_bin" --test --test-timeout=15000 "$install/tests/supervisor.test.mjs" "$install/tests/tools.test.mjs" "$install/tests/claude.test.mjs" "$install/tests/routines.test.mjs" "$install/tests/apps.test.mjs" "$install/tests/access.test.mjs" > "$root/testes-supervisor.txt" 2>&1 || {
+  "$node_bin" --test --test-timeout=15000 "$install/tests/supervisor.test.mjs" "$install/tests/tools.test.mjs" "$install/tests/claude.test.mjs" "$install/tests/routines.test.mjs" "$install/tests/apps.test.mjs" "$install/tests/access.test.mjs" "$install/tests/default-access.test.mjs" > "$root/testes-supervisor.txt" 2>&1 || {
     printf 'Os testes do supervisor não passaram neste aparelho. Confira ~/.mybots/testes-supervisor.txt. Seus dados foram preservados.\n' >&2
     exit 1
   }

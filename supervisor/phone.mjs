@@ -41,7 +41,7 @@ export class Phone {
       this.changed('phone.changed', this.status());
     }
     // The person took over: the bot's step waits here (Parar still cancels it) and goes on when they tap "Devolver ao bot".
-    const queue = () => this.browser.queue({ botId: null, op: PHONE_OPS[tool], args: { ...args, taskId: run.taskId, botId: bot.id, botName: bot.name }, signal: run.signal });
+    const queue = () => this.browser.queue({ botId: null, op: PHONE_OPS[tool], args: { ...args, taskId: run.taskId, botId: bot.id, botName: bot.name, phoneControl: bot.phoneControl === true }, signal: run.signal });
     return this.control === 'person' ? this.untilReturned(run.signal).then(queue) : queue();
   }
   untilReturned(signal) {

@@ -1,16 +1,12 @@
-# Conectar o Gmail
+# Gmail e contas Google no navegador
 
-O MyBots lê o e-mail por IMAP, somente leitura, com uma **senha de app**. A senha normal da conta nunca é usada.
+Os bots usam Gmail, Agenda, Drive e outros serviços diretamente nos sites, pelo mesmo navegador do MyBots. Isso vale para Codex, Claude, Gemini/Antigravity e opencode. Não é necessário conectar apps à conta da IA nem configurar senha de aplicativo ou IMAP.
 
-1. Na conta Google: **Gerenciar sua Conta Google → Segurança → Verificação em duas etapas** (precisa estar ativada).
-2. Ainda em Segurança, abra **Senhas de app** (ou procure "senhas de app" na busca da conta). Crie uma chamada `MyBots`.
-3. Copie os 16 caracteres.
-4. No MyBots: **Ajustes → E-mail → Conectar e-mail**, informe o endereço e a senha de app.
-5. Em cada bot que deve ler e-mails, abra o perfil e permita **Buscar e-mails** e **Ler e-mails**.
+1. Em **Ajustes → Conta e IA → Contas Google no navegador**, adicione o e-mail de cada conta que deseja usar.
+2. Toque em **Entrar no navegador**, entre na conta Google na página e devolva o controle ao bot. Você pode manter várias contas conectadas sem sair das anteriores.
+3. No perfil do bot, em **Acesso → Conta Google**, escolha a conta que ele deve usar. Também é possível adicionar outra conta por ali.
+4. Peça ao bot o que precisa. Ele abre o site e usa a conta escolhida; se faltar login, pede para você entrar no navegador.
 
-O que acontece depois:
+A lista de contas guarda os e-mails e as escolhas dos bots; cadastrar um e-mail não faz login sozinho. Senhas e códigos digitados na página não vão para a IA. O navegador do celular e o do computador têm sessões distintas: entre em cada aparelho quando necessário. Os bots usam o navegador do PC quando ele está disponível e o do celular como alternativa.
 
-- A senha fica cifrada (AES-256-GCM) em `~/.mybots/secrets/`; a chave fica no armazenamento protegido do app e só chega ao supervisor pela conexão local autenticada. Depois de reiniciar o celular, abra o MyBots uma vez para liberar a conta.
-- E-mails que chegam **depois** da conexão viram eventos (base das rotinas da etapa 3B). Os anteriores continuam disponíveis para busca.
-- Nenhum bot envia, apaga ou marca e-mails como lidos. O conteúdo dos e-mails é tratado como dado externo, nunca como instrução.
-- Para revogar: Ajustes → E-mail → Desconectar, ou apague a senha de app na conta Google.
+Todos os bots ficam disponíveis no celular e no PC, com acesso total por padrão. A única opção de permissão por bot é **Controlar o celular**, para usar a tela e os outros apps. Se uma tarefa precisar de um recurso indisponível do computador, o bot explica isso na conversa.

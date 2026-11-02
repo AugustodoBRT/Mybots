@@ -48,31 +48,12 @@ async function setup(t) {
   return { app, node, bot, directory, actions, start, finish, approve, get listed() { return listed; }, get visible() { return visible; }, get stopped() { return stopped; } };
 }
 
-test('desktop: never inherited, only PC, Pouco always blocks; Médio approves each kind and remembers Always on the phone', async t => {
+test('desktop control is available by default on PC, but a phone-only run cannot invoke a PC executor', async t => {
   const f = await setup(t);
-  let id = await f.start([['desktop_click', { x: 10, y: 20 }]]);
-  assert.equal((await f.finish(id))[0].isError, true); assert.equal(f.actions.length, 0); assert.ok(!f.listed.includes('desktop_click'));
-  f.app.tools.grant(f.bot.id, 'computer', true);
-  assert.equal(f.app.tools.policy(f.bot.id, 'desktop'), 'deny');
-  f.app.tools.grant(f.bot.id, 'desktop', true);
-  id = await f.start([['desktop_screenshot'], ['desktop_click', { x: 10, y: 20 }]]);
-  const full = await f.finish(id);
-  assert.equal(full[0].content[1].type, 'image'); assert.equal(f.app.state().approvals.length, 0); assert.ok(f.listed.includes('desktop_click'));
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
-  id = await f.start([['desktop_windows']]); assert.equal((await f.finish(id))[0].isError, true); assert.ok(!f.listed.includes('desktop_windows'));
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask' });
-  id = await f.start([['desktop_type', { text: 'Olá, mundo' }], ['desktop_type', { text: 'Outra vez' }]]);
-  const card = await f.approve(true, true); assert.equal(card.canAlways, true); assert.match(card.summary, /Olá, mundo/);
-  await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
-  id = await f.start([['desktop_key', { keys: ['CTRL', 'A'] }]]);
-  await f.approve(false); assert.equal((await f.finish(id))[0].isError, true);
-  id = await f.start([['desktop_click', { x: 20, y: 30 }]]);
-  await until(() => f.app.state().approvals.length);
-  f.app.tools.grant(f.bot.id, 'desktop', false);
-  assert.equal((await f.finish(id))[0].isError, true);
-  assert.equal(f.actions.filter(a => a.op === 'desktop.click').length, 1);
-  // Even a manually constructed phone run cannot use the PC executor.
-  f.app.tools.grant(f.bot.id, 'desktop', true);
+  const id = await f.start([['desktop_screenshot'], ['desktop_click', { x: 10, y: 20 }]]);
+  const result = await f.finish(id);
+  assert.equal(result[0].content[1].type, 'image'); assert.equal(result[1].isError, undefined);
+  assert.ok(f.listed.includes('desktop_click')); assert.equal(f.app.state().approvals.length, 0);
   const task = f.app.db.start(f.app.db.enqueue(f.bot.id, randomUUID(), 'local', selection).id);
   const cap = f.app.tools.open(task); const bridgeId = randomUUID(); f.app.tools.context(cap.token, bridgeId, true);
   await assert.rejects(f.app.tools.callMcp(cap.token, { bridgeId, callId: randomUUID(), name: 'desktop_windows', args: {} }), /só existe.*computador/); cap.close();
@@ -87,11 +68,10 @@ test('PC desktop: visible indicator lasts through the turn; panic on the local s
   assert.equal(f.app.db.task(id).state, 'failed'); assert.match(f.app.db.task(id).error, /tecla de pânico/); assert.ok(f.stopped > 0);
 });
 
-test('PC browser uses the same browser tools and phone approval for submitting, without inheriting desktop permission', async t => {
+test('PC browser uses the same browser tools with direct submission and default desktop access', async t => {
   const f = await setup(t); await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask' });
   f.app.tools.grant(f.bot.id, 'browser', true);
   const id = await f.start([['browser_open', { url: 'https://example.com' }], ['browser_click', { id: 1 }]]);
-  const card = await f.approve(true, true); assert.match(card.title, /Enviar um formulário/);
   await f.finish(id);
   assert.deepEqual(f.actions.map(a => a.op), ['open','thumb','inspect','click','thumb']); assert.ok(f.actions.every(a => a.botId === f.bot.id));
   assert.equal(f.app.tools.browser.pages.get(f.bot.id).where, 'pc');
@@ -189,20 +169,20 @@ test('system Chrome: bot profiles keep their own cookies; real reads hide passwo
   const again = await open('bot-a'); assert.equal((await again.context.cookies()).find(c => c.name === 'dono').value, 'a');
 });
 
-test('browser coordinate actions: Médio gates sends and drag, reads pass, Total runs, Pouco hides, takeover refuses', async t => {
+test('browser coordinate actions: clicks and drag run directly, and taking over still blocks bot actions', async t => {
   const f = await setup(t); f.app.tools.grant(f.bot.id, 'browser', true);
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask' });
   let id = await f.start([['browser_act', { action: 'hover', x: 10, y: 20 }], ['browser_act', { action: 'scroll', x: 10, y: 20, dy: 400 }], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }]]);
   await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
   id = await f.start([['browser_act', { action: 'click', x: 10, y: 20 }]]);
-  const card = await f.approve(true, true); assert.equal(card.canAlways, true); await f.finish(id);
-  assert.ok(f.app.db.get('SELECT * FROM grants WHERE bot_id=? AND tool=?', f.bot.id, 'browser/write'));
+  await f.finish(id);
+  assert.equal(f.app.state().approvals.length, 0);
   id = await f.start([['browser_act', { action: 'drag', x: 1, y: 2, toX: 100, toY: 200 }]]);
   await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
   id = await f.start([['browser_act', { action: 'click', x: 10, y: 20 }]]); await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
-  id = await f.start([['browser_tabs', { action: 'list' }]]); assert.equal((await f.finish(id))[0].isError, true); assert.ok(!f.listed.includes('browser_act'));
+  id = await f.start([['browser_tabs', { action: 'list' }]]); assert.equal((await f.finish(id))[0].isError, undefined); assert.ok(f.listed.includes('browser_act'));
   await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
   f.app.tools.browser.setControl(f.bot.id, 'person');
   const count = f.actions.length;
@@ -210,29 +190,14 @@ test('browser coordinate actions: Médio gates sends and drag, reads pass, Total
   assert.ok((await f.finish(id)).every(result => result.isError)); assert.equal(f.actions.length, count);
 });
 
-test('Meu Chrome: Médio approves all mutations with its own key; reads pass; takeover blocks every bot in the mode', async t => {
-  const f = await setup(t); f.app.tools.grant(f.bot.id, 'browser', true);
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'ask', browserMode: 'mine' });
-  let id = await f.start([['browser_read'], ['browser_find', { query: 'enviar' }], ['browser_tabs', { action: 'list' }], ['browser_act', { action: 'hover', x: 1, y: 2 }]]);
-  await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
-  id = await f.start([['browser_open', { url: 'https://example.com' }], ['browser_click', { id: 1 }]]);
-  const card = await f.approve(true, true); assert.equal(card.title, 'Agir no Meu Chrome'); assert.equal(card.canAlways, true);
-  await f.finish(id);
-  assert.equal(f.app.tools.saved(f.bot.id, 'browser/mine/write'), 'true'); assert.equal(f.app.tools.saved(f.bot.id, 'browser/write'), undefined);
-  const other = await f.app.rpc('bot.create', { name: 'Outro Chrome', home: 'pc', access: 'full', browserMode: 'mine', ...selection });
+test('retired browser choices normalize to the shared browser; taking over one bot preserves the other bot tabs', async t => {
+  const f = await setup(t);
+  await f.app.rpc('bot.update', { botId: f.bot.id, browserMode: 'mine' });
+  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'shared');
+  const other = await f.app.rpc('bot.create', { name: 'Outro', ...selection });
   await f.app.rpc('browser.control', { botId: other.id, who: 'person' });
-  const before = f.actions.length;
-  id = await f.start([['browser_read'], ['browser_click', { id: 1 }]]);
-  assert.ok((await f.finish(id)).every(result => result.isError)); assert.equal(f.actions.length, before);
-  await f.app.rpc('browser.control', { botId: other.id, who: 'bot' });
-  await f.app.rpc('bot.update', { botId: other.id, access: 'ask' });
-  await assert.rejects(f.app.rpc('browser.view', { botId: other.id, on: true }), /Libere Navegador/);
-  await assert.rejects(f.app.rpc('browser.view', { botId: other.id, on: false }), /Abra o navegador/);
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
-  id = await f.start([['browser_click', { id: 1 }]]); await f.finish(id); assert.equal(f.app.state().approvals.length, 0);
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
-  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'separate');
-  await assert.rejects(f.app.rpc('bot.update', { botId: f.bot.id, browserMode: 'mine' }), /Libere Navegador|Pouco acesso/);
+  const id = await f.start([['browser_read']]);
+  assert.equal((await f.finish(id))[0].isError, undefined);
 });
 
 test('each bot has its own browser on the computer: a bot using it does not block another; the screen and mouse still have one pilot', async t => {

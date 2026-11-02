@@ -57,40 +57,7 @@ test('official Chrome: enabled only on PC; native hook blocks on network failure
   for (const other of [undefined, {}, { browser: true }]) assert.ok(runner.claudeArguments({}, session, other && { ...other, endpoint: tools.endpoint }).includes('--no-chrome'));
 });
 
-test('official Chrome: reads without asking, mutations require phone approval with Always; account permission cannot grant browser', async t => {
+test('an old Claude in Chrome profile uses the shared MyBots browser after migration', async t => {
   const f = await setup(t);
-  f.app.db.session(f.bot.id, randomUUID());
-  f.app.db.run('INSERT INTO metadata VALUES(?,?)', 'session.lane.' + f.bot.id, 'pc');
-  let id = await f.start([['read_page', { tabId: 1 }], ['form_input', { ref: 'ref_1', value: 'Olá' }], ['navigate', { url: 'https://example.com' }]]);
-  const card = await f.approve(true, true); assert.equal(card.canAlways, true); assert.match(card.summary, /Chrome principal.*compartilhados/); assert.match(card.summary, /Olá/);
-  assert.deepEqual(await f.finish(id), ['allow','allow','allow']); assert.equal(f.session, undefined);
-  const resumed = f.app.db.bot(f.bot.id).codexSessionId;
-  id = await f.start([['read_page', {}]]); await f.finish(id); assert.equal(f.session, resumed);
-  assert.ok(f.listed.includes('browser_ask_user')); assert.ok(!f.listed.includes('browser_open')); assert.equal(f.visible, 0);
-  f.app.tools.grant(f.bot.id, 'browser', false); f.app.tools.grant(f.bot.id, 'account.connectors', true);
-  id = await f.start([['get_page_text', { tabId: 1 }]]); assert.deepEqual(await f.finish(id), ['deny']);
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'basic' });
-  id = await f.start([['read_page', {}]]); assert.deepEqual(await f.finish(id), ['deny']);
-});
-
-test('official Chrome: deny, revoke while pending, uploads always ask, person takeover and expired capability block', async t => {
-  const f = await setup(t);
-  let id = await f.start([['javascript_tool', { text: 'document.title' }]]); await f.approve(false); assert.deepEqual(await f.finish(id), ['deny']);
-  id = await f.start([['browser_batch', { actions: [] }]]); await until(() => f.app.state().approvals.length); f.app.tools.grant(f.bot.id, 'browser', false); assert.deepEqual(await f.finish(id), ['deny']);
-  await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
-  id = await f.start([['file_upload', { paths: ['/tmp/test.txt'] }]]); assert.equal((await f.approve(false)).canAlways, false); assert.deepEqual(await f.finish(id), ['deny']);
-  id = await f.start([['tabs_context_mcp', {}]]); assert.deepEqual(await f.finish(id), ['allow']);
-  await f.app.rpc('browser.control', { botId: f.bot.id, who: 'person' });
-  id = await f.start([['navigate', { url: 'https://example.com' }]]); assert.deepEqual(await f.finish(id), ['deny']);
-  assert.equal((await fetch(`http://127.0.0.1:${f.app.port}/tools/chrome`, { method: 'POST', headers: { Authorization: 'Bearer ' + f.started.token }, body: '{}' })).status, 403);
-  const task = f.app.db.start(f.app.db.enqueue(f.bot.id, randomUUID(), 'phone', selection).id); const cap = f.app.tools.open(task);
-  const answer = await f.app.tools.chromeHook(cap.token, { hook_event_name: 'PreToolUse', tool_name: 'mcp__claude-in-chrome__read_page', tool_input: {}, tool_use_id: 'toolu_test' });
-  assert.equal(answer.hookSpecificOutput.permissionDecision, 'deny'); cap.close();
-});
-
-test('official Chrome: visible PC notice and local panic abort the turn without closing the main Chrome', async t => {
-  const f = await setup(t); await f.app.rpc('bot.update', { botId: f.bot.id, access: 'full' });
-  const id = await f.start([['tabs_context_mcp', {}]], 'esperar pânico'); await until(() => f.visible === 1);
-  await new Promise((resolve, reject) => { const socket = createConnection(join(f.directory, 'pc/panic.sock')); socket.on('connect', () => socket.write('panic')); socket.on('data', () => { socket.end(); resolve(); }); socket.on('error', reject); });
-  await f.finish(id); await until(() => f.visible === 0); assert.match(f.app.db.task(id).error, /tecla de pânico/);
+  assert.equal(f.app.db.requireBot(f.bot.id).browserMode, 'shared');
 });

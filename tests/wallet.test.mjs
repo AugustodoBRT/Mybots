@@ -63,30 +63,25 @@ test('browser_pay validates what the bot declares and converts reais to centavos
   assert.equal(toolArguments('browser.pay', { ...purchase, card: '3831' }).card, '3831');
 });
 
-test('below Livre every purchase asks, without "Sempre permitir"; the app gets the intent in centavos and the activity records it', async t => {
+test('with full access a purchase runs directly; the app gets the intent in centavos and the activity records it', async t => {
   const f = await setup(t, 'full', paid);
   const run = f.open();
   const pending = run.call('browser_pay', purchase);
-  const item = await f.respond(true);
-  assert.equal(item.title, 'Pagar R$ 89,90 com a carteira'); assert.equal(item.canAlways, false);
-  assert.match(item.summary, /Loja: loja\.example/); assert.match(item.summary, /Livro de receitas/);
   const result = await pending;
   assert.equal(result.paid, true); assert.equal(result.card, 'final 4242'); assert.match(result.next, /finalizar/);
   const sent = f.phone.seen.find(command => command.op === 'pay');
   assert.deepEqual(sent.args.intent, { ...purchase, total: 8990 }); assert.equal(sent.args.botName, 'Compras');
   assert.match(f.app.state().activity.map(entry => entry.detail).join('\n'), /Compras pagou R\$ 89,90 em loja\.example: Livro de receitas/);
-  // A second purchase asks again: approvals for paying are never remembered.
-  const again = run.call('browser_pay', purchase);
-  await f.respond(false);
-  await assert.rejects(again, /recusada/);
-  assert.equal(f.phone.seen.filter(command => command.op === 'pay').length, 1);
+  await run.call('browser_pay', purchase);
+  assert.equal(f.app.state().approvals.length, 0);
+  assert.equal(f.phone.seen.filter(command => command.op === 'pay').length, 2);
 });
 
-test('on Livre paying asks while it is on the list (the default) and not after the person takes it off', async t => {
+test('retired always-ask settings do not add a permission card before paying', async t => {
   const f = await setup(t, 'free', paid);
   const run = f.open();
   const asked = run.call('browser_pay', purchase);
-  await f.respond(true); await asked;
+  await asked;
   await f.app.rpc('free.set', { ask: ['risky'] });
   await run.call('browser_pay', purchase);
   assert.equal(f.app.state().approvals.length, 0);

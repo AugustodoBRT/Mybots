@@ -365,9 +365,9 @@ export function PhoneControlAccess() {
   const on = status.enabled && status.connected;
   return <View style={styles.appRow}>
     <Text style={styles.optionLabel}>Controle do celular · {on ? 'Ligado' : status.enabled ? 'Ligado, esperando o Android' : 'Desligado'}</Text>
-    <Text style={styles.optionDetail}>{on ? 'Bots no nível Livre podem ver a tela e usar os outros apps quando você pede. Enquanto isso, uma barra com Parar fica no topo da tela e uma notificação fixa aparece. Apps de banco costumam recusar: nesses, o bot chama você.'
+    <Text style={styles.optionDetail}>{on ? 'Bots com o controle do celular ligado podem ver a tela e usar os outros apps quando você pede. Enquanto isso, uma barra com Parar fica no topo da tela e uma notificação fixa aparece. Apps de banco costumam recusar: nesses, o bot chama você.'
       : status.enabled ? 'O serviço está ligado, mas o Android ainda não o iniciou. Desligue e ligue de novo em Acessibilidade.'
-      : 'Só bots no nível Livre usam. Para ligar: toque em Ligar o controle, procure MyBots (em Apps instalados ou Serviços baixados) e ative.'}</Text>
+      : 'Ative o controle no perfil do bot. Para ligar: toque em Ligar o controle, procure MyBots (em Apps instalados ou Serviços baixados) e ative.'}</Text>
     {!status.enabled && status.sdk >= 33 ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>No Android 13 ou mais novo, se aparecer “Configuração restrita”: volte aqui, toque em Abrir informações do app, toque nos três pontos (⋮) no canto de cima, escolha “Permitir configurações restritas”, confirme e tente ligar de novo.{status.restricted ? ' Neste celular esse bloqueio ainda está ativo.' : ''}</Text> : null}
     {!status.screenshots ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>Neste Android (antes do 11) o bot lê a tela, mas não consegue ver capturas dela.</Text> : null}
     <View style={styles.appActions}>
@@ -749,88 +749,6 @@ export function ItemsByDeadline({ items, bots, onComplete }) {
         </View>)}
       </View> : null;
     })}
-  </View>;
-}
-
-export const EMAIL_STATUS = { connected: 'Conectado', syncing: 'Sincronizando…', auth_error: 'Reconectar conta', offline: 'Sem rede', locked: 'Bloqueado', unavailable: 'Instalando conector', error: 'Erro', disconnected: 'Desconectado' };
-
-export function EmailConnection({ email, busy, onAction }) {
-  const [form, setForm] = useState(null);
-  const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
-  const known = /@(gmail|googlemail|outlook|hotmail|live|yahoo|icloud)\.com$/i.test(form?.address || '');
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>E-mail · {EMAIL_STATUS[email?.status] || 'Desconectado'}</Text>
-    <Text style={styles.optionDetail}>{email?.configured ? `${email.address}${email.lastSync ? ` · sincronizado ${new Date(email.lastSync).toLocaleString('pt-BR')}` : ''}\n${email.message || ''}` : 'Os bots podem buscar e ler e-mails (somente leitura) quando você permitir no perfil de cada um.'}</Text>
-    {form ? <View style={{ gap: 8, marginTop: 10 }}>
-      <TextInput style={styles.formInput} placeholder="seu@gmail.com" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" value={form.address} onChangeText={value => field('address', value)} />
-      <TextInput style={styles.formInput} placeholder="Senha de app (16 letras)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.password} onChangeText={value => field('password', value)} />
-      {!known && form.address?.includes('@') ? <TextInput style={styles.formInput} placeholder="Servidor IMAP (ex.: imap.seuprovedor.com)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.host} onChangeText={value => field('host', value)} /> : null}
-      <Text style={styles.optionDetail}>No Gmail: Conta Google → Segurança → Verificação em duas etapas → Senhas de app. Use essa senha, nunca a senha normal. Ela fica cifrada no celular.</Text>
-      <PrimaryButton title={busy ? 'Conectando…' : 'Conectar'} disabled={busy || !form.address || !form.password} onPress={() => { onAction('email.configure', { address: form.address, password: form.password, ...(form.host ? { host: form.host } : {}) }); setForm(null); }} />
-      <Pressable onPress={() => setForm(null)} style={styles.closeSheet}><Text style={styles.closeSheetText}>Cancelar</Text></Pressable>
-    </View> : <View style={{ flexDirection: 'row', gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
-      <Pressable disabled={busy} onPress={() => setForm({ address: email?.address || '', password: '' })}><Text style={styles.deleteText}>{email?.configured ? 'Reconectar' : 'Conectar e-mail'}</Text></Pressable>
-      {email?.configured ? <Pressable disabled={busy} onPress={() => onAction('email.sync')}><Text style={styles.deleteText}>Sincronizar agora</Text></Pressable> : null}
-      {email?.configured ? <Pressable disabled={busy} onPress={() => onAction('email.disconnect')}><Text style={styles.deleteText}>Desconectar</Text></Pressable> : null}
-    </View>}
-  </View>;
-}
-
-export const CONNECTOR_PAGES = { claude: 'https://claude.ai/settings/connectors', codex: 'https://chatgpt.com/#settings/Connectors' };
-
-export function AccountConnections({ load }) {
-  const [state, setState] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
-  const loader = useRef(load); loader.current = load;
-  const refresh = useCallback(async (force = false) => {
-    setLoading(true); setError('');
-    try { setState(await loader.current(force)); } catch (e) { setError(e.message); } finally { setLoading(false); }
-  }, []);
-  useEffect(() => { refresh(false); }, [refresh]);
-  useEffect(() => { const subscription = AppState.addEventListener('change', value => { if (value === 'active') refresh(true); }); return () => subscription.remove(); }, [refresh]);
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>Apps da sua conta</Text>
-    <Text style={styles.optionDetail}>Gmail, Agenda, Drive e outros conectados direto na sua conta do Claude ou do ChatGPT, com o login oficial do Google. Depois, ligue “Apps da sua conta” no perfil de cada bot.</Text>
-    <View style={styles.appRow}>
-      <Text style={styles.optionLabel}>Claude</Text>
-      {state?.claude ? state.claude.length ? state.claude.map(item => <Text key={item.name} style={styles.optionDetail}>{item.connected ? '✓' : item.needsAuth ? '!' : '○'}  {item.name}{item.needsAuth ? ' · entrar de novo' : item.connected ? '' : ' · indisponível'}</Text>)
-        : <Text style={styles.optionDetail}>Nenhum conector ainda.</Text>
-        : <Text style={styles.optionDetail}>{loading ? 'Consultando…' : state?.claudeError || error || 'Entre no Claude no Termux para ver os conectores.'}</Text>}
-      <Pressable onPress={() => Linking.openURL(CONNECTOR_PAGES.claude)}><Text style={styles.deleteText}>＋ Conectar apps no Claude</Text></Pressable>
-    </View>
-    <View style={styles.appRow}>
-      <Text style={styles.optionLabel}>ChatGPT (Codex)</Text>
-      <Text style={styles.optionDetail}>{state?.codex ? 'Os bots do Codex usam os apps da sua conta do ChatGPT para ler. Ações que alteram algo ficam bloqueadas por enquanto.' : 'Entre no Codex no Termux para usar os apps do ChatGPT.'}</Text>
-      <Pressable onPress={() => Linking.openURL(CONNECTOR_PAGES.codex)}><Text style={styles.deleteText}>＋ Conectar apps no ChatGPT</Text></Pressable>
-    </View>
-    <Pressable disabled={loading} onPress={() => refresh(true)} style={{ marginTop: 8 }}><Text style={styles.deleteText}>{loading ? 'Atualizando…' : 'Atualizar'}</Text></Pressable>
-  </View>;
-}
-
-export function AppConnections({ apps = [], busy, onAction }) {
-  const [form, setForm] = useState(null); const [open, setOpen] = useState(apps.length > 0);
-  if (!open) return <Pressable onPress={() => setOpen(true)} style={styles.modeOption}><Text style={styles.optionDetail}>Avançado · conectar um servidor MCP próprio ▾</Text></Pressable>;
-  const field = (key, value) => setForm(old => ({ ...old, [key]: value }));
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>Servidores MCP próprios · {apps.length ? `${apps.length}` : 'nenhum'}</Text>
-    <Text style={styles.optionDetail}>Para quem já tem um servidor MCP (Zapier, Composio, um seu). Cada bot só usa os que você liberar no perfil dele.</Text>
-    {apps.map(app => <View key={app.id} style={styles.appRow}>
-      <Text style={styles.optionLabel}>{app.status === 'connected' ? '●' : '○'}  {app.name} <Text style={styles.optionDetail}>· {app.host}</Text></Text>
-      <Text style={styles.optionDetail} numberOfLines={3}>{app.status === 'connected' ? `${app.tools.length} ferramentas: ${app.tools.slice(0, 6).map(tool => tool.name).join(', ')}${app.tools.length > 6 ? '…' : ''}` : app.message}</Text>
-      <View style={styles.appActions}>
-        <Pressable disabled={busy} onPress={() => onAction('app.configure', { id: app.id, askAlways: !app.askAlways })}><Text style={styles.deleteText}>{app.askAlways ? '✓ Perguntar antes de ações' : 'Seguir autonomia do bot'}</Text></Pressable>
-        <Pressable disabled={busy} onPress={() => onAction('app.refresh', { id: app.id })}><Text style={styles.deleteText}>Atualizar</Text></Pressable>
-        <Pressable disabled={busy} onPress={() => onAction('app.remove', { id: app.id })}><Text style={styles.deleteText}>Remover</Text></Pressable>
-      </View>
-    </View>)}
-    {form ? <View style={{ gap: 8, marginTop: 10 }}>
-      <TextInput style={styles.formInput} placeholder="Nome (ex.: Composio)" placeholderTextColor={C.faint} value={form.name} onChangeText={value => field('name', value)} maxLength={40} />
-      <TextInput style={styles.formInput} placeholder="Endereço MCP (https://…)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.url} onChangeText={value => field('url', value)} />
-      <TextInput style={styles.formInput} placeholder="Cabeçalho da chave (ex.: x-api-key)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} value={form.headerName} onChangeText={value => field('headerName', value)} />
-      <TextInput style={styles.formInput} placeholder="Chave da API (opcional)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} secureTextEntry value={form.headerValue} onChangeText={value => field('headerValue', value)} />
-      <Text style={styles.optionDetail}>No Composio: crie a conta, conecte os apps que quiser (Gmail, Calendar…), gere um servidor MCP e copie o endereço e a chave da API. A chave fica cifrada no celular e nunca é mostrada aos bots.</Text>
-      <PrimaryButton title={busy ? 'Conectando…' : 'Conectar app'} disabled={busy || !form.name?.trim() || !form.url?.trim()} onPress={() => { onAction('app.add', { name: form.name, url: form.url.trim(), headerName: form.headerName?.trim() || undefined, headerValue: form.headerValue || undefined }); setForm(null); }} />
-      <Pressable onPress={() => setForm(null)} style={styles.closeSheet}><Text style={styles.closeSheetText}>Cancelar</Text></Pressable>
-    </View> : <Pressable disabled={busy} onPress={() => setForm({ name: '', url: '', headerName: 'x-api-key', headerValue: '' })} style={{ marginTop: 8 }}><Text style={styles.deleteText}>＋ Conectar app MCP</Text></Pressable>}
   </View>;
 }
 

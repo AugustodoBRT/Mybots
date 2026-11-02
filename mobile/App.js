@@ -5,7 +5,7 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, EmailConnection, AccountConnections, AppConnections, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { SearchSheet } from './components/Search';
 import { SettingsSheet } from './components/Settings';
 import { NewBot } from './components/NewBot';
@@ -14,7 +14,7 @@ import { ActivityColumns, ActivityPage } from './components/Activity';
 import { UsagePanel } from './components/Usage';
 import { desktop, column, paintPage } from './desktop';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
-import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow, freeGuard, freeGuardSet, freeGuardAsk } from './termux';
+import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
@@ -198,34 +198,6 @@ function AppMain() {
     }
   });
 
-  // The Livre level is the person's choice, made in this app: a bot the supervisor says is Livre but the app never put
-  // there (changed from Termux, a backup) goes back to Acesso total, and the person is told.
-  const freeChecking = useRef(false);
-  const checkFree = useCallback(async next => {
-    if (desktop || !termuxAvailable || freeChecking.current) return;
-    const guard = await freeGuard(); if (!guard) return;
-    const strays = (next.bots || []).filter(bot => bot.access === 'free' && !guard.bots.includes(bot.id));
-    for (const id of guard.bots.filter(id => !(next.bots || []).some(bot => bot.id === id && bot.access === 'free'))) await freeGuardSet(id, false);
-    if (!strays.length) return;
-    freeChecking.current = true;
-    try {
-      for (const bot of strays) await supervisor.current.call('bot.update', { botId: bot.id, access: 'full' });
-      Alert.alert('Nível Livre desfeito', `${strays.map(bot => bot.name).join(', ')} ${strays.length > 1 ? 'estavam' : 'estava'} no nível Livre sem ter sido escolhido neste app. Por segurança, ${strays.length > 1 ? 'voltaram' : 'voltou'} para Acesso total. Se foi você (por exemplo, restaurando um backup), escolha Livre de novo no perfil.`);
-    } finally { freeChecking.current = false; }
-  }, []);
-  const [freeSettings, setFreeSettings] = useState(null);
-  // The "sempre perguntar" list: the app keeps its own copy and puts it back if the supervisor's was changed elsewhere.
-  const loadFree = useCallback(async () => {
-    let settings = await supervisor.current.call('free.get');
-    const guard = !desktop && termuxAvailable ? await freeGuard().catch(() => null) : null;
-    const retired = ['phone/act', 'phone.open_app'];
-    const mine = guard?.ask ? JSON.parse(guard.ask).filter(key => !retired.includes(key)) : null; const theirs = settings.options.filter(item => item.ask).map(item => item.key);
-    if (Array.isArray(mine) && JSON.stringify([...mine].sort()) !== JSON.stringify([...theirs].sort())) {
-      settings = await supervisor.current.call('free.set', { ask: mine });
-      Alert.alert('Lista restaurada', 'A lista “Sempre perguntar” do nível Livre tinha sido mudada fora do app. O MyBots pôs de volta a que você escolheu.');
-    }
-    setFreeSettings(settings); return settings;
-  }, []);
   const loadSupervisorState = useCallback(async () => {
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
@@ -234,7 +206,6 @@ function AppMain() {
     // The conversation on screen is being read: its new messages are not unseen.
     const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
     setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
-    checkFree(next).catch(() => {});
 
     return next;
   }, []);
@@ -506,26 +477,11 @@ function AppMain() {
     catch (error) { setLoadError(error.message); }
     finally { setSavingSettings(false); }
   };
-  // Changes a bot's access level; Livre first shows its warning (once) and records the bot natively before the supervisor hears of it.
-  const applyAccess = async (botId, access) => {
-        if (access === 'free') {
-          const guard = await freeGuard().catch(() => null);
-          if (!guard?.warned) await new Promise((resolve, reject) => Alert.alert('Nível Livre: o bot age como você no celular',
-            'Ele vai poder abrir e usar os outros apps do celular (mandar mensagens, pedir comida, mexer em configurações), usar o terminal completo do Termux e agir nos sites e contas em que você está logado, sem pedir licença a cada passo.\n\nSó pedem aprovação os itens que você deixar em “Sempre perguntar”. Senhas, cartões e códigos continuam sem passar pela IA, CAPTCHA e bancos continuam com você, e cada ação fica na Atividade.\n\nEnquanto ele controla o celular, uma barra com Parar fica sempre na tela. Use Livre só com bots e pedidos em que você confia.',
-            [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Entendi, usar Livre', style: 'destructive', onPress: resolve }]));
-        }
-        // The app's own record comes first: MyBotsAccess obeys only bots it lists.
-        if (!desktop && termuxAvailable) await freeGuardSet(botId, access === 'free');
-        await supervisor.current.call('bot.update', { botId, access }); await loadSupervisorState(); if (profileId === botId) await loadProfile(botId);
-        if (access === 'free') loadFree().catch(() => {});
-  };
   const createBot = async (payload, extra = {}) => {
     if (maintenanceBusy) throw new Error('Aguarde o backup ou a restauração terminar.');
     if (mode === 'phone') {
       const bot = await supervisor.current.call('bot.create', payload);
       await loadSupervisorState(); setSelected(bot.id); setDraft(extra.first || ''); setCreateVisible(false);
-      // Livre needs its warning, so it is applied after the bot exists, like in the profile; declining leaves the bot at Médio.
-      if (extra.free) applyAccess(bot.id, 'free').catch(() => {});
       return;
     }
     const bot = await api('/api/bots', payload, apiToken, apiBase);
@@ -642,8 +598,6 @@ function AppMain() {
   const shownProfile = profile?.botId === profileId ? profile : null;
   // After a change in the profile: the state and the profile's own lists.
   const profileChanged = async () => { await loadSupervisorState(); if (profileId) await loadProfile(profileId); };
-  const profileFree = data?.bots?.find(item => item.id === profileId)?.access === 'free';
-  useEffect(() => { if (profileId && profileFree) loadFree().catch(() => {}); }, [profileId, profileFree]);
   const roomSave = async payload => {
     if (roomSheet?.room) await supervisor.current.call('room.update', { roomId: roomSheet.room.id, ...payload });
     else { const created = await supervisor.current.call('room.create', payload); setRoomId(created.id); setSelected(null); }
@@ -723,7 +677,12 @@ function AppMain() {
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
           onPhoneStop={async () => { await Promise.resolve(phoneStopNow()).catch(() => {}); await supervisor.current.call('phone.stop', {}); await loadSupervisorState(); }}
           onPhoneControl={desktop ? null : async who => { await supervisor.current.call('phone.control', { who }); await loadSupervisorState(); }} /> : null;
-  const settingsContext = { data, mode, call: (method, params) => supervisor.current.call(method, params), reload: loadSupervisorState,
+  const googleLogin = async (botId, account) => {
+    setProfileId(null); setMaintenanceVisible(false); setDeskPage(null); setRoomId(null); setSelected(botId);
+    try { await supervisor.current.call('google.login', { botId, account }); await loadSupervisorState(); }
+    catch (error) { setLoadError(error.message); throw error; }
+  };
+  const settingsContext = { data, mode, googleLogin, call: (method, params) => supervisor.current.call(method, params), reload: loadSupervisorState,
       busy: maintenanceBusy, text: maintenanceText, setText: setMaintenanceText, backupNames, setBackupNames, maintenance, saveBackup, restoreBackup, update, checkUpdate, installUpdate,
       openProfile: bot => { setProfileTab(null); setProfileId(bot.id); }, onCreate: () => setCreateVisible(true), openWallet: () => setWalletVisible(true), readDeviceInfo, copyText: copyTermuxText };
   // Desktop navigation keeps each bot's unsent text, including office selections.
@@ -751,14 +710,13 @@ function AppMain() {
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
       negotiations={data.negotiations || []} onNegotiation={async (method, params) => { await supervisor.current.call(method, params); await loadSupervisorState(); }}
-      accountApps={shownProfile?.accountApps || []} accountServers={data.accountServers || []}
-      onApps={async apps => { await supervisor.current.call('bot.apps', { botId: profileId, apps }); await profileChanged(); }}
-      onFolders={async folders => { await supervisor.current.call('bot.update', { botId: profileId, folders }); await profileChanged(); }}
+      googleAccounts={data.googleAccounts || []}
+      onGoogleAccount={async googleAccount => { await supervisor.current.call('bot.update', { botId: profileId, googleAccount }); await profileChanged(); }}
+      onGoogleLogin={account => googleLogin(profileId, account)}
+      onPhoneControl={async on => { await supervisor.current.call('bot.phoneControl', { botId: profileId, on }); await profileChanged(); }}
       loadAgentSkills={() => supervisor.current.call('agent.skills', {})}
       onAgentSkills={async skills => { await supervisor.current.call('bot.update', { botId: profileId, skills }); await profileChanged(); }}
       onFallback={async fallback => { await supervisor.current.call('bot.update', { botId: profileId, fallback }); await profileChanged(); }} FallbackSettings={FallbackSettings}
-      onGpu={async gpu => { await supervisor.current.call('bot.update', { botId: profileId, gpu }); await profileChanged(); }}
-      onBrowserMode={async browserMode => { await supervisor.current.call('bot.update', { botId: profileId, browserMode }); await profileChanged(); }}
       skills={shownProfile?.skills || []}
       onSkill={async (method, id) => {
         if (method === 'skill.remove') await new Promise((resolve, reject) => Alert.alert('Remover a habilidade?', 'O programa e a rotina dele saem deste celular.', [{ text: 'Cancelar', style: 'cancel', onPress: () => reject(new Error('')) }, { text: 'Remover', style: 'destructive', onPress: resolve }]));
@@ -766,14 +724,7 @@ function AppMain() {
       }}
       onRoutine={async (method, id, params = {}) => { await supervisor.current.call(method, { id, ...params }); await loadSupervisorState(); }}
       onClose={() => { setCreateVisible(false); setProfileId(null); }} onSave={saveProfile}
-      onGrant={async (tool, allowed) => { await supervisor.current.call('grants.set', { botId: profileId, tool, allowed }); await profileChanged(); }}
-      onAccess={access => applyAccess(profileId, access)}
-      freeChoice={mode === 'phone' && !desktop && termuxAvailable} freeSettings={freeSettings} PhoneControl={!desktop && termuxAvailable ? PhoneControlAccess : null}
-      onFreeAsk={async (key, on) => {
-        const list = (freeSettings?.options || []).filter(item => item.key === key ? on : item.ask).map(item => item.key);
-        if (!desktop && termuxAvailable) await freeGuardAsk(JSON.stringify(list));
-        setFreeSettings(await supervisor.current.call('free.set', { ask: list }));
-      }}
+      PhoneControl={!desktop && termuxAvailable ? PhoneControlAccess : null}
       onComplete={async id => { await supervisor.current.call('item.complete', { id }); await loadSupervisorState(); }}
       onDelete={() => deleteBot(data.bots.find(item => item.id === profileId))} /> : null;
   return <View key={look} style={styles.app}>

@@ -60,13 +60,13 @@ test('with a reserve model, the same turn is answered by the other IA, keeping t
   assert.equal(f.app.db.bot(f.bot.id).provider, 'claude', 'o bot continua sendo do Claude');
 });
 
-test('the reserve cannot widen what the bot may do: same level, no shell where Codex cannot ask, and a failing reserve shows its own error', async t => {
+test('the reserve cannot widen what the bot may do: same full access and phone-control choice, and a failing reserve shows its own error', async t => {
   const f = await setup(t, { codexFails: true });
   await f.app.rpc('bot.update', { botId: f.bot.id, fallback: { provider: 'codex', model: 'test', reasoningEffort: 'low' } });
   const sent = await f.send('oi');
   await until(() => f.app.db.task(sent.taskId).state === 'failed');
-  assert.equal(f.app.db.bot(f.bot.id).access, 'ask');
-  assert.ok(f.calls.every(call => !call.termux && !call.computer), 'nenhum acesso extra ao celular ou computador');
+  assert.equal(f.app.db.bot(f.bot.id).access, 'full');
+  assert.ok(f.calls.every(call => call.termux && !call.computer), 'nenhum acesso extra ao celular ou computador');
   assert.match(f.app.db.message(sent.messageId).error, /Codex/);
   assert.equal(f.calls[1].session, undefined, 'a reserva nunca retoma nem grava a sessão do Claude');
 });

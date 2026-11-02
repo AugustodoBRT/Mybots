@@ -62,30 +62,18 @@ async function setup(t, access = 'free', options = {}) {
   return { app, bot, phone, open, card, answer, notices };
 }
 
-test('Livre: nothing asks except the "sempre perguntar" list; phone and Termux exist only there', async t => {
+test('full access supersedes old levels; only the phone control switch can restrict the phone tools', async t => {
   const f = await setup(t);
-  assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'allow'); assert.equal(f.app.tools.policy(f.bot.id, 'termux'), 'allow');
-  assert.equal(f.app.tools.policy(f.bot.id, 'sms.send'), 'allow');
-  // The default list: risky commands, skills, uploads, SMS and wallet payments still ask.
-  assert.deepEqual(FREE_ASK_DEFAULT, ['risky', 'skill.propose', 'browser/upload', 'sms.send', 'wallet/pay']);
+  assert.equal(f.app.tools.policy(f.bot.id, 'termux'), 'allow');
+  assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'allow');
   const bot = f.app.db.requireBot(f.bot.id);
-  assert.equal(f.app.tools.gate(bot, 'sms.send', { freeKey: 'sms.send' }).ask, true);
-  assert.equal(f.app.tools.gate(bot, 'notify.user', { alwaysAsk: true, freeKey: 'notify.user' }).ask, false);
-  assert.equal(f.app.tools.gate(bot, 'browser', { writeKey: 'browser/write', legacyAsk: true, freeKey: 'browser/submit' }).ask, false);
-  await f.app.rpc('free.set', { ask: ['browser/submit'] });
   assert.equal(f.app.tools.gate(bot, 'sms.send', { freeKey: 'sms.send' }).ask, false);
-  assert.equal(f.app.tools.gate(bot, 'browser', { freeKey: 'browser/submit' }).ask, true);
-  assert.deepEqual((await f.app.rpc('free.get')).options.filter(item => item.ask).map(item => item.key), ['browser/submit']);
-  await assert.rejects(f.app.rpc('free.set', { ask: ['tudo'] }), /Lista inválida/);
-  assert.match(f.app.state().activity.map(item => item.detail).join('\n'), /sempre perguntar: passou a perguntar Enviar formulários no navegador/);
-  // Phone tools are listed only for Livre bots; the others never see them.
-  assert.ok(f.open().names().includes('phone_screen'));
-  const other = await f.app.rpc('bot.create', { name: 'Total', access: 'full', ...selection });
-  assert.equal(f.app.tools.policy(other.id, 'phone'), 'deny'); assert.equal(f.app.tools.policy(other.id, 'termux'), 'deny');
-  // The switch can still turn the phone off for one Livre bot.
-  f.app.tools.grant(f.bot.id, 'phone', false);
-  assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'deny');
+  await f.app.rpc('free.set', { ask: ['browser/submit', 'termux'] });
+  assert.equal(f.app.tools.gate(bot, 'browser', { freeKey: 'browser/submit' }).ask, false);
+  await f.app.rpc('bot.phoneControl', { botId: bot.id, on: false });
+  assert.equal(f.app.tools.policy(bot.id, 'phone'), 'deny');
   assert.ok(!f.open().names().includes('phone_screen'));
+  assert.equal(f.app.tools.policy(bot.id, 'termux'), 'allow');
 });
 
 test('the wallet approval is enabled once for an existing Livre list and respects a later choice', async t => {
@@ -229,40 +217,16 @@ test('verification codes: hidden from notifications, filled by the app; a messag
   assert.ok(!everything.includes('482913')); assert.ok(!everything.includes('771122'));
 });
 
-test('Termux shell on Livre: Claude asks for risky and listed commands, the supervisor\'s files are out of reach, Codex gets the shell unless the list blocks it', async t => {
-  const f = await setup(t);
-  const run = f.open('phone');
+test('the terminal is available by default; supervisor files, keys and app secrets stay protected', async t => {
+  const f = await setup(t, 'full'), run = f.open('phone');
   const permission = (tool_name, input) => run.call('permission', { tool_name, input });
-  const allowed = await permission('Bash', { command: 'pkg install -y jq && jq --version' });
-  assert.equal(allowed.behavior, 'allow');
-  const blocked = await permission('Bash', { command: 'sqlite3 ~/.mybots/mybots.sqlite "UPDATE bots SET body=1"' });
-  assert.equal(blocked.behavior, 'deny'); assert.match(blocked.message, /supervisor do MyBots/);
+  assert.equal((await permission('Bash', { command: 'pkg install -y jq' })).behavior, 'allow');
   assert.equal((await permission('Read', { file_path: '/data/data/com.termux/files/home/.mybots/secrets/key' })).behavior, 'deny');
-  const risky = permission('Bash', { command: 'rm -rf ~/' });
-  const item = await f.answer(false);
-  assert.equal(item.title, 'Rodar um comando no Termux');
-  assert.equal((await risky).behavior, 'deny');
-  // Off the Livre level the phone keeps no shell at all.
-  const other = await f.app.rpc('bot.create', { name: 'Total', access: 'full', ...selection });
-  const task = f.app.db.start(f.app.db.enqueue(other.id, randomUUID(), 'Oi', selection).id); const cap = f.app.tools.open(task, new AbortController().signal, 'phone'); const bridgeId = randomUUID(); f.app.tools.context(cap.token, bridgeId, true);
-  t.after(cap.close);
-  assert.match((await f.app.tools.callMcp(cap.token, { bridgeId, callId: randomUUID(), name: 'permission', args: { tool_name: 'Bash', input: { command: 'ls' } } })).message, /só existe no nível Livre/);
-  // The runners: Codex gets the whole shell on the phone; Claude gets Bash through the permission tool.
-  const codexArgs = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x', termux: true, phone: true });
-  assert.ok(codexArgs.includes('danger-full-access')); assert.ok(!codexArgs.includes('shell_tool'));
-  assert.match(codexArgs.find(arg => arg.startsWith('developer_instructions=')), /terminal completo do Termux.*phone_screen/s);
-  const plain = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x' });
-  assert.ok(plain.includes('read-only'));
-  const claudeArgs = claudeRunner.claudeArguments(selection, randomUUID(), { token: 't', endpoint: 'http://x', termux: true, phone: true });
+  assert.equal((await permission('Read', { file_path: '/home/p/.ssh/id_rsa' })).behavior, 'deny');
+  assert.equal(f.app.state().approvals.length, 0);
+  const codexArgs = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x', termux: true });
+  assert.ok(codexArgs.includes('danger-full-access'));
+  const claudeArgs = claudeRunner.claudeArguments(selection, randomUUID(), { token: 't', endpoint: 'http://x', termux: true });
   assert.equal(claudeArgs[claudeArgs.indexOf('--tools') + 1], 'Bash,Read,Write,Edit,Glob,Grep');
   assert.ok(claudeArgs.includes('mcp__mybots-tools__permission'));
-  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /pedir a aprovação dela/);
-  // Codex cannot ask command by command: "Comandos no Termux" on the list keeps it without a shell.
-  const codexBot = await f.app.rpc('bot.create', { name: 'Codex livre', access: 'free', ...selection });
-  await f.app.rpc('free.set', { ask: ['termux'] });
-  let tools;
-  f.app.queue.execute = async (bot, prompt, options) => { tools = options.tools; return { text: 'Ok.', ...selection }; };
-  const turn = f.app.db.enqueue(codexBot.id, randomUUID(), 'oi', selection); f.app.queue.schedule();
-  await until(() => f.app.db.task(turn.id).state === 'done');
-  assert.equal(tools.termux, false); assert.equal(tools.phone, true);
 });

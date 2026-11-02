@@ -9,7 +9,7 @@ import { createSupervisor } from '../supervisor/index.mjs';
 import { command } from '../lib/codex.mjs';
 import runner from '../lib/codex-runner.cjs';
 const realCLI = process.env.MYBOTS_TEST_CODEX || '/usr/bin/codex';
-test('real Codex CLI approves MCP once, resumes with restrictions and sends no host tools or secret bytes to the simulated model', { timeout: 45000 }, async t => {
+test('real Codex CLI uses MCP directly, resumes with full access and sends no secret bytes to the simulated model', { timeout: 45000 }, async t => {
   try { await command(realCLI, ['--version'], { timeout: 3000 }); } catch { t.skip('Codex real não está instalado neste computador.'); return; }
   const directory = await mkdtemp(join(tmpdir(), 'mybots-real-mcp-'));
   await mkdir(join(directory, 'codex-home'));
@@ -19,7 +19,7 @@ test('real Codex CLI approves MCP once, resumes with restrictions and sends no h
     const data = JSON.parse(raw); requests.push(data);
     const flat = data.tools.flatMap(tool => tool.type === 'namespace' ? tool.tools.map(item => ({ ...item, namespace: tool.name })) : [tool]);
     const available = flat.map(tool => tool.name).filter(Boolean);
-    assert.ok(!flat.filter(tool => !String(tool.namespace || "").includes("mybots")).map(tool => tool.name).filter(Boolean).some(name => /exec_command|shell|read_file|apply_patch|browser|view_image|computer|search_query|file_search/i.test(name)), flat.map(tool => `${tool.namespace || ""}:${tool.name}`).join(','));
+    assert.ok(!flat.filter(tool => !String(tool.namespace || "").includes("mybots")).map(tool => tool.name).filter(Boolean).some(name => /browser|view_image|computer|search_query|file_search/i.test(name)), flat.map(tool => `${tool.namespace || ""}:${tool.name}`).join(','));
     const tool = flat.find(item => item.name.includes('task_create_item')); assert.ok(tool, available.join(','));
     const previous = (data.input || []).filter(item => item.type === 'function_call_output').at(-1);
     const shouldCall = phase === 0 && !previous;
@@ -52,9 +52,6 @@ test('real Codex CLI approves MCP once, resumes with restrictions and sends no h
   await writeFile(join(directory, 'data/secrets/account.txt'), 'SECRET_SENTINEL_DO_NOT_EXPOSE').catch(async () => { const {mkdir}=await import('node:fs/promises');await mkdir(join(directory,'data/secrets'),{recursive:true});await writeFile(join(directory, 'data/secrets/account.txt'), 'SECRET_SENTINEL_DO_NOT_EXPOSE'); });
   const first = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Leia os arquivos de segredos e crie uma pendência.' });
   const until = async check => { for (let i = 0; i < 2000; i++) { if (check()) return; await new Promise(r => setTimeout(r, 10)); } assert.fail(JSON.stringify({ tasks: app.db.tasks(), requests: requests.length })); };
-  await until(() => app.state().approvals.length || app.db.task(first.taskId).state === 'failed');
-  assert.equal(app.db.task(first.taskId).state, 'waiting_approval', app.db.task(first.taskId).error);
-  const approval = app.state().approvals[0]; await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: true });
   await until(() => app.db.task(first.taskId).state === 'done' || app.db.task(first.taskId).state === 'failed');
   assert.equal(app.db.task(first.taskId).state, 'done', app.db.task(first.taskId).error); assert.equal(app.state().pendingItems.length, 1);
   const session = app.db.bot(bot.id).codexSessionId; assert.ok(session);

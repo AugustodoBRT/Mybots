@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable, ScrollView } from 'react-native';
 import { C, Icon, F, themed } from '../theme';
 import { IconButton, ModelSettings, PrimaryButton } from './shared';
-import { ACCESS, HOMES, useKeyboardRoom } from '../BotProfile';
+import { useKeyboardRoom } from '../BotProfile';
 import { BOT_TEMPLATES } from '../bot-templates';
 import { FacePicker } from './FacePicker';
 import { botColor } from '../../lib/mimo.mjs';
@@ -11,7 +11,7 @@ import { desktop } from '../desktop';
 // On the computer the steps stay in a column about as wide as a phone.
 const column = desktop ? { width: '100%', maxWidth: 680, alignSelf: 'center' } : {};
 
-const STEPS = ['Rosto', 'Jeito e acesso', 'Primeira mensagem'];
+const STEPS = ['Rosto', 'Personalidade', 'Primeira mensagem'];
 const GREETINGS = ['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'];
 const s = themed(() => ({
   backdrop: { flex: 1, backgroundColor: C.bg },
@@ -41,28 +41,23 @@ const s = themed(() => ({
  * Creating a bot in three steps: its face (Sortear or Montar), how it behaves and what it may do, and the first message.
  * The buttons sit at the end of each step, never over the options.
  */
-export function NewBot({ visible, models, defaultSelection, connections, nodes = [], phone, freeChoice, onClose, onCreate }) {
+export function NewBot({ visible, models, defaultSelection, connections, phone, onClose, onCreate }) {
   const [step, setStep] = useState(0); const [name, setName] = useState(''); const [face, setFace] = useState(null); const [instructions, setInstructions] = useState('');
-  const [selection, setSelection] = useState({}); const [home, setHome] = useState('phone'); const [access, setAccess] = useState('ask'); const [first, setFirst] = useState(GREETINGS[0]);
+  const [selection, setSelection] = useState({}); const [first, setFirst] = useState(GREETINGS[0]);
   const [template, setTemplate] = useState(null); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
-  useEffect(() => { if (visible) { setStep(0); setName(''); setFace(null); setInstructions(''); setSelection({ ...defaultSelection }); setHome('phone'); setAccess('ask'); setFirst(GREETINGS[0]); setTemplate(null); setSaving(false); setError(''); } }, [visible]);
+  useEffect(() => { if (visible) { setStep(0); setName(''); setFace(null); setInstructions(''); setSelection({ ...defaultSelection }); setFirst(GREETINGS[0]); setTemplate(null); setSaving(false); setError(''); } }, [visible]);
   useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [step]);
-  const levels = ACCESS.filter(([key]) => key !== 'free' || freeChoice);
-  const useTemplate = item => { setTemplate(item.id); setInstructions(item.profile.instructions); if (!name.trim()) setName(item.profile.name); if (item.profile.access) setAccess(item.profile.access); if (item.profile.home) setHome(item.profile.home); };
+  const useTemplate = item => { setTemplate(item.id); setInstructions(item.profile.instructions); if (!name.trim()) setName(item.profile.name); };
   const finish = async () => {
     setSaving(true); setError('');
     const seed = face?.seed || name.trim();
     const profile = BOT_TEMPLATES.find(item => item.id === template)?.profile || {};
     try {
-      await onCreate({ ...profile, name: name.trim(), instructions: instructions.trim(), color: 'green', avatar: 'orbit', autonomy: 'ask', access: access === 'free' ? 'ask' : access, home, ...selection,
-        face: { seed, color: face?.color || botColor({ name: name.trim(), face: { seed } }), ...(face?.mimo ? { mimo: face.mimo } : {}) } }, { first: first.trim(), free: access === 'free' });
+      await onCreate({ ...profile, name: name.trim(), instructions: instructions.trim(), color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'full', home: 'any', ...selection,
+        face: { seed, color: face?.color || botColor({ name: name.trim(), face: { seed } }), ...(face?.mimo ? { mimo: face.mimo } : {}) } }, { first: first.trim() });
     } catch (failure) { setError(failure.message || 'Não deu para criar o bot.'); setSaving(false); }
   };
-  const radio = (selected, title, detail, onPress, warn) => <Pressable key={title} accessibilityRole="radio" accessibilityState={{ selected }} onPress={onPress} style={s.choice}>
-    <View style={[s.radio, selected && (warn ? s.radioWarn : s.radioOn)]}>{selected ? <View style={[s.dotOn, warn && { backgroundColor: C.peach }]} /> : null}</View>
-    <View style={{ flex: 1 }}><Text style={s.choiceTitle}>{title}</Text>{detail ? <Text style={s.hint}>{detail}</Text> : null}</View>
-  </Pressable>;
   const ready = [name.trim().length > 0, Boolean(selection.model), true];
   return <Modal visible={visible} animationType="slide" onRequestClose={() => (step ? setStep(step - 1) : onClose())}>
     <View style={[s.backdrop, { paddingBottom: keyboard }]}>
@@ -88,10 +83,7 @@ export function NewBot({ visible, models, defaultSelection, connections, nodes =
           <TextInput accessibilityLabel="Personalidade e função" value={instructions} onChangeText={setInstructions} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.accent} style={[s.input, s.area]} />
           <Text style={s.label}>Inteligência</Text>
           <ModelSettings models={models} connections={connections} selection={selection} disabled={saving} onChange={(model, reasoningEffort, provider) => setSelection(old => ({ ...old, model, reasoningEffort, provider }))} />
-          {phone ? <><Text style={s.label}>Onde ele vive</Text>{HOMES.map(([key, title, detail]) => radio(home === key, title, detail, () => setHome(key)))}
-            {home !== 'phone' && !nodes.length ? <Text style={s.hint}>Nenhum computador conectado ainda. Até ele chegar, {home === 'pc' ? 'as mensagens para este bot ficam esperando' : 'este bot trabalha no celular'}.</Text> : null}</> : null}
-          {phone ? <><Text style={s.label}>Nível de acesso</Text>{levels.map(([key, title, detail]) => radio(access === key, title, detail, () => setAccess(key), key === 'full' || key === 'free'))}
-            <Text style={s.hint}>Dá para mudar depois, no perfil do bot.{access === 'free' ? ' O aviso do nível Livre aparece quando o bot for criado.' : ''}</Text></> : null}
+          <Text style={s.hint}>O bot fica disponível no celular e no computador, com acesso total por padrão. O controle do celular pode ser ligado depois no perfil.</Text>
           <PrimaryButton icon="right" title="Continuar" disabled={!ready[1]} onPress={() => setStep(2)} style={{ marginTop: 24 }} />
         </> : null}
         {step === 2 ? <>

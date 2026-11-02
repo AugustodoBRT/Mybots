@@ -82,7 +82,7 @@ test('the link comes back by itself after the computer restarts; cancelling stop
   await f.node.close();
   await until(() => f.app.db.task(interrupted.taskId).state === 'failed');
   assert.match(f.app.db.task(interrupted.taskId).error, /computador desconectou/);
-  await until(() => f.app.state().presence[bot.id].online === false);
+  assert.deepEqual(f.app.state().presence[bot.id], { online: true, where: 'phone' });
 
   const waiting = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Oi' });
   await f.restartNode();
@@ -92,7 +92,7 @@ test('the link comes back by itself after the computer restarts; cancelling stop
   // Forgetting the computer: its bots sleep again and the link does not come back.
   await f.app.rpc('computer.forget', {});
   assert.equal(f.app.state().computer.paired, false);
-  await until(() => f.app.state().presence[bot.id].online === false);
+  assert.deepEqual(f.app.state().presence[bot.id], { online: true, where: 'phone' });
 });
 
 test('a phone the computer does not know is refused', async t => {
@@ -108,17 +108,17 @@ test('a phone the computer does not know is refused', async t => {
   assert.equal(f.app.state().nodes[0].online, false);
 });
 
-test('a turn on the computer tells the IA it runs there; without the permission it never claims to save there', async () => {
+test('a turn on the computer tells the IA it runs there; directs services to the browser', async () => {
   const { default: claude } = await import('../lib/claude-runner.cjs');
   const { default: codex } = await import('../lib/codex-runner.cjs');
   const tools = { endpoint: 'http://127.0.0.1:1', token: 'x', entry: '/tmp/entry.mjs', device: 'augusto' };
   const claudeArgs = claude.claudeArguments({ model: 'haiku' }, randomUUID(), tools);
-  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /computador "augusto".*Nunca diga que salvou algo numa pasta/);
+  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /computador "augusto".*browser_open/);
   assert.match(codex.chatArguments('/tmp/out', { model: 'test' }, tools).join(' '), /computador \\"augusto\\"/);
   assert.doesNotMatch(claude.claudeArguments({ model: 'haiku' }, randomUUID(), { ...tools, device: undefined }).join(' '), /computador "/);
 });
 
-test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; commands follow the level; risky ones always ask', async t => {
+test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; commands run directly with full access', async t => {
   const phoneDir = await mkdtemp(join(tmpdir(), 'mybots-phone-')); const pcDir = await mkdtemp(join(tmpdir(), 'mybots-pc-')); const projects = join(pcDir, 'MyBots');
   const seen = []; let script = [];
   const execute = async (bot, prompt, { tools, onSession }) => {
@@ -134,38 +134,17 @@ test('"Mexer no computador": the bot works in ~/MyBots/<name>; keys stay out; co
   const node = await createNode({ directory: pcDir, port: await freePort(), uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], projects, execute, status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }) });
   t.after(async () => { await app.close(); await node.close(); await rm(phoneDir, { recursive: true, force: true }); await rm(pcDir, { recursive: true, force: true }); });
   await app.rpc('computer.pair', { link: node.pairing().link });
+  await until(() => app.state().computer.state === 'online');
   const ask = async (bot, steps) => { script = steps; const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'faz' }); await until(() => ['done', 'failed'].includes(app.db.task(sent.taskId).state)); return app.db.messages(bot.id).at(-1).text; };
 
   const full = await app.rpc('bot.create', { name: 'Dev/Total', ...selection, home: 'pc', access: 'full' });
   assert.equal(await ask(full, [['Bash', { command: 'npm test' }], ['Read', { file_path: '/home/a/.ssh/id_ed25519' }], ['Bash', { command: 'cat ~/.ssh/id_rsa' }], ['Write', { file_path: '/home/a/nota.txt', content: 'oi' }]]), 'allow,deny,deny,allow');
   assert.equal(seen.at(-1).workspace, join(projects, 'Dev Total'));
-  // A risky command asks even on Acesso total, without "Sempre permitir".
-  script = [['Bash', { command: 'sudo pacman -Syu' }]];
-  let sent = await app.rpc('chat.send', { botId: full.id, requestId: randomUUID(), text: 'atualiza' });
-  await until(() => app.state().approvals.length === 1);
-  const approval = app.state().approvals[0];
-  assert.equal(approval.title, 'Rodar um comando no computador'); assert.match(approval.summary, /sudo pacman -Syu/); assert.equal(approval.canAlways, false);
-  await app.rpc('approval.respond', { approvalId: approval.id, actionHash: approval.actionHash, approved: false });
-  await until(() => app.db.task(sent.taskId).state === 'done');
-  assert.equal(app.db.messages(full.id).at(-1).text, 'deny');
-
-  // Médio: the first command asks; "Sempre permitir" covers the next ones, not file writes.
-  const ask2 = await app.rpc('bot.create', { name: 'Dev', ...selection, home: 'pc', access: 'ask' });
-  script = [['Bash', { command: 'ls' }], ['Bash', { command: 'python3 x.py' }], ['Edit', { file_path: '/etc/hosts' }]];
-  sent = await app.rpc('chat.send', { botId: ask2.id, requestId: randomUUID(), text: 'roda' });
-  await until(() => app.state().approvals.length === 1);
-  let card = app.state().approvals[0]; assert.equal(card.canAlways, true);
-  await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: true, always: true });
-  await until(() => app.state().approvals.length === 1 && app.state().approvals[0].id !== card.id);
-  card = app.state().approvals[0]; assert.equal(card.title, 'Mexer num arquivo fora da pasta do bot');
-  await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved: false });
-  await until(() => app.db.task(sent.taskId).state === 'done');
-  assert.equal(app.db.messages(ask2.id).at(-1).text, 'allow,allow,deny');
-
-  // Pouco acesso: the computer stays closed (and the IA is told so).
-  const basic = await app.rpc('bot.create', { name: 'Leitor', ...selection, home: 'pc', access: 'basic' });
-  assert.equal(await ask(basic, [['Bash', { command: 'ls' }]]), 'deny');
-  assert.equal(seen.at(-1).computer, false);
+  assert.equal(await ask(full, [['Bash', { command: 'sudo pacman -Syu' }]]), 'allow');
+  const legacy = await app.rpc('bot.create', { name: 'Dev antigo', ...selection, home: 'pc', access: 'basic' });
+  assert.equal(await ask(legacy, [['Bash', { command: 'ls' }]]), 'allow');
+  assert.equal(seen.at(-1).computer.full, true);
+  assert.equal(app.state().approvals.length, 0);
 });
 
 test('the MyBots window on the computer: page only on localhost, checked origin, the phone answers its methods and events, files land in Downloads', async t => {
@@ -202,6 +181,7 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   const disconnected = await client.call('desktop.status');
   assert.equal(disconnected.lastPaired, null); assert.equal(disconnected.tailscale, false); assert.ok(disconnected.offlineSince);
   await app.rpc('computer.pair', { link: node.pairing().link });
+  await until(() => app.state().computer.state === 'online');
   await until(async () => (await client.call('desktop.status')).phone);
   const connected = await client.call('desktop.status');
   assert.ok(connected.lastPaired); assert.equal(connected.offlineSince, null);
@@ -241,7 +221,7 @@ test('freed folders: ~ paths resolve on the computer; Claude gets --add-dir, Cod
   const tools = { endpoint: 'http://127.0.0.1:1', token: 'x', entry: '/tmp/e.mjs', device: 'pc', computer };
   const claudeArgs = claude.claudeArguments({ model: 'haiku' }, randomUUID(), tools);
   assert.equal(claudeArgs[claudeArgs.indexOf('--add-dir') + 1], join(home, 'vscodeProjects'));
-  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /vscodeProjects.*pedem a sua aprovação|vscodeProjects/);
+  assert.match(claudeArgs[claudeArgs.indexOf('--append-system-prompt') + 1], /acesso total ao terminal/);
   const codexArgs = codex.chatArguments('/tmp/out', { model: 'test' }, tools);
   assert.ok(codexArgs.includes(`sandbox_workspace_write.writable_roots=${JSON.stringify([join(home, 'vscodeProjects')])}`));
   assert.ok(codexArgs.includes(`sandbox_workspace_write.writable_roots=${JSON.stringify([home])}`) === false);

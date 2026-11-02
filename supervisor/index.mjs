@@ -69,6 +69,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // a resumed session keeps the old instructions. The history goes with the next turn, as for any new session.
     if (db.get("SELECT value FROM metadata WHERE key='prompt.version'")?.value !== String(PROMPT_VERSION)) db.transaction(() => {
       db.run('DELETE FROM codex_sessions');
+      db.run('DELETE FROM room_sessions');
       db.run("INSERT INTO metadata VALUES('prompt.version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(PROMPT_VERSION));
     });
     queue = new Queue(db, execute);
@@ -353,7 +354,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const all = db.bots(); const live = all.filter(bot => !bot.deletedAt); const kept = new Set(live.map(bot => bot.id));
       return { schema: 1, mode: 'phone', supervisorMigrated: true, seq, usage: db.usage(), person: db.person(),
         rooms: rooms.list().map(roomSummary),
-        presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
+        googleAccounts: db.googleAccounts(), presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
         accountServers: knownServers() || [], bots: live.map(botSummary), deletedBots: all.filter(bot => bot.deletedAt),
         active: [...new Set(db.activeTasks().map(task => task.bot_id))], pausedQueues: live.filter(bot => queue.paused(bot.id)).map(bot => bot.id),
         connection: summary(), connections, models: catalog().map(item => {
@@ -405,6 +406,31 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'connection.refresh': await refresh(true); return state();
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
+        case 'google.accounts.add': { const accounts = db.addGoogleAccount(params.account); broadcast('connection.changed'); return accounts; }
+        case 'google.login': {
+          const bot = db.requireBot(params.botId);
+          if (db.activeTasks(bot.id).length) throw new Error('Aguarde a tarefa terminar antes de entrar em outra conta.');
+          db.addGoogleAccount(params.account);
+          const url = new URL('https://accounts.google.com/AddSession');
+          url.searchParams.set('Email', params.account);
+          url.searchParams.set('continue', 'https://myaccount.google.com/');
+          if (link.browserFor(bot)) {
+            const page = await link.command({ botId: bot.id, lane: 'phone' }, 'browser.open', { url: url.href });
+            browser.pages.set(bot.id, { url: page.url || url.href, title: page.title || 'Google', where: 'pc', at: now() });
+          }
+          else {
+            if (!browser.available()) throw new Error('Abra o MyBots no celular para entrar no navegador.');
+            await browser.queue({ botId: bot.id, op: 'open', args: { url: url.href } });
+          }
+          browser.setControl(bot.id, 'person'); link.control(browser.status().control);
+          broadcast('connection.changed');
+          return { opened: true };
+        }
+        case 'bot.phoneControl': {
+          const bot = db.setPhoneControl(params.botId, params.on);
+          if (!params.on && phone.controller?.botId === bot.id) await phone.stop();
+          broadcast('activity.new'); return bot;
+        }
         case 'bot.apps': return { apps: tools.setAccountApps(params.botId, params.apps) };
         case 'agent.skills': { if (link.status().state !== 'online') return { skills: [], offline: true, message: 'O computador está desconectado: as skills dele aparecem quando ele voltar.' }; return { skills: ((await link.skills()).skills || []) }; }
         case 'bot.update': { const bot = db.requireBot(params.botId); if (Array.isArray(params.skills) && params.skills.length) { const known = new Set(((await link.skills().catch(() => { throw new Error('Conecte o computador para ligar skills: é lá que elas ficam.'); })).skills || []).map(item => item.path)); if (params.skills.some(item => !known.has(item?.path))) throw new Error('Essa skill não está mais no computador.'); } if (params.browserMode === 'mine' && tools.policy(bot.id, 'browser') !== 'allow' && params.access !== 'full') throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); await refresh(); const chosen = selectionFor(catalog(), { ...bot, ...params });
@@ -633,10 +659,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'secrets.unlock': {
           const matched = vault.unlock(params.key);
           if (!matched && email.config()) email.update({ status: 'auth_error', message: 'O MyBots foi reinstalado: reconecte a conta de e-mail.' });
-          email.start(); broadcast('connection.changed'); return { unlocked: true, matched };
+          broadcast('connection.changed'); return { unlocked: true, matched };
         }
         case 'connectors.status': return bundle.status();
-        case 'connectors.install': { const result = bundle.install(params.data); email.start(); broadcast('connection.changed'); return result; }
+        case 'connectors.install': { const result = bundle.install(params.data); broadcast('connection.changed'); return result; }
         case 'email.status': return email.status();
         case 'email.configure': { const result = await email.configure(params); broadcast('activity.new'); return result; }
         case 'email.disconnect': return email.disconnect();

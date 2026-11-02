@@ -10,7 +10,7 @@ import { createSupervisor } from '../supervisor/index.mjs';
 import runner from '../lib/claude-runner.cjs';
 
 // Real CLI, deterministic model and native-tool stand-in: verifies the hook also gates pre-allowed tools.
-test('real Claude CLI: native Chrome hook allows, denies and fails closed before a pre-allowed tool executes', { timeout: 90000 }, async t => {
+test('real Claude CLI: retired native Chrome mode is denied and a failed hook never executes its tool', { timeout: 90000 }, async t => {
   const binary = process.env.MYBOTS_TEST_CLAUDE || 'claude';
   try { await command(binary, ['--version'], { timeout: 10000 }); } catch { t.skip('Claude Code não instalado.'); return; }
   const directory = await mkdtemp(join(tmpdir(), 'mybots-chrome-cli-'));
@@ -65,7 +65,7 @@ test('real Claude CLI: native Chrome hook allows, denies and fails closed before
     const endpoint = `http://127.0.0.1:${app.port}`;
     await writeFile(join(directory, 'mode'), mode);
     await runner.runReply({ model: 'haiku' }, 'Leia a página de teste uma vez.', { binary: wrapper, workspace: directory, maxMs: 35000, tools: { chrome: true, token: cap.token, endpoint } });
-    cap.close(); assert.equal(executions, 1, mode);
+    cap.close(); assert.equal(executions, 0, mode);
   }
-  assert.match(receipts[0], /Página de teste/); assert.match(receipts[1], /negada|permissão/i); assert.match(receipts.at(-1), /block|hook|connect/i);
+  assert.match(receipts[0], /Chrome|computador/i); assert.match(receipts[1], /Chrome|computador/i); assert.match(receipts.at(-1), /block|hook|connect/i);
 });

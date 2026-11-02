@@ -120,7 +120,19 @@ export class BrowserSession {
     try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
     this.autoReturn = this.siteViews.__autoReturn === true;
   }
-  start() { if (this.context && !this.starting) return Promise.resolve(); return this.starting ||= this.launch().catch(error => { this.starting = null; throw error; }); }
+  start() {
+    if (this.starting) return this.starting;
+    if (this.context && this.page && !this.page.isClosed()) return Promise.resolve();
+    return this.starting = (async () => {
+      if (!this.context) await this.launch();
+      else {
+        // The person can close a real window tab without stopping the bot's session.
+        this.page = this.pages.find(page => !page.isClosed()) || await this.newPage();
+        this.login = null; this.payment = null; this.elementFrames = null;
+        if (this.device) await this.deviceView({ ...this.device, fit: this.fit });
+      }
+    })().finally(() => { this.starting = null; });
+  }
   async launch() {
     if (this.mode === 'mine') {
       this.browser = await (this.connect ? this.connect() : connectMine(chromeEndpoint(this.profile)));
@@ -145,8 +157,19 @@ export class BrowserSession {
       page.setDefaultTimeout(10000); page.setDefaultNavigationTimeout(30000);
       page.on('close', () => {
         this.metrics.get(page)?.detach().catch(() => {}); this.metrics.delete(page);
+        this.devices.get(page)?.cdp.detach().catch(() => {}); this.devices.delete(page);
         this.pages = this.pages.filter(item => item !== page);
-        if (!this.closing && this.page === page && this.pages.length) this.activate(this.pages[0]).catch(() => {});
+        if (!this.closing && this.page === page) {
+          if (this.pages.length) this.activate(this.pages[0]).catch(() => {});
+          else {
+            this.page = null; this.login = null; this.payment = null; this.elementFrames = null;
+            this.resumeView = Boolean(this.cdp); this.cdp?.detach().catch(() => {}); this.cdp = null;
+            clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
+            clearInterval(this.pageTimer); this.pageTimer = null;
+            this.history?.cdp.detach().catch(() => {}); this.history = null; this.lastBar = null;
+            this.emitFrame({ closed: true });
+          }
+        }
       });
     };
     this.addPage = add;
@@ -167,7 +190,7 @@ export class BrowserSession {
     if (this.closing) throw new Error('O navegador do bot foi interrompido.');
     if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
     const safe = url ? await allowedUrl(url) : null;
-    const page = this.context.electron ? await electronPage(this.context) : await this.context.newPage();
+    const page = this.context.electron ? await electronPage(this.context, this.botId) : await this.context.newPage();
     if (this.context.electron) await page.route('**/*', route => this.route(route));
     if (this.closing) { await this.closePage(page); throw new Error('O navegador do bot foi interrompido.'); }
     if (this.mode === 'shared') this.addPage(page);
@@ -217,6 +240,7 @@ export class BrowserSession {
   }
   async setView(on, options) {
     await this.start();
+    this.resumeView = false;
     // The person opening the browser from the window does not depend on a bot: an empty browser starts on a search page.
     if (on && options?.home && !this.opened && this.page.url() === 'about:blank') { this.opened = true; this.page.goto('https://www.google.com/', { timeout: 15000 }).catch(() => {}); }
     const wanted = { ...this.viewOptions, ...options }; Object.assign(wanted, viewSize(wanted));
@@ -505,6 +529,7 @@ export class BrowserSession {
   /** What the person does on the page in MyBots after "Assumir": points are fractions of the frame, so any screen size lands right. */
   async input(args = {}) {
     await this.start();
+    if (this.resumeView) await this.view(true);
     const { width, height } = this.viewportSize();
     const at = (value, size) => Math.max(0, Math.min(1, Number(value) || 0)) * size;
     const delta = value => Math.max(-5000, Math.min(5000, Number(value) || 0));
@@ -576,6 +601,10 @@ export class BrowserSession {
     return target.evaluate((el, source) => ({ kind: el.type === 'password' ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' ? 'submit' : 'field', label: (0, eval)(`(${source})`)(el) ? 'Campo de cartão' : (el.getAttribute('aria-label') || el.labels?.[0]?.textContent || el.placeholder || el.textContent || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 200), url: location.href }), CARD_FIELD_SOURCE);
   }
   async command(op, input = {}) {
+    if (op !== 'login_cancel' && op !== 'pay_clear') {
+      await this.start();
+      if (this.resumeView) await this.view(true);
+    }
     if (this.page && op !== 'login' && op !== 'pay') await this.rememberCards();
     const result = await this.perform(op, input);
     if (op === 'login' || op === 'pay') return result; // Internal encryption material goes only to the phone's vault, never to MCP.
@@ -759,7 +788,7 @@ export class BrowserSession {
     return filled;
   }
   async close() {
-    clearInterval(this.pageTimer); this.pageTimer = null; this.login = null; this.payment = null; this.closing = true; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
+    clearInterval(this.pageTimer); this.pageTimer = null; this.resumeView = false; this.login = null; this.payment = null; this.closing = true; clearTimeout(this.frameTimer); this.frameTimer = null; this.pendingFrame = null;
     if (this.mode === 'mine' || this.mode === 'shared') {
       // Only this bot's tabs close: Meu Chrome and the shared Chrome keep running for the person and the other bots.
       if (this.onDisconnect) (this.mode === 'mine' ? this.browser : this.context)?.off(this.mode === 'mine' ? 'disconnected' : 'close', this.onDisconnect);

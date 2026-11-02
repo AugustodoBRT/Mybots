@@ -19,8 +19,8 @@ export async function electronCall(info, path, body = {}) {
 }
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 /** A new tab of the window's browser, as a Playwright page: the window opens it blank with a marker in the address. */
-export async function electronPage(context) {
-  const { marker } = await electronCall(context.electron, '/tab/create', {});
+export async function electronPage(context, owner = null) {
+  const { marker } = await electronCall(context.electron, '/tab/create', { owner });
   for (let n = 0; n < 60; n++) {
     const page = context.pages().find(item => item.url().endsWith(`#${marker}`));
     if (page) { page.mybotsMarker = marker; return page; }

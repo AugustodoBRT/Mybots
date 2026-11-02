@@ -21,6 +21,7 @@ export function googleAccountUrl(value, account) {
 }
 export function browserAccountGuidance(bot) {
   return ' Serviços como Gmail, Agenda e Drive são acessados diretamente pelo navegador (browser_open e browser_read), sem conectar apps, IMAP ou integrações na conta da IA. Abra o site primeiro; se pedir login, use browser_ask_user e espere a pessoa entrar. ' +
+    'Só diga que conferiu um site agora depois de ler a página com sucesso neste pedido. Se o navegador falhar, avise que a consulta não foi concluída; informações do histórico, de memórias ou pendências são anteriores e não confirmam o estado atual do site. ' +
     (bot.googleAccount ? `A conta Google escolhida para este bot é ${JSON.stringify(bot.googleAccount)}. Use essa conta nos serviços Google e confira o e-mail no seletor antes de ler ou agir; nunca use outra conta silenciosamente. Se ela não estiver conectada, peça login nessa conta pelo navegador.` : 'Use a sessão já conectada no navegador. Se houver várias contas Google e não estiver claro qual usar, pergunte à pessoa.') +
     ' Você está disponível no celular e no computador. Se uma tarefa precisar de um recurso do PC que está indisponível, explique a limitação concreta; não adie a resposta até o PC ligar. O acesso é total por padrão; o controle dos outros apps do celular depende apenas da opção Controlar o celular no seu perfil.';
 }

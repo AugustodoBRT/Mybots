@@ -23,6 +23,7 @@ test('a janela em Electron hospeda o navegador dos bots: aba nova pela janela, i
   t.after(async () => { await session.close().catch(() => {}); await rm(directory, { recursive: true, force: true }); });
   await session.start();
   assert.ok(session.context.electron, 'o worker usa o navegador da janela');
+  assert.equal((await electronCall(info, '/tabs')).tabs.find(tab => tab.marker === session.page.mybotsMarker)?.owner, session.botId);
   await session.page.setContent('<h1 id=x>Olá da janela</h1>');
   assert.match((await session.page.screenshot({ type: 'jpeg' })).subarray(0, 3).toString('hex'), /ffd8ff/, 'a aba de um bot que a pessoa não está vendo também gera imagem');
   await session.input({ type: 'tab_new' });
@@ -30,4 +31,11 @@ test('a janela em Electron hospeda o navegador dos bots: aba nova pela janela, i
   const before = (await electronCall(info, '/tabs')).tabs.length;
   await session.closePage(session.pages[1]); await sleep(600);
   assert.equal((await electronCall(info, '/tabs')).tabs.length, before - 1, 'fechar a aba do bot fecha a aba da janela');
+  await session.closePage(session.page); await sleep(300);
+  const recovered = await session.command('read');
+  assert.equal(recovered.tabs.length, 1, 'o próximo comando recupera a aba fechada pela janela');
+  const visible = (await electronCall(info, '/tabs')).tabs;
+  assert.ok(visible.some(tab => tab.marker === session.page.mybotsMarker && tab.owner === session.botId), 'a aba recuperada aparece na janela e pertence ao bot');
+  await session.command('open', { url: 'https://example.com/#reaberta' });
+  assert.ok((await electronCall(info, '/tabs')).tabs.some(tab => tab.owner === session.botId && tab.url === 'https://example.com/#reaberta'), 'o site aberto pelo bot aparece na lista de abas da janela');
 });

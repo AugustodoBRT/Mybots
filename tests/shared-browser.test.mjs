@@ -164,3 +164,26 @@ test('watching again a page that stopped changing shows it: the pacing timer of 
     s.queueFrame(s.cdp, frames.at(-1)); s.queueFrame(s.cdp, frames.at(-1)); assert.ok(s.frameTimer); await s.view(false);
   }
 });
+
+test('closing a bot tab in the window does not strand its next browser command or close another bot', chrome, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-closed-tab-'));
+  const context = await launchContext(join(directory, 'shared'));
+  const a = new BrowserSession(join(directory, 'a'), { mode: 'shared', connect: async () => context, botId: randomUUID() });
+  const b = new BrowserSession(join(directory, 'b'), { mode: 'shared', connect: async () => context, botId: randomUUID() });
+  t.after(async () => { await Promise.all([a.close(), b.close()]); await context.close(); await rm(directory, { recursive: true, force: true }); });
+  await a.start(); await b.start();
+  await b.page.setContent('<title>Outra conta</title><p>Outra aba preservada</p>');
+  await a.view(true);
+  const closed = a.page;
+  await closed.close();
+  const recovered = await a.command('read');
+  assert.notEqual(a.page, closed); assert.equal(a.page.isClosed(), false);
+  assert.equal(recovered.tabs.length, 1);
+  assert.ok(a.cdp, 'a transmissão volta na aba recuperada');
+  assert.match((await b.command('read')).text, /Outra aba preservada/);
+  await a.command('tabs', { action: 'new' });
+  const remaining = a.pages[0];
+  await a.page.close();
+  await a.command('read');
+  assert.equal(a.page, remaining); assert.equal(a.pages.length, 1);
+});

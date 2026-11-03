@@ -1647,3 +1647,8 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Claude aparece sozinho**: o Claude Code só informa os limites junto de uma resposta, então a barra do Claude ficava vazia até o primeiro uso. Agora, com o Claude conectado e sem números (ou com números de mais de 2 horas), o supervisor faz uma pergunta mínima ao Haiku para ler os limites, no máximo uma vez a cada 2 horas e nunca duas em 10 minutos (`refreshClaudeLimits` em `supervisor/index.mjs`).
 - **Antigravity e opencode**: não informam o consumo da assinatura, então não têm barra.
 - **Validação**: `tests/ai-accounts.test.mjs` (pede uma vez, não repete, e o estado traz as duas janelas) e a tela no Chrome.
+
+## 0.71.0 (versionCode 131): aviso de versão nova sem reiniciar o app
+
+- **Computador**: o app procurava versão nova ao abrir e a cada 6 horas; quem deixava o app aberto só via o aviso horas depois (ou nunca, se só fechasse a janela para a bandeja). Agora procura a cada hora e também sempre que a janela volta à tela ou ganha o foco, se a última procura tiver mais de 10 minutos (`checkIfStale` em `desktop/electron/updates.js`, chamado por `show()` e pelo evento `focus`). O aviso aparece na janela ("Nova versão · Atualizar e reiniciar"), na bandeja e como notificação.
+- **Android**: ao voltar para o app, ele confere de novo se a última conferência tiver mais de 15 minutos (antes, 1 hora).

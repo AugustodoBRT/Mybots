@@ -4,10 +4,12 @@
 const { app, Notification, shell } = require('electron');
 const { FEED, RELEASE_PAGE, feedFile, feedVersion, isNewer, updatesItself, nextState, IDLE } = require('./updates-core');
 
-const EVERY_MS = 6 * 3600 * 1000;
+// Looked for every hour while the app is open, and again whenever the window comes back after more than 10 minutes.
+const EVERY_MS = 3600 * 1000;
+const STALE_MS = 10 * 60 * 1000;
 
 function createUpdates({ changed = () => {}, log = () => {}, beforeInstall = () => {} } = {}) {
-  let state = { ...IDLE }, timer = null, updater = null, announced = null;
+  let state = { ...IDLE }, timer = null, updater = null, announced = null, lastAt = 0;
   const itself = updatesItself(process.platform);
   const apply = event => { state = nextState(state, event); changed(); };
   const tell = (title, body) => { try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch {} };
@@ -32,6 +34,7 @@ function createUpdates({ changed = () => {}, log = () => {}, beforeInstall = () 
 
   async function check() {
     if (state.phase === 'downloading' || state.phase === 'installing') return;
+    lastAt = Date.now();
     try {
       if (itself) { await autoUpdater().checkForUpdates(); return; }
       const response = await fetch(`${FEED}/${feedFile(process.platform, process.arch)}`, { signal: AbortSignal.timeout(15000), redirect: 'follow' });
@@ -53,6 +56,8 @@ function createUpdates({ changed = () => {}, log = () => {}, beforeInstall = () 
   return {
     start() { setTimeout(check, 20000).unref?.(); timer = setInterval(check, EVERY_MS); timer.unref?.(); },
     check, install,
+    /** Used when the window is shown or focused: looks again only if the last look is old, so opening the window never waits for a new look. */
+    checkIfStale() { if (Date.now() - lastAt >= STALE_MS) return check(); return Promise.resolve(); },
     state: () => ({ ...state, current: app.getVersion(), mode: itself ? 'self' : 'manual' }),
     /** The tray's menu entry for the current state, or null. */
     menuItem() {

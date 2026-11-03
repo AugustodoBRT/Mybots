@@ -707,7 +707,7 @@ function AppMain() {
   }, []);
   const checkUpdate = useCallback(async function checkUpdate(manual = false, foreground = false) {
     if (!termuxAvailable) return;
-    if (!manual && Date.now() - updateChecked.current < (foreground ? 1 : 6) * 3600000) return;
+    if (!manual && Date.now() - updateChecked.current < (foreground ? 0.25 : 6) * 3600000) return;
     updateChecked.current = Date.now();
     if (manual) setUpdate(old => ({ ...old, checking: true, error: '' }));
     try { const info = await updateCheck(); setUpdate(old => ({ ...old, info, checking: false, error: '', dismissed: manual ? false : old?.dismissed })); }

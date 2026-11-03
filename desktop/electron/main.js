@@ -126,6 +126,7 @@ async function park() {
 }
 async function show() {
   if (!window) return;
+  updates?.checkIfStale();   // the person is looking: a new version shows up without restarting the app
   if (!window.isVisible()) window.show();
   if (window.isMinimized()) window.restore();
   if (onHypr()) {
@@ -157,6 +158,7 @@ if (first) app.whenReady().then(async () => {
   fit(); window.on('resize', fit);
   ui.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   ui.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(UI) && !url.startsWith('file://')) event.preventDefault(); });
+  window.on('focus', () => updates?.checkIfStale());
   window.on('close', event => { if (!quitting) { event.preventDefault(); park(); } });
   // A reloaded interface knows nothing of the area it asked for: the browser goes back under it.
   ui.webContents.on('did-start-loading', () => tabs?.place(null));

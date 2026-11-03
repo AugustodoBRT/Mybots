@@ -19,7 +19,7 @@ const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -27,7 +27,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
   // Where the window's data comes from: the paired phone (as before) or this computer's own supervisor. A person who
   // never paired a phone starts on the computer's own; the choice is kept and applies to every window.
   const saved = () => { try { const value = JSON.parse(readFileSync(sourceFile, 'utf8')).source; return value === 'phone' || value === 'local' ? value : null; } catch { return null; } };
-  const sourceNow = () => { const choice = saved(); if (choice === 'local' && !own()) return 'phone'; return choice || (own() && !phones().length ? 'local' : 'phone'); };
+  const sourceNow = () => { const choice = saved(); if (choice === 'local' && !own()) return 'phone'; return choice || (own() && (!phones().length || syncOf()?.synced()) ? 'local' : 'phone'); };
   const origins = () => [`http://127.0.0.1:${server.address().port}`, `http://localhost:${server.address().port}`];
   // Only this computer's own pages: a site opened in a browser cannot read the page (DNS rebinding) or use the socket.
   const local = request => origins().map(origin => origin.slice(7)).includes(request.headers.host);
@@ -66,6 +66,8 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
         reply(id, { result: { ok: true } }); return;
       }
       const backend = (method, params) => {
+        // The sync runs between the two supervisors, by the node; a window never starts it.
+        if (/^sync\./.test(method)) throw new Error('Isto só pode ser feito pelo MyBots.');
         if (ws.source !== 'local') { if (!phone.online()) throw new Error(OFFLINE); return phone.call(method, params); }
         if (!ws.session || ws.session.closed) throw new Error(STARTING);
         // The same list the phone gives the window; the Livre level is chosen on the phone, with its warning.
@@ -100,7 +102,13 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        // "Sincronizar agora" in Ajustes: one round between the phone and this computer, answered when it ends.
+        else if (method === 'desktop.sync') {
+          if (!syncOf()) throw new Error('A sincronização não está disponível.');
+          if (!phone.online()) throw new Error('O celular está fora de alcance. A sincronização acontece sozinha quando os dois estiverem ligados.');
+          reply(id, { result: await syncOf().now() });
+        }
         // Choosing where the window's data comes from. The windows reconnect and load the other side's state.
         else if (method === 'desktop.source') {
           const source = params?.source;

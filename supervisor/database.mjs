@@ -34,7 +34,8 @@ function tokens(usage) {
  * What the change log tracks, for the two devices (phone and computer) to share later: table -> its key column, an optional
  * row filter, and where the row's own "last edited" time is. Everything else stays on its device: tasks and their events,
  * IA sessions, approvals, activity, notifications, heartbeats, connectors, usage, the browser's steps and downloads,
- * negotiations, skills (files on disk), pairing and node data.
+ * negotiations, skills (files on disk), pairing and node data. Grants are logged but never applied from the other device:
+ * what a bot may do is decided on each device.
  */
 export const SYNCED = {
   bots: { key: 'id', at: "json_extract(body,'$.updatedAt')" },
@@ -43,12 +44,15 @@ export const SYNCED = {
   grants: { key: 'id' },
   rooms: { key: 'id', at: 'updated_at' },
   room_messages: { key: 'id', at: 'created_at' },
-  routines: { key: 'id', at: 'updated_at' },
+  // A routine's schedule fields change at every run; only its content and on/off state are shared.
+  routines: { key: 'id', at: 'updated_at', updateOf: 'body, enabled, bot_id' },
   pending_items: { key: 'id', at: 'created_at' },
+  attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
   metadata: { key: 'key', where: "key IN ('person.name','person.theme','google.accounts','time_zone')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
+export const SCHEMA = 14;
 
 export class Database {
   constructor(directory) {
@@ -59,7 +63,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 13) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 14) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -181,7 +185,7 @@ export class Database {
     // Change log: every write to a synced table leaves one line (table, key, a counter that only grows on this device, the
     // time, whether it was a deletion). One line per row: a newer write replaces the older one. The row's content is read
     // when someone asks for the changes, so the log stays small. Triggers do the logging, so no code path can forget it.
-    if (version < 13) this.transaction(() => {
+    if (version < 14) this.transaction(() => {
       this.db.exec(`CREATE TABLE IF NOT EXISTS sync_state (id INTEGER PRIMARY KEY CHECK(id=1), device TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0, applying INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS changes (tbl TEXT NOT NULL, key TEXT NOT NULL, seq INTEGER NOT NULL, lamport INTEGER NOT NULL, origin TEXT NOT NULL, at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tbl, key));
         CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);`);
@@ -192,9 +196,10 @@ export class Database {
           INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) SELECT '${table}', ${row}.${spec.key}, counter, counter, device, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ${deleted} FROM sync_state WHERE id=1 AND applying=0
           ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted;`;
         const condition = row => spec.where ? `WHEN ${spec.where.replaceAll(/\bkey\b/g, `${row}.key`)}` : '';
+        const only = spec.updateOf ? ` OF ${spec.updateOf}` : '';
         this.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;
           CREATE TRIGGER ${table}_log_insert AFTER INSERT ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
-          CREATE TRIGGER ${table}_log_update AFTER UPDATE ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
+          CREATE TRIGGER ${table}_log_update AFTER UPDATE${only} ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
           CREATE TRIGGER ${table}_log_delete AFTER DELETE ON ${table} ${condition('old')} BEGIN ${touch('old', 1)} END;`);
         // What already exists starts in the log, with its own time when it has one (rows without one count as never edited).
         const base = this.get('SELECT counter FROM sync_state WHERE id=1').counter;
@@ -203,7 +208,7 @@ export class Database {
           FROM ${table} WHERE 1=1${filter} AND ${spec.key} NOT IN (SELECT key FROM changes WHERE tbl='${table}')`);
         this.db.exec('UPDATE sync_state SET counter=(SELECT coalesce(max(seq),0) FROM changes) WHERE id=1');
       }
-      this.db.exec('PRAGMA user_version=13;');
+      this.db.exec('PRAGMA user_version=14;');
     });
   }
   /** This device's id in the change log and how far its counter has gone. */
@@ -212,14 +217,94 @@ export class Database {
    * The changes after a counter value, oldest first, each with the row's current content (or marked deleted).
    * `next` is where the next call continues; `more` says whether there is anything beyond this page.
    */
-  changesSince(after = 0, limit = 200) {
+  changesSince(after = 0, limit = 200, exclude = '') {
     const start = Number.isSafeInteger(after) && after > 0 ? after : 0; const size = Math.min(Math.max(Number(limit) || 200, 1), 1000);
-    const rows = this.all('SELECT tbl,key,seq,lamport,origin,at,deleted FROM changes WHERE seq>? ORDER BY seq LIMIT ?', start, size + 1);
+    // `exclude` is the asking device: what it sent us is not sent back.
+    const rows = this.all('SELECT tbl,key,seq,lamport,origin,at,deleted FROM changes WHERE seq>? AND origin<>? ORDER BY seq LIMIT ?', start, typeof exclude === 'string' ? exclude : '', size + 1);
     const page = rows.slice(0, size).map(row => {
       const spec = SYNCED[row.tbl]; const data = !row.deleted && spec ? this.get(`SELECT * FROM ${row.tbl} WHERE ${spec.key}=?`, row.key) : null;
       return { table: row.tbl, key: row.key, seq: row.seq, lamport: row.lamport, origin: row.origin, at: row.at, deleted: Boolean(row.deleted) || !data, ...(data ? { data } : {}) };
     });
-    return { ...this.syncState(), changes: page, next: page.length ? page.at(-1).seq : start, more: rows.length > size };
+    const state = this.syncState(); const more = rows.length > size;
+    // Past the last page everything up to the counter has been seen (what was left out belongs to the asker), so the cursor can jump there.
+    return { ...state, schema: SCHEMA, changes: page, next: more ? page.at(-1).seq : Math.max(start, state.counter), more };
+  }
+  /**
+   * Applies changes that came from the other device. Each record keeps whichever version is newer (time, then Lamport
+   * counter, then device id); an older or equal one is skipped. The change is written without logging as ours and its own
+   * version is kept in the log, so it never goes back to where it came from. A record edited here and not yet delivered
+   * (`delivered` is how far the other device has read our log) that loses to a newer remote one is a conflict: it is
+   * recorded in Activity, never lost silently. Never taken from the other device: grants (decided per device), the access
+   * level of a bot that exists here, and any bot's Livre level (a new bot arrives at most with Médio).
+   */
+  applyChanges(changes, { from = '', delivered = 0 } = {}) {
+    if (!Array.isArray(changes) || changes.length > 1000) throw new Error('Mudanças inválidas.');
+    const me = this.syncState().device; const result = { applied: 0, skipped: 0, conflicts: [], bots: [], chats: [], rooms: [], files: [] };
+    const newer = (a, b) => (a.at > b.at) - (a.at < b.at) || (a.lamport - b.lamport) || (a.origin > b.origin) - (a.origin < b.origin);
+    const columns = table => (this.columnCache ||= {})[table] ||= this.all(`PRAGMA table_info(${table})`).map(row => row.name);
+    const label = table => ({ bots: 'bot', rooms: 'sala', memory: 'memória', routines: 'rotina', pending_items: 'pendência', metadata: 'ajuste', attachments: 'anexo' }[table] || table);
+    // What a record says apart from the bookkeeping that changes at every write (the edit time).
+    const material = row => { try { const body = JSON.parse(row?.body ?? row?.value ?? 'null'); if (body && typeof body === 'object') delete body.updatedAt; return JSON.stringify(body ?? row?.value ?? null); } catch { return String(row?.body ?? row?.value ?? ''); } };
+    const name = (table, data) => { try { const body = JSON.parse(data?.body || '{}'); return String(body.name || body.title || body.text || '').slice(0, 60); } catch { return ''; } };
+    this.db.exec('PRAGMA foreign_keys=OFF');
+    try {
+      this.transaction(() => this.withoutLogging(() => {
+        for (const change of [...changes].sort((a, b) => a.seq - b.seq)) {
+          const spec = SYNCED[change?.table];
+          if (!spec || change.table === 'grants' || typeof change.key !== 'string' || !change.key || change.key.length > 200 || !Number.isSafeInteger(change.lamport) || typeof change.at !== 'string' || change.at.length > 40 || typeof change.origin !== 'string' || !change.origin || change.origin.length > 64) { result.skipped++; continue; }
+          if (change.origin === me) { result.skipped++; continue; }
+          const remote = { at: change.at, lamport: change.lamport, origin: change.origin };
+          const local = this.get('SELECT seq,lamport,origin,at FROM changes WHERE tbl=? AND key=?', change.table, change.key);
+          const existing = this.get(`SELECT * FROM ${change.table} WHERE ${spec.key}=?`, change.key);
+          // Both sides changed it since they last met (ours is not read by the other side yet) and the content really differs: a conflict, whoever wins.
+          const concurrent = Boolean(local && local.origin === me && local.seq > delivered && existing && !['messages', 'room_messages'].includes(change.table) && material(existing) !== material(change.data));
+          const note = outcome => {
+            if (!concurrent || result.conflicts.length >= 20) return;
+            const who = name(change.table, existing) || name(change.table, change.data);
+            result.conflicts.push({ table: change.table, key: change.key, name: who });
+            this.record('sync_conflict', `Conflito em ${label(change.table)}${who ? ` “${who}”` : ''}: o outro aparelho editou ao mesmo tempo e a versão mais recente ficou (${outcome}).`, change.table === 'bots' ? change.key : null);
+          };
+          if (local && newer(remote, local) <= 0) { note('a deste aparelho'); result.skipped++; continue; }
+          note('a do outro aparelho');
+          if (change.deleted) {
+            if (existing) this.run(`DELETE FROM ${change.table} WHERE ${spec.key}=?`, change.key);
+          } else {
+            const data = change.data;
+            if (!data || typeof data !== 'object' || data[spec.key] !== change.key) { result.skipped++; continue; }
+            let allowed = columns(change.table); if (change.table === 'routines') allowed = ['id', 'bot_id', 'body', 'enabled', 'created_at', 'updated_at'];
+            const row = Object.fromEntries(allowed.filter(column => column in data).map(column => [column, data[column]]));
+            if (Object.values(row).some(value => value !== null && !['string', 'number'].includes(typeof value) || (typeof value === 'string' && value.length > 6e6))) { result.skipped++; continue; }
+            if (change.table === 'bots') {
+              try {
+                const body = JSON.parse(row.body); const mine = existing ? JSON.parse(existing.body) : null;
+                if (mine) { if (mine.access === undefined) delete body.access; else body.access = mine.access; }
+                else body.access = body.access === 'basic' ? 'basic' : 'ask';
+                row.body = JSON.stringify(body);
+              } catch { result.skipped++; continue; }
+            }
+            const names = Object.keys(row); if (!names.includes(spec.key)) { result.skipped++; continue; }
+            const update = names.filter(column => column !== spec.key).map(column => `${column}=excluded.${column}`).join(',');
+            this.run(`INSERT INTO ${change.table}(${names.join(',')}) VALUES(${names.map(() => '?').join(',')}) ON CONFLICT(${spec.key}) DO ${update ? `UPDATE SET ${update}` : 'NOTHING'}`, ...names.map(column => row[column]));
+            if (change.table === 'attachments') result.files.push(change.key);
+          }
+          // The counter moves past the remote one (Lamport), and the record keeps the version it came with.
+          const counter = Math.max(this.syncState().counter, change.lamport) + 1;
+          this.run('UPDATE sync_state SET counter=? WHERE id=1', counter);
+          this.run('INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted',
+            change.table, change.key, counter, change.lamport, change.origin, change.at, change.deleted ? 1 : 0);
+          result.applied++;
+          const botId = change.table === 'bots' ? change.key : change.table === 'messages' || change.table === 'memory' ? (change.data?.bot_id || existing?.bot_id) : null;
+          if (botId) { if (!result.bots.includes(botId)) result.bots.push(botId); if (change.table === 'messages' && !result.chats.includes(botId)) result.chats.push(botId); }
+          if (change.table === 'room_messages' || change.table === 'rooms') { const roomId = change.table === 'rooms' ? change.key : (change.data?.room_id || existing?.room_id); if (roomId && !result.rooms.includes(roomId)) result.rooms.push(roomId); }
+        }
+      }));
+    } finally { this.db.exec('PRAGMA foreign_keys=ON'); }
+    // Open screens reload what changed.
+    for (const botId of result.chats) this.notify('chat.reset', { botId });
+    for (const roomId of result.rooms) this.notify('chat.reset', { roomId });
+    for (const botId of result.bots) if (!result.chats.includes(botId)) this.notify('bot.updated', { botId });
+    if (result.applied) this.notify('connection.changed', {});
+    return result;
   }
   /** Runs work whose writes must not enter the change log (changes arriving from the other device, so they do not bounce back). */
   withoutLogging(work) {

@@ -19,7 +19,7 @@ test('a new database has a device id and an empty log; the counter only grows', 
   const after = db.syncState(); assert.equal(after.device, first.device); assert.ok(after.counter > first.counter);
   db.appendMessage(bot.id, { id: randomUUID(), role: 'user', text: 'oi', status: 'complete', createdAt: stamp(1) });
   assert.ok(db.syncState().counter > after.counter);
-  assert.equal(db.get('PRAGMA user_version').user_version, 13);
+  assert.equal(db.get('PRAGMA user_version').user_version, 14);
 });
 
 test('every write to a synced table is logged, one line per row, and a newer write replaces the older line', async t => {
@@ -105,7 +105,7 @@ test('an existing database enters the log on upgrade, with each row\'s own time,
   for (const table of Object.keys(SYNCED)) db.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;`);
   db.close();
   const again = new Database(directory); t.after(() => { try { again.close(); } catch {} });
-  assert.equal(again.get('PRAGMA user_version').user_version, 13);
+  assert.equal(again.get('PRAGMA user_version').user_version, 14);
   const entries = Object.fromEntries(again.all('SELECT * FROM changes').map(row => [`${row.tbl}/${row.key}`, row]));
   assert.equal(entries[`messages/${message.id}`].at, stamp(5)); assert.equal(entries[`memory/${memory}`].at, stamp(9));
   assert.equal(entries[`grants/${grant}`].at, '1970-01-01T00:00:00.000Z'); assert.ok(entries[`bots/${bot.id}`]); assert.ok(entries['metadata/person.name']);
@@ -132,4 +132,27 @@ test('the supervisor answers sync.status and sync.changes, and chat writes show 
   assert.ok(page.changes.some(change => change.table === 'bots' && change.key === bot.id));
   assert.equal(page.changes.filter(change => change.table === 'messages').length, status.tables.messages);
   assert.ok(!page.changes.some(change => change.table === 'tasks'));
+});
+
+test('upgrading from the first log version (13) adds attachments and stops logging a routine\'s schedule changes', async t => {
+  const { db, directory } = await open(t);
+  const bot = db.create({ name: 'V13' }, selection); const file = randomUUID();
+  db.run('INSERT INTO attachments(id,bot_id,name,mime,size,created_at) VALUES(?,?,?,?,?,?)', file, bot.id, 'a.txt', 'text/plain', 3, stamp(4));
+  const routine = randomUUID(); db.run('INSERT INTO routines(id,bot_id,body,enabled,next_run_at,created_at,updated_at) VALUES(?,?,?,1,?,?,?)', routine, bot.id, '{}', stamp(1), stamp(2), stamp(2));
+  // The database as version 13 left it: no log of attachments, a routines trigger that fires on any column.
+  db.db.exec(`DELETE FROM changes WHERE tbl='attachments'; DROP TRIGGER attachments_log_insert; DROP TRIGGER attachments_log_update; DROP TRIGGER attachments_log_delete;
+    DROP TRIGGER routines_log_update; CREATE TRIGGER routines_log_update AFTER UPDATE ON routines BEGIN UPDATE sync_state SET counter=counter+1 WHERE id=1;
+      INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) SELECT 'routines', new.id, counter, counter, device, 'x', 0 FROM sync_state WHERE id=1
+      ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport; END; PRAGMA user_version=13;`);
+  db.close();
+  const again = new Database(directory); t.after(() => { try { again.close(); } catch {} });
+  assert.equal(again.get('PRAGMA user_version').user_version, 14);
+  const entry = again.get("SELECT at,deleted FROM changes WHERE tbl='attachments' AND key=?", file); assert.equal(entry.at, stamp(4)); assert.equal(entry.deleted, 0);
+  const before = again.get("SELECT seq FROM changes WHERE tbl='routines' AND key=?", routine).seq;
+  again.run('UPDATE routines SET last_run_at=?,next_run_at=? WHERE id=?', stamp(5), stamp(6), routine);
+  assert.equal(again.get("SELECT seq FROM changes WHERE tbl='routines' AND key=?", routine).seq, before);
+  again.run('UPDATE routines SET enabled=0 WHERE id=?', routine);
+  assert.ok(again.get("SELECT seq FROM changes WHERE tbl='routines' AND key=?", routine).seq > before);
+  const attached = randomUUID(); again.run('INSERT INTO attachments(id,bot_id,name,mime,size,created_at) VALUES(?,?,?,?,?,?)', attached, bot.id, 'b.txt', 'text/plain', 1, stamp(7));
+  assert.ok(again.get("SELECT 1 FROM changes WHERE tbl='attachments' AND key=?", attached));
 });

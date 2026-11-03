@@ -21,6 +21,18 @@ export const IMAGE_HINT = 'Este resultado traz imagem: se você chamou por scrip
 export class Attachments {
   constructor(db) { this.db = db; this.uploads = new Map(); this.folder = join(db.directory, 'attachments'); mkdirSync(this.folder, { recursive: true, mode: 0o700 }); }
   path(id) { return join(this.folder, id); }
+  /** Whether a file of the attachments table is on this device (a synced row can arrive before its bytes). */
+  has(id) { try { return statSync(this.path(id)).isFile(); } catch { return false; } }
+  /** One part of a file from the other device (sync): kept apart until whole, then it takes the file's place. */
+  syncWrite(id, offset, base64) {
+    const row = this.db.get('SELECT size FROM attachments WHERE id=?', id); if (!row) throw new Error('Arquivo desconhecido.');
+    const bytes = Buffer.from(String(base64), 'base64'); const partial = this.path(id) + '.sync';
+    if (offset === 0) writeFileSync(partial, bytes, { mode: 0o600 });
+    else { if (statSync(partial).size !== offset) throw new Error('Parte fora de ordem.'); appendFileSync(partial, bytes); }
+    const size = statSync(partial).size;
+    if (size >= row.size) { renameSync(partial, this.path(id)); return { done: true, size }; }
+    return { done: false, size };
+  }
   /** Validates and stores the files sent with a message; returns their public metadata. */
   save(botId, files) {
     if (files === undefined) return [];

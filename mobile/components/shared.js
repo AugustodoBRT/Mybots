@@ -428,13 +428,32 @@ export function DesktopNetwork({ call, notice = false }) {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
   if (!status) return null;
-  if (!notice) return <><DesktopSource call={call} status={status} /><RemoteAccess tailscale={status.tailscale} /></>;
+  if (!notice) return <><DesktopSource call={call} status={status} /><SyncCard sync={status.sync} onNow={() => call('desktop.sync')} /><RemoteAccess tailscale={status.tailscale} /></>;
   if (status.source === 'local' || status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
   return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
     <Text style={styles.optionLabel}>O celular não encontrou este computador</Text>
     <Text style={styles.optionDetail}>O computador mudou de rede? O celular procura sozinho no mesmo Wi-Fi; se não achar, mostre o QR. Em redes diferentes, use o Tailscale.</Text>
     {status.localAvailable ? <Pressable accessibilityRole="button" onPress={() => call('desktop.source', { source: 'local' }).catch(() => {})} style={styles.stopButton}><Icon name="bots" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Usar só este computador</Text></Pressable> : null}
     <DesktopPair call={call} />
+  </View>;
+}
+
+/** How the sync between the phone and the computer stands (state, progress, conflicts); the window adds a "Sincronizar agora". */
+export function SyncCard({ sync, onNow }) {
+  const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
+  if (!sync) return null;
+  const peer = sync.peer || 'o outro aparelho'; const working = sync.state === 'syncing' || busy;
+  const ago = sync.at ? (() => { const minutes = Math.round((Date.now() - Date.parse(sync.at)) / 60000); return minutes < 1 ? 'agora há pouco' : minutes < 60 ? `há ${minutes} min` : `às ${new Date(sync.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`; })() : '';
+  const text = working ? (sync.progress?.total > 1 ? `Copiando… ${Math.min(sync.progress.done, sync.progress.total).toLocaleString('pt-BR')} de ${sync.progress.total.toLocaleString('pt-BR')}` : 'Sincronizando…')
+    : sync.state === 'error' ? sync.error || 'A sincronização falhou.' : sync.online === false ? `Aguardando ${peer} ficar ligado${ago ? ` · última vez ${ago}` : ''}` : sync.at ? `Em dia com ${peer} · ${ago}` : `Pronto para sincronizar com ${peer}`;
+  const run = async () => { setBusy(true); setNote(''); try { await onNow(); } catch (error) { setNote(error.message); } finally { setBusy(false); } };
+  return <View style={{ marginTop: 10 }}>
+    <Text style={styles.optionLabel}>Sincronização</Text>
+    <Text style={[styles.optionDetail, sync.state === 'error' && !working && { color: C.amber }]}>{text}</Text>
+    <Text style={styles.optionDetail}>Bots, conversas, memória, salas, rotinas, pendências e arquivos até 20 MB se juntam sozinhos quando os dois aparelhos estão ligados. Permissões, senhas e cartões não saem do aparelho. Se os dois mudarem a mesma coisa, vale a versão mais recente e o aviso aparece em Atividade.</Text>
+    {sync.conflicts > 0 ? <Text style={styles.optionDetail}>{sync.conflicts === 1 ? '1 conflito resolvido' : `${sync.conflicts} conflitos resolvidos`} nos últimos 30 dias.</Text> : null}
+    {onNow ? <Pressable accessibilityRole="button" disabled={working} onPress={run} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="refresh" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{working ? 'Sincronizando…' : 'Sincronizar agora'}</Text></Pressable> : null}
+    {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 
@@ -454,7 +473,7 @@ export function DesktopSource({ call, status }) {
       <Text style={[styles.optionLabel, status.source === key && { color: C.accent }]}>{status.source === key ? '● ' : '○ '}{label}</Text>
       <Text style={styles.optionDetail}>{detail}</Text>
     </Pressable>)}
-    <Text style={styles.optionDetail}>Por enquanto cada lado guarda os seus próprios bots; a sincronização entre os dois vem numa próxima versão.</Text>
+    {status.sync ? null : <Text style={styles.optionDetail}>Quando você parear um celular, os bots e conversas dos dois lados se juntam sozinhos.</Text>}
     {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
@@ -487,7 +506,7 @@ export function DesktopPair({ call, compact = false }) {
   </View>;
 }
 
-export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry }) {
+export function ComputerPanel({ computer, nodes = [], sync = null, onPair, onForget, onRetry }) {
   const [scanning, setScanning] = useState(false); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
   const [permission, requestPermission] = useCameraPermissions(); const reading = useRef(false);
   const node = nodes.find(item => item.id === computer?.id);
@@ -512,6 +531,7 @@ export function ComputerPanel({ computer, nodes = [], onPair, onForget, onRetry 
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>
     <RemoteAccess tailscale={computer?.tailscale} />
+    {computer?.paired ? <SyncCard sync={sync} /> : null}
     {computer?.paired ? <View style={styles.passwordRow}>
       <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.accent : C.faint} /></View>
       <View style={{ flex: 1 }}><Text style={styles.limitName}>{state}</Text>{computer.error && computer.state !== 'online' ? <Text style={[styles.limitMeta, { color: C.amber }]}>{computer.error}</Text> : null}</View>

@@ -12,8 +12,8 @@ const clip = (value, max) => value.length > max ? value.slice(0, max - 1) + '…
  * They never bypass grants or approvals: the run is an ordinary task, marked as coming from the routine.
  */
 export class Routines {
-  constructor(db, { queue, ready = () => null, notify = async () => {}, changed = () => {}, tickMs = 30000, clock = () => Date.now() } = {}) {
-    Object.assign(this, { db, queue, ready, notify, changed, tickMs, clock });
+  constructor(db, { queue, ready = () => null, notify = async () => {}, changed = () => {}, tickMs = 30000, clock = () => Date.now(), owns = () => true } = {}) {
+    Object.assign(this, { db, queue, ready, notify, changed, tickMs, clock, owns });
     queue.on('changed', change => { if (change?.event === 'task.done') this.finished(change.taskId).catch(() => {}); });
   }
   timeZone() {
@@ -122,7 +122,8 @@ export class Routines {
         ? routine.pending && (!routine.lastRunAt || this.clock() - Date.parse(routine.lastRunAt) >= LIMITS.eventCooldownMs)
         : routine.nextRunAt && routine.nextRunAt <= stamp;
       // Conversation comes first: a busy bot keeps the routine due for the next tick.
-      if (due && !this.busy(routine.botId)) this.launch(routine);
+      // With two devices sharing the routines, only the bot's owner runs them (see `owns` in index.mjs).
+      if (due && !this.busy(routine.botId) && this.owns(routine.botId)) this.launch(routine);
     }
   }
   skip(routine, reason, advance) {

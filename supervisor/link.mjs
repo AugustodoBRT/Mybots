@@ -18,6 +18,8 @@ export const DESKTOP_METHODS = ['state.get', 'google.accounts.add', 'google.logi
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput'];
+// What only the computer's own node may ask (the sync between the two supervisors); never the window.
+export const SYNC_METHODS = ['sync.status', 'sync.changes', 'sync.apply', 'sync.mark', 'sync.have', 'sync.file', 'sync.fileWrite'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
 const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 
@@ -262,7 +264,7 @@ export class Link {
   }
   /** A request from the MyBots window on the computer, answered by the phone's supervisor like the app's own. */
   async desktop({ method, params }) {
-    if (!DESKTOP_METHODS.includes(method) || !this.rpc) return { error: 'Isto só pode ser feito no celular.' };
+    if (!(DESKTOP_METHODS.includes(method) || SYNC_METHODS.includes(method)) || !this.rpc) return { error: 'Isto só pode ser feito no celular.' };
     // The Livre level is chosen on the phone only, with its warning, never from the computer.
     if (['bot.create', 'bot.update'].includes(method) && params?.access === 'free') return { error: 'O nível Livre só se escolhe no app do celular.' };
     if (method === 'phone.stop') params = { source: 'computer' };

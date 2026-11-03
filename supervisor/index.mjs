@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { Database, now, uuid } from './database.mjs';
+import { Database, SCHEMA, now, uuid } from './database.mjs';
 import { Queue } from './queue.mjs';
 import { Tools, notifyUser } from './tools.mjs';
 import { processIdentity } from './process.mjs';
@@ -42,7 +42,7 @@ import { create as createFile } from './creator.mjs';
 const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
-  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
+  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
   process.umask(0o077);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = join(directory, 'supervisor.lock');
@@ -229,7 +229,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     attachments.pdf = args => browser.device('pdfRead', args);
     // The phone's other apps (Livre): Parar cancels the controlling turn; the app's own stop flag acts first.
     const phone = new Phone(browser, { changed: broadcast, record: (kind, detail, botId, taskId) => { db.record(kind, detail, botId, taskId); broadcast('activity.new'); }, cancel: taskId => queue.cancel(taskId).catch(() => {}) }); tools.phone = phone; tools.cancelTask = taskId => queue.cancel(taskId).catch(() => {});
-    routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock }); tools.routines = routines;
+    // With a second device sharing the bots, only a bot's owner runs its routines: the phone for bots that live on the phone, the
+    // computer for the ones that live there; "onde estiver" runs on the phone, or on the computer while it cannot see the phone.
+    const peer = () => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='sync.peer'")?.value || 'null'); } catch { return null; } };
+    const owns = botId => { const other = peer(); if (!other?.known) return true; const home = db.bot(botId)?.home || 'phone'; return kind === 'computer' ? home === 'pc' || (home === 'any' && !other.online) : home !== 'pc'; };
+    routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines;
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
     const runSkill = async ({ id: routineId, title, skill, input = {}, notify: notice = true }, bot, manual = false) => {
@@ -350,6 +354,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // The messages themselves come by chat.page; skills, memories and permissions by bot.profile.
     const botSummary = bot => ({ ...bot, ...db.chatSummary('bot', bot.id) });
     const roomSummary = room => { const active = rooms.active(room.id); return { ...room, ...db.chatSummary('room', room.id), active: [...new Set(active.map(task => task.bot_id))], activeTasks: active.map(task => task.id) }; };
+    // How the sync with the other device stands, for the settings screen (the node keeps it current with sync.mark).
+    const syncRaw = () => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='sync.info'")?.value || 'null') || {}; } catch { return {}; } };
+    const syncInfo = () => {
+      const other = peer(); if (!other?.known) return null;
+      return { ...syncRaw(), peer: other.name || (kind === 'computer' ? 'Celular' : 'Computador'), online: other.online === true,
+        conflicts: db.get("SELECT count(*) AS n FROM activity WHERE kind='sync_conflict' AND created_at > ?", new Date(Date.now() - 30 * 86400000).toISOString()).n };
+    };
     const state = () => {
       const all = db.bots(); const live = all.filter(bot => !bot.deletedAt); const kept = new Set(live.map(bot => bot.id));
       return { schema: 1, mode: 'phone', supervisorMigrated: true, seq, usage: db.usage(), person: db.person(),
@@ -371,7 +382,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
         interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
         email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
-        computer: link.status(), instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' };
+        computer: link.status(), sync: syncInfo(), deviceKind: kind, instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' };
     };
     // What the bot's profile screen shows besides the bot itself.
     const profile = botId => {
@@ -526,8 +537,36 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();
         // The change log (see database.mjs): where this device's counter stands, and the changes after a given counter.
-        case 'sync.status': return { ...db.syncState(), tables: Object.fromEntries(db.all('SELECT tbl, count(*) AS n FROM changes GROUP BY tbl').map(row => [row.tbl, row.n])) };
-        case 'sync.changes': return db.changesSince(params.after, params.limit);
+        case 'sync.status': return { ...db.syncState(), schema: SCHEMA, kind, tables: Object.fromEntries(db.all('SELECT tbl, count(*) AS n FROM changes GROUP BY tbl').map(row => [row.tbl, row.n])) };
+        case 'sync.changes': return db.changesSince(params.after, params.limit, params.exclude);
+        // Changes from the other device, applied (see Database.applyChanges); schedules of routines that just arrived are worked out here.
+        case 'sync.apply': {
+          const result = db.applyChanges(params.changes, { from: params.from, delivered: Number.isSafeInteger(params.delivered) ? params.delivered : 0 });
+          for (const routine of routines.all()) if (routine.enabled && routine.trigger.type !== 'notification' && !routine.nextRunAt) db.run('UPDATE routines SET next_run_at=? WHERE id=?', routines.next(routine.trigger), routine.id);
+          if (result.conflicts.length) broadcast('activity.new');
+          routines.tick();
+          return { applied: result.applied, skipped: result.skipped, conflicts: result.conflicts.length, files: result.files };
+        }
+        // What the node tells this device about the sync: who the other side is and how the last round went.
+        case 'sync.mark': {
+          const text = (value, max) => typeof value === 'string' ? value.slice(0, max) : undefined; const count = value => Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+          const keep = object => Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+          const save = (key, value) => db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value));
+          if (params.peer && typeof params.peer === 'object') save('sync.peer', { ...peer(), ...keep({ known: typeof params.peer.known === 'boolean' ? params.peer.known : undefined, online: typeof params.peer.online === 'boolean' ? params.peer.online : undefined, name: text(params.peer.name, 40), device: text(params.peer.device, 64) }) });
+          if (params.info && typeof params.info === 'object') {
+            const progress = params.info.progress && typeof params.info.progress === 'object' ? keep({ done: count(params.info.progress.done), total: count(params.info.progress.total) }) : undefined;
+            save('sync.info', { ...syncRaw(), ...keep({ state: ['idle', 'syncing', 'waiting', 'error'].includes(params.info.state) ? params.info.state : undefined, at: text(params.info.at, 40), firstAt: text(params.info.firstAt, 40), applied: count(params.info.applied), pulled: count(params.info.pulled), pushed: count(params.info.pushed), error: params.info.error === null ? null : text(params.info.error, 200), progress: params.info.progress === null ? null : progress }) });
+          }
+          broadcast('connection.changed'); return { ok: true };
+        }
+        case 'sync.have': return { missing: (Array.isArray(params.ids) ? params.ids.slice(0, 200) : []).filter(id => uuid(id) && db.get('SELECT 1 FROM attachments WHERE id=?', id) && !attachments.has(id)) };
+        case 'sync.file': {
+          if (!uuid(params.id)) throw new Error('Arquivo inválido.');
+          const row = db.get('SELECT * FROM attachments WHERE id=?', params.id); if (!row || !attachments.has(row.id)) throw new Error('Arquivo não encontrado.');
+          const offset = Number.isInteger(params.offset) && params.offset >= 0 ? params.offset : 0; const part = 3 * 1024 * 1024; const piece = attachments.part(row.id, offset, part);
+          return { id: row.id, size: piece.size, chunk: piece.bytes.toString('base64'), next: offset + part < piece.size ? offset + part : null };
+        }
+        case 'sync.fileWrite': if (!uuid(params.id) || !Number.isInteger(params.offset) || params.offset < 0 || typeof params.chunk !== 'string') throw new Error('Arquivo inválido.'); return attachments.syncWrite(params.id, params.offset, params.chunk);
         case 'skill.run': {
           const bot = db.requireBot(params.botId); const skill = skills.all().find(item => item.id === params.id && (bot.skills || []).includes(item.id));
           if (!skill) throw new Error('Habilidade não encontrada neste bot.');

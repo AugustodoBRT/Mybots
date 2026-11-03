@@ -25,6 +25,7 @@ import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
 import { createLocal } from './local.mjs';
 import { hostRelay, roomFor } from '../supervisor/relay.mjs';
+import { createSync, worthSyncing } from './sync.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
@@ -185,9 +186,9 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
-  const controls = new Set(); let owner = null, own = null, relayHost = null;
+  const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
@@ -248,7 +249,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  // The computer's own supervisor is reached the same way (its link to this node), for the sync between the two.
+  const localBridge = phoneBridge();
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -261,7 +264,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     const ready = phone => {
       clearTimeout(timer); ws.phone = phone;
       // The computer's own supervisor is not a phone: the window reaches it directly (see local.mjs), and it only needs this node as its executor.
-      if (!phone.local) { bridge.attach(ws); ui.broadcast('desktop.phone', { online: true }); }
+      if (!phone.local) { bridge.attach(ws); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
+      else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
       send({ type: 'ready', id: me.id, name: me.name, ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
     };
@@ -306,8 +310,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         }
         ready(phone); return;
       }
-      if (message.type === 'rpc_reply') { bridge.answer(message); return; }
-      if (message.type === 'event') { if (!ws.phone.local) ui.broadcast(message.event, message.data); return; }
+      if (message.type === 'rpc_reply') { (ws.phone.local ? localBridge : bridge).answer(message); return; }
+      if (message.type === 'event') { if (!ws.phone.local) ui.broadcast(message.event, message.data); if (worthSyncing(message.event)) sync?.kick(); return; }
       if (message.type === 'browser_view' && typeof message.botId === 'string') {
         ws.views ||= new Map();
         if (message.on && !ws.views.has(message.botId)) {
@@ -414,7 +418,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       assumed = new Set();
       for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
       proxy?.then(http => http.close(), () => {});
-      if (ws.phone) { log(`${ws.phone.name} desconectado.`); if (!ws.phone.local) { bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); } }
+      if (ws.phone) { log(`${ws.phone.name} desconectado.`); if (!ws.phone.local) { bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); sync?.phone(false); } else localBridge.detach(ws); }
     });
   });
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
@@ -428,9 +432,11 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   if (localOptions) {
     own = createLocal({ directory, nodePort: () => server.address().port, identity: () => me, pairing: () => startPairing(directory, server.address().port, () => ['127.0.0.1'], { local: true }), log, ...localOptions });
     own.start().catch(() => {});
+    // The two supervisors (the phone's and this computer's) share their bots and conversations while both are on.
+    if (syncOptions) sync = createSync({ directory, log, ...syncOptions, phone: { online: () => bridge.online(), call: (method, params) => bridge.call(method, params) }, local: { online: () => localBridge.online(), call: (method, params) => localBridge.call(method, params) } });
   }
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
-    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own, relay: () => relayHost,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); relayHost?.close(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own, relay: () => relayHost, sync: () => sync,
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); relayHost?.close(); sync?.close(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

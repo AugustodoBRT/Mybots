@@ -61,9 +61,9 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       <PrimaryButton icon="plus" tone="ghost" title="Novo bot" disabled={!data?.models?.length} onPress={() => { onClose(); a.onCreate(); }} style={{ marginTop: 14 }} />
     </>;
     if (key === 'phone') return desktop ? <><DesktopPair call={a.call} />
-      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.</Text></View></>
+      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
-    if (key === 'computer') return <ComputerPanel computer={data?.computer} nodes={data?.nodes}
+    if (key === 'computer') return <ComputerPanel computer={data?.computer} nodes={data?.nodes} sync={data?.sync}
       onPair={async link => { const result = await a.call('computer.pair', { link }); await a.reload(); return result; }}
       onForget={async () => { await a.call('computer.forget', {}); await a.reload(); }}
       onRetry={async () => { await a.call('computer.retry', {}); await a.reload(); }} />;

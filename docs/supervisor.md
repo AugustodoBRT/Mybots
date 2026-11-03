@@ -77,3 +77,7 @@ As tabelas de permissões/approvals existem, mas os conectores e o MCP não fora
 5. Salvar/restaurar um backup com bot descartável e conferir IDs e mensagens. Verificar que Voltar e apagar bot continuam funcionando.
 
 Os testes automatizados podem ser repetidos no Termux com `node --test ~/.mybots/runtime/<hash>/tests/supervisor.test.mjs`. Não é necessário fazer isso manualmente para o teste inicial: o pareamento já os executa. Não compartilhar `~/.mybots/token`, credenciais do Codex ou arquivos da keystore.
+
+## Registro de mudanças (v116)
+
+Banco versão 13: `sync_state` (id do aparelho e contador) e `changes` (uma linha por registro de uma tabela sincronizável: tabela, chave, `seq` local, `lamport`, `origin`, `at`, `deleted`). Gatilhos `<tabela>_log_insert|update|delete` mantêm o registro. Tabelas acompanhadas e o que fica só no aparelho: ver `SYNCED` em `supervisor/database.mjs` e [PLANO-SYNC.md](PLANO-SYNC.md). RPCs: `sync.status` (aparelho, contador e quantas linhas por tabela) e `sync.changes` (`after`, `limit` até 1000: mudanças com o conteúdo atual do registro ou marcadas como apagadas). Migrar 100 mil mensagens leva cerca de 0,3 s; cada escrita custa menos de 0,1 ms a mais.

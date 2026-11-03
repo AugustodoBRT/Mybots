@@ -46,7 +46,7 @@ test('the index follows edits and deletions, and the migration can run twice wit
   // Lower the version and reopen: the migration runs again over the existing index.
   const directory = app.db.directory; app.db.db.exec('PRAGMA user_version=11');
   const again = new Database(directory);
-  assert.equal(again.get('PRAGMA user_version').user_version, 12);
+  assert.equal(again.get('PRAGMA user_version').user_version, 13);
   assert.equal(again.search({ query: 'final' }).results.length, 1);
   assert.equal(again.get('SELECT count(*) AS n FROM messages_fts').n, 1);
   again.db.close();

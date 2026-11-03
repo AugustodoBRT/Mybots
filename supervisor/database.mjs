@@ -30,6 +30,26 @@ function tokens(usage) {
   return result.input || result.output ? result : null;
 }
 
+/**
+ * What the change log tracks, for the two devices (phone and computer) to share later: table -> its key column, an optional
+ * row filter, and where the row's own "last edited" time is. Everything else stays on its device: tasks and their events,
+ * IA sessions, approvals, activity, notifications, heartbeats, connectors, usage, the browser's steps and downloads,
+ * negotiations, skills (files on disk), pairing and node data.
+ */
+export const SYNCED = {
+  bots: { key: 'id', at: "json_extract(body,'$.updatedAt')" },
+  messages: { key: 'id', at: "json_extract(body,'$.createdAt')" },
+  memory: { key: 'id', at: 'updated_at' },
+  grants: { key: 'id' },
+  rooms: { key: 'id', at: 'updated_at' },
+  room_messages: { key: 'id', at: 'created_at' },
+  routines: { key: 'id', at: 'updated_at' },
+  pending_items: { key: 'id', at: 'created_at' },
+  // The person's own settings; limits, models, queue pauses and link data are per device.
+  metadata: { key: 'key', where: "key IN ('person.name','person.theme','google.accounts','time_zone')" }
+};
+const EPOCH = '1970-01-01T00:00:00.000Z';
+
 export class Database {
   constructor(directory) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -39,7 +59,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 12) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > 13) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -158,6 +178,53 @@ export class Database {
       }
       this.db.exec('PRAGMA user_version=12;');
     });
+    // Change log: every write to a synced table leaves one line (table, key, a counter that only grows on this device, the
+    // time, whether it was a deletion). One line per row: a newer write replaces the older one. The row's content is read
+    // when someone asks for the changes, so the log stays small. Triggers do the logging, so no code path can forget it.
+    if (version < 13) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS sync_state (id INTEGER PRIMARY KEY CHECK(id=1), device TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0, applying INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS changes (tbl TEXT NOT NULL, key TEXT NOT NULL, seq INTEGER NOT NULL, lamport INTEGER NOT NULL, origin TEXT NOT NULL, at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (tbl, key));
+        CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);`);
+      this.run('INSERT OR IGNORE INTO sync_state(id,device,counter,applying) VALUES(1,?,0,0)', randomUUID());
+      for (const [table, spec] of Object.entries(SYNCED)) {
+        const filter = spec.where ? ` AND ${spec.where}` : '';
+        const touch = (row, deleted) => `UPDATE sync_state SET counter=counter+1 WHERE id=1 AND applying=0;
+          INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) SELECT '${table}', ${row}.${spec.key}, counter, counter, device, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ${deleted} FROM sync_state WHERE id=1 AND applying=0
+          ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted;`;
+        const condition = row => spec.where ? `WHEN ${spec.where.replaceAll(/\bkey\b/g, `${row}.key`)}` : '';
+        this.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;
+          CREATE TRIGGER ${table}_log_insert AFTER INSERT ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
+          CREATE TRIGGER ${table}_log_update AFTER UPDATE ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
+          CREATE TRIGGER ${table}_log_delete AFTER DELETE ON ${table} ${condition('old')} BEGIN ${touch('old', 1)} END;`);
+        // What already exists starts in the log, with its own time when it has one (rows without one count as never edited).
+        const base = this.get('SELECT counter FROM sync_state WHERE id=1').counter;
+        this.db.exec(`INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted)
+          SELECT '${table}', ${spec.key}, ${base}+row_number() OVER (ORDER BY rowid), ${base}+row_number() OVER (ORDER BY rowid), (SELECT device FROM sync_state WHERE id=1), coalesce(${spec.at || 'NULL'}, '${EPOCH}'), 0
+          FROM ${table} WHERE 1=1${filter} AND ${spec.key} NOT IN (SELECT key FROM changes WHERE tbl='${table}')`);
+        this.db.exec('UPDATE sync_state SET counter=(SELECT coalesce(max(seq),0) FROM changes) WHERE id=1');
+      }
+      this.db.exec('PRAGMA user_version=13;');
+    });
+  }
+  /** This device's id in the change log and how far its counter has gone. */
+  syncState() { const row = this.get('SELECT device, counter FROM sync_state WHERE id=1'); return { device: row.device, counter: row.counter }; }
+  /**
+   * The changes after a counter value, oldest first, each with the row's current content (or marked deleted).
+   * `next` is where the next call continues; `more` says whether there is anything beyond this page.
+   */
+  changesSince(after = 0, limit = 200) {
+    const start = Number.isSafeInteger(after) && after > 0 ? after : 0; const size = Math.min(Math.max(Number(limit) || 200, 1), 1000);
+    const rows = this.all('SELECT tbl,key,seq,lamport,origin,at,deleted FROM changes WHERE seq>? ORDER BY seq LIMIT ?', start, size + 1);
+    const page = rows.slice(0, size).map(row => {
+      const spec = SYNCED[row.tbl]; const data = !row.deleted && spec ? this.get(`SELECT * FROM ${row.tbl} WHERE ${spec.key}=?`, row.key) : null;
+      return { table: row.tbl, key: row.key, seq: row.seq, lamport: row.lamport, origin: row.origin, at: row.at, deleted: Boolean(row.deleted) || !data, ...(data ? { data } : {}) };
+    });
+    return { ...this.syncState(), changes: page, next: page.length ? page.at(-1).seq : start, more: rows.length > size };
+  }
+  /** Runs work whose writes must not enter the change log (changes arriving from the other device, so they do not bounce back). */
+  withoutLogging(work) {
+    this.run('UPDATE sync_state SET applying=1 WHERE id=1');
+    try { return work(); } finally { this.run('UPDATE sync_state SET applying=0 WHERE id=1'); }
   }
   /** One step of a bot in its browser, kept with a small picture; only the latest 120 of each bot stay. */
   addBrowserStep(botId, taskId, { caption, url = '', title = '', image = null, width = null, height = null }) {

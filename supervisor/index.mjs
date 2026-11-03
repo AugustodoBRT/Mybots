@@ -525,6 +525,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'computer.pair': { if (typeof params.link !== 'string' || params.link.length > 2000) throw new Error('Leia o QR do computador.'); const result = await link.pair(params.link); broadcast('activity.new'); return result; }
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();
+        // The change log (see database.mjs): where this device's counter stands, and the changes after a given counter.
+        case 'sync.status': return { ...db.syncState(), tables: Object.fromEntries(db.all('SELECT tbl, count(*) AS n FROM changes GROUP BY tbl').map(row => [row.tbl, row.n])) };
+        case 'sync.changes': return db.changesSince(params.after, params.limit);
         case 'skill.run': {
           const bot = db.requireBot(params.botId); const skill = skills.all().find(item => item.id === params.id && (bot.skills || []).includes(item.id));
           if (!skill) throw new Error('Habilidade não encontrada neste bot.');

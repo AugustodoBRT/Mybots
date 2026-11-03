@@ -11,6 +11,7 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
 import { createNode, startPairing, DEFAULT_PORT } from './server.mjs';
+import { relayFromEnvironment } from '../supervisor/relay.mjs';
 
 const directory = process.env.MYBOTS_PC_HOME || join(homedir(), '.mybots-pc');
 const port = Number(process.env.MYBOTS_PC_PORT) || DEFAULT_PORT;
@@ -21,7 +22,7 @@ const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { 
 async function serve() {
   // The computer's own MyBots (its own database), so it works with the phone off. MYBOTS_PC_LOCAL=0 turns it off.
   const local = process.env.MYBOTS_PC_LOCAL === '0' ? null : { ...(process.env.MYBOTS_PC_LOCAL_PORT ? { port: Number(process.env.MYBOTS_PC_LOCAL_PORT) } : {}) };
-  const node = await createNode({ directory, port, local, ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
+  const node = await createNode({ directory, port, local, relay: relayFromEnvironment(), ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
   console.log(`[${stamp()}] MyBots no computador "${node.name}" esperando o celular na porta ${node.port}.`);
   if (!node.phones().length) console.log('Nenhum celular pareado ainda. Em outro terminal: node pc/node.mjs pair');
   const stop = () => node.close().then(() => process.exit(0));
@@ -29,7 +30,7 @@ async function serve() {
 }
 
 async function pair() {
-  const { link, name } = startPairing(directory, port);
+  const { link, name } = startPairing(directory, port, undefined, { relay: relayFromEnvironment() });
   const { default: QRCode } = await import('qrcode');
   console.log(await QRCode.toString(link, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }));
   console.log(`No celular: MyBots → Ajustes → Computador → Conectar computador, e leia este QR (${name}).`);

@@ -24,6 +24,7 @@ import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
 import { createLocal } from './local.mjs';
+import { hostRelay, roomFor } from '../supervisor/relay.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
@@ -57,12 +58,12 @@ export function identity(directory) {
 }
 
 /** A one-use pairing code, valid for 10 minutes, and the link the QR carries. */
-export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses, { local = false } = {}) {
+export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses, { local = false, relay = null } = {}) {
   const me = identity(directory);
   const code = randomBytes(12).toString('base64url');
   // The computer's own supervisor pairs with a code of its own, so it never overwrites a QR shown for a phone.
   write(join(directory, local ? 'pairing-local.json' : 'pairing.json'), { code, expiresAt: Date.now() + PAIRING_MS });
-  return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise() }), name: me.name };
+  return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise(), ...(local ? {} : { relay }) }), name: me.name };
 }
 
 /**
@@ -184,9 +185,9 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, log = () => {} } = {}) {
   const me = identity(directory);
-  const controls = new Set(); let owner = null, own = null;
+  const controls = new Set(); let owner = null, own = null, relayHost = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
@@ -247,7 +248,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -261,8 +262,8 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       clearTimeout(timer); ws.phone = phone;
       // The computer's own supervisor is not a phone: the window reaches it directly (see local.mjs), and it only needs this node as its executor.
       if (!phone.local) { bridge.attach(ws); ui.broadcast('desktop.phone', { online: true }); }
-      log(`${phone.name} conectado (${request.socket.remoteAddress}).`);
-      send({ type: 'ready', id: me.id, name: me.name, addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
+      log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
+      send({ type: 'ready', id: me.id, name: me.name, ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
     const tunnel = () => proxy ||= new Promise((resolve, reject) => {
@@ -295,7 +296,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
           // A code made for the computer's own supervisor must come from this same machine.
           if (isLocal && !/^(::1|::ffff:)?127\./.test(request.socket.remoteAddress || '') && request.socket.remoteAddress !== '::1') { send({ type: 'refused', error: 'Pareamento local recusado.' }); ws.close(); return; }
           const phone = { id: message.phoneId.slice(0, 64), name: isLocal ? 'Este computador' : String(message.phoneName || 'Celular').slice(0, 40), secret: randomBytes(32).toString('base64url'), pairedAt: new Date().toISOString(), ...(isLocal ? { local: true } : {}) };
-          write(phonesFile, [...phones.filter(item => item.id !== phone.id), phone]);
+          write(phonesFile, [...phones.filter(item => item.id !== phone.id), phone]); relayHost?.sync();
           send({ type: 'paired', secret: phone.secret }); ready(phone); return;
         }
         const phone = message.type === 'auth' && phones.find(item => item.id === message.phoneId);
@@ -420,6 +421,9 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   const windowPort = await ui.listen();
   const discovery = await createDiscovery({ id: me.id, port: server.address().port, addresses: advertise, discoveryPort, allowLoopback: discoveryLoopback, log });
+  // The relay: the computer waits there (outbound only, nothing opened at home) for each paired phone, and a phone that
+  // cannot reach it directly arrives through a tunnel. The tunnel carries the same TLS and proof as a direct connection.
+  if (relay) relayHost = hostRelay({ relay, log, rooms: () => read(phonesFile, []).filter(item => !item.local && item.secret).map(item => roomFor(item.secret)), onStream: stream => server.emit('connection', stream) });
   // The computer's own MyBots (a supervisor with its own database), so the computer works with the phone off.
   if (localOptions) {
     own = createLocal({ directory, nodePort: () => server.address().port, identity: () => me, pairing: () => startPairing(directory, server.address().port, () => ['127.0.0.1'], { local: true }), log, ...localOptions });
@@ -427,6 +431,6 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   }
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
-    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own, relay: () => relayHost,
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); relayHost?.close(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

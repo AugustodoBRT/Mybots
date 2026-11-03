@@ -3,6 +3,8 @@ import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { decodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
 import { discover } from './discovery.mjs';
+import { connect as tlsConnect } from 'node:tls';
+import { dialRelay, roomFor, validRelay } from './relay.mjs';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
 export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome'];
@@ -23,9 +25,9 @@ const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
 
 /** The pairing link the computer's QR carries: who it is, where, its certificate and a one-use code. */
-export function pairingLink({ id, name, port, fingerprint, code, addresses }) {
+export function pairingLink({ id, name, port, fingerprint, code, addresses, relay }) {
   // The certificate's SHA-256 goes as base64url (43 characters instead of 95), so the QR stays small.
-  return 'mybots://computador?' + new URLSearchParams({ v: '1', id, n: name, p: String(port), f: Buffer.from(fingerprint.replace(/:/g, ''), 'hex').toString('base64url'), c: code, a: addresses.join(',') });
+  return 'mybots://computador?' + new URLSearchParams({ v: '1', id, n: name, p: String(port), f: Buffer.from(fingerprint.replace(/:/g, ''), 'hex').toString('base64url'), c: code, a: addresses.join(','), ...(validRelay(relay) ? { r: relay } : {}) });
 }
 export function parsePairing(text) {
   let url; try { url = new URL(String(text).trim()); } catch { url = null; }
@@ -34,7 +36,8 @@ export function parsePairing(text) {
   if (!url || url.protocol !== 'mybots:' || url.host !== 'computador' || get('v') !== '1' || !/^[A-Za-z0-9_-]{1,64}$/.test(get('id')) || !Number.isInteger(port) || port < 1 || port > 65535
     || !/^[A-Za-z0-9_-]{43}$/.test(get('f')) || !/^[A-Za-z0-9_-]{8,64}$/.test(get('c')) || !addresses.length) throw new Error('Este QR não é de um computador com o MyBots.');
   const fingerprint = Buffer.from(get('f'), 'base64url').toString('hex').toUpperCase().match(/../g).join(':');
-  return { id: get('id'), name: get('n').slice(0, 40) || 'Computador', port, fingerprint, code: get('c'), addresses };
+  const relay = validRelay(get('r')) ? get('r').replace(/\/$/, '') : '';
+  return { id: get('id'), name: get('n').slice(0, 40) || 'Computador', port, fingerprint, code: get('c'), addresses, ...(relay ? { relay } : {}) };
 }
 
 /**
@@ -60,15 +63,19 @@ export class Link {
   }
   status() {
     const saved = this.saved();
-    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, state: this.state, error: this.error } : { paired: false, state: 'offline' };
+    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
   }
   set(state, error = '') { if (state === this.state && error === this.error) return; this.state = state; this.error = error; this.changed('connection.changed'); }
   start() { if (this.saved() && !this.socket && !this.timer) this.connect(); }
   /** Opens a TLS WebSocket to one address and waits for the computer's hello, refusing any other certificate. */
-  open(address, port, fingerprint) {
-    return new Promise((resolve, reject) => {
-      const ws = new this.WebSocketClass(`wss://${address.includes(':') ? `[${address}]` : address}:${port}/`, { rejectUnauthorized: false, handshakeTimeout: 5000, maxPayload: MAX_FRAME });
-      const fail = error => { clearTimeout(timer); ws.removeAllListeners('message'); ws.terminate(); reject(error); };
+  open(address, port, fingerprint, via = null) {
+    return new Promise(async (resolve, reject) => {
+      // Through the relay the same TLS runs inside the tunnel, still checked against the pinned certificate.
+      let tunnel = null;
+      if (via) try { tunnel = await dialRelay(via.relay, via.room); } catch (error) { reject(error); return; }
+      const ws = new this.WebSocketClass(via ? 'wss://relay.mybots/' : `wss://${address.includes(':') ? `[${address}]` : address}:${port}/`,
+        { rejectUnauthorized: false, handshakeTimeout: 5000, maxPayload: MAX_FRAME, ...(tunnel ? { createConnection: () => tlsConnect({ socket: tunnel, rejectUnauthorized: false, servername: 'mybots-pc', minVersion: 'TLSv1.3' }) } : {}) });
+      const fail = error => { clearTimeout(timer); ws.removeAllListeners('message'); ws.terminate(); tunnel?.destroy(); reject(error); };
       const timer = setTimeout(() => fail(new Error('timeout')), 8000);
       ws.on('upgrade', response => { if (response.socket.getPeerCertificate?.()?.fingerprint256 !== fingerprint) fail(new Error('Outro aparelho respondeu no lugar do computador pareado.')); });
       ws.on('error', fail);
@@ -79,7 +86,7 @@ export class Link {
       });
     });
   }
-  async reach(target) {
+  async reachDirect(target) {
     let last;
     for (const address of target.addresses) {
       try { return await this.open(address, target.port, target.fingerprint); }
@@ -87,11 +94,44 @@ export class Link {
     }
     throw last || new Error('Sem endereço.');
   }
+  /**
+   * The direct way first (home network, Tailscale). The relay joins in when that fails or is slow, so at home it is
+   * never touched and away from home the wait is short. The first to answer wins; the other is dropped.
+   */
+  async reach(target) {
+    this.via = 'direct';
+    if (!target.relay || !target.secret) return this.reachDirect(target);
+    const direct = this.reachDirect(target).then(connection => ({ connection, via: 'direct' }));
+    const later = new Promise(resolve => { const timer = setTimeout(resolve, this.relayDelay ?? 1500); direct.then(() => { clearTimeout(timer); resolve('direct'); }, () => { clearTimeout(timer); resolve(); }); });
+    const relayed = later.then(outcome => {
+      if (outcome === 'direct') return new Promise(() => {});
+      return this.open('relay', 0, target.fingerprint, { relay: target.relay, room: roomFor(target.secret) }).then(connection => ({ connection, via: 'relay' }));
+    });
+    const winner = await new Promise((resolve, reject) => {
+      const errors = []; let done = false, failed = 0;
+      [direct, relayed].forEach((attempt, index) => attempt.then(value => { if (done) { value.connection.ws.terminate(); return; } done = true; resolve(value); },
+        error => { errors[index] = error; if (++failed === 2 && !done) reject(errors.find(item => /Outro aparelho/.test(item?.message || '')) || errors[0]); }));
+    });
+    this.via = winner.via; return winner.connection;
+  }
+  /** Connected through the relay: now and then, check whether the direct way works again and move to it. */
+  watchDirect() {
+    clearTimeout(this.directTimer); this.directTimer = null;
+    if (this.closed || this.via !== 'relay') return;
+    this.directTimer = setTimeout(async () => {
+      const target = this.saved(); const socket = this.socket;
+      if (!target || !socket || this.via !== 'relay') return;
+      try { const probe = await this.reachDirect(target); probe.ws.terminate(); if (this.socket === socket && this.via === 'relay') { this.db.record('computer_direct', 'De volta à conexão direta com o computador.'); socket.terminate(); return; } }
+      catch (error) { if (/Outro aparelho/.test(error.message)) return; }
+      this.watchDirect();
+    }, this.directEvery ?? 45000);
+    this.directTimer.unref?.();
+  }
   /** Pairs with the computer whose QR was scanned. The one-use code is traded for a secret kept on the phone. */
   async pair(text) {
     const target = parsePairing(text);
     let connection;
-    try { connection = await this.reach(target); }
+    try { connection = await this.reachDirect(target); }
     catch (error) { throw new Error(/Outro aparelho/.test(error.message) ? error.message : 'Não encontrei o computador. Confira se o MyBots está rodando nele e se os dois estão no mesmo Wi-Fi (ou na mesma Tailscale).'); }
     const { ws, hello } = connection;
     if (hello.id !== target.id) { ws.terminate(); throw new Error('Outro aparelho respondeu no lugar do computador.'); }
@@ -100,7 +140,7 @@ export class Link {
     await new Promise((resolve, reject) => {
       this.drop();
       this.attach(ws, { reject, resolve: secret => {
-        this.save({ id: target.id, name, port: target.port, fingerprint: target.fingerprint, addresses: target.addresses, secret, pairedAt: new Date().toISOString() });
+        this.save({ id: target.id, name, port: target.port, fingerprint: target.fingerprint, addresses: target.addresses, ...(target.relay ? { relay: target.relay } : {}), secret, pairedAt: new Date().toISOString() });
         this.db.record('computer_paired', `${name} pareado.`); resolve();
       } });
       ws.send(JSON.stringify({ type: 'pair', code: target.code, phoneId: this.phoneId(), phoneName: 'Celular' }));
@@ -130,7 +170,7 @@ export class Link {
       for (const candidate of candidates) {
         if (stale()) return;
         try {
-          connection = await this.reach({ ...target, ...candidate });
+          connection = await this.reachDirect({ ...target, ...candidate });
           if (connection.hello.id !== target.id) { connection.ws.terminate(); connection = null; lastError = new Error('Outro aparelho respondeu no lugar do computador pareado.'); continue; }
           discoveredTarget = candidate; return;
         } catch (error) { if (/Outro aparelho/.test(error.message)) lastError = error; }
@@ -176,8 +216,8 @@ export class Link {
       if (message.type === 'ready') {
         const saved = this.saved();
         // The computer's addresses change with the network; the ones it reports are tried first next time.
-        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8) });
-        this.attempt = 0; this.set('online');
+        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8), ...(validRelay(message.relay) ? { relay: message.relay.replace(/\/$/, '') } : {}) });
+        this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
@@ -210,7 +250,7 @@ export class Link {
       this.retry(refusal);
     });
   }
-  drop() { this.generation++; this.connecting = false; this.lastDiscovery = -Infinity; this.discoveryAbort?.abort(); if (!this.closed) this.set('offline'); clearTimeout(this.timer); this.timer = null; const ws = this.socket; this.socket = null; ws?.terminate(); }
+  drop() { clearTimeout(this.directTimer); this.generation++; this.connecting = false; this.lastDiscovery = -Infinity; this.discoveryAbort?.abort(); if (!this.closed) this.set('offline'); clearTimeout(this.timer); this.timer = null; const ws = this.socket; this.socket = null; ws?.terminate(); }
   /** Answers one forwarded tool request with the phone's own supervisor, on loopback. */
   async local({ method, path, headers = {}, body = '' }) {
     if (!TUNNEL_PATHS.includes(path) || !['GET', 'POST', 'DELETE'].includes(method)) return { status: 403, headers: {}, body: '' };

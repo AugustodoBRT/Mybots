@@ -4,10 +4,9 @@
 
 # MyBots
 
-**Seu pequeno time de bots pessoais, rodando no próprio celular.**
+**Seu pequeno time de bots pessoais, no computador e no celular.**
 
-Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails ou lembretes, e escolha qual conta Google ele usa. O acesso é total por padrão; você decide se ele pode controlar o celular.
-Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, mesmo com a tela apagada.
+Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails ou lembretes, e escolha qual conta Google ele usa. Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você. Instale no **computador** (Linux, Windows ou macOS) e no **celular Android**, conecte os dois e pronto: os bots, as conversas e as rotinas ficam iguais nos dois, e cada lado continua funcionando sozinho. O Termux, no celular, é opcional.
 
 ![Android](https://img.shields.io/badge/Android-7%2B-7EE2B8?style=flat-square&logo=android&logoColor=white&labelColor=12161E)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo%20SDK%2057-8AB6FF?style=flat-square&logo=react&logoColor=white&labelColor=12161E)
@@ -31,14 +30,26 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 
 <br />
 
-<img src="docs/screenshots/inicio.webp" width="200" alt="Tela inicial" />&nbsp;
-<img src="docs/screenshots/conversa.webp" width="200" alt="Conversa com um bot" />&nbsp;
-<img src="docs/screenshots/rotinas.webp" width="200" alt="Rotinas do bot" />&nbsp;
-<img src="docs/screenshots/sala.webp" width="200" alt="Sala com vários bots" />
+<img src="docs/screenshots/pc-inicio.webp" width="760" alt="MyBots no computador: tela inicial" />&nbsp;
+<img src="docs/screenshots/pc-conversa.webp" width="760" alt="Conversa com um bot no computador" />
+
+<br />
+
+<img src="docs/screenshots/pc-atividade.webp" width="760" alt="Atividade: limite da assinatura e gasto por bot" />&nbsp;
+<img src="docs/screenshots/pc-claro.webp" width="760" alt="Tema claro" />
+
+<br /><br />
+
+<img src="docs/screenshots/inicio.webp" width="190" alt="Tela inicial no celular" />&nbsp;
+<img src="docs/screenshots/conversa.webp" width="190" alt="Conversa com um bot no celular" />&nbsp;
+<img src="docs/screenshots/rotinas.webp" width="190" alt="Rotinas do bot" />&nbsp;
+<img src="docs/screenshots/sala.webp" width="190" alt="Sala com vários bots" />
 
 <br /><br />
 
 <img src="docs/screenshots/widget.webp" width="420" alt="Widget na tela inicial com os bots animados" />
+
+<sub>Telas do computador geradas com dados de demonstração.</sub>
 
 </div>
 
@@ -71,58 +82,48 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 
 ```mermaid
 flowchart LR
+  subgraph Computador
+    Win["Janela do MyBots<br/>(Electron)"]
+    SupPC["Supervisor<br/>Node + SQLite"]
+    Node["Nó do computador<br/>(arquivos, navegador, comandos)"]
+    AIPC["Codex, Claude Code,<br/>Antigravity ou opencode"]
+  end
   subgraph Celular
     App["App MyBots<br/>(React Native)"]
-    subgraph Termux
-      Sup["Supervisor<br/>Node + SQLite"]
-      AI["Codex, Claude Code,<br/>Antigravity ou opencode"]
-    end
-    Web["Navegador dos bots<br/>(WebView compartilhada)"]
+    SupCel["Supervisor no Termux<br/>(opcional)"]
   end
-  App <-- "WebSocket autenticado<br/>127.0.0.1" --> Sup
-  Sup -- "ferramentas MCP" --> AI
-  Sup <-- "comandos" --> Web
-  AI -- "sua conta" --> Nuvem[(OpenAI / Anthropic)]
+  Win <--> SupPC
+  SupPC <--> Node
+  Node --> AIPC
+  App <-- "canal cifrado de ponta a ponta<br/>direto ou pelo relé" --> Node
+  App -. "opcional" .- SupCel
+  SupPC <-- "sincronização" --> SupCel
+  AIPC -- "sua conta" --> Nuvem[(OpenAI / Anthropic)]
 ```
 
-- O **app** é a interface: conversas, perfis, aprovações, atividade, arquivos e o navegador ao vivo.
-- O **supervisor** roda no Termux e guarda tudo num SQLite no próprio celular: fila de tarefas, rotinas, pendências, memórias e permissões. Ele expõe as ferramentas aos modelos por MCP e decide o que precisa de aprovação.
-- Os modelos usam o **Codex** (`pkg install codex`), o **Claude Code**, o **Antigravity** (`agy`) ou o **opencode**, já conectados à sua conta (os três últimos rodam no computador e, no celular, num Debian do proot). O MyBots não lê nem copia as credenciais deles.
+- O **app** (computador ou celular) é a interface: conversas, perfis, aprovações, atividade, arquivos e o navegador ao vivo.
+- O **supervisor** guarda tudo num SQLite local: fila de tarefas, rotinas, pendências, memórias e permissões. Ele expõe as ferramentas aos modelos por MCP e decide o que precisa de aprovação. Roda no computador e, se você quiser o celular independente, também no Termux; os dois se sincronizam.
+- Celular e computador se conectam de qualquer rede: direto no mesmo Wi-Fi, ou por um relé que só encaminha dados cifrados de ponta a ponta (ou pelo Tailscale, se você usa).
+- Os modelos usam o **Codex**, o **Claude Code**, o **Antigravity** (`agy`) ou o **opencode**, já conectados à sua conta. O MyBots não lê nem copia as credenciais deles.
 
 ## Instalação
 
-1. Baixe o APK mais novo em **[Releases](../../releases/latest)** e instale. Depois disso, o próprio app avisa quando sair uma versão nova e se atualiza sozinho.
-2. Instale o **Termux** e o **Termux:API** (da mesma fonte, F-Droid ou GitHub).
-3. No Termux, permita apps externos:
-   ```bash
-   echo "allow-external-apps=true" >> ~/.termux/termux.properties && termux-reload-settings
-   pkg install codex && codex login
-   ```
-4. Abra o MyBots, escolha **Só no celular** e conceda **Executar comandos no Termux**. Na primeira vez, o app instala e testa o supervisor sozinho.
+1. **No computador**: baixe o instalador do seu sistema na [Release "MyBots no computador"](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) e abra. Um assistente mostra quais IAs (Codex, Claude Code, Antigravity, opencode) estão instaladas e conectadas e mostra o QR para parear o celular.
+   - **Linux**: `MyBots-<versão>-linux-x86_64.AppImage` (`chmod +x` e abra) ou `MyBots-<versão>-linux-amd64.deb`. No Ubuntu 24.04 o AppImage pode exigir `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`; o `.deb` não. O comando `bubblewrap` precisa estar instalado (os comandos dos bots rodam isolados nele).
+   - **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro em [docs/windows.md](docs/windows.md).
+   - **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
+2. **No celular Android**: baixe o APK em **[Releases](../../releases/latest)**, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Pronto, sem Termux.
+3. **Atualizações**: nos dois aparece "Nova versão · Atualizar e reiniciar" e um clique baixa, instala e reinicia sozinho. No computador isso vale para o **Windows** e o **AppImage do Linux**; no **.deb** e no **macOS** (sem assinatura) o botão abre a página de download.
 
-> Guias detalhados: [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
+O computador precisa ficar ligado (o MyBots fica na bandeja) para o celular usar os bots dele. Se preferir o celular independente, ative o **Termux** em Ajustes → Termux (avançado), que traz o tutorial completo.
 
-## MyBots no computador (instaladores)
+> Guias detalhados: [MyBots no computador](docs/computador.md) · [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 
-Baixe na [Release "MyBots no computador"](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest):
+## Celular e computador juntos
 
-- **Linux**: `MyBots-<versão>-linux-x86_64.AppImage` (dê permissão com `chmod +x` e abra) ou `MyBots-<versão>-linux-amd64.deb` (Debian, Ubuntu e derivados: instale pelo gerenciador de pacotes). No Ubuntu 24.04 o AppImage pode exigir `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`; o `.deb` não. O comando `bubblewrap` precisa estar instalado (os comandos dos bots rodam isolados nele).
-- **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro de instalação e de teste em [docs/windows.md](docs/windows.md).
-- **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste o app para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
-- **Atualização**: o app procura versões novas ao abrir e a cada poucas horas. Quando há uma, aparece "Nova versão · Atualizar e reiniciar" na janela (e em Ajustes → Sobre): um clique baixa, instala e reinicia sozinho. Isso vale para o **Windows** e o **AppImage do Linux**. No **.deb** e no **macOS** (sem assinatura) o sistema não deixa o app se instalar sozinho, então o botão abre a página de download.
-
-Na primeira abertura, um assistente mostra quais IAs (Codex, Claude Code, Antigravity, opencode) estão instaladas e conectadas, se há Chrome (opcional) e o QR para parear o celular. O computador precisa ficar ligado (o MyBots fica na bandeja).
-
-## Beta: celular e computador juntos
-
-O beta liga o celular ao computador e deixa cada um funcionar sozinho.
-
-- **O computador funciona sozinho**: o MyBots do PC tem os próprios bots, conversas e rotinas e responde com o celular desligado. E o celular continua funcionando sem o PC.
-- **Conecta de qualquer rede**: na mesma rede é direto; fora de casa, pelo Tailscale (se você usa) ou por um relé do MyBots que só encaminha dados cifrados de ponta a ponta. Não é preciso abrir portas nem instalar nada.
+- **Cada um funciona sozinho**: o MyBots do PC tem os próprios bots, conversas e rotinas e responde com o celular desligado. E o celular com Termux funciona sem o PC.
 - **Sincroniza sozinho**: bots, conversas, memória, salas, rotinas, pendências, ajustes e arquivos (até 20 MB) se juntam nos dois sentidos quando os dois estão ligados. Se os dois mudarem a mesma coisa, vale a versão mais recente e o aviso aparece em Atividade. Permissões, senhas e cartões ficam em cada aparelho.
-- **Como começar (sem Termux)**: instale o MyBots no computador (`scripts/build-desktop.sh`) e entre nas suas contas de IA por lá; instale o APK da [última Release](../../releases/latest) no celular, abra o app e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Pronto: bots, conversas e rotinas do PC aparecem no celular, de qualquer rede. O computador precisa ficar ligado.
-- **Quer o celular independente?** Em Ajustes → Termux (avançado) há o tutorial completo. Com o Termux o celular tem o próprio MyBots e sincroniza com o PC: a primeira sincronização copia tudo e mostra o progresso em Ajustes.
-- **Limites conhecidos**: redes que bloqueiam portas incomuns (faculdade, empresa) podem barrar o relé; arquivos acima de 20 MB ficam onde foram criados; rotinas rodam em um aparelho só (o celular enquanto está ligado, o computador enquanto o celular está fora de alcance). Detalhes em [docs/computador.md](docs/computador.md) e [docs/PLANO-SYNC.md](docs/PLANO-SYNC.md).
+- **Limites conhecidos**: redes que bloqueiam portas incomuns (faculdade, empresa) podem barrar o relé; arquivos acima de 20 MB ficam onde foram criados; rotinas rodam em um aparelho só. Detalhes em [docs/computador.md](docs/computador.md) e [docs/PLANO-SYNC.md](docs/PLANO-SYNC.md).
 
 ## Desenvolvimento
 
@@ -131,6 +132,7 @@ npm ci --prefix supervisor          # dependências do supervisor
 npm install --prefix mobile         # dependências do app
 npm test                            # testes (Codex e Claude reais contra API simulada)
 scripts/build-apk.sh --offline      # APK ARM64 para o celular
+# o instalador do computador sai pela CI (.github/workflows/desktop.yml)
 ```
 
 Para testar num emulador com Termux e o supervisor de verdade, veja [scripts/emulator/README.md](scripts/emulator/README.md).

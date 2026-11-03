@@ -3,7 +3,7 @@
 Objetivo: o app do computador funciona com o celular desligado, e o celular com o PC desligado. Quando os dois estão ligados, veem a mesma coisa. Sem conta na nuvem (decisão de 01/11/2026; um relé opcional pode vir depois).
 
 ## Situação hoje
-- O celular é o centro: bots, conversas, memória, rotinas, permissões e senhas ficam no SQLite do Termux (`~/.mybots/mybots.db`). O PC (`pc/`) é um executor pareado (`supervisor/link.mjs`, `nodes.mjs`): responde pelos bots "Computador" e "Onde estiver". A janela do PC mostra o estado vindo do celular.
+- O celular é o centro: bots, conversas, memória, rotinas, permissões e senhas ficam no SQLite do Termux (`~/.mybots/mybots.db`). O PC (`pc/`) era só um executor pareado até a v113 (hoje também tem o supervisor próprio, Fase 1) (`supervisor/link.mjs`, `nodes.mjs`): responde pelos bots "Computador" e "Onde estiver". A janela do PC mostra o estado vindo do celular.
 - Sem o celular, a janela do PC não tem dados e os bots do PC não têm de onde ler conversa, memória, rotinas nem permissões.
 
 ## Desenho
@@ -18,11 +18,12 @@ Objetivo: o app do computador funciona com o celular desligado, e o celular com 
   - Senhas e cofre, cartões, tokens e chaves: **não sincronizam por padrão**; opção explícita, cifrada de ponta a ponta com o segredo do pareamento (decidir na Fase 3).
 - **Canal**: o mesmo do pareamento (TLS na porta 3230, descoberta UDP 3234, Tailscale fora de casa). Um registro de mudanças (`changes`) por aparelho, com contador crescente; cada lado pede "o que mudou desde o contador X do outro".
 
-## Fases
-**Fase 1 — PC sozinho.** O processo do PC passa a subir um supervisor completo próprio (banco em `~/.mybots-pc/`), com a janela falando com ele, não com o celular. Bots criados no PC vivem só nele até a sincronização. O link atual continua funcionando como está.
-**Fase 2 — registro de mudanças.** Cada escrita relevante (bots, mensagens, memória, rotinas, grants, salas) passa a gravar também numa tabela `changes` (id do aparelho, contador, tabela, chave, `updatedAt`, conteúdo ou marca de apagado). Migração: gerar o registro inicial dos dados atuais.
-**Fase 3 — sincronização.** Troca de mudanças pelo canal pareado (ao conectar e ao vivo), resolução por registro, anexos por hash, tela em Ajustes (último sync, aparelhos, conflitos resolvidos) e a decisão sobre senhas.
-**Fase 4 — migração e posse.** Quem hoje usa só o celular: o PC se pareia e puxa tudo (primeira sincronização completa). Bots com `home` mudam de dono sem perder histórico. Rotinas: só rodam no dono.
+## Fases (ordem de 03/11/2026, para o beta)
+**Fase 1 — PC sozinho. Feita na v114.** O nó do PC sobe um supervisor completo próprio (processo filho, banco em `~/.mybots-pc/supervisor/`), pareado com o próprio nó por loopback: os turnos usam o mesmo executor (sandbox, desktop, navegador). A janela escolhe de onde vêm os dados: celular (como antes) ou este computador (Ajustes → Celular). Quem nunca pareou um celular já começa no computador. Bots criados no PC vivem só nele até a sincronização. Detalhes em [computador.md](computador.md).
+**Fase 2 — relé na VPS.** `relay/server.mjs` numa VPS (Oracle Always Free): PC e celular ligam *para* ela, tudo cifrado de ponta a ponta com o segredo do pareamento; a VPS não grava nada. Ordem de tentativa: rede local, Tailscale, relé. Volta ao caminho direto quando os dois estão na mesma rede.
+**Fase 3 — registro de mudanças.** Cada escrita relevante (bots, mensagens, memória, rotinas, grants, salas) grava também numa tabela `changes` (id do aparelho, contador, tabela, chave, `updatedAt`, conteúdo ou marca de apagado). Migração: gerar o registro inicial dos dados atuais.
+**Fase 4 — sincronização.** Troca de mudanças pelo canal pareado (rede local, Tailscale ou relé), ao conectar e ao vivo, resolução por registro, anexos por hash, tela em Ajustes (último sync, aparelhos, conflitos resolvidos) e a decisão sobre senhas.
+**Fase 5 — migração, posse e fechamento do beta.** Quem hoje usa só o celular: o PC se pareia e puxa tudo (primeira sincronização completa). Bots com `home` mudam de dono sem perder histórico. Rotinas: só rodam no dono. Tela de estado da conexão e aviso de versão beta.
 
 Cada fase termina com versão, `npm test` (incluindo testes de sincronização com dois supervisores falsos, conflitos e apagar), APK, Release, push e PC.
 

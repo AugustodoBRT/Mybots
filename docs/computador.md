@@ -27,6 +27,8 @@ Desde a v57, as conversas usam uma lista virtualizada que já abre no fim. Role 
 
 Os dados do nó ficam em `~/.mybots-pc/` (diretório 700): identidade, certificado TLS, celulares pareados (com o segredo de cada um) e as pastas de trabalho dos bots.
 
+**O computador sozinho (v114)**: o nó sobe um MyBots completo próprio (supervisor em processo filho, banco em `~/.mybots-pc/supervisor/`), pareado por loopback com o próprio nó, que executa os turnos como já fazia. Com ele o computador guarda bots, conversas, memória e rotinas sem o celular. Em **Ajustes → Celular** da janela, "De onde vêm os bots e conversas" escolhe **Este computador** ou **Celular** (como antes); a escolha fica em `~/.mybots-pc/ui-source.json` e vale para todas as janelas, que reconectam sozinhas. Quem nunca pareou um celular começa em "Este computador"; quem já pareou continua no celular até trocar. Por enquanto cada lado guarda os seus bots (a sincronização vem depois, ver [PLANO-SYNC.md](PLANO-SYNC.md)). A janela usa a mesma lista de métodos do celular; o nível Livre e o que é do celular (backup, senhas, e-mail, carteira) continuam só nele. Avisos dos bots viram notificações do sistema (`notify-send`, com Aprovar/Recusar quando o servidor de notificações aceita ações). `MYBOTS_PC_LOCAL=0` desliga o supervisor próprio; `MYBOTS_PC_LOCAL_PORT` muda a porta (padrão 3221, só em 127.0.0.1). Quem inicia o nó por um lançador próprio precisa passar `local: {}` ao `createNode`.
+
 **Fora de casa**: instale a [Tailscale](https://tailscale.com) no computador e no celular, com a mesma conta, e pareie de novo (o QR passa a levar o endereço 100.x da Tailscale). Na mesma rede Wi-Fi não precisa de nada.
 
 ## Quando o celular não acha o computador

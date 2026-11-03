@@ -19,7 +19,9 @@ const stamp = () => new Date().toLocaleTimeString('pt-BR');
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit' });
 
 async function serve() {
-  const node = await createNode({ directory, port, ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
+  // The computer's own MyBots (its own database), so it works with the phone off. MYBOTS_PC_LOCAL=0 turns it off.
+  const local = process.env.MYBOTS_PC_LOCAL === '0' ? null : { ...(process.env.MYBOTS_PC_LOCAL_PORT ? { port: Number(process.env.MYBOTS_PC_LOCAL_PORT) } : {}) };
+  const node = await createNode({ directory, port, local, ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
   console.log(`[${stamp()}] MyBots no computador "${node.name}" esperando o celular na porta ${node.port}.`);
   if (!node.phones().length) console.log('Nenhum celular pareado ainda. Em outro terminal: node pc/node.mjs pair');
   const stop = () => node.close().then(() => process.exit(0));

@@ -23,6 +23,7 @@ import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
 import { createDiscovery } from './discovery.mjs';
+import { createLocal } from './local.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
@@ -56,10 +57,11 @@ export function identity(directory) {
 }
 
 /** A one-use pairing code, valid for 10 minutes, and the link the QR carries. */
-export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses) {
+export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses, { local = false } = {}) {
   const me = identity(directory);
   const code = randomBytes(12).toString('base64url');
-  write(join(directory, 'pairing.json'), { code, expiresAt: Date.now() + PAIRING_MS });
+  // The computer's own supervisor pairs with a code of its own, so it never overwrites a QR shown for a phone.
+  write(join(directory, local ? 'pairing-local.json' : 'pairing.json'), { code, expiresAt: Date.now() + PAIRING_MS });
   return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise() }), name: me.name };
 }
 
@@ -182,9 +184,9 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, log = () => {} } = {}) {
   const me = identity(directory);
-  const controls = new Set(); let owner = null;
+  const controls = new Set(); let owner = null, own = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
@@ -206,10 +208,10 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     try { await browser.command(botId, 'view', options); }
     catch (error) { for (const sink of sinks) sink({ error: error.message }); }
   };
-  const watch = async (botId, sink, on, mode, options) => {
+  const watch = async (botId, sink, on, mode, options, stateOf) => {
     if (on) {
       if (mode) configureBrowser({ id: botId, browserMode: mode });
-      else { const state = await bridge.call('state.get', {}); const bot = state.bots?.find(bot => bot.id === botId); if (!bot) throw new Error('Bot não encontrado.'); if (browserMode(bot) === 'mine' && (bot.access === 'basic' || state.grants?.[botId]?.find(grant => grant.name === 'browser')?.state !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); configureBrowser(bot); }
+      else { const state = await (stateOf ? stateOf() : bridge.call('state.get', {})); const bot = state.bots?.find(bot => bot.id === botId); if (!bot) throw new Error('Bot não encontrado.'); if (browserMode(bot) === 'mine' && (bot.access === 'basic' || state.grants?.[botId]?.find(grant => grant.name === 'browser')?.state !== 'allow')) throw new Error('Libere Navegador no perfil do bot para usar Meu Chrome.'); configureBrowser(bot); }
     }
     if (options) sink.remoteCongested = Boolean(options.congested);
     sink.options = viewSize(options || sink.options);
@@ -245,7 +247,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -256,9 +258,11 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     send({ type: 'hello', id: me.id, name: me.name, nonce });
 
     const ready = phone => {
-      clearTimeout(timer); ws.phone = phone; bridge.attach(ws); ui.broadcast('desktop.phone', { online: true });
+      clearTimeout(timer); ws.phone = phone;
+      // The computer's own supervisor is not a phone: the window reaches it directly (see local.mjs), and it only needs this node as its executor.
+      if (!phone.local) { bridge.attach(ws); ui.broadcast('desktop.phone', { online: true }); }
       log(`${phone.name} conectado (${request.socket.remoteAddress}).`);
-      send({ type: 'ready', id: me.id, name: me.name, addresses: advertise(), port: server.address().port, tailscale: advertise().some(tailscaleAddress), ...current });
+      send({ type: 'ready', id: me.id, name: me.name, addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
     const tunnel = () => proxy ||= new Promise((resolve, reject) => {
@@ -284,11 +288,13 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       if (!ws.phone) {
         const phones = read(phonesFile, []);
         if (message.type === 'pair' && typeof message.code === 'string' && typeof message.phoneId === 'string') {
-          const pairing = read(join(directory, 'pairing.json'), null);
-          const valid = pairing && Date.now() < pairing.expiresAt && Buffer.byteLength(message.code) === Buffer.byteLength(pairing.code) && timingSafeEqual(Buffer.from(message.code), Buffer.from(pairing.code));
-          if (!valid) { send({ type: 'refused', error: 'Código de pareamento inválido ou vencido. Gere outro no computador.' }); ws.close(); return; }
-          try { unlinkSync(join(directory, 'pairing.json')); } catch {}
-          const phone = { id: message.phoneId.slice(0, 64), name: String(message.phoneName || 'Celular').slice(0, 40), secret: randomBytes(32).toString('base64url'), pairedAt: new Date().toISOString() };
+          const used = ['pairing.json', 'pairing-local.json'].map(name => ({ name, pairing: read(join(directory, name), null) })).find(({ pairing }) => pairing && Date.now() < pairing.expiresAt && Buffer.byteLength(message.code) === Buffer.byteLength(pairing.code) && timingSafeEqual(Buffer.from(message.code), Buffer.from(pairing.code)));
+          if (!used) { send({ type: 'refused', error: 'Código de pareamento inválido ou vencido. Gere outro no computador.' }); ws.close(); return; }
+          try { unlinkSync(join(directory, used.name)); } catch {}
+          const isLocal = used.name === 'pairing-local.json';
+          // A code made for the computer's own supervisor must come from this same machine.
+          if (isLocal && !/^(::1|::ffff:)?127\./.test(request.socket.remoteAddress || '') && request.socket.remoteAddress !== '::1') { send({ type: 'refused', error: 'Pareamento local recusado.' }); ws.close(); return; }
+          const phone = { id: message.phoneId.slice(0, 64), name: isLocal ? 'Este computador' : String(message.phoneName || 'Celular').slice(0, 40), secret: randomBytes(32).toString('base64url'), pairedAt: new Date().toISOString(), ...(isLocal ? { local: true } : {}) };
           write(phonesFile, [...phones.filter(item => item.id !== phone.id), phone]);
           send({ type: 'paired', secret: phone.secret }); ready(phone); return;
         }
@@ -300,7 +306,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         ready(phone); return;
       }
       if (message.type === 'rpc_reply') { bridge.answer(message); return; }
-      if (message.type === 'event') { ui.broadcast(message.event, message.data); return; }
+      if (message.type === 'event') { if (!ws.phone.local) ui.broadcast(message.event, message.data); return; }
       if (message.type === 'browser_view' && typeof message.botId === 'string') {
         ws.views ||= new Map();
         if (message.on && !ws.views.has(message.botId)) {
@@ -407,15 +413,20 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       assumed = new Set();
       for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
       proxy?.then(http => http.close(), () => {});
-      if (ws.phone) { log(`${ws.phone.name} desconectado.`); bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); }
+      if (ws.phone) { log(`${ws.phone.name} desconectado.`); if (!ws.phone.local) { bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); } }
     });
   });
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   const windowPort = await ui.listen();
   const discovery = await createDiscovery({ id: me.id, port: server.address().port, addresses: advertise, discoveryPort, allowLoopback: discoveryLoopback, log });
+  // The computer's own MyBots (a supervisor with its own database), so the computer works with the phone off.
+  if (localOptions) {
+    own = createLocal({ directory, nodePort: () => server.address().port, identity: () => me, pairing: () => startPairing(directory, server.address().port, () => ['127.0.0.1'], { local: true }), log, ...localOptions });
+    own.start().catch(() => {});
+  }
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => startPairing(directory, server.address().port, advertise),
-    phones: () => read(phonesFile, []).map(({ secret, ...phone }) => phone), panic,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own,
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

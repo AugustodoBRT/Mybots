@@ -428,12 +428,34 @@ export function DesktopNetwork({ call, notice = false }) {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
   if (!status) return null;
-  if (!notice) return <RemoteAccess tailscale={status.tailscale} />;
-  if (status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
+  if (!notice) return <><DesktopSource call={call} status={status} /><RemoteAccess tailscale={status.tailscale} /></>;
+  if (status.source === 'local' || status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
   return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
     <Text style={styles.optionLabel}>O celular não encontrou este computador</Text>
     <Text style={styles.optionDetail}>O computador mudou de rede? O celular procura sozinho no mesmo Wi-Fi; se não achar, mostre o QR. Em redes diferentes, use o Tailscale.</Text>
+    {status.localAvailable ? <Pressable accessibilityRole="button" onPress={() => call('desktop.source', { source: 'local' }).catch(() => {})} style={styles.stopButton}><Icon name="bots" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Usar só este computador</Text></Pressable> : null}
     <DesktopPair call={call} />
+  </View>;
+}
+
+/** Where the window's bots and conversations come from: the paired phone, or this computer's own MyBots (works with the phone off). */
+export function DesktopSource({ call, status }) {
+  const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
+  if (!status?.localAvailable) return null;
+  const choose = async source => {
+    if (busy || source === status.source) return;
+    setBusy(true); setNote('');
+    try { await call('desktop.source', { source }); } catch (error) { setNote(error.message); setBusy(false); }
+  };
+  const options = [['local', 'Este computador', 'Bots e conversas guardados aqui. Funciona com o celular desligado.'], ['phone', 'Celular', 'Mostra o MyBots do celular pareado, como antes.']];
+  return <View style={{ marginTop: 10 }}>
+    <Text style={styles.optionLabel}>De onde vêm os bots e conversas</Text>
+    {options.map(([key, label, detail]) => <Pressable key={key} accessibilityRole="radio" accessibilityState={{ selected: status.source === key }} disabled={busy} onPress={() => choose(key)} style={{ marginTop: 8, opacity: busy ? 0.6 : 1 }}>
+      <Text style={[styles.optionLabel, status.source === key && { color: C.accent }]}>{status.source === key ? '● ' : '○ '}{label}</Text>
+      <Text style={styles.optionDetail}>{detail}</Text>
+    </Pressable>)}
+    <Text style={styles.optionDetail}>Por enquanto cada lado guarda os seus próprios bots; a sincronização entre os dois vem numa próxima versão.</Text>
+    {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
 

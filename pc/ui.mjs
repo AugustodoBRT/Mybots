@@ -6,10 +6,12 @@ import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
+import { DESKTOP_METHODS } from '../supervisor/link.mjs';
 
 export const DEFAULT_UI_PORT = 3232;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp' };
-const OFFLINE = 'O celular está fora de alcance. No mesmo Wi-Fi, ele procura o computador sozinho. Para conectar de outra rede, use o Tailscale.';
+const OFFLINE = 'O celular está fora de alcance. No mesmo Wi-Fi, ele procura o computador sozinho. Para conectar de outra rede, use o Tailscale. Se preferir, use só este computador em Ajustes → Celular.';
+const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo em instantes.';
 
 /**
  * The MyBots window on the computer: the same interface as the phone (react-native-web, built into pc/ui), served
@@ -17,11 +19,15 @@ const OFFLINE = 'O celular está fora de alcance. No mesmo Wi-Fi, ele procura o 
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
   const clients = new Set(); let offlineSince = Date.now();
+  // Where the window's data comes from: the paired phone (as before) or this computer's own supervisor. A person who
+  // never paired a phone starts on the computer's own; the choice is kept and applies to every window.
+  const saved = () => { try { const value = JSON.parse(readFileSync(sourceFile, 'utf8')).source; return value === 'phone' || value === 'local' ? value : null; } catch { return null; } };
+  const sourceNow = () => { const choice = saved(); if (choice === 'local' && !own()) return 'phone'; return choice || (own() && !phones().length ? 'local' : 'phone'); };
   const origins = () => [`http://127.0.0.1:${server.address().port}`, `http://localhost:${server.address().port}`];
   // Only this computer's own pages: a site opened in a browser cannot read the page (DNS rebinding) or use the socket.
   const local = request => origins().map(origin => origin.slice(7)).includes(request.headers.host);
@@ -51,11 +57,25 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       if (!ws.authenticated) {
         const given = typeof params?.token === 'string' ? params.token : '';
         if (method !== 'auth' || Buffer.byteLength(given) !== token.length || !timingSafeEqual(Buffer.from(given), Buffer.from(token))) { reply(id, { error: 'Acesso negado.' }); ws.close(); return; }
-        clearTimeout(timer); ws.authenticated = true; clients.add(ws); reply(id, { result: { ok: true } }); return;
+        clearTimeout(timer); ws.authenticated = true; ws.source = sourceNow(); clients.add(ws);
+        // The computer's own supervisor: this window gets a connection of its own, and its events go straight to the window.
+        if (ws.source === 'local') {
+          try { ws.session = await own().session(text => { if (ws.readyState === 1) ws.send(text); }); ws.session.onClose = () => { if (ws.readyState === 1) ws.close(1013); }; }
+          catch (error) { reply(id, { error: STARTING }); ws.close(); return; }
+        }
+        reply(id, { result: { ok: true } }); return;
       }
+      const backend = (method, params) => {
+        if (ws.source !== 'local') { if (!phone.online()) throw new Error(OFFLINE); return phone.call(method, params); }
+        if (!ws.session || ws.session.closed) throw new Error(STARTING);
+        // The same list the phone gives the window; the Livre level is chosen on the phone, with its warning.
+        if (!DESKTOP_METHODS.includes(method)) throw new Error('Isto só pode ser feito no celular.');
+        if (['bot.create', 'bot.update'].includes(method) && params?.access === 'free') throw new Error('O nível Livre só se escolhe no app do celular.');
+        return ws.session.call(method, params);
+      };
       if (typeof method !== 'string') return;
       try {
-        if (method === 'desktop.file') reply(id, { result: await saveFile(params || {}) });
+        if (method === 'desktop.file') reply(id, { result: await saveFile(params || {}, backend) });
         // The bots' Chrome runs here: the window watches it and, after "Assumir" on the phone's side, uses it directly.
         else if (method === 'browser.view') {
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
@@ -65,7 +85,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           const sink = ws.views.get(params.botId);
           if (sink) { sink.bufferedAmount = () => ws.bufferedAmount; sink.direct = true; }
           if (!on) ws.views.delete(params.botId);
-          if (sink) await browser.watch(params.botId, sink, on, undefined, params);
+          if (sink) await browser.watch(params.botId, sink, on, undefined, params, () => backend('state.get', {}));
           reply(id, { result: { watching: on, online: true } });
         }
         // Dictation in this window: recorded and transcribed on this computer (see dictation.mjs).
@@ -80,7 +100,16 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        // Choosing where the window's data comes from. The windows reconnect and load the other side's state.
+        else if (method === 'desktop.source') {
+          const source = params?.source;
+          if (source !== 'phone' && source !== 'local') throw new Error('Escolha o celular ou este computador.');
+          if (source === 'local' && !own()) throw new Error('O MyBots deste computador não está disponível.');
+          if (sourceFile) { writeFileSync(sourceFile, JSON.stringify({ source }), { mode: 0o600 }); chmodSync(sourceFile, 0o600); }
+          reply(id, { result: { source } });
+          setTimeout(() => { for (const other of clients) other.close(1012); }, 60);
+        }
         // The pairing QR, drawn here so the window shows it (one use, 10 minutes, like `node pc/node.mjs pair`).
         else if (method === 'desktop.pair') {
           if (!pairing) throw new Error('O pareamento não está disponível.');
@@ -89,24 +118,23 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           reply(id, { result: { name, svg: await QRCode.toString(link, { type: 'svg', margin: 2, errorCorrectionLevel: 'L', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000 } });
         }
         else {
-          if (!phone.online()) throw new Error(OFFLINE);
-          reply(id, { result: await phone.call(method, params || {}) });
+          const result = await backend(method, params || {});
+          reply(id, { result: method === 'state.get' && result && typeof result === 'object' ? { ...result, source: ws.source, localAvailable: Boolean(own()) } : result });
         }
       } catch (error) { reply(id, { error: error.message }); }
     });
-    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
+    ws.on('close', () => { clearTimeout(timer); clients.delete(ws); ws.session?.close(); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
   });
   /** A bot's file, saved in ~/Downloads (and opened with the desktop's default app when asked). */
-  async function saveFile({ id, name, action }) {
+  async function saveFile({ id, name, action }, backend) {
     if (typeof id !== 'string' || typeof name !== 'string' || !['save', 'open'].includes(action)) throw new Error('Arquivo inválido.');
-    if (!phone.online()) throw new Error(OFFLINE);
     mkdirSync(downloads, { recursive: true });
     const clean = parse(name.replace(/[\u0000-\u001f/\\]/g, ' ').trim() || 'arquivo');
     let target = join(downloads, clean.base); for (let n = 2; existsSync(target); n++) target = join(downloads, `${clean.name} (${n})${clean.ext}`);
     // Written part by part as it arrives, so a big file (a video) never sits whole in memory.
     let offset = 0;
     try {
-      do { const part = await phone.call('file.read', { id, offset }); const bytes = Buffer.from(part.chunk, 'base64'); if (offset === 0) writeFileSync(target, bytes); else appendFileSync(target, bytes); offset = part.next; } while (offset !== null && offset !== undefined);
+      do { const part = await backend('file.read', { id, offset }); const bytes = Buffer.from(part.chunk, 'base64'); if (offset === 0) writeFileSync(target, bytes); else appendFileSync(target, bytes); offset = part.next; } while (offset !== null && offset !== undefined);
     } catch (error) { try { unlinkSync(target); } catch {} throw error; }
     if (action === 'open') spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
     log(`Arquivo salvo em ${target}.`);
@@ -115,7 +143,8 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
   return {
     listen: () => new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', () => resolve(server.address().port)); }),
     /** An event from the phone, or a change of the link itself, for every open window. */
-    broadcast(event, data = {}) { if (event === 'desktop.phone') offlineSince = data.online ? null : Date.now(); for (const ws of clients) if (ws.readyState === 1) ws.send(JSON.stringify({ event, data })); },
+    broadcast(event, data = {}) { if (event === 'desktop.phone') offlineSince = data.online ? null : Date.now(); for (const ws of clients) if (ws.readyState === 1 && (ws.source !== 'local' || event.startsWith('desktop.'))) ws.send(JSON.stringify({ event, data })); },
+    source: sourceNow,
     close: () => { for (const ws of clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); }
   };
 }

@@ -13,4 +13,22 @@ function isNewer(candidate, current) {
 }
 /** AppImage and Windows installs update themselves; .deb and macOS (not signed) only tell about the new version. */
 const updatesItself = (platform, env = process.env) => platform === 'win32' || (platform === 'linux' && Boolean(env.APPIMAGE));
-module.exports = { FEED, RELEASE_PAGE, feedFile, feedVersion, isNewer, updatesItself };
+
+/**
+ * The window's update, one step at a time: none → available (a button) → downloading (percent) → installing (it restarts by itself).
+ * A failure goes back to the button with the reason; a new "available" never interrupts a download that is going on.
+ */
+const IDLE = { phase: 'none', version: null, percent: 0, error: null };
+function nextState(state, event) {
+  const busy = state.phase === 'downloading' || state.phase === 'installing';
+  switch (event.type) {
+    case 'none': return busy ? state : { ...IDLE };
+    case 'available': return busy ? state : { phase: 'available', version: event.version, percent: 0, error: null };
+    case 'start': return { ...state, phase: 'downloading', percent: 0, error: null };
+    case 'progress': return state.phase === 'installing' ? state : { ...state, phase: 'downloading', percent: Math.max(0, Math.min(100, Math.round(Number(event.percent) || 0))) };
+    case 'downloaded': return { ...state, phase: 'installing', percent: 100, error: null };
+    case 'error': return { ...state, phase: state.version ? 'available' : 'none', percent: 0, error: String(event.message || 'Não consegui atualizar.').slice(0, 200) };
+    default: return state;
+  }
+}
+module.exports = { FEED, RELEASE_PAGE, feedFile, feedVersion, isNewer, updatesItself, nextState, IDLE };

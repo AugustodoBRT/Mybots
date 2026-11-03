@@ -25,3 +25,31 @@ test('first-run assistant: Chrome is looked for in the places of each system, an
   assert.equal(findChrome('linux', () => false), null); assert.equal(findChrome('plan9', () => true), null);
   for (const item of AIS) { assert.ok(item.key && item.name && item.login && /^https:\/\//.test(item.link)); }
 });
+
+const { nextState, IDLE } = require('../desktop/electron/updates-core.js');
+
+test('the update button: none → available → downloading → installing; a failure goes back to the button with the reason', () => {
+  let state = { ...IDLE };
+  state = nextState(state, { type: 'available', version: '0.63.0' }); assert.deepEqual(state, { phase: 'available', version: '0.63.0', percent: 0, error: null });
+  state = nextState(state, { type: 'start' }); assert.equal(state.phase, 'downloading'); assert.equal(state.percent, 0);
+  state = nextState(state, { type: 'progress', percent: 41.6 }); assert.equal(state.percent, 42);
+  state = nextState(state, { type: 'progress', percent: 250 }); assert.equal(state.percent, 100); state = nextState(state, { type: 'progress', percent: -3 }); assert.equal(state.percent, 0);
+  state = nextState(state, { type: 'progress', percent: 'x' }); assert.equal(state.percent, 0);
+  state = nextState(state, { type: 'downloaded' }); assert.deepEqual([state.phase, state.percent, state.version], ['installing', 100, '0.63.0']);
+  // A failure while downloading: back to the button, with the version still known and the reason shown.
+  const failed = nextState({ phase: 'downloading', version: '0.63.0', percent: 30, error: null }, { type: 'error', message: 'sem rede' });
+  assert.deepEqual(failed, { phase: 'available', version: '0.63.0', percent: 0, error: 'sem rede' });
+  assert.equal(nextState({ ...IDLE }, { type: 'error', message: 'x'.repeat(500) }).error.length, 200); assert.equal(nextState({ ...IDLE }, { type: 'error' }).phase, 'none');
+});
+
+test('the periodic check never interrupts a download or the install, and "none" clears only an idle button', () => {
+  for (const phase of ['downloading', 'installing']) {
+    const busy = { phase, version: '0.63.0', percent: 55, error: null };
+    assert.equal(nextState(busy, { type: 'available', version: '0.63.0' }), busy); assert.equal(nextState(busy, { type: 'none' }), busy);
+  }
+  assert.deepEqual(nextState({ phase: 'available', version: '0.63.0', percent: 0, error: 'x' }, { type: 'none' }), IDLE);
+  const newer = nextState({ phase: 'available', version: '0.63.0', percent: 0, error: null }, { type: 'available', version: '0.64.0' }); assert.equal(newer.version, '0.64.0');
+  // A late progress event after the download finished does not take it back.
+  assert.equal(nextState({ phase: 'installing', version: '1.0.0', percent: 100, error: null }, { type: 'progress', percent: 80 }).phase, 'installing');
+  assert.equal(nextState({ ...IDLE }, { type: 'outra coisa' }).phase, 'none');
+});

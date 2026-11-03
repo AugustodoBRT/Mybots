@@ -15,6 +15,7 @@ import { UsagePanel } from './components/Usage';
 import { desktop, column, paintPage } from './desktop';
 import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './pc-backend';
 import { SetupScreen } from './components/Setup';
+import { DesktopUpdate } from './components/DesktopUpdate';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
 import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
@@ -793,6 +794,7 @@ function AppMain() {
   return <View key={look} style={styles.app}>
     <ShareTargets />
     <StatusBar barStyle={look === 'light' ? 'dark-content' : 'light-content'} backgroundColor={C.bg} />
+    {desktop ? <DesktopUpdate /> : null}
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data && setup ? <SetupScreen onScanned={pairPc} onTermux={enableTermux} busy={setupBusy} error={setupError} />

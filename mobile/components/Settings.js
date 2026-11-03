@@ -7,6 +7,7 @@ import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
 import { RemotePanel, TermuxGuide } from './Setup';
+import { DesktopUpdate } from './DesktopUpdate';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
@@ -96,6 +97,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       <Pressable disabled={a.busy} onPress={() => a.copyText(a.text).catch(error => a.setText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.accent} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable>
     </>;
     if (key === 'about') return <>
+      {desktop ? <DesktopUpdate full /> : null}
       {termuxAvailable ? (a.update?.info?.available ? <UpdateCard compact update={a.update} onInstall={a.installUpdate} />
         : <View style={[styles.modeOption, styles.rowOption]}>
           <View style={styles.rowIcon}><Icon name="check" size={19} color={C.good} /></View>

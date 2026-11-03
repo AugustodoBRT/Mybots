@@ -190,7 +190,8 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   const [sheet, setSheet] = useState('');
   const model = findModel(models, selection);
   const providers = [...new Set(models.map(providerOf))];
-  const provider = providerOf(model || selection);
+  // Before a choice is made, the IA of the first model on offer (a computer with only Claude has no Codex models to start from).
+  const provider = providerOf(model || (selection?.provider || selection?.model ? selection : models.find(item => item.isDefault) || models[0] || selection));
   const available = models.filter(item => providerOf(item) === provider);
   const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
   const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex no Termux') }));

@@ -80,7 +80,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const connections = { codex: { available: false, loggedIn: false, message: 'Verificando o Codex…' }, ...(claude ? { claude: { available: false, loggedIn: false, message: 'Verificando o Claude…' } } : {}), ...(agy ? { agy: { available: false, loggedIn: false, message: 'Verificando o Antigravity…' } } : {}), ...(opencode ? { opencode: { available: false, loggedIn: false, message: 'Verificando o opencode…' } } : {}) };
     // The app keeps one summary line; per-provider details are in `connections`.
     const summary = () => {
-      const ready = Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
+      // An IA that is logged in only on the computer counts too (a computer with just Claude Code is a working computer).
+      const remote = Object.entries(nodes?.computer()?.connections || {}).filter(([key, item]) => item.loggedIn && !connections[key]?.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
+      const ready = [...Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]), ...remote];
       return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
     };
     // A waiting turn shows what it will say (shortened), so the person can pick which to cancel.
@@ -372,7 +374,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           // A Claude alias shows the version the last reply confirmed: "Claude Opus 5.5".
           const resolved = item.provider === 'claude' ? db.get('SELECT value FROM metadata WHERE key=?', 'claude.model.' + item.model)?.value || item.modelId : null; const version = Claude.version(resolved);
           return version ? { ...item, displayName: `${item.displayName} ${version}`, modelId: resolved } : item;
-        }), modelsError, defaultSelection: models.length ? selectionFor(models) : null,
+        }), modelsError, defaultSelection: catalog().length ? selectionFor(catalog()) : null,
         botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), phone: phone.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
         pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => kept.has(row.botId)),
         negotiations: negotiations.list(),

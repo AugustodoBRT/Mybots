@@ -462,7 +462,10 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   // The phone app's own port, next to the main one (3233 by default).
-  await new Promise((resolve, reject) => { plainServer.once('error', reject); plainServer.listen(appPort ?? (server.address().port ? server.address().port + 3 : 0), host, resolve); });
+  // The port asked for plus 3 (not the drawn one: with port 0 the app's port is drawn too). If something else holds it, any free port
+  // does: the app learns the real one at each connection, and the node must never fail to start for this.
+  const listenApp = wanted => new Promise((resolve, reject) => { const failed = error => { plainServer.off('listening', done); reject(error); }; const done = () => { plainServer.off('error', failed); resolve(); }; plainServer.once('error', failed); plainServer.once('listening', done); plainServer.listen(wanted, host); });
+  await listenApp(appPort ?? (port ? port + 3 : 0)).catch(async error => { if (error.code !== 'EADDRINUSE') throw error; log(`A porta do app já está em uso; usando outra.`); await listenApp(0); });
   const windowPort = await ui.listen();
   const discovery = await createDiscovery({ id: me.id, port: server.address().port, addresses: advertise, discoveryPort, allowLoopback: discoveryLoopback, log });
   // The relay: the computer waits there (outbound only, nothing opened at home) for each paired phone, and a phone that

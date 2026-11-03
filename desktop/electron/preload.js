@@ -19,5 +19,10 @@ contextBridge.exposeInMainWorld('mybotsNative', {
   // The face's own page.
   onOverlayState: callback => { const handler = (_event, state) => callback(state); ipcRenderer.on('overlay:state', handler); return () => ipcRenderer.removeListener('overlay:state', handler); },
   overlayExpand: open => ask('overlay:expand', Boolean(open)),
-  overlaySend: text => ask('overlay:send', text)
+  overlaySend: text => ask('overlay:send', text),
+  // The app's own update (the "Atualizar" button): its state, a check now, the install, and the changes of state.
+  update: {
+    state: () => ask('update:state'), check: () => ask('update:check'), install: () => ask('update:install'),
+    onState: callback => { const handler = (_event, state) => callback(state); ipcRenderer.on('update:state', handler); return () => ipcRenderer.removeListener('update:state', handler); }
+  }
 });

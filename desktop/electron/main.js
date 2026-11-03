@@ -189,7 +189,15 @@ if (first) app.whenReady().then(async () => {
 
   tray = new Tray(icon.resize({ width: 32, height: 32 })); tray.setToolTip('MyBots');
   const trayMenu = () => Menu.buildFromTemplate([{ label: 'Abrir o MyBots', click: show }, ...[updates?.menuItem()].filter(Boolean), { label: 'Assistente de primeira execução', click: openWelcome }, { type: 'separator' }, { label: embedded ? 'Sair do MyBots (os bots ficam offline)' : 'Fechar a janela (os bots continuam online)', click: () => { quitting = true; app.quit(); } }]);
-  if (embedded) { updates = createUpdates({ changed: () => tray?.setContextMenu(trayMenu()), log: line => console.log('[atualização]', line) }); updates.start(); }
+  if (embedded) {
+    updates = createUpdates({ log: line => console.log('[atualização]', line), beforeInstall: () => { quitting = true; },
+      changed: () => { tray?.setContextMenu(trayMenu()); try { if (ui && !ui.webContents.isDestroyed()) ui.webContents.send('update:state', updates.state()); } catch {} } });
+    updates.start();
+  }
+  // The window's "Atualizar" button and the check in Ajustes → Sobre.
+  ipcMain.handle('update:state', event => trusted(event) ? updates?.state() ?? null : null);
+  ipcMain.handle('update:check', async event => { if (!trusted(event) || !updates) return null; await updates.check(); return updates.state(); });
+  ipcMain.handle('update:install', event => { if (trusted(event)) updates?.install(); });
   tray.setContextMenu(trayMenu());
   tray.on('click', show);
   if (!hidden) show();

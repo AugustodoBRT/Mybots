@@ -3,7 +3,7 @@
 Escrito em 03/11/2026. O instalador do Windows é um **beta**: o código foi portado e testado só com funções de sistema simuladas em Linux; a primeira execução num Windows de verdade é este roteiro. Plano geral em [PLANO-DISTRIBUICAO.md](PLANO-DISTRIBUICAO.md).
 
 ## Instalar
-1. Baixe o `MyBots-<versão>-windows-x64.exe` (artefato da execução do workflow "Instaladores do PC" no GitHub, ou a Release `pc-latest` quando publicado).
+1. Baixe o `MyBots-<versão>-windows-x64.exe` da Release **pc-windows-beta** (https://github.com/AugustodoBRT/Mybots/releases/tag/pc-windows-beta), sem precisar de login.
 2. O Windows mostra "O Windows protegeu o computador" (SmartScreen), porque o instalador não é assinado: **Mais informações → Executar assim mesmo**.
 3. O instalador deixa escolher a pasta (por usuário, sem pedir administrador). O MyBots abre, vai para a bandeja e se registra para iniciar com o Windows.
 

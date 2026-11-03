@@ -137,3 +137,14 @@ test('a lost phone is forgotten from the computer: cut off at once, gone from th
   await assert.rejects(client.call('state.get'), /interrompida|desconectado|supervisor/);
   await assert.rejects(connectToComputer(WebSocket, { ...target, relay: undefined }, f.phone), /não está pareado|Conexão encerrada/);
 });
+
+test('the node still starts when the app\'s port is taken: another free port is used and the app learns it', async t => {
+  const { createServer } = await import('node:net');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-busy-'));
+  // Hold a port, then ask the node for exactly that one as the app's port.
+  const holder = createServer(); await new Promise(resolve => holder.listen(0, '127.0.0.1', resolve)); const taken = holder.address().port;
+  const node = await createNode({ directory, port: 0, appPort: taken, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], discoveryPort: 0, sync: false, log: () => {}, status: async () => ({ connections: {}, models: [] }) });
+  t.after(async () => { await node.close(); holder.close(); await rm(directory, { recursive: true, force: true }); });
+  const link = node.pairing().link; const qrPort = Number(/[?&]q=(\d+)/.exec(link)?.[1]);
+  assert.ok(qrPort > 0 && qrPort !== taken, 'the QR carries the port that is really in use');
+});

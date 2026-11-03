@@ -228,7 +228,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
     browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;
-    attachments.pdf = args => browser.device('pdfRead', args);
+    // PDFs: on the phone they are read and made by the app (Android); the computer's own MyBots does it itself (pc/pdf.mjs), no phone needed.
+    if (kind === 'computer') { const { pdfRead, pdfCreate } = await import('../pc/pdf.mjs'); attachments.pdf = pdfRead; tools.pdfCreate = pdfCreate; }
+    else attachments.pdf = args => browser.device('pdfRead', args);
     // The phone's other apps (Livre): Parar cancels the controlling turn; the app's own stop flag acts first.
     const phone = new Phone(browser, { changed: broadcast, record: (kind, detail, botId, taskId) => { db.record(kind, detail, botId, taskId); broadcast('activity.new'); }, cancel: taskId => queue.cancel(taskId).catch(() => {}) }); tools.phone = phone; tools.cancelTask = taskId => queue.cancel(taskId).catch(() => {});
     // With a second device sharing the bots, only a bot's owner runs its routines: the phone for bots that live on the phone, the

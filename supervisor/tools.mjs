@@ -291,7 +291,7 @@ export class Tools {
         if (!this.attachments) throw new Error('Os arquivos não estão disponíveis.');
         let file;
         if (tool === 'file.create') {
-          const made = await createFile(args, { pdf: async html => Buffer.from((await this.browser.device('pdfCreate', { html })).data, 'base64') });
+          const made = await createFile(args, { pdf: async html => this.pdfCreate ? this.pdfCreate(html) : Buffer.from((await this.browser.device('pdfCreate', { html })).data, 'base64') });
           if (made.bytes.length > 20 * 1024 * 1024) throw new Error('O arquivo passaria de 20 MB; divida o conteúdo.');
           file = this.attachments.store(run.botId, made);
           this.db.record('file_created', `Arquivo criado: ${file.name}.`, run.botId, run.taskId);

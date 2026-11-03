@@ -71,3 +71,13 @@ test('legacy computer mode reads its own history even if the same bot has a phon
   const slice = selectConversation('a')(state);
   assert.deepEqual(slice.bot.messages.map(m => m.id), ['pc']); assert.equal(slice.more, false);
 });
+
+test('saving the conversation cache keeps where the phone\'s MyBots lives (the computer\'s or Termux\'s)', () => {
+  const store = createStore(); store.setData(initial());
+  for (const backend of ['pc', 'termux']) {
+    const saved = conversationCache({ backend, mode: 'phone', bots: [], rooms: [] }, store.getSnapshot().data, store.getSnapshot().chats);
+    assert.equal(saved.backend, backend);
+    assert.equal(conversationCache(saved, store.getSnapshot().data, {}).backend, backend);
+  }
+  assert.equal('backend' in conversationCache(null, store.getSnapshot().data, {}), false);
+});

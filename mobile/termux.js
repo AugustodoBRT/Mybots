@@ -5,6 +5,15 @@ let native;
 try { native = requireNativeModule('TermuxBridge'); } catch { /* Expo Go uses only the computer backend. */ }
 
 export const termuxAvailable = Boolean(native);
+// The link to the computer, for the phone without Termux (kept encrypted by the native side), and secure random bytes.
+export const readPcLink = async () => { const raw = native ? await native.readPcLink() : null; if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } };
+export const savePcLink = value => native.savePcLink(JSON.stringify(value));
+export const clearPcLink = () => native?.clearPcLink();
+export const randomBytesNative = count => {
+  if (native?.randomBase64) { const binary = atob(native.randomBase64(count)); const out = new Uint8Array(count); for (let i = 0; i < count; i++) out[i] = binary.charCodeAt(i); return out; }
+  if (globalThis.crypto?.getRandomValues) return globalThis.crypto.getRandomValues(new Uint8Array(count));
+  throw new Error('Este aparelho não tem fonte de números aleatórios seguros.');
+};
 export const readLocalStore = async () => native ? JSON.parse(await native.readStore()) : null;
 export const writeLocalStore = value => native?.writeStore(JSON.stringify(value));
 export const readPairing = () => native.readPairing();

@@ -19,7 +19,7 @@ const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, link: linkOf = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, link: linkOf = () => null, apps: appsOf = () => [], forgetApp = () => {}, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -49,11 +49,24 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
   const sockets = new WebSocketServer({ server, maxPayload: 4 * 1024 * 1024 });
   sockets.on('connection', (ws, request) => {
     if (!origins().includes(request.headers.origin) || !local(request)) { ws.close(1008); return; }
+    serve(ws);
+  });
+  /**
+   * One client of the interface: a window (page token, checked here) or, with `remote`, a phone app that already proved itself
+   * on the secure channel (pc/app-channel.mjs). A phone app always reads the computer's own MyBots and cannot use what belongs to
+   * this computer's screen: saving files in Downloads, the microphone, showing pairing codes, the choice of source, the sync buttons.
+   */
+  function serve(ws, { remote = false, device = null } = {}) {
     const reply = (id, value) => { if (ws.readyState === 1) ws.send(JSON.stringify({ id, ...value })); };
     const timer = setTimeout(() => { if (!ws.authenticated) ws.terminate(); }, 10000);
+    if (remote) {
+      clearTimeout(timer); ws.remote = true; ws.device = device; ws.authenticated = true; ws.source = 'local'; clients.add(ws);
+      ws.ready = (async () => { try { ws.session = await own().session(text => { if (ws.readyState === 1) ws.send(text); }, { notices: true }); ws.session.onClose = () => ws.close(); } catch { ws.close(); } })();
+    }
     ws.on('message', async raw => {
       let message; try { message = JSON.parse(raw); } catch { ws.terminate(); return; }
       const { id, method, params } = message || {};
+      if (ws.ready) await ws.ready;
       if (!ws.authenticated) {
         const given = typeof params?.token === 'string' ? params.token : '';
         if (method !== 'auth' || Buffer.byteLength(given) !== token.length || !timingSafeEqual(Buffer.from(given), Buffer.from(token))) { reply(id, { error: 'Acesso negado.' }); ws.close(); return; }
@@ -77,6 +90,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       };
       if (typeof method !== 'string') return;
       try {
+        if (ws.remote && ['desktop.file', 'desktop.dictate', 'desktop.pair', 'desktop.source', 'desktop.sync', 'desktop.forgetApp'].includes(method)) throw new Error('Isto só pode ser feito no computador.');
         if (method === 'desktop.file') reply(id, { result: await saveFile(params || {}, backend) });
         // The bots' Chrome runs here: the window watches it and, after "Assumir" on the phone's side, uses it directly.
         else if (method === 'browser.view') {
@@ -85,7 +99,8 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           const on = Boolean(params.on);
           if (on && !ws.views.has(params.botId)) ws.views.set(params.botId, paced(frame => { if (ws.readyState !== 1) return; if (Buffer.isBuffer(frame.image)) ws.send(windowFrame(params.botId, frame)); else ws.send(JSON.stringify({ event: 'browser.frame', data: { botId: params.botId, ...frame } })); }, () => ws.bufferedAmount > 1_000_000));
           const sink = ws.views.get(params.botId);
-          if (sink) { sink.bufferedAmount = () => ws.bufferedAmount; sink.direct = true; }
+          // The window is on this computer (its pace is never lowered); a phone over the network is paced by how much it can take.
+          if (sink) { sink.bufferedAmount = () => ws.bufferedAmount; sink.direct = !ws.remote; }
           if (!on) ws.views.delete(params.botId);
           if (sink) await browser.watch(params.botId, sink, on, undefined, params, () => backend('state.get', {}));
           reply(id, { result: { watching: on, online: true } });
@@ -102,7 +117,13 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status' && ws.remote) reply(id, { result: { phone: false, remote: true, source: 'local', localAvailable: true, sync: null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, apps: appsOf().map(({ id, name, pairedAt }) => ({ id, name, pairedAt })), lastPaired: [...phones(), ...appsOf()].map(item => item.pairedAt).sort().at(-1) || null } });
+        // A phone app that is lost or no longer wanted: forgotten here, it is cut off at once and cannot come back without a new QR.
+        else if (method === 'desktop.forgetApp') {
+          if (typeof params?.id !== 'string') throw new Error('Celular inválido.');
+          forgetApp(params.id); reply(id, { result: { forgotten: true } });
+        }
         // "Sincronizar agora" in Ajustes: one round between the phone and this computer, answered when it ends.
         else if (method === 'desktop.sync') {
           if (!syncOf()) throw new Error('A sincronização não está disponível.');
@@ -132,7 +153,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
       } catch (error) { reply(id, { error: error.message }); }
     });
     ws.on('close', () => { clearTimeout(timer); clients.delete(ws); ws.session?.close(); if (ws.dictation) dictation?.cancel(ws.dictation); for (const [botId, sink] of ws.views || []) browser?.watch(botId, sink, false).catch(() => {}); });
-  });
+  }
   /** A bot's file, saved in ~/Downloads (and opened with the desktop's default app when asked). */
   async function saveFile({ id, name, action }, backend) {
     if (typeof id !== 'string' || typeof name !== 'string' || !['save', 'open'].includes(action)) throw new Error('Arquivo inválido.');
@@ -153,6 +174,10 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
     /** An event from the phone, or a change of the link itself, for every open window. */
     broadcast(event, data = {}) { if (event === 'desktop.phone') offlineSince = data.online ? null : Date.now(); for (const ws of clients) if (ws.readyState === 1 && (ws.source !== 'local' || event.startsWith('desktop.'))) ws.send(JSON.stringify({ event, data })); },
     source: sourceNow,
+    /** A phone app that already proved itself on the secure channel (see app-channel.mjs). */
+    serve,
+    /** Cuts off every connection of one phone app. */
+    dropApp(id) { for (const ws of clients) if (ws.device?.id === id) ws.terminate(); },
     close: () => { for (const ws of clients) ws.terminate(); return new Promise(resolve => server.close(resolve)); }
   };
 }

@@ -35,7 +35,7 @@ async function setup(t) {
     const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], discoveryPort: 0, execute,
       status: async () => ({ connections: { codex: { available: true, loggedIn: true, message: '' } }, models: [model] }),
       desktop: { indicate: async () => async () => {}, command: async () => ({}) }, browser: { command: async () => ({}), configure() {}, close: async () => {} },
-      local: { port: 3300 + Math.floor(Math.random() * 600), env: { PATH: '/nonexistent' } }, log: () => {} });
+      local: { port: 0, env: { PATH: '/nonexistent' } }, log: () => {} });
     nodes.push(node); return node;
   };
   const node = await make();

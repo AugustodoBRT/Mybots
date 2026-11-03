@@ -27,9 +27,9 @@ const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
 
 /** The pairing link the computer's QR carries: who it is, where, its certificate and a one-use code. */
-export function pairingLink({ id, name, port, fingerprint, code, addresses, relay }) {
+export function pairingLink({ id, name, port, fingerprint, code, addresses, relay, appPort }) {
   // The certificate's SHA-256 goes as base64url (43 characters instead of 95), so the QR stays small.
-  return 'mybots://computador?' + new URLSearchParams({ v: '1', id, n: name, p: String(port), f: Buffer.from(fingerprint.replace(/:/g, ''), 'hex').toString('base64url'), c: code, a: addresses.join(','), ...(validRelay(relay) ? { r: relay } : {}) });
+  return 'mybots://computador?' + new URLSearchParams({ v: '1', id, n: name, p: String(port), f: Buffer.from(fingerprint.replace(/:/g, ''), 'hex').toString('base64url'), c: code, a: addresses.join(','), ...(validRelay(relay) ? { r: relay } : {}), ...(Number.isInteger(appPort) && appPort > 0 ? { q: String(appPort) } : {}) });
 }
 export function parsePairing(text) {
   let url; try { url = new URL(String(text).trim()); } catch { url = null; }

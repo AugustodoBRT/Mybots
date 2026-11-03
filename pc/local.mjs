@@ -136,7 +136,8 @@ export function createLocal({ directory, port = DEFAULT_LOCAL_PORT, entry = ENTR
     online: () => Boolean(child && endpoint),
     ready: () => ready || Promise.resolve(),
     /** A connection for one window: events (as the supervisor sent them) go to onEvent. */
-    session: onEvent => open((event, data, text) => { if (event !== 'bot.notify') onEvent(text); }),
+    // `notices`: a phone app wants the bots' notices too (the window ignores them; the node shows them as desktop notices).
+    session: (onEvent, { notices = false } = {}) => open((event, data, text) => { if (notices || event !== 'bot.notify') onEvent(text); }),
     async close() {
       closed = true; clearTimeout(restartTimer); polling?.abort(); for (const session of [...sessions]) session.close();
       const running = child; child = null;

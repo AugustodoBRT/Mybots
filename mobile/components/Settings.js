@@ -6,6 +6,7 @@ import { termuxAvailable, passwordsList } from '../termux';
 import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
+import { RemotePanel, TermuxGuide } from './Setup';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
@@ -31,17 +32,20 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const [page, setPage] = useState(null); const [query, setQuery] = useState(''); const [passwords, setPasswords] = useState(null);
   useEffect(() => { if (!visible) { setPage(null); setQuery(''); } }, [visible]);
   useEffect(() => { if (visible && termuxAvailable) passwordsList().then(setPasswords).catch(() => setPasswords(null)); }, [visible, page]);
+  const remote = a.backend === 'pc';   // the phone without Termux: the computer's MyBots is the backend
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
   const categories = useMemo(() => [
     { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', ...bots.map(bot => bot.name)] },
-    { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
-    ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale'] }] : []),
-    ...(termuxAvailable ? [{ key: 'secrets', icon: 'key', title: 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
-    ...(!desktop ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar', 'termux'] }] : []),
+    { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
+    ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
+    // Termux is optional: a guide for the whole process, and the switch to a supervisor of the phone's own.
+    ...(!desktop && termuxAvailable ? [{ key: 'termux', icon: 'bolt', title: 'Termux (avançado)', summary: remote ? 'Usar o celular sem depender do computador' : 'Ativo: o celular tem o próprio MyBots', keywords: ['termux', 'sozinho', 'sem computador', 'offline', 'tutorial', 'instalar', 'codex'] }] : []),
+    ...(termuxAvailable && !remote ? [{ key: 'secrets', icon: 'key', title: 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
+    ...(!desktop && !remote ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar', 'termux'] }] : []),
     { key: 'about', icon: 'info', title: 'Sobre', summary: `MyBots ${a.update?.info?.currentName || ''}${a.update?.info?.available ? ' · atualização disponível' : ''}`.trim(), keywords: ['versão', 'atualização', 'atualizar', 'novidades', 'privacidade'] }
-  ], [data, phone, passwords, a.update?.info?.available, a.update?.info?.currentName]);
+  ], [data, phone, remote, passwords, a.update?.info?.available, a.update?.info?.currentName]);
   const shown = matchCategories(query, categories);
   const current = categories.find(item => item.key === page);
   const body = key => {
@@ -62,7 +66,13 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     </>;
     if (key === 'phone') return desktop ? <><DesktopPair call={a.call} />
       <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>
+      : remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, ative o Termux em Ajustes → Termux (avançado).</Text></View>
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
+    if (key === 'computer' && remote) return <RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />;
+    if (key === 'termux') return <>
+      <TermuxGuide onEnable={remote ? a.enableTermux : null} busy={a.setupBusy} enabled={!remote} />
+      {!remote && a.pcLink ? <PrimaryButton icon="laptop" tone="ghost" title="Voltar a usar só o computador" onPress={a.useComputerOnly} style={{ marginTop: 12 }} /> : null}
+    </>;
     if (key === 'computer') return <ComputerPanel computer={data?.computer} nodes={data?.nodes} sync={data?.sync}
       onPair={async link => { const result = await a.call('computer.pair', { link }); await a.reload(); return result; }}
       onForget={async () => { await a.call('computer.forget', {}); await a.reload(); }}

@@ -177,7 +177,8 @@ export function conversationCache(previous, data, chats) {
     const saved = previous?.[kind]?.find(old => old.id === item.id);
     return { ...item, messages: (chats[item.id]?.messages || saved?.messages || []).slice(-40) };
   };
-  return { schema: 1, mode: 'phone', supervisorMigrated: true,
+  // Where this phone's MyBots lives (the computer's or Termux's) is the person's choice and must survive every save.
+  return { schema: 1, mode: 'phone', supervisorMigrated: true, ...(previous?.backend ? { backend: previous.backend } : {}),
     bots: [...(data.bots || []), ...(data.deletedBots || [])].map(bot => recent(bot, 'bots')),
     rooms: (data.rooms || []).filter(room => !room.deletedAt).map(room => recent(room, 'rooms')) };
 }

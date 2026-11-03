@@ -430,6 +430,10 @@ export function DesktopNetwork({ call, notice = false }) {
   if (!status) return null;
   if (!notice) return <><DesktopSource call={call} status={status} />
     <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Conexão com o celular</Text><Text style={[styles.optionDetail, status.phone && { color: C.accent }]}>{status.phone ? `Conectado ${PATH_TEXT[status.link?.path] || ''}`.trim() : 'Fora de alcance agora. No mesmo Wi-Fi ele procura o computador sozinho; de outras redes, conecta pelo relé do MyBots.'}</Text></View>
+    {status.apps?.length ? <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Celulares usando o app sem Termux</Text>
+      {status.apps.map(item => <View key={item.id} style={styles.passwordRow}><View style={{ flex: 1 }}><Text style={styles.limitName}>{item.name}</Text><Text style={styles.limitMeta}>Pareado em {new Date(item.pairedAt).toLocaleDateString('pt-BR')}</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Esquecer ${item.name}`} onPress={() => call('desktop.forgetApp', { id: item.id }).catch(() => {})} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Esquecer</Text></Pressable></View>)}
+      <Text style={styles.optionDetail}>Esquecer corta o acesso na hora. Para voltar, o celular precisa ler um QR novo.</Text></View> : null}
     <SyncCard sync={status.sync} onNow={() => call('desktop.sync')} onReset={() => call('desktop.sync', { reset: true })} /><RemoteAccess tailscale={status.tailscale} /></>;
   if (status.source === 'local' || status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
   return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
@@ -502,7 +506,7 @@ export function DesktopPair({ call, compact = false }) {
   return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
     <Text style={styles.optionLabel}>Parear um celular</Text>
     <DesktopNetwork call={call} />
-    <Text style={styles.optionDetail}>No celular, abra o MyBots → Ajustes → Computador → Conectar computador e aponte a câmera para o QR. Ele vale por 10 minutos e uma vez só.</Text>
+    <Text style={styles.optionDetail}>No celular, abra o MyBots e leia o QR: na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (com o Termux ativo, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
     {qr ? <View style={styles.pairQr}><View accessibilityLabel="QR para parear o celular"><SvgXml xml={qr.svg} width={260} height={260} /></View>
       <Text style={styles.limitMeta}>Esperando o celular ler…</Text></View> : null}
     <View style={{ flexDirection: 'row', gap: 14, marginTop: 10 }}>

@@ -4,5 +4,11 @@
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="false">127.0.0.1</domain>
     <domain includeSubdomains="false">localhost</domain>
+    <!--
+      The MyBots relay: a phone without Termux reaches the computer through it. Only this address is allowed without TLS, and the
+      traffic never depends on the transport: it is encrypted end to end by the app's own channel (pc-channel.js, X25519 +
+      ChaCha20-Poly1305, authenticated with the pairing secret), so the relay only ever sees ciphertext.
+    -->
+    <domain includeSubdomains="false">136.248.104.150</domain>
   </domain-config>
 </network-security-config>

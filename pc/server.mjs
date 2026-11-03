@@ -8,7 +8,8 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
+import { WebSocketServer, createWebSocketStream } from '../supervisor/node_modules/ws/wrapper.mjs';
+import { acceptApp } from './app-channel.mjs';
 import { runReply } from '../supervisor/queue.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
@@ -60,12 +61,12 @@ export function identity(directory) {
 }
 
 /** A one-use pairing code, valid for 10 minutes, and the link the QR carries. */
-export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses, { local = false, relay = null } = {}) {
+export function startPairing(directory, port = DEFAULT_PORT, advertise = addresses, { local = false, relay = null, appPort = 0 } = {}) {
   const me = identity(directory);
   const code = randomBytes(12).toString('base64url');
   // The computer's own supervisor pairs with a code of its own, so it never overwrites a QR shown for a phone.
   write(join(directory, local ? 'pairing-local.json' : 'pairing.json'), { code, expiresAt: Date.now() + PAIRING_MS });
-  return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise(), ...(local ? {} : { relay }) }), name: me.name };
+  return { link: pairingLink({ id: me.id, name: me.name, port, fingerprint: me.fingerprint, code, addresses: advertise(), ...(local ? {} : { relay, appPort }) }), name: me.name };
 }
 
 /**
@@ -187,7 +188,7 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, sync: syncOptions = {}, log = () => {} } = {}) {
+export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
   const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
@@ -244,6 +245,38 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const phonesFile = join(directory, 'phones.json');
   const server = createHttps({ key: me.key, cert: me.cert, minVersion: 'TLSv1.3' }, (request, response) => response.writeHead(404).end());
   const sockets = new WebSocketServer({ server, maxPayload: MAX_FRAME });
+  // The phone app without Termux: its own secure channel (mobile/pc-channel.js), over a WebSocket straight to this port or
+  // through the relay. Its devices are kept apart from the Termux phones (apps.json), with the same kind of secret.
+  const appsFile = join(directory, 'apps.json');
+  const apps = () => read(appsFile, []);
+  const plainServer = createHttp((request, response) => response.writeHead(404).end());
+  const appSockets = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 + 64, perMessageDeflate: false });
+  plainServer.on('upgrade', (request, socket, head) => { socket.on('error', () => {}); appSockets.handleUpgrade(request, socket, head, ws => { ws.on('error', () => {}); app(createWebSocketStream(ws)); }); });
+  const appContext = {
+    nodeId: me.id, name: me.name,
+    // What the app learns each time it connects: where to find this computer next time.
+    get info() { return { addresses: advertise(), port: plainServer.address()?.port, ...(relay ? { relay } : {}) }; },
+    device: id => apps().find(item => item.id === id) || null,
+    code: check => { const pairing = read(join(directory, 'pairing.json'), null); return pairing && Date.now() < pairing.expiresAt && check(pairing.code) ? pairing.code : null; },
+    paired: ({ id, name, secret }) => {
+      write(appsFile, [...apps().filter(item => item.id !== id), { id, name, secret, pairedAt: new Date().toISOString() }]);
+      try { unlinkSync(join(directory, 'pairing.json')); } catch {}
+      relayHost?.sync(); log(`${name} (app) pareado.`);
+    }
+  };
+  function app(stream) { acceptApp(stream, appContext, (socket, device) => { log(`${device.name} (app) conectado.`); ui.serve(socket, { remote: true, device }); }); }
+  // The relay hands over streams of bytes for both kinds of phone: told apart by the first byte (0x16 is a TLS hello from a
+  // phone with Termux; "M" is the app's own channel). On a socket straight from the network the two use separate ports.
+  const routeStream = stream => {
+    stream.on('error', () => {});
+    stream.once('data', first => {
+      stream.pause?.(); stream.unshift(first);
+      if (first[0] === 0x16) server.emit('connection', stream);
+      else if (first[0] === 0x4d) app(stream);
+      else stream.destroy();
+      stream.resume?.();
+    });
+  };
   let current = { connections: {}, models: [] };
   const refresh = async () => { current = await status(); for (const ws of sockets.clients) if (ws.phone) ws.send(JSON.stringify({ type: 'status', ...current })); };
   await refresh().catch(() => {});
@@ -252,7 +285,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const bridge = phoneBridge();
   // The computer's own supervisor is reached the same way (its link to this node), for the sync between the two.
   const localBridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, link: () => ({ path: phonePath }), sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, apps: () => apps(), forgetApp: id => { write(appsFile, apps().filter(item => item.id !== id)); relayHost?.sync(); ui.dropApp(id); log('Um celular (app) foi esquecido.'); }, link: () => ({ path: phonePath }), sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => { const made = startPairing(directory, server.address().port, advertise, { relay, appPort: plainServer.address().port }); relayHost?.sync(); return made; }, apps: () => apps().map(({ secret, ...rest }) => rest), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -424,11 +457,18 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   });
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
+  // The phone app's own port, next to the main one (3233 by default).
+  await new Promise((resolve, reject) => { plainServer.once('error', reject); plainServer.listen(appPort ?? (server.address().port ? server.address().port + 3 : 0), host, resolve); });
   const windowPort = await ui.listen();
   const discovery = await createDiscovery({ id: me.id, port: server.address().port, addresses: advertise, discoveryPort, allowLoopback: discoveryLoopback, log });
   // The relay: the computer waits there (outbound only, nothing opened at home) for each paired phone, and a phone that
   // cannot reach it directly arrives through a tunnel. The tunnel carries the same TLS and proof as a direct connection.
-  if (relay) relayHost = hostRelay({ relay, log, rooms: () => read(phonesFile, []).filter(item => !item.local && item.secret).map(item => roomFor(item.secret)), onStream: stream => server.emit('connection', stream) });
+  if (relay) relayHost = hostRelay({ relay, log, rooms: () => {
+      // One room per paired phone, and one for a QR that is still valid (named from its code, which only the QR holds).
+      const pairing = read(join(directory, 'pairing.json'), null);
+      return [...[...read(phonesFile, []).filter(item => !item.local), ...apps()].filter(item => item.secret).map(item => roomFor(item.secret)), ...(pairing && Date.now() < pairing.expiresAt ? [roomFor(pairing.code)] : [])];
+    }, onStream: routeStream });
+  const relayTimer = relayHost ? setInterval(() => relayHost.sync(), 30000) : null; relayTimer?.unref?.();
   // The computer's own MyBots (a supervisor with its own database), so the computer works with the phone off.
   if (localOptions) {
     own = createLocal({ directory, nodePort: () => server.address().port, identity: () => me, pairing: () => startPairing(directory, server.address().port, () => ['127.0.0.1'], { local: true }), log, ...localOptions });
@@ -437,7 +477,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     if (syncOptions) sync = createSync({ directory, log, ...syncOptions, phone: { online: () => bridge.online(), call: (method, params) => bridge.call(method, params) }, local: { online: () => localBridge.online(), call: (method, params) => localBridge.call(method, params) } });
   }
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
-    pairing: () => startPairing(directory, server.address().port, advertise),
-    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), panic, local: () => own, relay: () => relayHost, sync: () => sync,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); relayHost?.close(); sync?.close(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    pairing: () => { const made = startPairing(directory, server.address().port, advertise, { relay, appPort: plainServer.address().port }); relayHost?.sync(); return made; },
+    phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), apps: () => apps().map(({ secret, ...rest }) => rest), panic, local: () => own, relay: () => relayHost, sync: () => sync,
+    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); clearInterval(relayTimer); relayHost?.close(); sync?.close(); for (const ws of appSockets.clients) ws.terminate(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => { plainServer.close(resolve); plainServer.closeAllConnections?.(); }), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

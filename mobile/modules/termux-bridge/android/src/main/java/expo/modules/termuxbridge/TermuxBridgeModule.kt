@@ -294,6 +294,31 @@ class TermuxBridgeModule : Module() {
       mapOf("port" to port, "token" to token, "release" to release)
     }
 
+    // The link to the computer for a phone that uses the app without Termux: where it is, its id and the pairing secret.
+    // Kept in the same encrypted store as the supervisor's pairing (Android Keystore), and left out of backups.
+    AsyncFunction("readPcLink") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      pairingPreferences(context).getString("pc_link", null)
+    }
+
+    AsyncFunction("savePcLink") { value: String ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      if (value.length > 20000) throw IllegalArgumentException("Pareamento inválido.")
+      if (!pairingPreferences(context).edit().putString("pc_link", value).commit()) throw IllegalStateException("Não consegui guardar o pareamento com o computador.")
+      true
+    }
+
+    AsyncFunction("clearPcLink") {
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      pairingPreferences(context).edit().remove("pc_link").commit()
+    }
+
+    // Random bytes for the secure channel to the computer (Hermes has no global crypto): the platform's SecureRandom.
+    Function("randomBase64") { count: Int ->
+      if (count < 1 || count > 256) throw IllegalArgumentException("Tamanho inválido.")
+      Base64.encodeToString(ByteArray(count).also { java.security.SecureRandom().nextBytes(it) }, Base64.NO_WRAP)
+    }
+
     // Key for the supervisor's encrypted secrets. It never leaves the app except over the authenticated
     // local WebSocket, so a Termux file alone cannot reveal the e-mail password.
     AsyncFunction("secretsKey") {

@@ -33,7 +33,7 @@ async function pair() {
   const { link, name } = startPairing(directory, port, undefined, { relay: relayFromEnvironment() });
   const { default: QRCode } = await import('qrcode');
   console.log(await QRCode.toString(link, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }));
-  console.log(`No celular: MyBots → Ajustes → Computador → Conectar computador, e leia este QR (${name}).`);
+  console.log(`No celular: abra o MyBots e leia este QR (${name}). Na primeira tela é "Ler o QR do computador"; se o app já está em uso, Ajustes → Computador → Parear de novo (ou Conectar computador, com Termux).`);
   console.log('Vale por 10 minutos e uma vez só. O nó precisa estar rodando (node pc/node.mjs ou o serviço instalado).');
 }
 

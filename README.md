@@ -40,15 +40,6 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 
 <br /><br />
 
-<img src="docs/screenshots/inicio.webp" width="190" alt="Tela inicial no celular" />&nbsp;
-<img src="docs/screenshots/conversa.webp" width="190" alt="Conversa com um bot no celular" />&nbsp;
-<img src="docs/screenshots/rotinas.webp" width="190" alt="Rotinas do bot" />&nbsp;
-<img src="docs/screenshots/sala.webp" width="190" alt="Sala com vários bots" />
-
-<br /><br />
-
-<img src="docs/screenshots/widget.webp" width="420" alt="Widget na tela inicial com os bots animados" />
-
 <sub>Telas do computador geradas com dados de demonstração.</sub>
 
 </div>

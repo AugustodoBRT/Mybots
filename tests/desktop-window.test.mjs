@@ -159,7 +159,7 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.'); await railStays();
   await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.');
   // Outside conversations, the plan meters remain compact in the navigation rail.
-  await page.getByLabel(/^Codex: \d+% livre$/).first().waitFor();
+  await page.getByLabel(/^Codex, 5 horas: \d+% livre$/).first().waitFor();
   assert.equal(await page.getByText('Codex', { exact: true }).count(), 0, 'sem o nome escrito');
   await page.getByLabel('Conversas', { exact: true }).first().click(); await page.getByLabel('Conversar com Atlas').first().waitFor();
 

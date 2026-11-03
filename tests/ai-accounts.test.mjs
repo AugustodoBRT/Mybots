@@ -132,3 +132,22 @@ test('on the phone the Claude wrapper shares the account folder with proot and c
   assert.deepEqual(run({ MYBOTS_ACCOUNT_DIR: '/c/acc', CLAUDE_CONFIG_DIR: '/c/acc' }), ['login', 'deb', '--bind', '/c/acc:/c/acc', '--', 'env', 'CLAUDE_CONFIG_DIR=/c/acc', '/root/.local/bin/claude', '--oi']);
   assert.deepEqual(run({}), ['login', 'deb', '--', '/root/.local/bin/claude', '--oi']);
 });
+
+test('a connected Claude with no usage numbers gets them on its own, once, and the sidebar data carries both windows', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'mybots-claude-limits-'));
+  let asked = 0;
+  const claudeSelection = { provider: 'claude', model: 'sonnet', reasoningEffort: 'low' };
+  const claude = { status: async () => ({ available: true, loggedIn: true, message: 'ok' }), models: async () => [{ ...claudeSelection, displayName: 'Sonnet', efforts: ['low'], defaultEffort: 'low', isDefault: true }],
+    limits: async () => { asked++; return { plan: 'max', windows: [{ key: 'five_hour', used: 30, resetsAt: Date.now() + 3600000 }, { key: 'week', used: 60, resetsAt: Date.now() + 86400000 }] }; } };
+  const codex = { status: async () => ({ available: true, loggedIn: false, message: '' }), models: async () => [] };
+  const app = await createSupervisor({ directory: join(dir, 'sup'), port: 0, codex, claude, execute: async () => ({ text: 'ok', ...selection }) });
+  const client = new SupervisorClient({ WebSocketClass: WS }); await client.connect({ port: app.port, token: app.token });
+  t.after(async () => { client.close(); await app.close(); await rm(dir, { recursive: true, force: true }); });
+  await client.call('connection.refresh');
+  for (let i = 0; i < 100 && !asked; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(asked, 1);
+  const usage = (await client.call('state.get')).usage;
+  assert.deepEqual(usage.limits.claude.windows.map(item => [item.key, item.used]), [['five_hour', 30], ['week', 60]]);
+  await client.call('connection.refresh'); await new Promise(r => setTimeout(r, 100));
+  assert.equal(asked, 1);   // fresh numbers: it does not ask again
+});

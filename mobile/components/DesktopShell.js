@@ -65,20 +65,23 @@ const s = themed(() => ({
 }));
 
 // Quiet plan meters: remaining capacity, always labeled for assistive technology.
-function AiMark({ provider, left, compact = false }) {
-  const shown = Math.max(0, Math.min(100, left));
+/** What is left of an IA's subscription: the 5-hour window and the week, each with its own bar (the week is hidden when the IA does not report it). */
+function AiMark({ provider, left, week = null, compact = false }) {
   const name = provider === 'claude' ? 'Claude' : 'Codex';
-  const color = shown < 15 ? C.red : C.accent;
-  return <View accessible accessibilityRole="image" accessibilityLabel={`${name}: ${Math.round(shown)}% livre`}
-    style={{ flex: compact ? undefined : 1, gap: 7, padding: compact ? 4 : 10, borderRadius: 10, backgroundColor: compact ? 'transparent' : C.surface, minWidth: 0 }}>
+  const bar = (value, label, spoken) => { const shown = Math.max(0, Math.min(100, value)); return <View key={label} accessible accessibilityRole="image" accessibilityLabel={`${name}, ${spoken}: ${Math.round(shown)}% livre`} style={{ gap: 3 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <Text style={{ color: C.faint, fontFamily: F.m, fontSize: compact ? 8 : 9, flex: compact ? undefined : 1 }}>{label}</Text>
+      <Text style={{ color: C.text2, fontFamily: F.s, fontSize: compact ? 9 : 10 }}>{Math.round(shown)}%</Text>
+    </View>
+    <View style={{ height: 3, borderRadius: 2, backgroundColor: C.line2, overflow: 'hidden', minWidth: 22 }}>
+      <View style={{ height: 3, borderRadius: 2, width: `${shown}%`, backgroundColor: shown < 15 ? C.red : C.accent }} />
+    </View></View>; };
+  return <View style={{ flex: compact ? undefined : 1, gap: 6, padding: compact ? 4 : 10, borderRadius: 10, backgroundColor: compact ? 'transparent' : C.surface, minWidth: 0 }}>
     <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: 'center', gap: 7 }}>
       <Svg width={17} height={17} viewBox="0 0 25 25"><Path d={provider === 'claude' ? CLAUDE_MARK : OPENAI_MARK} fill={provider === 'claude' ? CLAUDE_COLOR : C.text2} /></Svg>
       {!compact ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 10, flex: 1 }}>{name}</Text> : null}
-      <Text style={{ color: C.text2, fontFamily: F.s, fontSize: 10 }}>{Math.round(shown)}%</Text>
     </View>
-    <View style={{ height: 3, borderRadius: 2, backgroundColor: C.line2, overflow: 'hidden', minWidth: 22 }}>
-      <View style={{ height: 3, borderRadius: 2, width: `${shown}%`, backgroundColor: color }} />
-    </View>
+    {bar(left, compact ? '5h' : '5 h', '5 horas')}{week != null ? bar(week, compact ? 'Sem' : 'Semana', 'semana') : null}
   </View>;
 }
 
@@ -221,7 +224,11 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
   const bot = selected ? bots.find(item => item.id === selected) : null; const room = roomId ? roomList.find(item => item.id === roomId) : null;
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
-  const limit = provider => { const window = data.usage?.limits?.[provider]?.windows?.find(item => item.key === 'five_hour') || data.usage?.limits?.[provider]?.windows?.[0]; return window ? 100 - window.used : null; };
+  const windowsOf = provider => data.usage?.limits?.[provider]?.windows || [];
+  const left = (provider, key) => { const window = windowsOf(provider).find(item => item.key === key); return window ? 100 - window.used : null; };
+  // The 5-hour window first (the first window the IA reports when it has no 5-hour one), and the week next to it.
+  const limit = provider => left(provider, 'five_hour') ?? (windowsOf(provider)[0] ? 100 - windowsOf(provider)[0].used : null);
+  const weekLimit = provider => left(provider, 'five_hour') == null ? null : left(provider, 'week');
   const openPage = key => onPage(key);
   const rail = [['bots', 'Conversas', () => onPage(null), page === null], ['office', 'Escritório', () => openPage('office'), page === 'office'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
@@ -231,7 +238,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
       {rail.map(([icon, label, onPress, on, dot]) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress} style={({ hovered }) => [s.railItem, hovered && s.railHover, on && s.railOn]}>
         <Icon name={icon} size={19} color={on ? C.accent : C.muted} />{dot ? <View style={s.dot} /> : null}</Pressable>)}
       <View style={{ flex: 1 }} />
-      {page || compact ? <>{limit('claude') != null ? <AiMark compact provider="claude" left={limit('claude')} /> : null}{limit('codex') != null ? <AiMark compact provider="codex" left={limit('codex')} /> : null}</> : null}
+      {page || compact ? <>{limit('claude') != null ? <AiMark compact provider="claude" left={limit('claude')} week={weekLimit('claude')} /> : null}{limit('codex') != null ? <AiMark compact provider="codex" left={limit('codex')} week={weekLimit('codex')} /> : null}</> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="Ajuda e atalhos" onPress={() => setHelp(true)} style={({ hovered }) => [s.railItem, hovered && s.railHover]}><Icon name="info" size={22} color={C.muted} /></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Ajustes" accessibilityState={{ selected: page === 'settings' }} onPress={() => openPage('settings')} style={({ hovered }) => [s.railItem, hovered && s.railHover, page === 'settings' && s.railOn]}><Icon name="settings" size={22} color={page === 'settings' ? C.accent : C.muted} /></Pressable>
     </View>
@@ -256,7 +263,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
           title={item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
         {!bots.length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
       </ScrollView>
-      {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 10, fontFamily: F.s, letterSpacing: 0.2 }}>CAPACIDADE DISPONÍVEL</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} /> : null)}</View></View> : null}
+      {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 10, fontFamily: F.s, letterSpacing: 0.2 }}>CAPACIDADE DISPONÍVEL</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
       {compact ? null : <Pressable accessibilityRole="button" onPress={onConnection} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: C.line }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint }, phoneOnline && { backgroundColor: C.good }]} /><Text style={s.line}>{data.source === 'local' ? (!phoneOnline ? 'Iniciando o MyBots do computador…' : data.sync ? (data.sync.state === 'syncing' ? 'Sincronizando com o celular…' : data.sync.online ? 'Sincronizado com o celular' : 'Celular fora de alcance · só neste computador') : 'Só neste computador') : phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>}
     </View>

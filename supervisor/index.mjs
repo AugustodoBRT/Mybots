@@ -299,6 +299,15 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       return { release, instanceId, busy, nextRoutineAt: next, nextRoutineMs: next ? Date.parse(next) : null };
     };
     heartbeat(); timer = setInterval(heartbeat, heartbeatMs);
+    // Claude Code reports its usage windows only with a reply, so a connected Claude with no (or old) numbers gets one tiny question: at most
+    // every 2 hours, never twice within 10 minutes, so the sidebar shows its capacity without the person having to ask.
+    let claudeLimitsAt = 0;
+    const refreshClaudeLimits = client => {
+      const checked = db.limits().claude?.checkedAt;
+      if (!client?.limits || (checked && Date.now() - Date.parse(checked) < 7200000) || Date.now() - claudeLimitsAt < 600000) return;
+      claudeLimitsAt = Date.now();
+      client.limits().then(limits => { db.setLimits('claude', limits); broadcast('connection.changed'); }).catch(() => {});
+    };
     const refresh = async (force = false) => {
       if (checking) return checking;
       // A disconnected IA is checked again sooner, so installing or logging in shows up without restarting.
@@ -334,6 +343,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // Claude stays listed even when missing or logged out, so the app can show why it cannot answer yet.
         if (claude) catalog.push(...await claude.models());
         if (source.agy) catalog.push(...await source.agy.models().catch(() => []));
+        if (source.claude) refreshClaudeLimits(source.claude);
         if (source.opencode) catalog.push(...await source.opencode.models().catch(() => []));
         models = catalog;
         lastCheck = Date.now();

@@ -1640,3 +1640,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Defeito antigo achado e corrigido**: o supervisor do computador nunca recebia `MYBOTS_DEVICE_KIND=computer` (só os testes passavam `kind`), então se achava um celular; isso desligava a leitura de PDF pelo computador da v126 e o filtro de rotinas por aparelho. `pc/local.mjs` agora define a variável.
 - **Validação**: `tests/ai-accounts.test.mjs` (ids, pasta privada, limites, ambiente de cada IA, comando de entrada, execução com a conta escolhida, sandbox, supervisor ponta a ponta), `tests/ai-accounts-pc.test.mjs` (app → supervisor do computador → nó, e `deviceKind`), CLIs reais do Codex e do Claude (conta nova sem login, principal intacta), tela no Chrome.
 - **Limites**: o login de cada conta é feito pelo terminal (como o da conta principal); no Windows e no macOS não há isolamento, então um comando de bot poderia ler as pastas das contas; Antigravity com conta extra é experimental; o limite de uso mostrado (5 horas e semana) é o da conta principal.
+
+## 0.70.0 (versionCode 130): capacidade das IAs na barra lateral
+
+- **Cinco horas e semana separadas**: a barra lateral (e o trilho estreito dos Ajustes) mostra, para cada IA, o que resta da janela de 5 horas e da semana, cada uma com a própria barra (`AiMark` em `mobile/components/DesktopShell.js`). Antes só aparecia a de 5 horas.
+- **Claude aparece sozinho**: o Claude Code só informa os limites junto de uma resposta, então a barra do Claude ficava vazia até o primeiro uso. Agora, com o Claude conectado e sem números (ou com números de mais de 2 horas), o supervisor faz uma pergunta mínima ao Haiku para ler os limites, no máximo uma vez a cada 2 horas e nunca duas em 10 minutos (`refreshClaudeLimits` em `supervisor/index.mjs`).
+- **Antigravity e opencode**: não informam o consumo da assinatura, então não têm barra.
+- **Validação**: `tests/ai-accounts.test.mjs` (pede uma vez, não repete, e o estado traz as duas janelas) e a tela no Chrome.

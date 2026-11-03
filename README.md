@@ -14,6 +14,14 @@ Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você, m
 ![Node](https://img.shields.io/badge/Supervisor-Node%20%2B%20SQLite-C2A5FF?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=12161E)
 ![Termux](https://img.shields.io/badge/Roda%20no-Termux-FFB38A?style=flat-square&logo=gnubash&logoColor=white&labelColor=12161E)
 
+**Últimas versões:**
+![Android](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2FAugustodoBRT%2FMybots%2Freleases%2Flatest&query=%24.name&label=Android&cacheSeconds=300&style=flat-square&color=7EE2B8&logo=android&logoColor=white&labelColor=12161E)
+![Linux](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fgithub.com%2FAugustodoBRT%2FMybots%2Freleases%2Fdownload%2Fpc-latest%2Flatest-linux.yml&query=%24.version&label=Linux&cacheSeconds=300&style=flat-square&color=8AB6FF&logo=linux&logoColor=white&labelColor=12161E)
+![Windows](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fgithub.com%2FAugustodoBRT%2FMybots%2Freleases%2Fdownload%2Fpc-latest%2Flatest.yml&query=%24.version&label=Windows&cacheSeconds=300&style=flat-square&color=8AB6FF&logo=windows&logoColor=white&labelColor=12161E)
+![macOS](https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fgithub.com%2FAugustodoBRT%2FMybots%2Freleases%2Fdownload%2Fpc-latest%2Flatest-mac.yml&query=%24.version&label=macOS&cacheSeconds=300&style=flat-square&color=8AB6FF&logo=apple&logoColor=white&labelColor=12161E)
+
+<sub>As versões acima são lidas direto das Releases, então se atualizam sozinhas a cada lançamento.</sub>
+
 <br />
 
 <img src="docs/screenshots/inicio.webp" width="200" alt="Tela inicial" />&nbsp;

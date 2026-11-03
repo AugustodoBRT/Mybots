@@ -92,9 +92,11 @@ flowchart LR
 Baixe na [Release "MyBots no computador"](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest):
 
 - **Linux**: `MyBots-<versão>-linux-x86_64.AppImage` (dê permissão com `chmod +x` e abra) ou `MyBots-<versão>-linux-amd64.deb` (Debian, Ubuntu e derivados: instale pelo gerenciador de pacotes). No Ubuntu 24.04 o AppImage pode exigir `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`; o `.deb` não. O comando `bubblewrap` precisa estar instalado (os comandos dos bots rodam isolados nele).
-- **Windows**: beta, sem assinatura; o roteiro de instalação e de teste está em [docs/windows.md](docs/windows.md). **macOS**: em preparação (beta, sem assinatura). Quando saírem: no Windows, "Mais informações → Executar assim mesmo" no aviso do SmartScreen; no Mac, clique direito no app → Abrir.
+- **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro de instalação e de teste em [docs/windows.md](docs/windows.md).
+- **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste o app para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
+- **Atualização**: o app procura versões novas ao abrir e a cada poucas horas. Quando há uma, aparece "Nova versão · Atualizar e reiniciar" na janela (e em Ajustes → Sobre): um clique baixa, instala e reinicia sozinho. Isso vale para o **Windows** e o **AppImage do Linux**. No **.deb** e no **macOS** (sem assinatura) o sistema não deixa o app se instalar sozinho, então o botão abre a página de download.
 
-Na primeira abertura, um assistente mostra quais IAs (Codex, Claude Code, Antigravity, opencode) estão instaladas e conectadas, se há Chrome (opcional) e o QR para parear o celular. O computador precisa ficar ligado (o MyBots fica na bandeja). O app avisa e atualiza sozinho (AppImage) ou avisa (.deb).
+Na primeira abertura, um assistente mostra quais IAs (Codex, Claude Code, Antigravity, opencode) estão instaladas e conectadas, se há Chrome (opcional) e o QR para parear o celular. O computador precisa ficar ligado (o MyBots fica na bandeja).
 
 ## Beta: celular e computador juntos
 

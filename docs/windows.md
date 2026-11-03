@@ -3,7 +3,7 @@
 Escrito em 03/11/2026. O instalador do Windows é um **beta**: o código foi portado e testado só com funções de sistema simuladas em Linux; a primeira execução num Windows de verdade é este roteiro. Plano geral em [PLANO-DISTRIBUICAO.md](PLANO-DISTRIBUICAO.md).
 
 ## Instalar
-1. Baixe o `MyBots-<versão>-windows-x64.exe` da Release **pc-windows-beta** (https://github.com/AugustodoBRT/Mybots/releases/tag/pc-windows-beta), sem precisar de login.
+1. Baixe o `MyBots-<versão>-windows-x64.exe` da Release **pc-latest** (https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest), sem precisar de login. Depois da primeira instalação, o app se atualiza sozinho pelo botão "Atualizar e reiniciar".
 2. O Windows mostra "O Windows protegeu o computador" (SmartScreen), porque o instalador não é assinado: **Mais informações → Executar assim mesmo**.
 3. O instalador deixa escolher a pasta (por usuário, sem pedir administrador). O MyBots abre, vai para a bandeja e se registra para iniciar com o Windows.
 
@@ -24,7 +24,7 @@ O MyBots acha os programas pelo `PATH` do usuário e entende os atalhos `.cmd` q
 | Controle de tela e teclado (o bot usar o mouse) | Desligado (só Linux/Hyprland) |
 | Ditado por voz | Desligado |
 | Avisos do sistema | Toast do Windows (feito por PowerShell; pode precisar de ajuste) |
-| Atualização automática | Sim (pela Release `pc-latest`) |
+| Atualização | Botão "Atualizar e reiniciar" na janela (baixa, instala e reinicia sozinho), pela Release `pc-latest` |
 
 Dados: `%APPDATA%\MyBots`. Os arquivos secretos não têm o modo 600 do Linux; ficam na pasta do seu usuário.
 

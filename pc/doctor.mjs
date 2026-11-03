@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execFile } from 'node:child_process';
 import { localStatus } from './server.mjs';
+import { findChrome } from './chrome.mjs';
 
 // What the first-run assistant shows: which AIs are installed and logged in on this computer, and whether Chrome is there.
 export const AIS = [
@@ -12,12 +13,7 @@ export const AIS = [
   { key: 'opencode', name: 'opencode', install: 'npm install -g opencode-ai', login: 'opencode auth login', link: 'https://opencode.ai' }
 ];
 
-const CHROME_PATHS = {
-  linux: ['/usr/bin/google-chrome-stable', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/opt/google/chrome/chrome'],
-  darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium'],
-  win32: [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA].filter(Boolean).flatMap(base => [join(base, 'Google', 'Chrome', 'Application', 'chrome.exe'), join(base, 'Microsoft', 'Edge', 'Application', 'msedge.exe')])
-};
-export function findChrome(platform = process.platform, exists = existsSync) { return (CHROME_PATHS[platform] || []).find(path => exists(path)) || null; }
+export { findChrome };
 
 export async function doctor() {
   const { connections } = await localStatus();

@@ -87,11 +87,13 @@ async function startNode() {
   };
   launch();
 }
-// Linux has no login-item API in Electron: the app's own entry in the session's autostart, once.
+// Linux has no login-item API in Electron: the app's own entry in the session's autostart, once (Windows and macOS use theirs).
 function autostart() {
   // Only the installed app, once, and never over an entry that is already there (the development setup has its own).
-  if (!app.isPackaged || process.platform !== 'linux') return;
+  if (!app.isPackaged) return;
   const flag = join(node, 'autostart.done'); if (existsSync(flag)) return;
+  // Windows and macOS have a login-item API: the installed app registers itself once (the person can turn it off in the system's settings).
+  if (process.platform !== 'linux') { try { app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] }); mkdirSync(node, { recursive: true }); writeFileSync(flag, new Date().toISOString()); } catch {} return; }
   try {
     const dir = join(homedir(), '.config', 'autostart'); mkdirSync(dir, { recursive: true });
     if (existsSync(join(dir, 'mybots.desktop'))) { writeFileSync(flag, 'existing'); return; }

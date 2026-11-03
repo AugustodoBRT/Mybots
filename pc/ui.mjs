@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { DESKTOP_METHODS } from '../supervisor/link.mjs';
+import { openCommand } from './platform.mjs';
 
 export const DEFAULT_UI_PORT = 3232;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp' };
@@ -165,7 +166,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
     try {
       do { const part = await backend('file.read', { id, offset }); const bytes = Buffer.from(part.chunk, 'base64'); if (offset === 0) writeFileSync(target, bytes); else appendFileSync(target, bytes); offset = part.next; } while (offset !== null && offset !== undefined);
     } catch (error) { try { unlinkSync(target); } catch {} throw error; }
-    if (action === 'open') spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+    if (action === 'open') { const open = openCommand(target); spawn(open.command, open.args, { detached: true, stdio: 'ignore', windowsHide: true }).on('error', () => {}).unref(); }
     log(`Arquivo salvo em ${target}.`);
     return { path: target };
   }

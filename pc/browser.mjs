@@ -1,4 +1,6 @@
 import { fork } from 'node:child_process';
+import { chromeProfile } from './chrome.mjs';
+import { killTree } from './platform.mjs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +17,7 @@ const MODES = ['shared', 'separate', 'mine', 'claude'];
  * default) and in Meu Chrome share one process each, with their own tabs; a separate browser has a process per bot.
  */
 export class PcBrowser {
-  constructor(directory, { onFrame = () => {}, mineProfile = join(homedir(), '.config/google-chrome'), downloads = join(directory, 'downloads') } = {}) { this.directory = directory; this.workers = new Map(); this.onFrame = onFrame; this.modes = new Map(); this.mineProfile = mineProfile; this.downloads = downloads; this.imports = new Set(); }
+  constructor(directory, { onFrame = () => {}, mineProfile = chromeProfile(), downloads = join(directory, 'downloads') } = {}) { this.directory = directory; this.workers = new Map(); this.onFrame = onFrame; this.modes = new Map(); this.mineProfile = mineProfile; this.downloads = downloads; this.imports = new Set(); }
   configure(botId, mode) {
     if (mode === 'own') mode = 'shared';
     if (!MODES.includes(mode)) throw new Error('Modo de navegador inválido.');
@@ -40,13 +42,13 @@ export class PcBrowser {
     mkdirSync(profile, { recursive: true, mode: 0o700 }); mkdirSync(this.downloads, { recursive: true, mode: 0o700 });
     const env = Object.fromEntries(['PATH', 'HOME', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
     env.MYBOTS_DOWNLOADS = this.downloads; env.MYBOTS_NODE_DIR = this.directory;
-    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : shared ? 'shared' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true });
+    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : shared ? 'shared' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true, windowsHide: true });
     const worker = { child, pending: new Map(), botIds: new Set([botId]), mine, multi: mine || shared, endpoint }; this.workers.set(key, worker);
     if (shared) for (const id of this.imports) child.send({ op: 'import', args: { profile: join(this.directory, 'browsers', id) } }, () => {});
     const end = () => {
       if (this.workers.get(key) === worker) this.workers.delete(key);
       for (const done of worker.pending.values()) done({ error: 'O navegador do computador foi interrompido.' });
-      try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+      killTree(child.pid);
       for (const id of worker.botIds) this.onFrame(id, { closed: true });
     };
     child.on('error', end); child.on('exit', end);
@@ -71,14 +73,14 @@ export class PcBrowser {
     // Stopping one bot of a shared process closes only its tabs.
     if (worker.multi) { worker.child.send({ botId, op: 'close' }, () => {}); worker.botIds.delete(botId); return; }
     this.workers.delete(key);
-    try { process.kill(-worker.child.pid, 'SIGKILL'); } catch {}
+    killTree(worker.child.pid);
   }
   close() {
     const closing = [...this.workers.values()].map(worker => new Promise(resolve => {
-      const timer = setTimeout(() => { try { process.kill(-worker.child.pid, 'SIGKILL'); } catch {} resolve(); }, 5000); timer.unref();
+      const timer = setTimeout(() => { killTree(worker.child.pid); resolve(); }, 5000); timer.unref();
       worker.child.once('exit', () => { clearTimeout(timer); resolve(); });
       // The shared Chrome closes cleanly, so its logins are written to disk.
-      if (worker.multi) worker.child.kill('SIGTERM'); else { try { process.kill(-worker.child.pid, 'SIGKILL'); } catch { clearTimeout(timer); resolve(); } }
+      if (worker.multi) worker.child.kill('SIGTERM'); else if (!killTree(worker.child.pid)) { clearTimeout(timer); resolve(); }
     }));
     this.workers.clear(); return Promise.all(closing);
   }

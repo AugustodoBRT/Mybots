@@ -55,7 +55,7 @@ export function identity(directory) {
   const key = join(directory, 'key.pem'), cert = join(directory, 'cert.pem');
   if (!existsSync(key) || !existsSync(cert)) {
     // A small process of its own (this function is synchronous): the JavaScript certificate maker, so no system needs openssl.
-    execFileSync(process.execPath, [fileURLToPath(new URL('./make-cert.mjs', import.meta.url)), key, cert], { stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+    execFileSync(process.execPath, [fileURLToPath(new URL('./make-cert.mjs', import.meta.url)), key, cert], { stdio: 'ignore', windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
     chmodSync(key, 0o600);
   }
   const pem = readFileSync(cert, 'utf8');

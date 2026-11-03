@@ -62,6 +62,8 @@ O trabalho de verdade de Windows e Mac é portar estas partes; empacotar é a pa
 - **Pânico e identidade de processo**: uma camada fina por sistema, com testes.
 - **Caminhos**: pasta de dados por sistema (`~/.mybots-pc` no Linux, `%APPDATA%` no Windows, `~/Library/Application Support` no Mac), com migração do que já existe no Linux.
 
+**Windows (v122, beta):** portado o que impedia o app de rodar: início das IAs pelos atalhos `.cmd` do npm (`lib/cli-bin.cjs`), Chrome ou Edge e a pasta do perfil (`pc/chrome.mjs`), encerrar a árvore de processos (`taskkill`), abrir arquivos, avisos do sistema (toast por PowerShell), lançador do Node sem `.cmd` para o supervisor próprio e as habilidades, console escondido nos processos filhos, início com o Windows e as dicas de cliente do navegador da janela. Roteiro de teste em [windows.md](windows.md).
+
 ### 5.2 Empacotamento (1.1)
 
 - **Ferramenta**: `electron-builder`. Alvos: AppImage e .deb (Linux), NSIS (.exe) no Windows, .dmg (x64 e arm64) no Mac.

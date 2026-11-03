@@ -20,7 +20,8 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
   // Done at the person's request (they accept the risk to their Google account).
   const hints = { brands: [{ brand: 'Not?A_Brand', version: '24' }, { brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }],
     fullVersionList: [{ brand: 'Not?A_Brand', version: '24.0.0.0' }, { brand: 'Chromium', version: full }, { brand: 'Google Chrome', version: full }],
-    platform: 'Linux', platformVersion: '6.0.0', architecture: 'x86', model: '', mobile: false, bitness: '64', wow64: false };
+    ...(process.platform === 'win32' ? { platform: 'Windows', platformVersion: '10.0.0' } : process.platform === 'darwin' ? { platform: 'macOS', platformVersion: '14.0.0' } : { platform: 'Linux', platformVersion: '6.0.0' }),
+    architecture: process.arch === 'arm64' ? 'arm' : 'x86', model: '', mobile: false, bitness: '64', wow64: false };
   // Electron sends no client-hint headers at all; a Chrome sends these three on every request (done at the person's request).
   ses.webRequest.onBeforeSendHeaders((details, done) => {
     const headers = details.requestHeaders;

@@ -1,4 +1,5 @@
 import { chromium } from 'playwright-core';
+import { findChrome, chromeProfile, userAgentFor } from './chrome.mjs';
 import { generateKeyPairSync, randomBytes, privateDecrypt, createDecipheriv } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/browser-page.mjs';
@@ -31,7 +32,7 @@ export async function allowedUrl(value) {
 }
 
 export const CHROME_SETUP = 'Abra o Chrome e ligue a depuração em chrome://inspect/#remote-debugging (uma vez).';
-export function chromeEndpoint(profile = join(homedir(), '.config/google-chrome')) {
+export function chromeEndpoint(profile = chromeProfile()) {
   try {
     const lines = readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').trim().split(/\r?\n/);
     if (lines.length !== 2 || !/^\d{1,5}$/.test(lines[0]) || Number(lines[0]) < 1 || Number(lines[0]) > 65535 || !/^\/devtools\/browser\/[a-zA-Z0-9-]{1,200}$/.test(lines[1])) throw new Error();
@@ -73,10 +74,17 @@ async function checkRoute(route) {
 // Google refuses to sign in on a browser that says it is automated ("este navegador pode não ser seguro"): no
 // --enable-automation flag, no navigator.webdriver, and a user agent that is not "HeadlessChrome" (the person
 // asked for this, like the embedded browsers of other agent apps).
+// The major version of a Chrome. On Windows `chrome.exe --version` prints nothing, so the file's own version is read instead.
+function chromeMajor(exe, platform = process.platform) {
+  const text = platform === 'win32'
+    ? execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Item -LiteralPath '${exe.replace(/'/g, "''")}').VersionInfo.ProductVersion`], { encoding: 'utf8', timeout: 8000, windowsHide: true })
+    : execFileSync(exe, ['--version'], { encoding: 'utf8', timeout: 5000 });
+  return /(\d+)\./.exec(String(text))?.[1] || null;
+}
 let chromeUserAgent;
 function normalUserAgent() {
   if (chromeUserAgent !== undefined) return chromeUserAgent;
-  try { const major = /(\d+)\./.exec(execFileSync('/usr/bin/google-chrome-stable', ['--version'], { encoding: 'utf8', timeout: 5000 }))?.[1]; chromeUserAgent = major ? `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36` : null; } catch { chromeUserAgent = null; }
+  try { const exe = findChrome(); const major = exe ? chromeMajor(exe) : null; chromeUserAgent = userAgentFor(major) || null; } catch { chromeUserAgent = null; }
   return chromeUserAgent;
 }
 // A Chrome of MyBots (a separate bot's or the shared one): no window, no saved passwords, every address checked.
@@ -87,9 +95,9 @@ export async function launchContext(profile, headless = true) {
   prefs.profile = { ...prefs.profile, password_manager_enabled: false };
   writeFileSync(join(path, 'Preferences'), JSON.stringify(prefs), { mode: 0o600 });
   const context = await chromium.launchPersistentContext(profile, {
-    executablePath: '/usr/bin/google-chrome-stable', headless, viewport: { width: 1280, height: 800 },
+    executablePath: findChrome() || undefined, headless, viewport: { width: 1280, height: 800 },
     acceptDownloads: true, serviceWorkers: 'block', permissions: [], ignoreDefaultArgs: ['--enable-automation'],
-    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
+    args: [...(normalUserAgent() ? [`--user-agent=${normalUserAgent()}`] : []), '--disable-blink-features=AutomationControlled', ...(headless || process.platform !== 'linux' ? [] : ['--ozone-platform=wayland']), '--disable-save-password-bubble', '--password-store=basic', '--disable-features=PasswordManagerOnboarding,PasswordLeakDetection', '--disable-extensions']
   });
   await context.clearPermissions();
   await context.route('**/*', checkRoute);

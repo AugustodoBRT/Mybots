@@ -3,6 +3,9 @@ import { mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync } from 'node:
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { noticeCommand } from './platform.mjs';
+import nodeBinaries from '../lib/node-binary.cjs';
+const { nodeRun } = nodeBinaries;
 import WebSocket from '../supervisor/node_modules/ws/wrapper.mjs';
 
 export const DEFAULT_LOCAL_PORT = 3221;
@@ -110,7 +113,8 @@ export function createLocal({ directory, port = DEFAULT_LOCAL_PORT, entry = ENTR
   function spawnChild() {
     mkdirSync(home, { recursive: true, mode: 0o700 }); chmodSync(home, 0o700);
     rmSync(join(home, 'endpoint.json'), { force: true });
-    const process_ = spawn(process.env.MYBOTS_NODE || process.execPath, [entry], { env: { ...process.env, MYBOTS_HOME: home, MYBOTS_PORT: String(port), MYBOTS_RELEASE: 'computador', ...env }, stdio: ['ignore', 'ignore', 'pipe'] });
+    const runner = nodeRun();
+    const process_ = spawn(runner.command, [entry], { env: { ...process.env, ...(runner.env || {}), MYBOTS_HOME: home, MYBOTS_PORT: String(port), MYBOTS_RELEASE: 'computador', ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     child = process_;
     process_.stderr.on('data', data => { for (const line of String(data).split('\n')) if (line.trim()) log('[supervisor] ' + line.trim()); });
     process_.on('exit', code => {
@@ -146,14 +150,15 @@ export function createLocal({ directory, port = DEFAULT_LOCAL_PORT, entry = ENTR
   };
 }
 
-/** A notice on the desktop (libnotify). An approval gets Aprovar/Recusar buttons when the notification server has actions. */
-export function showNotice(item, act) {
+/** A notice on the desktop (libnotify, a Windows toast or macOS's own). On Linux an approval gets Aprovar/Recusar buttons when the server has actions. */
+export function showNotice(item, act, platform = process.platform, run = spawn) {
   const title = String(item.title || 'MyBots').slice(0, 120), text = String(item.text || '').slice(0, 600);
   const approval = typeof item.approvalId === 'string' && typeof item.actionHash === 'string';
-  const args = ['--app-name=MyBots', ...(approval ? ['--wait', '--action=approve=Aprovar', '--action=reject=Recusar'] : []), '--', title, text];
+  const notice = noticeCommand(title, text, { actions: approval }, platform);
   let output = '';
-  const child = spawn('notify-send', args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  const child = run(notice.command, notice.args, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, ...(notice.env ? { env: { ...process.env, ...notice.env } } : {}) });
   child.on('error', () => {});
-  child.stdout.on('data', data => { output += data; });
-  if (approval) child.on('close', () => { const choice = output.trim(); if (choice === 'approve' || choice === 'reject') act({ type: choice, approvalId: item.approvalId, actionHash: item.actionHash }); });
+  child.stdout?.on('data', data => { output += data; });
+  if (approval && notice.actions) child.on('close', () => { const choice = output.trim(); if (choice === 'approve' || choice === 'reject') act({ type: choice, approvalId: item.approvalId, actionHash: item.actionHash }); });
+  return child;
 }

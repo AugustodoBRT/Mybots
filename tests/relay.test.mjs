@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
+import { execFileSync } from 'node:child_process';
 import { WebSocket } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { createSupervisor } from '../supervisor/index.mjs';
 import { createNode } from '../pc/server.mjs';
 import { createRelay } from '../relay/server.mjs';
 import { parsePairing, pairingLink } from '../supervisor/link.mjs';
-import { roomFor, validRelay, relayFromEnvironment, DEFAULT_RELAY } from '../supervisor/relay.mjs';
+import { roomFor, validRelay, relayFromEnvironment, relayCandidates, dialRelay, hostRelay, DEFAULT_RELAY, LEGACY_RELAY } from '../supervisor/relay.mjs';
 import { pathOf } from '../supervisor/discovery.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
@@ -111,4 +112,64 @@ test('without a relay configured nothing changes: the node does not dial out and
   const node = await createNode({ directory: dir, port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], discoveryPort: 0, log: () => {}, status: async () => ({ connections: {}, models: [] }) });
   t.after(() => node.close());
   assert.equal(node.relay(), null); assert.equal(parsePairing(node.pairing().link).relay, undefined);
+});
+
+// ---- wss:// (Etapa 0 da distribuição) ----
+function testCertificate(directory) {
+  const key = join(directory, 'key.pem'), cert = join(directory, 'cert.pem');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '2', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
+  return { key, cert };
+}
+async function withUntrusted(run) { // the test certificate is self-signed: trust it only while the test runs
+  const before = process.env.NODE_TLS_REJECT_UNAUTHORIZED; process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  try { return await run(); } finally { if (before === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED; else process.env.NODE_TLS_REJECT_UNAUTHORIZED = before; }
+}
+
+test('wss:// relay: addresses are accepted, the default is the secure name with the old ws:// as spare', () => {
+  assert.equal(validRelay('wss://mybots-rele.duckdns.org'), true); assert.equal(validRelay('wss://a.b:8443/'), true); assert.equal(validRelay('wss://x y'), false);
+  assert.equal(DEFAULT_RELAY, 'wss://mybots-rele.duckdns.org');
+  assert.equal(relayFromEnvironment({ MYBOTS_RELAY: 'wss://meu.relay' }), 'wss://meu.relay');
+  assert.deepEqual(relayCandidates(DEFAULT_RELAY), [DEFAULT_RELAY, LEGACY_RELAY]);
+  assert.deepEqual(relayCandidates('wss://meu.relay'), ['wss://meu.relay']);
+  assert.equal(parsePairing(pairingLink({ id: 'abc', name: 'PC', port: 3230, fingerprint: 'AA:'.repeat(31) + 'AA', code: 'codigo123', addresses: ['192.168.0.2'], relay: DEFAULT_RELAY })).relay, DEFAULT_RELAY);
+});
+
+test('wss:// relay: the computer and the phone meet through TLS and bytes flow both ways', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-tls-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const { key, cert } = testCertificate(directory);
+  const relay = createRelay({ port: 0, host: '127.0.0.1', tls: { key: await readFile(key), cert: await readFile(cert) } }); const port = await relay.listen(); t.after(() => relay.close());
+  await withUntrusted(async () => {
+    const url = `wss://localhost:${port}`; const room = roomFor('segredo do wss');
+    const streams = []; const host = hostRelay({ relay: url, rooms: () => [room], onStream: stream => streams.push(stream) }); t.after(() => host.close());
+    await until(() => host.online() === 1);
+    const phone = await dialRelay(url, room); await until(() => streams.length === 1);
+    const received = new Promise(resolve => streams[0].once('data', resolve)); phone.write('do celular'); assert.equal((await received).toString(), 'do celular');
+    const back = new Promise(resolve => phone.once('data', resolve)); streams[0].write('do computador'); assert.equal((await back).toString(), 'do computador');
+    phone.destroy(); streams[0].destroy();
+  });
+});
+
+test('wss:// relay: without TLS trust the connection fails (the certificate is really checked)', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-tls-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const { key, cert } = testCertificate(directory);
+  const relay = createRelay({ port: 0, host: '127.0.0.1', tls: { key: await readFile(key), cert: await readFile(cert) } }); const port = await relay.listen(); t.after(() => relay.close());
+  await assert.rejects(dialRelay(`wss://localhost:${port}`, roomFor('x'), { timeout: 3000 }), /self.signed|certificate|unable/i);
+});
+
+test('dialing the relay tries the spare address when the first does not answer (closed port, name that does not resolve)', async t => {
+  const relay = createRelay({ port: 0, host: '127.0.0.1' }); const port = await relay.listen(); t.after(() => relay.close());
+  const room = roomFor('reserva'); const streams = []; const host = hostRelay({ relay: `ws://127.0.0.1:${port}`, rooms: () => [room], onStream: stream => streams.push(stream) }); t.after(() => host.close());
+  await until(() => host.online() === 1);
+  const closed = await freePort();
+  const phone = await dialRelay(`ws://127.0.0.1:${closed}`, room, { candidates: [`ws://127.0.0.1:${closed}`, 'ws://nome-que-nao-existe.invalid', `ws://127.0.0.1:${port}`] });
+  await until(() => streams.length === 1); phone.destroy(); streams[0].destroy();
+  await assert.rejects(dialRelay(`ws://127.0.0.1:${closed}`, room, { candidates: [`ws://127.0.0.1:${closed}`] }));
+});
+
+test('behind the proxy the per-address limit counts the client written in X-Forwarded-For, not the proxy', async t => {
+  const relay = createRelay({ port: 0, host: '127.0.0.1', limits: { perAddress: 1 } }); const port = await relay.listen(); t.after(() => relay.close());
+  const open = (ip, room) => new Promise(resolve => { const ws = new WebSocket(`ws://127.0.0.1:${port}/?role=host&room=${roomFor(room)}`, { headers: { 'X-Forwarded-For': ip } }); ws.once('open', () => resolve({ ws, ok: true })); ws.once('error', () => resolve({ ok: false })); ws.once('unexpected-response', () => resolve({ ok: false })); });
+  const a = await open('203.0.113.1', 'a'), b = await open('203.0.113.2', 'b'), again = await open('203.0.113.1', 'c');
+  assert.equal(a.ok, true); assert.equal(b.ok, true); assert.equal(again.ok, false);
+  a.ws.terminate(); b.ws.terminate();
 });

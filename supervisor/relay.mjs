@@ -3,8 +3,10 @@ import WebSocket, { createWebSocketStream } from 'ws';
 
 // The relay (relay/server.mjs) joins two devices that cannot see each other. It only forwards bytes: the TLS and the
 // HMAC proof of the direct link run inside the tunnel, so the relay never sees anything but ciphertext.
-// Default for the beta; MYBOTS_RELAY changes it ("0" turns the relay off).
-export const DEFAULT_RELAY = 'ws://136.248.104.150:3240';
+// Default for the beta; MYBOTS_RELAY changes it ("0" turns the relay off). The default is wss:// (Caddy with a Let's Encrypt
+// certificate on port 443, forwarding to the relay); the old ws:// address stays as a spare for when the name does not resolve.
+export const DEFAULT_RELAY = 'wss://mybots-rele.duckdns.org';
+export const LEGACY_RELAY = 'ws://136.248.104.150:3240';
 const URL_FORMAT = /^wss?:\/\/[A-Za-z0-9.-]{1,253}(:\d{1,5})?\/?$/;
 export const validRelay = value => typeof value === 'string' && value.length <= 300 && URL_FORMAT.test(value);
 export function relayFromEnvironment(env = process.env) {
@@ -15,6 +17,9 @@ export function relayFromEnvironment(env = process.env) {
 
 /** The room of a pairing: a name only the two devices can work out (it comes from the pairing secret). */
 export const roomFor = secret => createHmac('sha256', String(secret)).update('mybots-relay-room').digest('base64url');
+
+/** The addresses to try for a relay: the default one falls back to the old ws:// address; any other (set by hand) stands alone. */
+export const relayCandidates = relay => relay === DEFAULT_RELAY ? [DEFAULT_RELAY, LEGACY_RELAY] : [relay];
 
 const endpoint = (relay, role, room, session) => `${relay.replace(/\/$/, '')}/?role=${role}&room=${encodeURIComponent(room)}${session ? `&sid=${encodeURIComponent(session)}` : ''}`;
 
@@ -27,16 +32,25 @@ function connect(url, { timeout = 6000, stream: wanted = false } = {}) {
     if (stream) { stream.on('error', () => {}); ws.on('close', () => stream.destroy()); }
     const fail = error => { ws.removeAllListeners('open'); ws.on('error', () => {}); ws.terminate(); stream?.destroy(); reject(error); };
     ws.once('error', error => fail(new Error(error.message || 'Relé inacessível.')));
-    ws.once('close', code => fail(new Error(code === 4404 ? 'O computador está desconectado.' : 'O relé fechou a conexão.')));
+    ws.once('close', code => fail(Object.assign(new Error(code === 4404 ? 'O computador está desconectado.' : 'O relé fechou a conexão.'), code === 4404 ? { answered: true } : {})));
     ws.once('open', () => { ws.removeAllListeners('error'); ws.removeAllListeners('close'); if (stream) ws.on('close', () => stream.destroy()); ws.on('error', () => {}); resolve(stream || ws); });
   });
 }
 
+// Tries each address of the relay in turn; an answer from the relay itself (the computer is offline) is final.
+async function viaRelay(relay, make, candidates = relayCandidates(relay)) {
+  let last;
+  for (const candidate of candidates) {
+    try { return await make(candidate); } catch (error) { last = error; if (error.answered) break; }
+  }
+  throw last;
+}
+
 /** The phone's side: a byte stream to the computer waiting in the room (the relay tells the computer to accept it). */
-export const dialRelay = (relay, room, options) => connect(endpoint(relay, 'guest', room), { ...options, stream: true });
+export const dialRelay = (relay, room, options) => viaRelay(relay, candidate => connect(endpoint(candidate, 'guest', room), { ...options, stream: true }), options?.candidates);
 
 /** The computer's side of one session: the data connection the relay joins to the waiting phone. */
-export const acceptRelay = (relay, room, session, options) => connect(endpoint(relay, 'accept', room, session), { ...options, stream: true });
+export const acceptRelay = (relay, room, session, options) => viaRelay(relay, candidate => connect(endpoint(candidate, 'accept', room, session), { ...options, stream: true }), options?.candidates);
 
 /**
  * The computer waits in each room (one per paired phone) and hands every phone that arrives to `onStream`.
@@ -46,7 +60,7 @@ export function hostRelay({ relay, rooms, onStream, log = () => {}, timers = { f
   const hosts = new Map(); let closed = false;
   function wait(room) {
     const entry = hosts.get(room) || { attempt: 0, ws: null, timer: null }; hosts.set(room, entry);
-    connect(endpoint(relay, 'host', room)).then(ws => {
+    viaRelay(relay, candidate => connect(endpoint(candidate, 'host', room))).then(ws => {
       if (closed || hosts.get(room) !== entry) { ws.terminate(); return; }
       entry.ws = ws; entry.attempt = 0; ws.alive = true;
       ws.on('pong', () => { ws.alive = true; });

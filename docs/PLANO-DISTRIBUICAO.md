@@ -22,7 +22,9 @@ Um usuário novo baixa o MyBots no computador (Linux, Windows ou Mac) e no celul
 2. **Fase 1 — instaladores.** 1.0 portabilidade do PC, 1.1 empacotamento, 1.2 CI e publicação, 1.3 atualização, 1.4 primeira execução. Ordem de lançamento: **Linux, Windows, Mac**.
 3. **Fase 2 — PWA do iPhone.**
 
-## 4. Etapa 0 — relé com TLS
+## 4. Etapa 0 — relé com TLS (FEITA em 03/11/2026, v120)
+
+**Resultado:** `wss://mybots-rele.duckdns.org` no ar (Caddy 2.11 na VM, certificado Let's Encrypt obtido e renovado sozinho; `duckdns.timer` atualiza o IP a cada 5 min; 80 e 443 abertas no iptables e em `rules.v4`). Teste real contra a VM: conexão do PC ~340 ms, celular + sessão ~450 ms, ida e volta de bytes ~30–40 ms (ping ao IP: ver progresso.md). `DEFAULT_RELAY` é o `wss://`; o `ws://136.248.104.150:3240` é tentado quando o primeiro falha (`relayCandidates` em `supervisor/relay.mjs`); o app Android só usa `wss://` (um pareamento antigo com o IP é trocado pelo nome) e perdeu a exceção de tráfego sem TLS (ficou só loopback). O relé passou a ler o cliente real em `X-Forwarded-For` quando vem do loopback (senão o limite por endereço contaria todos como um só). Teste real opt-in: `MYBOTS_REAL_RELAY=1 node --test tests/relay-real.test.mjs`.
 
 - **DuckDNS** dá um nome (por exemplo `mybots-rele.duckdns.org`) apontando para o IP da VM. É grátis e simples; o risco é depender de um serviço de terceiros. Como o endereço do relé viaja no QR e nas respostas do PC (`info.relay`), trocar de domínio depois não exige reparear.
 - **Caddy** na VM recebe `wss://nome:443`, obtém e renova o certificado sozinho (desafio TLS-ALPN na própria 443; a porta 80 é opcional, só para redirecionar) e repassa para o relé em `127.0.0.1:3240`. O relé continua sem conteúdo nem log; a cifra de ponta a ponta é a do canal (`mobile/pc-channel.js`) e do TLS do Termux, que passam por dentro.

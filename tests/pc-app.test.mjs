@@ -9,7 +9,7 @@ import { createNode } from '../pc/server.mjs';
 import { createRelay } from '../relay/server.mjs';
 import { roomFor } from '../supervisor/relay.mjs';
 import { SupervisorClient } from '../mobile/supervisor-client.js';
-import { parseQr, pairWithComputer, connectToComputer, remoteSocketClass, relayRoom } from '../mobile/pc-client.js';
+import { parseQr, pairWithComputer, connectToComputer, remoteSocketClass, relayRoom, secureRelay } from '../mobile/pc-client.js';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
 const model = { ...selection, provider: 'codex', displayName: 'Teste', efforts: ['low'], defaultEffort: 'low' };
@@ -33,6 +33,11 @@ async function setup(t, { relay = true } = {}) {
     await until(async () => { try { await client.connect({ port: 0, token: 'canal' }); return true; } catch { return false; } }); return { client, events }; };
   return { directory, node, hub, url, turns, phone, app, pair: () => pairWithComputer(WebSocket, node.pairing().link, phone) };
 }
+
+test('the app never uses the old cleartext relay address: it is moved to the wss:// name', () => {
+  assert.equal(secureRelay('ws://136.248.104.150:3240'), 'wss://mybots-rele.duckdns.org');
+  assert.equal(secureRelay('wss://mybots-rele.duckdns.org'), 'wss://mybots-rele.duckdns.org'); assert.equal(secureRelay('ws://127.0.0.1:9'), 'ws://127.0.0.1:9');
+});
 
 test('the QR is read the way the computer wrote it, and rooms match the relay\'s', () => {
   const qr = 'mybots://computador?v=1&id=abc123&n=Meu+PC&p=3230&f=' + 'A'.repeat(43) + '&c=codigo-12345&a=192.168.0.2%2C100.70.1.2&r=ws%3A%2F%2F136.248.104.150%3A3240';

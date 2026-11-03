@@ -10,6 +10,11 @@ import { clientChannel, b64 } from './pc-channel.js';
  */
 const DIRECT_MS = 5000, RELAY_MS = 8000, RELAY_DELAY_MS = 1500, PING_MS = 20000, SILENT_MS = 60000;
 
+// The app only talks over TLS (Android has no cleartext exception for the relay any more): a pairing made when the relay was
+// ws://IP:3240 is moved to its wss:// name, which is the same relay behind Caddy.
+const OLD_RELAY = 'ws://136.248.104.150:3240', SECURE_RELAY = 'wss://mybots-rele.duckdns.org';
+export const secureRelay = relay => relay === OLD_RELAY ? SECURE_RELAY : relay;
+
 /** The room both sides use at the relay: the same name pc/server.mjs derives from the pairing secret. */
 export const relayRoom = secret => b64(hmac(sha256, utf8ToBytes(String(secret)), utf8ToBytes('mybots-relay-room')));
 
@@ -52,7 +57,7 @@ function reach(WebSocketClass, target, options, room) {
     const lose = (index, error) => { errors[index] = error; if (++failures === 2 && !done) reject(errors.find(item => /Este não é o computador|inválido ou vencido|não está pareado/.test(item?.message || '')) || errors[0]); };
     const startRelay = () => {
       if (started || done) return; started = true; clearTimeout(timer);
-      open(WebSocketClass, `${target.relay}/?role=guest&room=${encodeURIComponent(room)}`, options, RELAY_MS).then(channel => { channel.path = 'relay'; win({ channel, via: 'relay' }); }, error => lose(1, error));
+      open(WebSocketClass, `${secureRelay(target.relay)}/?role=guest&room=${encodeURIComponent(room)}`, options, RELAY_MS).then(channel => { channel.path = 'relay'; win({ channel, via: 'relay' }); }, error => lose(1, error));
     };
     first.then(win, error => { lose(0, error); startRelay(); });
     timer = setTimeout(startRelay, RELAY_DELAY_MS);

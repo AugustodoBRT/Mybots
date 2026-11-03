@@ -9,6 +9,7 @@
 //   guest   o celular chega à sala; o relé avisa o computador ("incoming", com um id de sessão)
 //   accept  o computador abre a conexão de dados daquela sessão; o relé liga as duas pontas
 import { createServer } from 'node:http';
+import { createServer as createSecureServer } from 'node:https';
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { WebSocketServer, createWebSocketStream } from '../supervisor/node_modules/ws/wrapper.mjs';
@@ -17,21 +18,27 @@ const ROOM = /^[A-Za-z0-9_-]{22,64}$/;
 const SESSION = /^[A-Za-z0-9_-]{8,64}$/;
 export const LIMITS = { sockets: 400, perAddress: 24, rooms: 200, wait: 10000, idle: 15 * 60000, ping: 25000, payload: 2 * 1024 * 1024 };
 
-export function createRelay({ port = 3240, host = '0.0.0.0', limits = {}, log = () => {} } = {}) {
+// In production Caddy terminates TLS on 443 and forwards to 127.0.0.1:3240 (the address then comes in X-Forwarded-For); `tls`
+// ({ key, cert }) lets the relay speak wss:// by itself, which is how the tests exercise it.
+const LOOPBACK = /^(127\.|::1$|::ffff:127\.)/;
+export function createRelay({ port = 3240, host = '0.0.0.0', limits = {}, log = () => {}, tls = null } = {}) {
   const max = { ...LIMITS, ...limits };
   const hosts = new Map();      // room -> ws of the computer waiting there
   const waiting = new Map();    // session id -> { guest, stream, room, timer }
   const perAddress = new Map();
-  const server = createServer((request, response) => {
+  const handler = (request, response) => {
     if (request.url === '/health') { response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: true, rooms: hosts.size })); return; }
     response.writeHead(404).end();
-  });
+  };
+  const server = tls ? createSecureServer(tls, handler) : createServer(handler);
   const sockets = new WebSocketServer({ noServer: true, maxPayload: max.payload, perMessageDeflate: false });
   const count = address => perAddress.get(address) || 0;
   const release = address => { const left = count(address) - 1; if (left > 0) perAddress.set(address, left); else perAddress.delete(address); };
 
   server.on('upgrade', (request, socket, head) => {
-    const address = request.socket.remoteAddress || '';
+    // Behind the local proxy every connection comes from loopback: the real client is the one the proxy wrote down.
+    let address = request.socket.remoteAddress || '';
+    if (LOOPBACK.test(address)) { const forwarded = String(request.headers['x-forwarded-for'] || '').split(',')[0].trim(); if (/^[0-9a-f.:]{3,45}$/i.test(forwarded)) address = forwarded; }
     const url = new URL(request.url, 'http://relay'); const role = url.searchParams.get('role'); const room = url.searchParams.get('room') || ''; const session = url.searchParams.get('sid') || '';
     const refuse = status => { socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`); };
     if (url.pathname !== '/' || !['host', 'guest', 'accept'].includes(role) || !ROOM.test(room) || (role === 'accept' && !SESSION.test(session))) { refuse('400 Bad Request'); return; }

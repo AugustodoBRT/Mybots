@@ -117,6 +117,7 @@ Para testar num emulador com Termux e o supervisor de verdade, veja [scripts/emu
 | [docs/seguranca.md](docs/seguranca.md) | Modelo de segurança e permissões |
 | [docs/desenvolvimento.md](docs/desenvolvimento.md) | Modo celular + computador (Expo Go) e notas técnicas |
 | [docs/computador.md](docs/computador.md) | MyBots no computador: parear, rodar e como a conexão funciona |
+| [docs/PLANO-DISTRIBUICAO.md](docs/PLANO-DISTRIBUICAO.md) | Próximos passos: relé com TLS, instaladores (Linux, Windows e Mac) e o web app do iPhone |
 
 ## Privacidade
 

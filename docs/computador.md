@@ -35,6 +35,8 @@ Os dados do nó ficam em `~/.mybots-pc/` (diretório 700): identidade, certifica
 
 **Sincronização (v117)**: com o celular pareado e o computador ligados, bots, conversas, memória, salas, rotinas, pendências, ajustes da pessoa e arquivos até 20 MB se juntam sozinhos nos dois sentidos, pelo mesmo canal do link (rede local, Tailscale ou relé). A primeira vez copia tudo (a tela mostra "Copiando… n de N"); depois só o que mudou, quase na hora. Vale a versão mais recente de cada registro; edições simultâneas diferentes geram um aviso em Atividade nos dois aparelhos. Permissões, senhas, cofre, cartões e sessões das IAs ficam em cada aparelho. As rotinas rodam em um aparelho só (celular enquanto ligado; computador enquanto o celular está fora de alcance). O celular precisa estar na v117 ou mais nova. Ajustes → Celular na janela tem "Sincronizar agora" e os avisos de conflito dos últimos 30 dias. `sync: false` em `createNode` desliga.
 
+**Estado da conexão (v118)**: em Ajustes → Computador no celular e em Ajustes → Celular na janela, a linha de conexão diz por onde os dois se falam: pela rede local, pelo Tailscale, pela internet ou pelo relé do MyBots (de fora de casa). No rodapé da janela, "Sincronizado com o celular", "Sincronizando com o celular…" ou "Celular fora de alcance · só neste computador". "Conferir tudo de novo" (na janela, junto da sincronização) lê os dois lados desde o início; o que já é igual é ignorado e nada é apagado.
+
 **Fora de casa**: instale a [Tailscale](https://tailscale.com) no computador e no celular, com a mesma conta, e pareie de novo (o QR passa a levar o endereço 100.x da Tailscale). Na mesma rede Wi-Fi não precisa de nada.
 
 ## Quando o celular não acha o computador

@@ -26,6 +26,7 @@ import { createDiscovery } from './discovery.mjs';
 import { createLocal } from './local.mjs';
 import { hostRelay, roomFor } from '../supervisor/relay.mjs';
 import { createSync, worthSyncing } from './sync.mjs';
+import { pathOf } from '../supervisor/discovery.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
 import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
@@ -188,7 +189,7 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  */
 export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
-  const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null;
+  const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
@@ -251,7 +252,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
   const bridge = phoneBridge();
   // The computer's own supervisor is reached the same way (its link to this node), for the sync between the two.
   const localBridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, link: () => ({ path: phonePath }), sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => startPairing(directory, server.address().port, advertise, { relay }), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -264,7 +265,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     const ready = phone => {
       clearTimeout(timer); ws.phone = phone;
       // The computer's own supervisor is not a phone: the window reaches it directly (see local.mjs), and it only needs this node as its executor.
-      if (!phone.local) { bridge.attach(ws); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
+      if (!phone.local) { bridge.attach(ws); phonePath = pathOf(request.socket.remoteAddress); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
       else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
       send({ type: 'ready', id: me.id, name: me.name, ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
@@ -418,7 +419,7 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
       assumed = new Set();
       for (const [botId, sink] of ws.views || []) watch(botId, sink, false).catch(() => {});
       proxy?.then(http => http.close(), () => {});
-      if (ws.phone) { log(`${ws.phone.name} desconectado.`); if (!ws.phone.local) { bridge.detach(ws); ui.broadcast('desktop.phone', { online: false }); sync?.phone(false); } else localBridge.detach(ws); }
+      if (ws.phone) { log(`${ws.phone.name} desconectado.`); if (!ws.phone.local) { bridge.detach(ws); phonePath = null; ui.broadcast('desktop.phone', { online: false }); sync?.phone(false); } else localBridge.detach(ws); }
     });
   });
   const ping = setInterval(() => { for (const ws of sockets.clients) { if (!ws.alive) ws.terminate(); else { ws.alive = false; ws.ping(); } } }, 20000);

@@ -87,6 +87,16 @@ flowchart LR
 
 > Guias detalhados: [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 
+## Beta: celular e computador juntos
+
+O beta liga o celular ao computador e deixa cada um funcionar sozinho.
+
+- **O computador funciona sozinho**: o MyBots do PC tem os próprios bots, conversas e rotinas e responde com o celular desligado. E o celular continua funcionando sem o PC.
+- **Conecta de qualquer rede**: na mesma rede é direto; fora de casa, pelo Tailscale (se você usa) ou por um relé do MyBots que só encaminha dados cifrados de ponta a ponta. Não é preciso abrir portas nem instalar nada.
+- **Sincroniza sozinho**: bots, conversas, memória, salas, rotinas, pendências, ajustes e arquivos (até 20 MB) se juntam nos dois sentidos quando os dois estão ligados. Se os dois mudarem a mesma coisa, vale a versão mais recente e o aviso aparece em Atividade. Permissões, senhas e cartões ficam em cada aparelho.
+- **Como começar**: instale o APK da [última Release](../../releases/latest) no celular, instale o MyBots no computador (`scripts/build-desktop.sh`, depois `node pc/node.mjs pair` e **Ajustes → Computador → Conectar computador** no celular para ler o QR). A primeira sincronização copia tudo e mostra o progresso em Ajustes.
+- **Limites conhecidos**: redes que bloqueiam portas incomuns (faculdade, empresa) podem barrar o relé; arquivos acima de 20 MB ficam onde foram criados; rotinas rodam em um aparelho só (o celular enquanto está ligado, o computador enquanto o celular está fora de alcance). Detalhes em [docs/computador.md](docs/computador.md) e [docs/PLANO-SYNC.md](docs/PLANO-SYNC.md).
+
 ## Desenvolvimento
 
 ```bash
@@ -109,7 +119,7 @@ Para testar num emulador com Termux e o supervisor de verdade, veja [scripts/emu
 
 ## Privacidade
 
-Bots, conversas, arquivos e rotinas ficam **no seu celular**. Só a mensagem de cada turno vai ao provedor do modelo que você escolheu. O conteúdo de páginas e arquivos chega aos bots marcado como dado externo, nunca como instrução.
+Bots, conversas, arquivos e rotinas ficam **no seu celular e no seu computador** (se você os parear). O relé que liga os dois fora de casa só vê dados cifrados de ponta a ponta e não guarda nada. Só a mensagem de cada turno vai ao provedor do modelo que você escolheu. O conteúdo de páginas e arquivos chega aos bots marcado como dado externo, nunca como instrução.
 
 <div align="center">
 <sub>Feito em português, para uso pessoal.</sub>

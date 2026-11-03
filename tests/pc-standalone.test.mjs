@@ -106,7 +106,7 @@ test('paired phone and the computer\'s own MyBots share bots and chats live, in 
   await until(() => f.node.sync().status().synced, 30000);
   const page = await until(async () => { const state = await window.call('state.get'); return state.bots.some(item => item.id === bot.id) ? await window.call('chat.page', { botId: bot.id }) : null; });
   assert.deepEqual(page.messages.map(message => message.text), ['oi, escrito no celular']);
-  const status = await window.call('desktop.status'); assert.equal(status.sync.synced, true); assert.equal(status.sync.state, 'idle');
+  const status = await window.call('desktop.status'); assert.equal(status.sync.synced, true); assert.equal(status.sync.state, 'idle'); assert.equal(status.link.path, 'local');
   const info = await window.call('state.get'); assert.equal(info.sync.peer, 'Celular'); assert.equal(info.sync.state, 'idle'); assert.equal(phone.state().sync.peer, 'Computador');
   // Live, both ways, without asking for a round.
   const made = await window.call('bot.create', { name: 'Do computador', instructions: '', access: 'ask', ...selection });
@@ -117,4 +117,8 @@ test('paired phone and the computer\'s own MyBots share bots and chats live, in 
   // A window never starts a sync by itself (that is the node's job), and "agora" needs the phone on.
   await assert.rejects(window.call('sync.apply', { changes: [] }), /só pode ser feito pelo MyBots/);
   assert.equal((await window.call('desktop.sync')).state, 'idle');
+  // "Conferir tudo de novo" reads both sides from the start and changes nothing that is already equal.
+  const counter = phone.db.syncState().counter; const total = phone.db.all('SELECT * FROM messages').length;
+  assert.equal((await window.call('desktop.sync', { reset: true })).state, 'idle');
+  assert.equal(phone.db.all('SELECT * FROM messages').length, total); assert.equal(phone.db.syncState().counter, counter);
 });

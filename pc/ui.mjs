@@ -19,7 +19,7 @@ const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, link: linkOf = () => null, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -102,12 +102,12 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, lastPaired: phones().map(item => item.pairedAt).sort().at(-1) || null } });
         // "Sincronizar agora" in Ajustes: one round between the phone and this computer, answered when it ends.
         else if (method === 'desktop.sync') {
           if (!syncOf()) throw new Error('A sincronização não está disponível.');
           if (!phone.online()) throw new Error('O celular está fora de alcance. A sincronização acontece sozinha quando os dois estiverem ligados.');
-          reply(id, { result: await syncOf().now() });
+          reply(id, { result: params?.reset ? await syncOf().reset() : await syncOf().now() });
         }
         // Choosing where the window's data comes from. The windows reconnect and load the other side's state.
         else if (method === 'desktop.source') {

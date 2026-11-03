@@ -2,7 +2,7 @@ import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { decodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
-import { discover } from './discovery.mjs';
+import { discover, pathOf } from './discovery.mjs';
 import { connect as tlsConnect } from 'node:tls';
 import { dialRelay, roomFor, validRelay } from './relay.mjs';
 
@@ -65,7 +65,7 @@ export class Link {
   }
   status() {
     const saved = this.saved();
-    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
+    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, path: this.state === 'online' ? this.path || null : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
   }
   set(state, error = '') { if (state === this.state && error === this.error) return; this.state = state; this.error = error; this.changed('connection.changed'); }
   start() { if (this.saved() && !this.socket && !this.timer) this.connect(); }
@@ -91,7 +91,7 @@ export class Link {
   async reachDirect(target) {
     let last;
     for (const address of target.addresses) {
-      try { return await this.open(address, target.port, target.fingerprint); }
+      try { const connection = await this.open(address, target.port, target.fingerprint); connection.path = pathOf(address); return connection; }
       catch (error) { last = error; if (/Outro aparelho/.test(error.message)) throw error; }
     }
     throw last || new Error('Sem endereço.');
@@ -102,7 +102,7 @@ export class Link {
    */
   async reach(target) {
     this.via = 'direct';
-    if (!target.relay || !target.secret) return this.reachDirect(target);
+    if (!target.relay || !target.secret) { const connection = await this.reachDirect(target); this.path = connection.path; return connection; }
     const direct = this.reachDirect(target).then(connection => ({ connection, via: 'direct' }));
     const later = new Promise(resolve => { const timer = setTimeout(resolve, this.relayDelay ?? 1500); direct.then(() => { clearTimeout(timer); resolve('direct'); }, () => { clearTimeout(timer); resolve(); }); });
     const relayed = later.then(outcome => {
@@ -114,7 +114,7 @@ export class Link {
       [direct, relayed].forEach((attempt, index) => attempt.then(value => { if (done) { value.connection.ws.terminate(); return; } done = true; resolve(value); },
         error => { errors[index] = error; if (++failed === 2 && !done) reject(errors.find(item => /Outro aparelho/.test(item?.message || '')) || errors[0]); }));
     });
-    this.via = winner.via; return winner.connection;
+    this.via = winner.via; this.path = winner.via === 'relay' ? 'relay' : winner.connection.path; return winner.connection;
   }
   /** Connected through the relay: now and then, check whether the direct way works again and move to it. */
   watchDirect() {
@@ -135,7 +135,7 @@ export class Link {
     let connection;
     try { connection = await this.reachDirect(target); }
     catch (error) { throw new Error(/Outro aparelho/.test(error.message) ? error.message : 'Não encontrei o computador. Confira se o MyBots está rodando nele e se os dois estão no mesmo Wi-Fi (ou na mesma Tailscale).'); }
-    const { ws, hello } = connection;
+    const { ws, hello } = connection; this.via = 'direct'; this.path = connection.path || 'lan';
     if (hello.id !== target.id) { ws.terminate(); throw new Error('Outro aparelho respondeu no lugar do computador.'); }
     const name = hello.name || target.name;
     // The answer is handled inside the link itself, so the computer's "ready" right after it is never missed.
@@ -187,6 +187,7 @@ export class Link {
       if (stale()) { connection?.ws.terminate(); return; }
       if (!connection) return this.retry(/Outro aparelho/.test(lastError?.message || '') ? lastError.message : NOT_FOUND);
       const { ws, hello } = connection;
+      if (discoveredTarget) { this.via = 'direct'; this.path = connection.path || 'lan'; }
       if (hello.id !== target.id) { ws.terminate(); return this.retry('Outro computador respondeu no endereço salvo.'); }
       // Persist discovery hints only after TLS and the computer's identity have been checked.
       if (discoveredTarget) this.save({ ...target, port: discoveredTarget.port, addresses: [...new Set([...discoveredTarget.addresses, ...target.addresses])].slice(0, 8) });

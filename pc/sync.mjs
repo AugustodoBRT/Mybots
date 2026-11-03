@@ -118,6 +118,8 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
     kick: () => schedule(),
     /** A round right now (the button), waiting for it to finish. */
     async now() { clearTimeout(timer); timer = null; await run(); return current; },
+    /** Read both sides again from the start (nothing is deleted: what is already the same is skipped). For when something looks off. */
+    async reset() { const entry = lastPair && state.peers[lastPair]; if (entry) { entry.pulledPhone = 0; entry.pulledLocal = 0; state.files = []; save(); } clearTimeout(timer); timer = null; await run(); return current; },
     /** The phone came or went: the computer's supervisor learns it (it decides who runs the "onde estiver" routines). */
     async phone(online) { set({ online: online && local.online() }); if (!online) await tell('local', null, { online: false }); else schedule(0); },
     status: () => ({ ...current, online: phone.online() && local.online(), synced: Object.values(state.peers).some(entry => entry.lastAt), peer: 'Celular' }),

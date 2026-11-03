@@ -428,7 +428,9 @@ export function DesktopNetwork({ call, notice = false }) {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
   if (!status) return null;
-  if (!notice) return <><DesktopSource call={call} status={status} /><SyncCard sync={status.sync} onNow={() => call('desktop.sync')} /><RemoteAccess tailscale={status.tailscale} /></>;
+  if (!notice) return <><DesktopSource call={call} status={status} />
+    <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Conexão com o celular</Text><Text style={[styles.optionDetail, status.phone && { color: C.accent }]}>{status.phone ? `Conectado ${PATH_TEXT[status.link?.path] || ''}`.trim() : 'Fora de alcance agora. No mesmo Wi-Fi ele procura o computador sozinho; de outras redes, conecta pelo relé do MyBots.'}</Text></View>
+    <SyncCard sync={status.sync} onNow={() => call('desktop.sync')} onReset={() => call('desktop.sync', { reset: true })} /><RemoteAccess tailscale={status.tailscale} /></>;
   if (status.source === 'local' || status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
   return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
     <Text style={styles.optionLabel}>O celular não encontrou este computador</Text>
@@ -438,8 +440,11 @@ export function DesktopNetwork({ call, notice = false }) {
   </View>;
 }
 
+// How the phone and the computer reach each other, as the connection screens say it.
+export const PATH_TEXT = { local: 'neste computador', lan: 'pela rede local', tailscale: 'pelo Tailscale', internet: 'pela internet', relay: 'pelo relé do MyBots (de fora de casa)' };
+
 /** How the sync between the phone and the computer stands (state, progress, conflicts); the window adds a "Sincronizar agora". */
-export function SyncCard({ sync, onNow }) {
+export function SyncCard({ sync, onNow, onReset }) {
   const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
   if (!sync) return null;
   const peer = sync.peer || 'o outro aparelho'; const working = sync.state === 'syncing' || busy;
@@ -453,6 +458,7 @@ export function SyncCard({ sync, onNow }) {
     <Text style={styles.optionDetail}>Bots, conversas, memória, salas, rotinas, pendências e arquivos até 20 MB se juntam sozinhos quando os dois aparelhos estão ligados. Permissões, senhas e cartões não saem do aparelho. Se os dois mudarem a mesma coisa, vale a versão mais recente e o aviso aparece em Atividade.</Text>
     {sync.conflicts > 0 ? <Text style={styles.optionDetail}>{sync.conflicts === 1 ? '1 conflito resolvido' : `${sync.conflicts} conflitos resolvidos`} nos últimos 30 dias.</Text> : null}
     {onNow ? <Pressable accessibilityRole="button" disabled={working} onPress={run} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="refresh" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{working ? 'Sincronizando…' : 'Sincronizar agora'}</Text></Pressable> : null}
+    {onReset ? <Pressable accessibilityRole="button" disabled={working} onPress={() => { setBusy(true); setNote(''); onReset().catch(error => setNote(error.message)).finally(() => setBusy(false)); }} style={[styles.stopButton, { marginTop: 6 }]}><Icon name="search" size={13} color={C.muted} /><Text style={styles.stopText}>Conferir tudo de novo</Text></Pressable> : null}
     {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
   </View>;
 }
@@ -526,7 +532,7 @@ export function ComputerPanel({ computer, nodes = [], sync = null, onPair, onFor
   };
   const forget = () => Alert.alert(`Esquecer ${computer.name}?`, 'Os bots do computador ficam offline até você parear de novo.', [{ text: 'Cancelar', style: 'cancel' },
     { text: 'Esquecer', style: 'destructive', onPress: () => onForget().catch(error => setNote(error.message)) }]);
-  const state = !computer?.paired ? null : computer.state === 'online' ? `Conectado${logged.length ? ` · ${logged.join(' e ')} no computador` : ' · nenhuma IA conectada nele'}`
+  const state = !computer?.paired ? null : computer.state === 'online' ? `Conectado${computer.path ? ` ${PATH_TEXT[computer.path] || ''}` : ''}${logged.length ? ` · ${logged.join(' e ')} no computador` : ' · nenhuma IA conectada nele'}`
     : computer.state === 'connecting' ? 'Procurando o computador…' : `Desligado ou fora de alcance${node?.lastSeen ? ` · ${seenText(node)}` : ''}`;
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>

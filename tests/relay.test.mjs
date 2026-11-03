@@ -11,6 +11,7 @@ import { createNode } from '../pc/server.mjs';
 import { createRelay } from '../relay/server.mjs';
 import { parsePairing, pairingLink } from '../supervisor/link.mjs';
 import { roomFor, validRelay, relayFromEnvironment, DEFAULT_RELAY } from '../supervisor/relay.mjs';
+import { pathOf } from '../supervisor/discovery.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
 const model = { ...selection, provider: 'codex', displayName: 'Teste', efforts: ['low'], defaultEffort: 'low' };
@@ -67,12 +68,12 @@ test('phone and computer talk through the relay when they cannot reach each othe
   // Paired the usual way (the QR carries the relay), then the computer's direct address stops working.
   await f.app.rpc('computer.pair', { link: f.node.pairing().link });
   await until(() => f.app.state().computer.state === 'online');
-  assert.equal(f.app.state().computer.via, 'direct'); assert.equal(f.app.link.saved().relay, f.url);
+  assert.equal(f.app.state().computer.via, 'direct'); assert.equal(f.app.state().computer.path, 'local'); assert.equal(f.app.link.saved().relay, f.url);
   await until(() => f.node.relay().online() === 1);
   const good = f.app.link.saved();
   f.app.link.save({ ...good, addresses: ['127.0.0.1'], port: 1 }); f.app.link.drop(); f.app.link.kick();
   await until(() => f.app.state().computer.state === 'online', 15000);
-  assert.equal(f.app.state().computer.via, 'relay');
+  assert.equal(f.app.state().computer.via, 'relay'); assert.equal(f.app.state().computer.path, 'relay');
   // A turn of a computer bot runs there and comes back through the tunnel.
   const bot = await f.app.rpc('bot.create', { name: 'Longe', home: 'pc', access: 'ask', ...selection });
   const sent = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'oi de longe' });
@@ -97,6 +98,12 @@ test('a relay cannot pose as the computer: the pinned certificate refuses anothe
   f.app.link.save({ ...saved, addresses: ['127.0.0.1'], port: 1 }); f.app.link.drop(); f.app.link.kick();
   await until(() => /Outro aparelho/.test(f.app.state().computer.error || ''), 15000);
   assert.notEqual(f.app.state().computer.state, 'online');
+});
+
+test('the way two devices reach each other is named for the connection screen', () => {
+  assert.equal(pathOf(undefined), 'relay'); assert.equal(pathOf('127.0.0.1'), 'local'); assert.equal(pathOf('::1'), 'local'); assert.equal(pathOf('::ffff:127.0.0.1'), 'local');
+  assert.equal(pathOf('192.168.0.103'), 'lan'); assert.equal(pathOf('10.0.0.5'), 'lan'); assert.equal(pathOf('::ffff:192.168.1.2'), 'lan');
+  assert.equal(pathOf('100.70.166.116'), 'tailscale'); assert.equal(pathOf('200.128.150.13'), 'internet');
 });
 
 test('without a relay configured nothing changes: the node does not dial out and the QR has no relay', async t => {

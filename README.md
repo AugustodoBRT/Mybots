@@ -87,6 +87,15 @@ flowchart LR
 
 > Guias detalhados: [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 
+## MyBots no computador (instaladores)
+
+Baixe na [Release "MyBots no computador"](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest):
+
+- **Linux**: `MyBots-<versão>-linux-x86_64.AppImage` (dê permissão com `chmod +x` e abra) ou `MyBots-<versão>-linux-amd64.deb` (Debian, Ubuntu e derivados: instale pelo gerenciador de pacotes). No Ubuntu 24.04 o AppImage pode exigir `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`; o `.deb` não. O comando `bubblewrap` precisa estar instalado (os comandos dos bots rodam isolados nele).
+- **Windows** e **macOS**: em preparação (beta, sem assinatura). Quando saírem: no Windows, "Mais informações → Executar assim mesmo" no aviso do SmartScreen; no Mac, clique direito no app → Abrir.
+
+Na primeira abertura, um assistente mostra quais IAs (Codex, Claude Code, Antigravity, opencode) estão instaladas e conectadas, se há Chrome (opcional) e o QR para parear o celular. O computador precisa ficar ligado (o MyBots fica na bandeja). O app avisa e atualiza sozinho (AppImage) ou avisa (.deb).
+
 ## Beta: celular e computador juntos
 
 O beta liga o celular ao computador e deixa cada um funcionar sozinho.

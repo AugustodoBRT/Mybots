@@ -1,0 +1,7 @@
+{
+  "name": "mybots-packaging",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Gera os instaladores do MyBots no computador (electron-builder)",
+  "devDependencies": { "electron": "44.9.3", "electron-builder": "26.18.0" }
+}

@@ -1,0 +1,106 @@
+name: Instaladores do PC
+
+# Gera os instaladores do MyBots no computador. Linux (AppImage e .deb) é o suporte atual; Windows e macOS são betas que ainda
+# dependem de testes em máquina de verdade, por isso só entram quando pedidos em "platforms".
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Sistemas (separados por vírgula): linux, windows, mac'
+        default: linux
+      publish:
+        description: 'Publicar na Release pc-latest'
+        type: boolean
+        default: false
+  push:
+    tags: ['pc-v*']
+
+permissions:
+  contents: write
+
+env:
+  PLATFORMS: ${{ inputs.platforms || 'linux' }}
+
+jobs:
+  tests:
+    # Ainda informativo: parte dos testes usa programas do computador do autor (Chrome, bubblewrap, as IAs).
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap openssl
+      - run: npm ci --prefix supervisor && npm ci --prefix pc && npm ci --prefix mobile
+      - run: npm test
+
+  interface:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --prefix mobile
+      - run: npx expo export --platform web --output-dir ../pc/ui
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        with: { name: pc-ui, path: pc/ui, retention-days: 3 }
+
+  package:
+    needs: interface
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: linux, os: ubuntu-24.04, args: '--linux AppImage deb' }
+          - { id: windows, os: windows-2022, args: '--win nsis' }
+          - { id: mac, os: macos-14, args: '--mac dmg --arm64 --x64' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Esse sistema foi pedido?
+        id: wanted
+        shell: bash
+        run: echo "run=$([[ ",$PLATFORMS," == *",${{ matrix.id }},"* ]] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.wanted.outputs.run == 'yes'
+      - uses: actions/setup-node@v4
+        if: steps.wanted.outputs.run == 'yes'
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        if: steps.wanted.outputs.run == 'yes'
+        with: { name: pc-ui, path: pc/ui }
+      - name: Montar e empacotar
+        if: steps.wanted.outputs.run == 'yes'
+        shell: bash
+        run: |
+          npm ci --prefix supervisor && npm ci --prefix pc && npm ci --prefix mobile
+          node scripts/stage-desktop.mjs
+          npm ci --prefix packaging
+          cd packaging && npx electron-builder ${{ matrix.args }} --publish never --config electron-builder.yml
+      - name: Somas de verificação
+        if: steps.wanted.outputs.run == 'yes'
+        shell: bash
+        run: cd dist/desktop && for f in MyBots-*; do [ -f "$f" ] && sha256sum "$f" > "$f.sha256"; done; ls -la
+      - uses: actions/upload-artifact@v4
+        if: steps.wanted.outputs.run == 'yes'
+        with:
+          name: installer-${{ matrix.id }}
+          path: |
+            dist/desktop/MyBots-*
+            dist/desktop/latest*.yml
+          retention-days: 7
+
+  publish:
+    needs: package
+    if: ${{ always() && needs.package.result == 'success' && (inputs.publish || startsWith(github.ref, 'refs/tags/pc-v')) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'installer-*', path: out, merge-multiple: true }
+      - name: Publicar na Release pc-latest
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          gh release delete pc-latest --cleanup-tag --yes || true
+          gh release create pc-latest out/* --prerelease --latest=false --title "MyBots no computador (versão mais nova)" \
+            --notes "Instaladores do MyBots para computador. Linux: AppImage (chmod +x) ou .deb. Windows e macOS são betas sem assinatura: veja as instruções no README."

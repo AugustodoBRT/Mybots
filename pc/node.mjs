@@ -12,8 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
 import { createNode, startPairing, DEFAULT_PORT } from './server.mjs';
 import { relayFromEnvironment } from '../supervisor/relay.mjs';
+import { dataDirectory, panicEndpoint } from './platform.mjs';
 
-const directory = process.env.MYBOTS_PC_HOME || join(homedir(), '.mybots-pc');
+const directory = dataDirectory();
 const port = Number(process.env.MYBOTS_PC_PORT) || DEFAULT_PORT;
 const unit = join(homedir(), '.config', 'systemd', 'user', 'mybots-pc.service');
 const stamp = () => new Date().toLocaleTimeString('pt-BR');
@@ -65,13 +66,20 @@ function uninstall() {
 const command = process.argv[2] || 'serve';
 function panic() {
   return new Promise((resolve, reject) => {
-    const socket = createConnection(join(directory, 'panic.sock'));
+    const socket = createConnection(panicEndpoint(directory));
     socket.setTimeout(2000, () => socket.destroy(new Error('O nó não respondeu à tecla de pânico.')));
     socket.on('connect', () => socket.write('panic'));
     socket.on('data', () => { socket.end(); resolve(); });
     socket.on('error', () => reject(new Error('Não encontrei o nó do MyBots para interromper.')));
   });
 }
-const commands = { serve, pair, install, uninstall, panic };
+// For the first-run assistant: what is installed and logged in here, as JSON (and, with `pair --json`, the QR as an image).
+async function doctorCommand() { const { doctor } = await import('./doctor.mjs'); console.log(JSON.stringify(await doctor())); }
+async function pairJson() {
+  const { link, name } = startPairing(directory, port, undefined, { relay: relayFromEnvironment() });
+  const { default: QRCode } = await import('qrcode');
+  console.log(JSON.stringify({ name, link, qr: await QRCode.toDataURL(link, { errorCorrectionLevel: 'L', margin: 1, width: 280 }) }));
+}
+const commands = { serve, pair: process.argv[3] === '--json' ? pairJson : pair, install, uninstall, panic, doctor: doctorCommand };
 if (!commands[command]) { console.error(`Comando desconhecido: ${command}. Use pair, install, uninstall ou panic.`); process.exit(1); }
 Promise.resolve(commands[command]()).catch(error => { console.error(error.message); process.exit(1); });

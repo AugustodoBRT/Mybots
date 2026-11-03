@@ -31,3 +31,6 @@ mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.sha256
 pc/ui/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+
+# Instaladores do PC
+packaging/node_modules/

@@ -43,7 +43,7 @@ export function skillProposal(args) {
  * folder, writes only its data folder, starts no processes, opens no raw sockets and fetches only its declared sites.
  */
 export class Skills {
-  constructor(db, { directory, node = process.execPath, changed = () => {} } = {}) {
+  constructor(db, { directory, node = process.env.MYBOTS_NODE || process.execPath, changed = () => {} } = {}) {
     Object.assign(this, { db, node, changed }); this.root = join(directory, 'skills'); mkdirSync(this.root, { recursive: true, mode: 0o700 });
   }
   row(row) { const { code, ...body } = JSON.parse(row.body); return { id: row.id, ...body, createdAt: row.created_at, size: code.length }; }

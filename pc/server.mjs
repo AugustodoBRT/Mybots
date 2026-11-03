@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { dataDirectory, panicEndpoint, hasIsolation } from './platform.mjs';
 import { WebSocketServer, createWebSocketStream } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { acceptApp } from './app-channel.mjs';
 import { runReply } from '../supervisor/queue.mjs';
@@ -43,7 +44,7 @@ export function addresses() {
 }
 
 /**
- * The computer's identity: an id, a name and a self-signed TLS certificate made once with openssl. The phone pins
+ * The computer's identity: an id, a name and a self-signed TLS certificate made once. The phone pins
  * the certificate's fingerprint at pairing, so it never talks to another machine pretending to be this one.
  */
 export function identity(directory) {
@@ -53,7 +54,8 @@ export function identity(directory) {
   if (!existsSync(file)) write(file, saved);
   const key = join(directory, 'key.pem'), cert = join(directory, 'cert.pem');
   if (!existsSync(key) || !existsSync(cert)) {
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', key, '-out', cert, '-days', '3650', '-subj', '/CN=mybots-pc'], { stdio: 'ignore' });
+    // A small process of its own (this function is synchronous): the JavaScript certificate maker, so no system needs openssl.
+    execFileSync(process.execPath, [fileURLToPath(new URL('./make-cert.mjs', import.meta.url)), key, cert], { stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
     chmodSync(key, 0o600);
   }
   const pem = readFileSync(cert, 'utf8');
@@ -139,7 +141,7 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude'), agy: new Agy(), opencode: new Opencode() };
 /** Which IAs are logged in on this computer, and their models, for the phone to show and check. */
-async function localStatus() {
+export async function localStatus() {
   const connections = {}, models = [];
   for (const [key, client] of Object.entries(local)) {
     connections[key] = await client.status().catch(() => ({ available: false, loggedIn: false }));
@@ -188,7 +190,7 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = join(homedir(), '.mybots-pc'), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
+export async function createNode({ directory = dataDirectory(), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
   const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
@@ -232,16 +234,16 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
     return browser.command(botId, 'input', cleanPersonInput(input));
   };
   const panic = () => { for (const run of controls) run.controller.abort('panic'); return browser.close(); };
-  const panicPath = join(directory, 'panic.sock');
+  const panicPath = panicEndpoint(directory); const pipe = process.platform === 'win32';
   // Refuse a second node using this directory. A stale socket can be removed after an unclean shutdown.
-  if (existsSync(panicPath)) {
+  if (pipe || existsSync(panicPath)) {
     const { createConnection } = await import('node:net');
     const live = await new Promise(resolve => { const socket = createConnection(panicPath); socket.on('connect', () => { socket.destroy(); resolve(true); }); socket.on('error', () => resolve(false)); });
     if (live) throw new Error('Já existe um nó usando esta pasta.');
-    unlinkSync(panicPath);
+    if (!pipe) unlinkSync(panicPath);
   }
   const panicServer = createSocket(socket => { socket.once('data', data => { if (data.toString() === 'panic') { panic(); socket.end('ok'); } else socket.end(); }); });
-  await new Promise((resolve, reject) => { panicServer.once('error', reject); panicServer.listen(panicPath, resolve); }); chmodSync(panicPath, 0o600);
+  await new Promise((resolve, reject) => { panicServer.once('error', reject); panicServer.listen(panicPath, resolve); }); if (!pipe) chmodSync(panicPath, 0o600);
   const phonesFile = join(directory, 'phones.json');
   const server = createHttps({ key: me.key, cert: me.cert, minVersion: 'TLSv1.3' }, (request, response) => response.writeHead(404).end());
   const sockets = new WebSocketServer({ server, maxPayload: MAX_FRAME });
@@ -419,13 +421,15 @@ export async function createNode({ directory = join(homedir(), '.mybots-pc'), po
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         const enabledSkills = enabledFor(bot, discover());
         const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true });
-        if (!wrap) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
+        // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it, but Codex gets no
+        // terminal (read-only) and Claude's commands and writes outside the bot's folder go through approval cards.
+        if (!wrap && hasIsolation()) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
         log(`Respondendo como ${bot.name}.`);
         const computer = message.tools ? computerFor(message.tools.computer, workspace, undefined, enabledSkills) : undefined; run.computer = computer || null;
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer, skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, isolated: hasIsolation(), chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer, skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress }),
           onDelta: draft => send({ type: 'progress', id: message.id, draft })

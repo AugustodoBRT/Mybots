@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'">
+<title>Bem-vindo ao MyBots</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #090B10; color: #E9EDF5; font: 14px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 28px 24px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 0 0 6px; }
+  p { color: #A3ACBD; margin: 4px 0 10px; }
+  section { background: #121620; border: 1px solid #222a3a; border-radius: 14px; padding: 16px 18px; margin-top: 16px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #1d2432; } .row:first-of-type { border-top: 0; }
+  .row > div { flex: 1; min-width: 0; } .name { font-weight: 600; } .hint { color: #8B94A6; font-size: 12.5px; }
+  .badge { font-size: 12px; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .ok { background: #12372b; color: #7EE2B8; } .warn { background: #3b2f12; color: #EAB875; } .off { background: #26202a; color: #C9A0DC; }
+  code { background: #0b0e15; border: 1px solid #222a3a; border-radius: 6px; padding: 1px 6px; color: #7EE2B8; font-size: 12.5px; user-select: all; }
+  button { background: #1c2333; color: #E9EDF5; border: 1px solid #2b3550; border-radius: 9px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover { background: #242d44; } button.primary { background: #EAB875; color: #1b1405; border-color: #EAB875; font-weight: 600; }
+  .qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; } .qr img { width: 200px; height: 200px; background: #fff; border-radius: 10px; padding: 6px; }
+  footer { display: flex; justify-content: flex-end; margin-top: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bem-vindo ao MyBots</h1>
+  <p>As suas contas de IA ficam neste computador; o celular é a tela. Três passos rápidos (dá para fazer depois: este assistente fica no menu da bandeja).</p>
+
+  <section>
+    <h2>1. As IAs deste computador</h2>
+    <p>O MyBots usa as IAs que você já instalou e em que já entrou. Basta uma.</p>
+    <div id="ais"><p>Verificando…</p></div>
+    <button id="recheck">Verificar de novo</button>
+  </section>
+
+  <section>
+    <h2>2. Navegador</h2>
+    <p>Os bots navegam na própria janela do MyBots, sem instalar nada. O Chrome só é necessário se você quiser que um bot use o <i>seu</i> Chrome (com os seus logins).</p>
+    <div class="row"><div class="name">Google Chrome</div><span id="chrome" class="badge off">procurando…</span></div>
+  </section>
+
+  <section>
+    <h2>3. Conectar o celular</h2>
+    <p>No celular, abra o app MyBots e toque em <b>Ler o QR do computador</b>. O QR vale 10 minutos e uma vez só. <b>O computador precisa ficar ligado</b> (com o MyBots aberto na bandeja) para o celular funcionar.</p>
+    <div class="qr"><div id="qr"><button id="makeqr" class="primary">Mostrar o QR</button></div><div class="hint" id="qrhint"></div></div>
+  </section>
+
+  <footer><button class="primary" id="finish">Concluir</button></footer>
+</main>
+<script>
+  const $ = id => document.getElementById(id), api = window.mybotsWelcome;
+  const cmd = text => { const c = document.createElement('code'); c.textContent = text; c.title = 'Clique para copiar'; c.style.cursor = 'copy'; c.onclick = () => api.copy(text); return c; };
+  async function check() {
+    $('ais').innerHTML = '<p>Verificando…</p>';
+    let report; try { report = await api.doctor(); } catch (error) { $('ais').innerHTML = '<p>Não consegui verificar agora: ' + String(error.message || error) + '</p>'; return; }
+    $('ais').replaceChildren(...report.ais.map(item => {
+      const row = document.createElement('div'); row.className = 'row'; const left = document.createElement('div');
+      const name = document.createElement('div'); name.className = 'name'; name.textContent = item.name; left.append(name);
+      const hint = document.createElement('div'); hint.className = 'hint';
+      if (!item.available) { hint.append('Instalar: '); if (item.install) { hint.append(cmd(item.install), ' (precisa do Node.js) ou '); } const link = document.createElement('a'); link.href = '#'; link.style.color = '#7EE2B8'; link.textContent = 'site oficial'; link.onclick = event => { event.preventDefault(); api.open(item.link); }; hint.append(link); }
+      else if (!item.loggedIn) { hint.append('Entre pelo terminal: ', cmd(item.login)); }
+      else hint.textContent = item.message || 'Pronto.';
+      left.append(hint);
+      const badge = document.createElement('span'); badge.className = 'badge ' + (item.loggedIn ? 'ok' : item.available ? 'warn' : 'off'); badge.textContent = item.loggedIn ? 'Pronto' : item.available ? 'Falta entrar' : 'Não instalado';
+      row.append(left, badge); return row;
+    }));
+    $('chrome').className = 'badge ' + (report.chrome ? 'ok' : 'off'); $('chrome').textContent = report.chrome ? 'Encontrado' : 'Não encontrado (opcional)';
+  }
+  $('recheck').onclick = check;
+  $('makeqr').onclick = async () => {
+    $('makeqr').disabled = true;
+    try { const { qr, name } = await api.pair(); const img = document.createElement('img'); img.src = qr; img.alt = 'QR de pareamento'; $('qr').replaceChildren(img); $('qrhint').textContent = 'Este computador: ' + name + '. Se o QR vencer, clique em Concluir e peça outro em Ajustes → Computador.'; }
+    catch (error) { $('makeqr').disabled = false; $('qrhint').textContent = 'Não consegui gerar o QR agora (o MyBots ainda está iniciando?). Tente de novo em instantes.'; }
+  };
+  $('finish').onclick = () => api.finish();
+  check();
+</script>
+</body>
+</html>

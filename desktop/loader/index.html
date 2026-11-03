@@ -20,11 +20,12 @@
 </div>
 <script>
   // The window shows the interface the computer's node serves; until the node answers, it waits here.
-  const target = 'http://127.0.0.1:3232/';
+  const params = new URLSearchParams(location.search);
+  const target = `http://127.0.0.1:${Number(params.get('port')) || 3232}/`;
   let tries = 0;
   async function check() {
     try { await fetch(target + 'health', { cache: 'no-store' }); location.replace(target); return; } catch {}
-    if (++tries === 8) document.getElementById('hint').innerHTML = 'O MyBots do computador não está rodando. Inicie com <code>node pc/node.mjs install</code> ou <code>systemctl --user start mybots-pc</code>.';
+    if (++tries === 8) document.getElementById('hint').innerHTML = params.get('embedded') ? 'O MyBots está demorando para iniciar. Se continuar assim, feche e abra o aplicativo; o registro fica em <code>~/.mybots-pc/node.log</code>.' : 'O MyBots do computador não está rodando. Inicie com <code>node pc/node.mjs install</code> ou <code>systemctl --user start mybots-pc</code>.';
     setTimeout(check, 1500);
   }
   check();

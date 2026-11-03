@@ -6,6 +6,7 @@ import { viewSize } from '../supervisor/browser-frame.mjs';
 import { redactCardNumbers } from '../supervisor/card-pan.mjs';
 import { readCheckoutTotal } from '../supervisor/wallet-checkout.mjs';
 import { safeUrl, stepCaption, BLOCKED } from '../supervisor/browser.mjs';
+import { dataDirectory } from './platform.mjs';
 import { electronInfo, connectElectron, electronCall, electronPage } from './electron-link.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
@@ -43,7 +44,7 @@ export async function connectMine(endpoint) {
 }
 
 export const IMPORTED = 'mybots-imported-to-shared';
-const downloadsRoot = () => process.env.MYBOTS_DOWNLOADS || join(homedir(), '.mybots-pc', 'downloads'), MAX_DOWNLOAD = 100 * 1024 * 1024;
+const downloadsRoot = () => process.env.MYBOTS_DOWNLOADS || join(dataDirectory(process.platform, {}), 'downloads'), MAX_DOWNLOAD = 100 * 1024 * 1024;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // A tab's icon, fetched once per address: the page's own <link rel=icon> or /favicon.ico, small raster images only.
 const ICONS = new Map();

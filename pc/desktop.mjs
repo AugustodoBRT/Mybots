@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
+import { hasDesktopControl } from './platform.mjs';
 
 const execAsync = promisify(execFile);
 const exec = (bin, argv, { input, ...options } = {}) => {
@@ -14,6 +15,7 @@ const CODES = { CTRL: 29, ALT: 56, SHIFT: 42, SUPER: 125, ENTER: 28, TAB: 15, ES
 export class Desktop {
   constructor({ run = exec } = {}) { this.run = run; }
   async command(op, input, signal) {
+    if (!hasDesktopControl()) throw new Error('O controle da tela e do teclado do computador só existe no Linux (Wayland/Hyprland) por enquanto.');
     const args = toolArguments(op, input); const kind = op.slice(8);
     const run = async (bin, argv, options = {}) => {
       signal?.throwIfAborted();

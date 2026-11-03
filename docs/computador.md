@@ -18,6 +18,7 @@ No celular: **Ajustes → Computador → Conectar computador** e leia o QR. Com 
 
 ```bash
 npm install --prefix mobile    # uma vez
+scripts/publish-desktop.sh     # instaladores do Linux (AppImage e .deb) na Release rolante pc-latest (v121); ver README
 scripts/build-desktop.sh       # gera a interface e o app, instala no menu e no início da sessão (na bandeja)
 ```
 

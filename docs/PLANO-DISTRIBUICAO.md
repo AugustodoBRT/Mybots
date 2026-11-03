@@ -36,6 +36,8 @@ Um usuário novo baixa o MyBots no computador (Linux, Windows ou Mac) e no celul
 
 ## 5. Fase 1 — instaladores
 
+> **Estado em 03/11/2026 (v121): Linux entregue (AppImage e .deb); Windows e macOS não.** Feito: 1.1 empacotamento (`electron-builder`, `packaging/`, `scripts/stage-desktop.mjs`, o Electron sobe o nó do PC sozinho como Node via `ELECTRON_RUN_AS_NODE` e um lançador `node` em `<pasta do nó>/bin` para o que as IAs iniciam), 1.2 CI (`.github/workflows/desktop.yml`, matriz Linux/Windows/macOS; Windows e Mac só por pedido em `platforms`) e `scripts/publish-desktop.sh`, 1.3 atualização (feed genérico na Release rolante `pc-latest`; AppImage e Windows com `electron-updater`, .deb e Mac só avisam), 1.4 assistente de primeira execução (`desktop/electron/welcome.html`, comando `pc/node.mjs doctor`). Da 1.0: certificado em JavaScript (`pc/make-cert.mjs`, sem openssl), `pc/platform.mjs` (pasta de dados, ponto do pânico por pipe no Windows, isolamento e controle de tela só no Linux), identidade de processo e `taskkill` por sistema, sem isolamento = Codex só leitura (sem terminal) e Claude com cartão de aprovação, controle de tela desligado fora do Linux. **Falta:** testar tudo isso em Windows e macOS de verdade (a CI só empacota), ditado e `ydotool` já desligados mas sem substituto, soquete de pânico em pipe sem teste no Windows, `Notification`/abrir arquivos nos dois, Chrome do Windows/Mac no navegador dos bots (a janela já traz o próprio navegador), o isolamento próprio de cada sistema e a assinatura.
+
 ### 5.1 O que prende o PC a Linux hoje (1.0)
 
 O trabalho de verdade de Windows e Mac é portar estas partes; empacotar é a parte fácil.

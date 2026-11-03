@@ -1,0 +1,44 @@
+# Instaladores do MyBots no computador. O conteúdo vem de ../dist/stage (scripts/stage-desktop.mjs).
+appId: br.com.mybots.desktop
+productName: MyBots
+electronVersion: 44.9.3
+directories:
+  app: ../dist/stage
+  output: ../dist/desktop
+# Sem asar: as IAs e o supervisor leem arquivos do app (por exemplo o servidor de ferramentas) com um Node comum.
+asar: false
+afterPack: after-pack.cjs
+files:
+  - "**/*"
+  - "!**/*.map"
+extraMetadata:
+  main: desktop/electron/main.js
+# The public feed the app reads: one rolling release ("pc-latest") that always holds the newest installers and latest*.yml.
+publish:
+  provider: generic
+  url: https://github.com/AugustodoBRT/Mybots/releases/download/pc-latest
+linux:
+  target: [AppImage, deb]
+  category: Utility
+  maintainer: MyBots <AugustodoBRT@users.noreply.github.com>
+  icon: ../desktop/electron/icon.png
+  artifactName: MyBots-${version}-linux-${arch}.${ext}
+  desktop:
+    entry:
+      StartupWMClass: mybots-desktop
+deb:
+  depends: [libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0]
+win:
+  target: [nsis]
+  icon: ../desktop/electron/icon.png
+  artifactName: MyBots-${version}-windows-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: [dmg]
+  category: public.app-category.productivity
+  icon: ../desktop/electron/icon.png
+  identity: null
+  artifactName: MyBots-${version}-mac-${arch}.${ext}

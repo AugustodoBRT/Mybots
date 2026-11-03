@@ -14,7 +14,7 @@ const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = ['state.get', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
+export const DESKTOP_METHODS = ['state.get', 'ai.accounts', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput'];
@@ -223,10 +223,10 @@ export class Link {
         this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
-        leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
+        leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
-      if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models }); this.changed('connection.changed'); return; }
+      if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
       if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }
@@ -313,6 +313,16 @@ export class Link {
       const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
       this.commands.set(rid, done);
       if (!this.post({ type: 'pc_file', rid, botId, path, offset })) done({ error: 'offline' });
+    });
+  }
+  /** The extra IA accounts of the computer: list, add, remove or verify one (the node does it on its own disk). */
+  aiAccounts(op, params = {}) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou para responder.' }), 60000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'ai_accounts', rid, op, ...params })) done({ error: 'offline' });
     });
   }
   /** The skills (folders with SKILL.md) found on the computer, for the profile's list and to check what a bot turns on. */

@@ -11,6 +11,7 @@ import { copyText, publishShareTargets, termuxAvailable, notificationAccess, ope
 import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop, pwa } from '../desktop';
+import { accountChoices, DEFAULT_ACCOUNT } from '../ai-accounts';
 
 export const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
 
@@ -186,7 +187,7 @@ export const providerOf = item => item?.provider || 'codex';
 
 export function findModel(models, selection) { return models.find(item => item.model === selection?.model && providerOf(item) === providerOf(selection)) || models.find(item => item.model === selection?.model); }
 
-export function ModelSettings({ models, selection, disabled, onChange, connections }) {
+export function ModelSettings({ models, selection, disabled, onChange, connections, aiAccounts, home, account }) {
   const [sheet, setSheet] = useState('');
   const model = findModel(models, selection);
   const providers = [...new Set(models.map(providerOf))];
@@ -195,13 +196,18 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   const available = models.filter(item => providerOf(item) === provider);
   const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
   const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex no Termux') }));
-  const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next); };
+  // Another IA starts on its own default account: accounts belong to one IA.
+  const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next, DEFAULT_ACCOUNT); };
+  const accountList = accountChoices(aiAccounts, provider, home);
+  const accountOptions = accountList.map(item => ({ value: item.id, label: item.label, detail: item.loggedIn ? 'Conectada' : 'Ainda sem login nesse aparelho: entre pela tela Contas de IA' }));
+  const accountName = accountList.find(item => item.id === (account || DEFAULT_ACCOUNT))?.label || 'Conta principal';
   const effortOptions = model ? (model.efforts.length
     ? model.efforts.map(value => ({ value, label: EFFORT_NAMES[value] || value }))
     : [{ value: null, label: 'Padrão do modelo' }]) : [];
   const effortName = selection?.reasoningEffort ? EFFORT_NAMES[selection.reasoningEffort] || selection.reasoningEffort : 'Padrão do modelo';
   return <View>
     {providers.length > 1 && <View style={styles.settingsRow}><ChoiceField label="IA" value={PROVIDER_NAMES[provider]} disabled={disabled} onPress={() => setSheet('provider')} /></View>}
+    {accountList.length > 1 && <View style={styles.settingsRow}><ChoiceField label="Conta" value={accountName} disabled={disabled} onPress={() => setSheet('account')} /></View>}
     <View style={styles.settingsRow}>
       <ChoiceField label="Modelo" value={model?.displayName} disabled={disabled || !models.length} onPress={() => setSheet('model')} />
       <ChoiceField label="Raciocínio" value={model ? effortName : null} disabled={disabled || !model} onPress={() => setSheet('effort')} />
@@ -209,6 +215,8 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
     <Text style={styles.settingsHint}>{disabled ? 'Aguarde esta resposta terminar.' : connections?.[provider] && !connections[provider].loggedIn ? connections[provider].message : model ? 'Acesso confirmado ao gerar uma resposta.' : 'Carregando o catálogo de modelos…'}</Text>
     <ChoiceSheet visible={sheet === 'provider'} title="Escolha a IA" options={providerOptions} value={provider}
       onClose={() => setSheet('')} onSelect={next => { if (next !== provider) pickProvider(next); }} />
+    <ChoiceSheet visible={sheet === 'account'} title={`Conta do ${PROVIDER_NAMES[provider] || 'IA'}`} options={accountOptions} value={account || DEFAULT_ACCOUNT}
+      onClose={() => setSheet('')} onSelect={next => { if (next !== (account || DEFAULT_ACCOUNT)) onChange(selection?.model, selection?.reasoningEffort, provider, next); }} />
     <ChoiceSheet visible={sheet === 'model'} title="Escolha um modelo" options={modelOptions} value={selection?.model}
       onClose={() => setSheet('')} onSelect={next => { const chosen = available.find(item => item.model === next); onChange(next, chosen?.defaultEffort ?? null, provider); }} />
     <ChoiceSheet visible={sheet === 'effort'} title="Nível de raciocínio" options={effortOptions} value={selection?.reasoningEffort ?? null}

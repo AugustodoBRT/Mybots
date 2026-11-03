@@ -13,6 +13,8 @@ import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { Agy } from '../lib/agy.mjs';
 import { Opencode } from '../lib/opencode.mjs';
+import { accounts, DEFAULT_ACCOUNT } from '../lib/accounts.mjs';
+import { manageAccounts } from './ai-accounts.mjs';
 import { PROMPT_VERSION } from '../mobile/local.js';
 import { Rooms } from './rooms.mjs';
 import { Team } from './team.mjs';
@@ -76,7 +78,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const roomSelection = bot => ({ ...(bot.provider ? { provider: bot.provider } : {}), model: bot.model, reasoningEffort: bot.reasoningEffort });
     queue.recover();
     const instanceId = randomUUID();
-    let models = [], modelsError = '', checking, lastCheck = 0, closed = false, accountConnectors = null;
+    let models = [], modelsError = '', checking, lastCheck = 0, closed = false, accountConnectors = null, aiLocal = {};
     const connections = { codex: { available: false, loggedIn: false, message: 'Verificando o Codex…' }, ...(claude ? { claude: { available: false, loggedIn: false, message: 'Verificando o Claude…' } } : {}), ...(agy ? { agy: { available: false, loggedIn: false, message: 'Verificando o Antigravity…' } } : {}), ...(opencode ? { opencode: { available: false, loggedIn: false, message: 'Verificando o opencode…' } } : {}) };
     // The app keeps one summary line; per-provider details are in `connections`.
     const summary = () => {
@@ -304,17 +306,35 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       if (!force && lastCheck && Date.now() - lastCheck < ttl) return;
       checking = (async () => {
         const [codexStatus, claudeStatus, agyStatus, opencodeStatus] = await Promise.all([codex.status(), claude?.status(), agy?.status(), opencode?.status()]);
-        connections.codex = codexStatus; if (claude) connections.claude = claudeStatus; if (agy) connections.agy = agyStatus; if (opencode) connections.opencode = opencodeStatus;
+        const defaults = { codex: [codex, codexStatus], claude: [claude, claudeStatus], agy: [agy, agyStatus], opencode: [opencode, opencodeStatus] };
+        // The extra accounts (lib/accounts.mjs): an IA counts as connected when any account is, and its models come from the first one that is.
+        const Make = { codex: Codex, claude: Claude, agy: Agy, opencode: Opencode };
+        const extras = {};
+        await Promise.all(Object.entries(defaults).flatMap(([key, [client]]) => client ? accounts.list(key).map(async item => {
+          const own = new Make[key](client.binary, accounts.env(key, item.id));
+          (extras[key] ||= []).push({ item, client: own, status: await own.status().catch(() => ({ available: false, loggedIn: false })) });
+        }) : []));
+        const source = {}, listed = {};
+        for (const [key, [client, status]] of Object.entries(defaults)) {
+          if (!client) continue;
+          const more = (extras[key] || []).sort((a, b) => a.item.createdAt.localeCompare(b.item.createdAt));
+          const ready = status.loggedIn ? { client } : more.find(row => row.status.loggedIn);
+          source[key] = ready?.client || null;
+          if (!status.loggedIn && ready) defaults[key][1] = { ...status, loggedIn: true, message: 'Conectado por uma conta extra' };
+          listed[key] = [{ id: DEFAULT_ACCOUNT, label: 'Conta principal', loggedIn: Boolean(status.loggedIn), default: true }, ...more.map(row => ({ id: row.item.id, label: row.item.label, loggedIn: Boolean(row.status.loggedIn) }))];
+        }
+        aiLocal = listed;
+        connections.codex = defaults.codex[1]; if (claude) connections.claude = defaults.claude[1]; if (agy) connections.agy = defaults.agy[1]; if (opencode) connections.opencode = defaults.opencode[1];
         const catalog = [];
-        if (codexStatus.loggedIn) {
-          try { catalog.push(...(await codex.models()).map(item => ({ ...item, provider: 'codex' }))); modelsError = ''; }
+        if (source.codex) {
+          try { catalog.push(...(await source.codex.models()).map(item => ({ ...item, provider: 'codex' }))); modelsError = ''; }
           catch (error) { modelsError = error.message; }
           refreshLimits();
         }
         // Claude stays listed even when missing or logged out, so the app can show why it cannot answer yet.
         if (claude) catalog.push(...await claude.models());
-        if (agy && agyStatus.loggedIn) catalog.push(...await agy.models().catch(() => []));
-        if (opencode && opencodeStatus.loggedIn) catalog.push(...await opencode.models().catch(() => []));
+        if (source.agy) catalog.push(...await source.agy.models().catch(() => []));
+        if (source.opencode) catalog.push(...await source.opencode.models().catch(() => []));
         models = catalog;
         lastCheck = Date.now();
       })().finally(() => { checking = null; broadcast('connection.changed'); });
@@ -326,6 +346,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       if (!codex.limits || Date.now() - limitsAt < 60000) return;
       limitsAt = Date.now();
       codex.limits().then(limits => { db.setLimits('codex', limits); broadcast('connection.changed'); }).catch(() => {});
+    };
+    /** Where the IA accounts live for the app to list: on this device (the phone's own supervisor) and on the paired computer. */
+    const aiAccountsView = () => {
+      const node = nodes.computer?.();
+      return { here: kind === 'computer' ? null : { name: 'Este celular', accounts: aiLocal }, computer: node ? { name: node.name, accounts: node.accounts || {} } : null };
     };
     const widgetSummary = () => {
       const active = db.activeTasks();
@@ -369,7 +394,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       const all = db.bots(); const live = all.filter(bot => !bot.deletedAt); const kept = new Set(live.map(bot => bot.id));
       return { schema: 1, mode: 'phone', supervisorMigrated: true, seq, usage: db.usage(), person: db.person(),
         rooms: rooms.list().map(roomSummary),
-        googleAccounts: db.googleAccounts(), presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(),
+        googleAccounts: db.googleAccounts(), presence: Object.fromEntries(live.map(bot => [bot.id, nodes.presence(bot)])), nodes: nodes.status(), aiAccounts: aiAccountsView(),
         accountServers: knownServers() || [], bots: live.map(botSummary), deletedBots: all.filter(bot => bot.deletedAt),
         active: [...new Set(db.activeTasks().map(task => task.bot_id))], pausedQueues: live.filter(bot => queue.paused(bot.id)).map(bot => bot.id),
         connection: summary(), connections, models: catalog().map(item => {
@@ -419,6 +444,14 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       switch (method) {
         case 'state.get': await refresh(); return state();
         case 'connection.refresh': await refresh(true); return state();
+        // The extra IA accounts (two Claude, two Codex...): on this device when it runs the IAs itself (the phone's supervisor) or on the
+        // computer through the link. Adding one answers with the command that logs it in, to run in a terminal of that device.
+        case 'ai.accounts': {
+          const op = String(params.op || 'list');
+          if (params.where === 'here' && kind !== 'computer') return manageAccounts({ ...params, op }, { accounts, refresh: async () => { await refresh(true); return { accounts: aiLocal }; } });
+          if (op === 'list') return { accounts: nodes.computer?.()?.accounts || null };
+          return link.aiAccounts(op, { provider: params.provider, id: params.id, label: params.label });
+        }
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'google.accounts.add': { const accounts = db.addGoogleAccount(params.account); broadcast('connection.changed'); return accounts; }

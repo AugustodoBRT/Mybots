@@ -130,7 +130,7 @@ function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onStee
       {desktop ? null : <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />}
     </View>
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
-    {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} /></View> : null}
+    {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} aiAccounts={data.aiAccounts} home={bot.home || 'phone'} account={bot.aiAccount} /></View> : null}
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
     {side ? null : panel}
     <View style={side ? styles.chatSplit : { flex: 1 }}>

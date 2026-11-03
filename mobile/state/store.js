@@ -71,7 +71,7 @@ export const selectConversation = (key, isRoom = false) => ({ data, chats, draft
   const pick = source => Object.fromEntries(Object.entries(source || {}).filter(([id]) => ids.has(id)));
   const chat = chats[key]; const item = room || bots[0];
   const draftOf = Object.fromEntries(Object.entries(drafts || {}).filter(([id]) => id === key || id.startsWith(key + ':')));
-  const context = { models: data.models, defaultSelection: data.defaultSelection, connections: data.connections, connection: data.connection, modelsError: data.modelsError,
+  const context = { models: data.models, defaultSelection: data.defaultSelection, connections: data.connections, aiAccounts: data.aiAccounts, connection: data.connection, modelsError: data.modelsError,
     bots, nodes: data.nodes, presence: pick(data.presence), active: data.active?.filter(id => ids.has(id)),
     tasks: data.tasks?.filter(task => isRoom ? room?.activeTasks?.includes(task.id) : task.bot_id === key),
     approvals: data.approvals?.filter(approval => isRoom ? room?.activeTasks?.includes(approval.taskId) : approval.botId === key),

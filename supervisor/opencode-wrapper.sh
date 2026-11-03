@@ -4,12 +4,14 @@ prefix=${PREFIX:-/data/data/com.termux/files/usr}
 state="$prefix/var/lib/proot-distro"
 # proot-distro starts a clean login: the turn's configuration (it carries the run's token) goes in by `env`.
 carry=(); for name in OPENCODE_CONFIG_CONTENT; do [ -n "${!name:-}" ] && carry+=("$name=${!name}"); done
+# An extra account (lib/accounts.mjs) keeps its login under its own XDG folders: share that folder and carry the variables.
+extra=(); if [ -n "${MYBOTS_ACCOUNT_DIR:-}" ]; then for name in XDG_DATA_HOME XDG_CONFIG_HOME XDG_STATE_HOME; do [ -n "${!name:-}" ] && carry+=("$name=${!name}"); done; extra+=(--bind "$MYBOTS_ACCOUNT_DIR:$MYBOTS_ACCOUNT_DIR"); fi
 # proot-distro 5 keeps containers/<name>/rootfs; older releases used installed-rootfs/<name>.
 for rootfs in "$state"/containers/*/rootfs "$state"/installed-rootfs/*; do
   for path in /root/.opencode/bin/opencode /root/.local/bin/opencode /usr/local/bin/opencode /usr/bin/opencode; do
     [ -L "$rootfs$path" ] || [ -f "$rootfs$path" ] || continue
     name=${rootfs%/rootfs}; name=${name##*/}
-    exec proot-distro login "$name" -- env "${carry[@]}" "$path" "$@"
+    exec proot-distro login "$name" "${extra[@]}" -- env "${carry[@]}" "$path" "$@"
   done
 done
 printf 'opencode não encontrado. Veja docs/agy-opencode-termux.md.\n' >&2

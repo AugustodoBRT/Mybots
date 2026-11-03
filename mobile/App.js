@@ -14,6 +14,7 @@ import { ActivityColumns, ActivityPage } from './components/Activity';
 import { UsagePanel } from './components/Usage';
 import { desktop, pwa, column, paintPage } from './desktop';
 import { downloadFromComputer } from './web-file';
+import { DEFAULT_ACCOUNT } from './ai-accounts';
 import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './pc-backend';
 import { SetupScreen } from './components/Setup';
 import { DesktopUpdate } from './components/DesktopUpdate';
@@ -512,13 +513,13 @@ function AppMain() {
     try { await supervisor.current.call('task.cancel', { taskId }); await loadSupervisorState(); }
     catch (error) { setLoadError(error.message); }
   };
-  const saveSettings = async (model, reasoningEffort, provider) => {
+  const saveSettings = async (model, reasoningEffort, provider, account) => {
     const bot = data?.bots.find(item => item.id === selected);
     if (!bot || maintenanceBusy || savingSettings || data.active?.includes(bot.id)) return;
     setSavingSettings(true);
     try {
       if (mode === 'phone') {
-        await supervisor.current.call('bot.update', { botId: bot.id, model, reasoningEffort, ...(provider ? { provider } : {}) });
+        await supervisor.current.call('bot.update', { botId: bot.id, model, reasoningEffort, ...(provider ? { provider } : {}), ...(account !== undefined ? { aiAccount: account === DEFAULT_ACCOUNT ? '' : account } : {}) });
         await loadSupervisorState();
       } else { await api(`/api/bots/${bot.id}/settings`, { model, reasoningEffort }, apiToken, apiBase); await refreshComputer(); }
     }
@@ -788,7 +789,7 @@ function AppMain() {
       onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})} />
   } : {};
   const profileSheet = data ? <BotProfile inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
-      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} grants={shownProfile?.grants || []} nodes={data.nodes || []}
+      phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} aiAccounts={data.aiAccounts} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
       negotiations={data.negotiations || []} onNegotiation={async (method, params) => { await supervisor.current.call(method, params); await loadSupervisorState(); }}
@@ -835,7 +836,7 @@ function AppMain() {
       </View></View>
     </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
-    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} nodes={data.nodes || []} phone={mode === 'phone'}
+    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} aiAccounts={data.aiAccounts} nodes={data.nodes || []} phone={mode === 'phone'}
       freeChoice={mode === 'phone' && !desktop && termuxAvailable && backend !== 'pc'} onClose={() => setCreateVisible(false)} onCreate={createBot} /> : null}
     {desktop ? null : profileSheet}
     <SettingsSheet visible={maintenanceVisible} onClose={() => setMaintenanceVisible(false)} a={settingsContext} />

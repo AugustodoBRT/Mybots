@@ -41,7 +41,7 @@ const s = themed(() => ({
  * Creating a bot in three steps: its face (Sortear or Montar), how it behaves and what it may do, and the first message.
  * The buttons sit at the end of each step, never over the options.
  */
-export function NewBot({ visible, models, defaultSelection, connections, phone, onClose, onCreate }) {
+export function NewBot({ visible, models, defaultSelection, connections, aiAccounts, phone, onClose, onCreate }) {
   const [step, setStep] = useState(0); const [name, setName] = useState(''); const [face, setFace] = useState(null); const [instructions, setInstructions] = useState('');
   const [selection, setSelection] = useState({}); const [first, setFirst] = useState(GREETINGS[0]);
   const [template, setTemplate] = useState(null); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
@@ -82,7 +82,7 @@ export function NewBot({ visible, models, defaultSelection, connections, phone, 
           <Text style={s.label}>Personalidade e função</Text>
           <TextInput accessibilityLabel="Personalidade e função" value={instructions} onChangeText={setInstructions} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.accent} style={[s.input, s.area]} />
           <Text style={s.label}>Inteligência</Text>
-          <ModelSettings models={models} connections={connections} selection={selection} disabled={saving} onChange={(model, reasoningEffort, provider) => setSelection(old => ({ ...old, model, reasoningEffort, provider }))} />
+          <ModelSettings models={models} connections={connections} selection={selection} disabled={saving} onChange={(model, reasoningEffort, provider, account) => setSelection(old => ({ ...old, model, reasoningEffort, provider, ...(account !== undefined ? { aiAccount: account === 'default' ? '' : account } : {}) }))} aiAccounts={aiAccounts} home="any" account={selection.aiAccount} />
           <Text style={s.hint}>O bot fica disponível no celular e no computador, com acesso total por padrão. O controle do celular pode ser ligado depois no perfil.</Text>
           <PrimaryButton icon="right" title="Continuar" disabled={!ready[1]} onPress={() => setStep(2)} style={{ marginTop: 24 }} />
         </> : null}

@@ -114,7 +114,7 @@ export function createLocal({ directory, port = DEFAULT_LOCAL_PORT, entry = ENTR
     mkdirSync(home, { recursive: true, mode: 0o700 }); chmodSync(home, 0o700);
     rmSync(join(home, 'endpoint.json'), { force: true });
     const runner = nodeRun();
-    const process_ = spawn(runner.command, [entry], { env: { ...process.env, ...(runner.env || {}), MYBOTS_HOME: home, MYBOTS_PORT: String(port), MYBOTS_RELEASE: 'computador', ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    const process_ = spawn(runner.command, [entry], { env: { ...process.env, ...(runner.env || {}), MYBOTS_HOME: home, MYBOTS_PORT: String(port), MYBOTS_RELEASE: 'computador', MYBOTS_DEVICE_KIND: 'computer', ...env }, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     child = process_;
     process_.stderr.on('data', data => { for (const line of String(data).split('\n')) if (line.trim()) log('[supervisor] ' + line.trim()); });
     process_.on('exit', code => {

@@ -8,6 +8,9 @@ import { now } from './database.mjs';
  * plus which IAs are logged in there.
  * Known computers and when they were last seen are kept in metadata, so "visto por último" survives restarts.
  */
+/** The accounts of each IA on a computer (the id is a short name, the label what the person typed): only these fields, a few of them. */
+const cleanAccounts = accounts => Object.fromEntries(PROVIDERS.filter(key => Array.isArray(accounts?.[key])).map(key => [key, accounts[key].slice(0, 9)
+  .filter(item => typeof item?.id === 'string' && /^[a-z0-9-]{1,24}$/.test(item.id)).map(item => ({ id: item.id, label: String(item.label || item.id).slice(0, 40), loggedIn: Boolean(item.loggedIn), ...(item.default ? { default: true } : {}) }))]));
 export class Nodes {
   constructor(db, { changed = () => {} } = {}) { Object.assign(this, { db, changed }); this.online = new Map(); }
   known() { try { const list = JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='nodes'")?.value || '[]'); return Array.isArray(list) ? list : []; } catch { return []; } }
@@ -16,9 +19,9 @@ export class Nodes {
     this.db.run("INSERT INTO metadata VALUES('nodes',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(list));
   }
   /** A computer came online. Returns the function that marks it offline again. */
-  connect({ id, name = 'Computador', execute, connections = {}, models = [] }) {
+  connect({ id, name = 'Computador', execute, connections = {}, models = [], accounts = {} }) {
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id) || typeof execute !== 'function') throw new Error('Computador inválido.');
-    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now(), ...this.clean({ connections, models }) };
+    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now(), ...this.clean({ connections, models, accounts }) };
     this.online.set(id, node); this.save({ id, name: node.name, lastSeen: node.connectedAt });
     const bots = this.db.bots().filter(bot => !bot.deletedAt && bot.home === 'pc').length;
     this.db.record('node_connected', `${node.name} conectado${bots ? `: ${bots} ${bots > 1 ? 'bots ficaram' : 'bot ficou'} online` : ''}.`);
@@ -26,11 +29,11 @@ export class Nodes {
     return () => this.disconnect(id, node);
   }
   /** Only what the app shows and the checks need: logged in or not, and the model list. */
-  clean({ connections, models }) {
+  clean({ connections, models, accounts }) {
     const status = value => ({ available: Boolean(value?.available), loggedIn: Boolean(value?.loggedIn), message: typeof value?.message === 'string' ? value.message.slice(0, 200) : '' });
-    return { connections: Object.fromEntries(PROVIDERS.filter(key => connections?.[key]).map(key => [key, status(connections[key])])), models: Array.isArray(models) ? models.slice(0, 200) : [] };
+    return { connections: Object.fromEntries(PROVIDERS.filter(key => connections?.[key]).map(key => [key, status(connections[key])])), models: Array.isArray(models) ? models.slice(0, 200) : [], accounts: cleanAccounts(accounts) };
   }
-  update(id, fields) { const node = this.online.get(id); if (node) Object.assign(node, this.clean({ connections: fields.connections ?? node.connections, models: fields.models ?? node.models })); }
+  update(id, fields) { const node = this.online.get(id); if (node) Object.assign(node, this.clean({ connections: fields.connections ?? node.connections, models: fields.models ?? node.models, accounts: fields.accounts ?? node.accounts })); }
   disconnect(id, node = this.online.get(id)) {
     if (!node || this.online.get(id) !== node) return;
     this.online.delete(id); this.save({ id, name: node.name, lastSeen: now() });
@@ -54,6 +57,6 @@ export class Nodes {
     return { online: false, where: null, lastSeen };
   }
   status() {
-    return this.known().map(item => ({ id: item.id, name: item.name, online: this.online.has(item.id), lastSeen: this.online.has(item.id) ? now() : item.lastSeen, connections: this.online.get(item.id)?.connections || null }));
+    return this.known().map(item => ({ id: item.id, name: item.name, online: this.online.has(item.id), lastSeen: this.online.has(item.id) ? now() : item.lastSeen, connections: this.online.get(item.id)?.connections || null, accounts: this.online.get(item.id)?.accounts || null }));
   }
 }

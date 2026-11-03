@@ -682,7 +682,7 @@ export class Database {
       (data.instructions !== undefined && (typeof data.instructions !== 'string' || data.instructions.length > 2000)) ||
       !['green','blue','purple','orange'].includes(data.color || 'green')) throw new Error('Informe nome, personalidade e cor válidos.');
     const stamp = now();
-    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', ...(data.face ? { face: data.face } : {}), autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, createdAt: stamp, updatedAt: stamp, messages: [] };
+    const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', ...(data.face ? { face: data.face } : {}), autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, ...(data.aiAccount && data.aiAccount !== 'default' ? { aiAccount: data.aiAccount } : {}), createdAt: stamp, updatedAt: stamp, messages: [] };
     Object.assign(bot, defaultBotAccess(bot), { googleAccount: data.googleAccount || '' });
     this.transaction(() => { if (bot.googleAccount) this.addGoogleAccount(bot.googleAccount); this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
     return bot;
@@ -692,7 +692,8 @@ export class Database {
     validateProfile({ ...changes, provider: selection.provider || bot.provider });
     if (this.activeTasks(id).length) throw new Error('Aguarde a resposta antes de alterar o bot.');
     const updated = { ...bot, ...selection, updatedAt: now() };
-    for (const field of ['name','instructions','color','avatar','face','autonomy','access','home','folders','browserMode','skills','gpu','googleAccount']) if (changes[field] !== undefined) updated[field] = changes[field];
+    for (const field of ['name','instructions','color','avatar','face','autonomy','access','home','folders','browserMode','skills','gpu','googleAccount','aiAccount']) if (changes[field] !== undefined) updated[field] = changes[field];
+    if (updated.aiAccount === '' || updated.aiAccount === 'default') delete updated.aiAccount;   // the IA's own login is the default
     // The reserve model for when the subscription's limit ends (null removes it); only another provider's makes sense.
     if (changes.fallback !== undefined) { if (changes.fallback === null) delete updated.fallback; else updated.fallback = { provider: changes.fallback.provider, model: changes.fallback.model, reasoningEffort: changes.fallback.reasoningEffort }; }
     if (updated.fallback && updated.fallback.provider === (updated.provider || 'codex')) delete updated.fallback;
@@ -707,7 +708,7 @@ export class Database {
     // A new access level, like a new grant, needs a fresh session so the bot stops repeating "I have no access".
     // Moving to another device also starts a new session there: an IA session lives on the machine that made it.
     const moved = (updated.home || 'phone') !== (bot.home || 'phone') || browserMode(updated) !== browserMode(bot);
-    if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access || updated.googleAccount !== bot.googleAccount) delete updated.codexSessionId;
+    if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access || updated.googleAccount !== bot.googleAccount || (updated.aiAccount || '') !== (bot.aiAccount || '')) delete updated.codexSessionId;   // a session lives in the folder of the account that made it
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total', free: 'Livre' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
     this.transaction(() => { if (updated.googleAccount) this.addGoogleAccount(updated.googleAccount); this.putBot(updated); if (updated.googleAccount !== bot.googleAccount) this.run('DELETE FROM room_sessions WHERE bot_id=?', id); this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });

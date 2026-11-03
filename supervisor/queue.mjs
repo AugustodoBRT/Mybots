@@ -11,12 +11,17 @@ import { processIdentity, stopOrphan } from './process.mjs';
 import { browserAccountGuidance } from '../mobile/local.js';
 import { browserMode } from './tool-policy.mjs';
 import { fileURLToPath } from 'node:url';
+import { accounts } from '../lib/accounts.mjs';
 
-export const runReply = (bot, prompt, options) => bot.provider === 'claude'
-  ? claudeRunner.runReply(bot, prompt, { ...options, binary: process.env.CLAUDE_BIN || 'claude' })
-  : bot.provider === 'agy' ? agyRunner.runReply(bot, prompt, { ...options, binary: process.env.AGY_BIN || 'agy' })
-  : bot.provider === 'opencode' ? opencodeRunner.runReply(bot, prompt, { ...options, binary: process.env.OPENCODE_BIN || 'opencode' })
-  : runner.runReply(bot, prompt, { ...options, binary: process.env.CODEX_BIN || 'codex' });
+// The turn runs with the login of the account the bot chose (lib/accounts.mjs); without one, the IA's own login.
+export const runReply = (bot, prompt, options) => {
+  const provider = bot.provider || 'codex', env = accounts.env(provider, bot.aiAccount);
+  const withAccount = { ...options, ...(env ? { env } : {}) };
+  return provider === 'claude' ? claudeRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.CLAUDE_BIN || 'claude' })
+    : provider === 'agy' ? agyRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.AGY_BIN || 'agy' })
+    : provider === 'opencode' ? opencodeRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.OPENCODE_BIN || 'opencode' })
+    : runner.runReply(bot, prompt, { ...withAccount, binary: process.env.CODEX_BIN || 'codex' });
+};
 
 // Why a running turn was stopped by the supervisor instead of the person, and what the conversation says.
 const STOPPED = {

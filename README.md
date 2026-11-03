@@ -67,6 +67,7 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 | 🔑 **Senhas salvas** | O bot entra sozinho nos sites com a senha que você salvou ou importou do Chrome (CSV); ela fica só no celular, só vale no site certo e a IA nunca a vê. |
 | 🪄 **Widget animado** | Na tela inicial, os bots respiram, piscam, olham em volta enquanto trabalham e acendem a antena quando esperam você, com a última mensagem e o próximo prazo. |
 | 📊 **Uso e limites** | Tokens de cada bot e de cada resposta, e quanto do limite da sua assinatura (5 horas e semana) já foi usado. |
+| 🔀 **Várias contas de cada IA** | Em Ajustes → **Contas de IA** você adiciona mais de uma conta de Claude, Codex, Antigravity ou opencode (por exemplo duas de Claude e duas de Codex), no celular e no computador. O app mostra o comando para entrar em cada uma e cada bot escolhe a conta no próprio perfil. Os logins ficam no aparelho onde você entrou e os bots só enxergam a conta que usam. |
 | 🔄 **Atualiza sozinho** | O app avisa quando sai uma versão nova, baixa, confere a assinatura e instala, sem precisar de cabo ou de link. |
 | 🛡️ **Você no controle** | Acesso total por padrão e uma opção por bot para controlar o celular. Parar e Assumir interrompem o controle; senhas, cartões e códigos continuam protegidos. |
 

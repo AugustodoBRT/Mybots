@@ -6,11 +6,19 @@ import { termuxAvailable, passwordsList } from '../termux';
 import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
+import { AiAccounts } from './AiAccounts';
 import { RemotePanel, TermuxGuide } from './Setup';
 import { DesktopUpdate } from './DesktopUpdate';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
+
+/** "3 contas em 2 IAs", or the invitation when there is only the main login of each. */
+function aiSummary(aiAccounts) {
+  const extra = new Set(); let count = 0;
+  for (const device of [aiAccounts?.here, aiAccounts?.computer]) for (const [provider, list] of Object.entries(device?.accounts || {})) for (const item of list) if (!item.default) { count++; extra.add(provider); }
+  return count ? `${count} ${count > 1 ? 'contas extras' : 'conta extra'} em ${extra.size} ${extra.size > 1 ? 'IAs' : 'IA'}` : 'Mais de uma conta de Claude, Codex e outras';
+}
 
 const s = themed(() => ({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
@@ -38,6 +46,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
   const categories = useMemo(() => [
     { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
+    ...(phone ? [{ key: 'ai', icon: 'user', title: 'Contas de IA', summary: aiSummary(data?.aiAccounts), keywords: ['claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', ...bots.map(bot => bot.name)] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
@@ -46,7 +55,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     ...(termuxAvailable && !remote ? [{ key: 'secrets', icon: 'key', title: 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
     ...(!desktop && !remote ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar', 'termux'] }] : []),
     { key: 'about', icon: 'info', title: 'Sobre', summary: `MyBots ${a.update?.info?.currentName || ''}${a.update?.info?.available ? ' · atualização disponível' : ''}`.trim(), keywords: ['versão', 'atualização', 'atualizar', 'novidades', 'privacidade'] }
-  ], [data, phone, remote, passwords, a.update?.info?.available, a.update?.info?.currentName]);
+  ], [data, phone, remote, passwords, a.update?.info?.available, a.update?.info?.currentName, data?.aiAccounts]);
   const shown = matchCategories(query, categories);
   const current = categories.find(item => item.key === page);
   const body = key => {
@@ -57,6 +66,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
         onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}
         onLogin={async (botId, account) => { onClose(); await a.googleLogin(botId, account); }} />
     </>;
+    if (key === 'ai') return <AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} />;
     if (key === 'bots') return <>
       {bots.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Perfil de ${bot.name}`} onPress={() => { onClose(); a.openProfile(bot); }} style={({ pressed }) => [s.botRow, pressed && { opacity: 0.7 }]}>
         <Avatar bot={bot} size={44} animated={false} state={offline(data, bot.id) ? 'sleeping' : 'idle'} />

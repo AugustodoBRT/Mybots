@@ -12,6 +12,8 @@ import { dataDirectory, panicEndpoint, hasIsolation } from './platform.mjs';
 import { WebSocketServer, createWebSocketStream } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { acceptApp } from './app-channel.mjs';
 import { runReply } from '../supervisor/queue.mjs';
+import { accounts, DEFAULT_ACCOUNT } from '../lib/accounts.mjs';
+import { manageAccounts as manage } from '../supervisor/ai-accounts.mjs';
 import { Codex } from '../lib/codex.mjs';
 import { Claude } from '../lib/claude.mjs';
 import { Agy } from '../lib/agy.mjs';
@@ -122,9 +124,12 @@ export function gpuDevices(dev = '/dev') {
 const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kube', '.docker', '.local/share/keyrings', '.config/gh', '.config/rclone', '.config/google-chrome'];
 // Where each IA keeps its login: a turn of one IA cannot see the others'.
 const OTHER_LOGINS = [['codex', '.codex'], ['claude', '.claude'], ['agy', '.gemini'], ['opencode', '.local/share/opencode']];
-export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev' } = {}) {
+// `accountDir`: the folder of the extra account this turn logs in with (lib/accounts.mjs). The folder of all the accounts is hidden and
+// only this one is mounted back, so a turn sees neither the other accounts nor, when it uses an extra one, the IA's own default login.
+export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev', accountDir = null, accountsRoot = accounts.root() } = {}) {
   if (!bwrap) return null;
-  const hidden = [...new Set([...HIDDEN, ...OTHER_LOGINS.filter(([key]) => key !== (provider || 'codex')).map(([, path]) => path)].map(path => join(home, path)).concat(directory))].filter(path => existsSync(path) && statSync(path).isDirectory());
+  const ownLogin = accountDir ? [] : [provider || 'codex'];   // an extra account hides the default login of its own IA too
+  const hidden = [...new Set([...HIDDEN, ...OTHER_LOGINS.filter(([key]) => !ownLogin.includes(key)).map(([, path]) => path)].map(path => join(home, path)).concat(directory, accountsRoot))].filter(path => existsSync(path) && statSync(path).isDirectory());
   // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
   // prevents reaching the host's sockets and browser profiles through another process's root directory.
   const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
@@ -132,7 +137,7 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
   // Skills turned on for the bot: only their folder, at the same absolute path, mounted after the folders hidden above
   // (a skill under ~/.claude stays reachable for a Codex bot while the rest of ~/.claude is empty). Read-only unless
   // the person allowed improving it.
-  const folders = skills.filter(skill => skill?.path && existsSync(skill.path)).flatMap(skill => [skill.write ? '--bind' : '--ro-bind', skill.path, skill.path]);
+  const folders = [...skills.filter(skill => skill?.path && existsSync(skill.path)).flatMap(skill => [skill.write ? '--bind' : '--ro-bind', skill.path, skill.path]), ...(accountDir && existsSync(accountDir) ? ['--bind', accountDir, accountDir] : [])];
   // The graphics card only when the person turned it on for this bot: the private /dev has no render devices.
   const devices = gpu ? gpuDevices(dev).flatMap(path => ['--dev-bind', path, path]) : [];
   return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', '--unshare-pid', '--proc', '/proc', '--dev', '/dev',
@@ -140,14 +145,22 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
 }
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude'), agy: new Agy(), opencode: new Opencode() };
-/** Which IAs are logged in on this computer, and their models, for the phone to show and check. */
+const clientFor = (provider, env) => provider === 'codex' ? new Codex(undefined, env) : provider === 'claude' ? new Claude(process.env.CLAUDE_BIN || 'claude', env) : provider === 'agy' ? new Agy(undefined, env) : new Opencode(undefined, env);
+/**
+ * Which IAs are logged in on this computer, and their models, for the phone to show and check. An IA counts as connected when any of
+ * its accounts is (the IA's own login, or an extra one made in lib/accounts.mjs); `accounts` lists each one's state.
+ */
 export async function localStatus() {
-  const connections = {}, models = [];
-  for (const [key, client] of Object.entries(local)) {
-    connections[key] = await client.status().catch(() => ({ available: false, loggedIn: false }));
-    if (connections[key].loggedIn) models.push(...(await client.models().catch(() => [])).map(item => ({ ...item, provider: key === 'codex' ? item.provider : key })));
+  const connections = {}, models = [], list = {};
+  for (const [key, own] of Object.entries(local)) {
+    const rows = await Promise.all([{ id: DEFAULT_ACCOUNT, label: 'Conta principal', client: own }, ...accounts.list(key).map(item => ({ id: item.id, label: item.label, client: clientFor(key, accounts.env(key, item.id)) }))]
+      .map(async row => ({ ...row, status: await row.client.status().catch(() => ({ available: false, loggedIn: false })) })));
+    const first = rows.find(row => row.status.loggedIn);
+    connections[key] = first ? { ...first.status, loggedIn: true } : rows[0].status;
+    list[key] = rows.map(row => ({ id: row.id, label: row.label, loggedIn: Boolean(row.status.loggedIn), ...(row.id === DEFAULT_ACCOUNT ? { default: true } : {}) }));
+    if (first) models.push(...(await first.client.models().catch(() => [])).map(item => ({ ...item, provider: key === 'codex' ? item.provider : key })));
   }
-  return { connections, models };
+  return { connections, models, accounts: list };
 }
 
 const FILE_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', json: 'application/json', html: 'text/html', zip: 'application/zip', mp3: 'audio/mpeg', mp4: 'video/mp4', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
@@ -280,7 +293,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
     });
   };
   let current = { connections: {}, models: [] };
-  const refresh = async () => { current = await status(); for (const ws of sockets.clients) if (ws.phone) ws.send(JSON.stringify({ type: 'status', ...current })); };
+  const refresh = async () => { current = await status(); for (const ws of sockets.clients) if (ws.phone) ws.send(JSON.stringify({ type: 'status', ...current })); return current; };
   await refresh().catch(() => {});
   const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
@@ -376,6 +389,11 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
+      if (message.type === 'ai_accounts' && typeof message.rid === 'string') {
+        try { send({ type: 'pc_result', rid: message.rid, result: await manage(message, { accounts, refresh }) }); }
+        catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type === 'agent_skills' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: { skills: discover().map(({ id, name, description, path, source }) => ({ id, name, description, path, source })) } }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
@@ -420,7 +438,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         const enabledSkills = enabledFor(bot, discover());
-        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true });
+        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true, accountDir: accounts.folder(bot.provider || 'codex', bot.aiAccount) });
         // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it, but Codex gets no
         // terminal (read-only) and Claude's commands and writes outside the bot's folder go through approval cards.
         if (!wrap && hasIsolation()) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');

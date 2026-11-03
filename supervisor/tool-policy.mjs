@@ -115,6 +115,7 @@ export function validFace(face) {
 export function validateProfile(data) {
   if (data.googleAccount !== undefined && data.googleAccount !== '' && !validGoogleAccount(data.googleAccount)) throw new Error('Informe um e-mail Google válido.');
   if (data.face !== undefined && !validFace(data.face)) throw new Error('Escolha um rosto válido.');
+  if (data.aiAccount !== undefined && data.aiAccount !== '' && !/^[a-z0-9-]{1,24}$/.test(data.aiAccount)) throw new Error('Escolha uma conta de IA válida.');
   if (data.gpu !== undefined && typeof data.gpu !== 'boolean') throw new Error('Escolha se o bot usa a placa de vídeo.');
   if (data.skills !== undefined && (!agentSkills.validSkills(data.skills) || data.skills.some(item => SENSITIVE.test(item.path) || item.path.split('/').filter(Boolean).length < 3))) throw new Error('Use até 20 skills, cada uma uma pasta do computador (nunca a pasta pessoal inteira nem pastas de senhas e chaves).');
   if (data.browserMode !== undefined && ![...BROWSER_MODES, 'own'].includes(data.browserMode)) throw new Error('Escolha um navegador válido.');

@@ -9,6 +9,7 @@ const { homedir } = require('node:os');
 const { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, chmodSync, createWriteStream } = require('node:fs');
 const { createTabs, controlServer } = require('./tabs');
 const { createUpdates } = require('./updates');
+const { isOurs, PARK_RULE } = require('./hypr-core');
 
 const UI_PORT = Number(process.env.MYBOTS_PC_UI_PORT) || 3232;
 const UI = `http://127.0.0.1:${UI_PORT}`;
@@ -108,7 +109,7 @@ let window = null, ui = null, overlay = null, overlayState = null, overlayOpen =
 const hypr = (...args) => new Promise(resolve => execFile('hyprctl', args, { timeout: 3000 }, (error, out) => resolve(error ? null : String(out))));
 const PARK = 'special:mybots';
 const onHypr = () => Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
-async function client() { try { return JSON.parse(await hypr('clients', '-j') || '[]').find(item => item.pid === process.pid && item.class === 'mybots-desktop'); } catch { return null; } }
+async function client() { try { return JSON.parse(await hypr('clients', '-j') || '[]').find(item => isOurs(item, process.pid)); } catch { return null; } }
 async function park() {
   if (!onHypr()) { window.hide(); return; }
   const mine = await client(); if (mine) await hypr('dispatch', 'movetoworkspacesilent', `${PARK},address:${mine.address}`); else window.hide();
@@ -202,7 +203,7 @@ if (first) app.whenReady().then(async () => {
   tray.on('click', show);
   if (!hidden) show();
   // Started with the session it waits in the tray, but still mapped (parked) so the bots' tabs paint.
-  else if (onHypr()) { await hypr('keyword', 'windowrule', 'match:class ^(mybots-desktop)$, workspace special:mybots silent'); window.showInactive(); }
+  else if (onHypr()) { await hypr('keyword', 'windowrule', PARK_RULE()); window.showInactive(); }
   else window.showInactive();
   if (embedded && !welcomed) openWelcome();
 });

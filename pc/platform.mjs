@@ -13,6 +13,14 @@ export function dataDirectory(platform = process.platform, env = process.env, ho
   return join(home, '.mybots-pc');
 }
 
+/**
+ * Extra addresses the phone should try (MYBOTS_PC_ADVERTISE, comma separated): the computer's Tailscale address when Tailscale runs
+ * without a network interface (userspace networking), where it cannot be found by looking at the interfaces. Plain hosts and IPs only.
+ */
+export function extraAddresses(env = process.env) {
+  return String(env.MYBOTS_PC_ADVERTISE || '').split(',').map(item => item.trim()).filter(item => /^[0-9a-z.:-]{1,253}$/i.test(item)).slice(0, 4);
+}
+
 /** Where the panic button listens: a unix socket in the folder, or a named pipe on Windows (which has no unix sockets in files). */
 export function panicEndpoint(directory, platform = process.platform) {
   return platform === 'win32' ? `\\\\.\\pipe\\mybots-panic-${createHash('sha1').update(directory).digest('hex').slice(0, 16)}` : join(directory, 'panic.sock');

@@ -10,20 +10,22 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
-import { createNode, startPairing, DEFAULT_PORT } from './server.mjs';
+import { createNode, startPairing, addresses, DEFAULT_PORT } from './server.mjs';
 import { relayFromEnvironment } from '../supervisor/relay.mjs';
-import { dataDirectory, panicEndpoint } from './platform.mjs';
+import { dataDirectory, panicEndpoint, extraAddresses } from './platform.mjs';
 
 const directory = dataDirectory();
 const port = Number(process.env.MYBOTS_PC_PORT) || DEFAULT_PORT;
 const unit = join(homedir(), '.config', 'systemd', 'user', 'mybots-pc.service');
+// What the phone may try: the network's addresses plus the ones given in MYBOTS_PC_ADVERTISE (for example a Tailscale address).
+const advertise = () => [...new Set([...addresses(), ...extraAddresses()])];
 const stamp = () => new Date().toLocaleTimeString('pt-BR');
 const systemctl = (...args) => execFileSync('systemctl', ['--user', ...args], { stdio: 'inherit' });
 
 async function serve() {
   // The computer's own MyBots (its own database), so it works with the phone off. MYBOTS_PC_LOCAL=0 turns it off.
   const local = process.env.MYBOTS_PC_LOCAL === '0' ? null : { ...(process.env.MYBOTS_PC_LOCAL_PORT ? { port: Number(process.env.MYBOTS_PC_LOCAL_PORT) } : {}) };
-  const node = await createNode({ directory, port, local, relay: relayFromEnvironment(), ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
+  const node = await createNode({ directory, port, local, relay: relayFromEnvironment(), advertise, ...(process.env.MYBOTS_PC_PROJECTS ? { projects: process.env.MYBOTS_PC_PROJECTS } : {}), ...(process.env.MYBOTS_PC_UI_PORT ? { uiPort: Number(process.env.MYBOTS_PC_UI_PORT) } : {}), log: line => console.log(`[${stamp()}] ${line}`) });
   console.log(`[${stamp()}] MyBots no computador "${node.name}" esperando o celular na porta ${node.port}.`);
   if (!node.phones().length) console.log('Nenhum celular pareado ainda. Em outro terminal: node pc/node.mjs pair');
   const stop = () => node.close().then(() => process.exit(0));
@@ -31,7 +33,7 @@ async function serve() {
 }
 
 async function pair() {
-  const { link, name } = startPairing(directory, port, undefined, { relay: relayFromEnvironment() });
+  const { link, name } = startPairing(directory, port, advertise, { relay: relayFromEnvironment() });
   const { default: QRCode } = await import('qrcode');
   console.log(await QRCode.toString(link, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }));
   console.log(`No celular: abra o MyBots e leia este QR (${name}). Na primeira tela é "Ler o QR do computador"; se o app já está em uso, Ajustes → Computador → Parear de novo (ou Conectar computador, com Termux).`);
@@ -76,7 +78,7 @@ function panic() {
 // For the first-run assistant: what is installed and logged in here, as JSON (and, with `pair --json`, the QR as an image).
 async function doctorCommand() { const { doctor } = await import('./doctor.mjs'); console.log(JSON.stringify(await doctor())); }
 async function pairJson() {
-  const { link, name } = startPairing(directory, port, undefined, { relay: relayFromEnvironment() });
+  const { link, name } = startPairing(directory, port, advertise, { relay: relayFromEnvironment() });
   const { default: QRCode } = await import('qrcode');
   console.log(JSON.stringify({ name, link, qr: await QRCode.toDataURL(link, { errorCorrectionLevel: 'L', margin: 1, width: 280 }) }));
 }

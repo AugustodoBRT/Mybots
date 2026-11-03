@@ -2,6 +2,14 @@
 # Builds and installs the MyBots window on this computer: the interface (the app's own screens, as web) that the
 # node in pc/ serves, the Electron window, its menu entry and its start with the session (waiting in the tray).
 set -euo pipefail
+# Este computador pode estar usando o MyBots oficial (AppImage), que se atualiza sozinho pelo botão "Atualizar e reiniciar".
+# Este script instala o modo de DESENVOLVIMENTO (Electron do sistema + o código desta pasta) e reescreveria o launcher: então não faz nada
+# nesse caso, a não ser que se peça (FORCE_DEV=1 scripts/build-desktop.sh) para voltar ao modo de desenvolvimento.
+if grep -q "MyBots.AppImage" "$HOME/.local/bin/mybots-desktop" 2>/dev/null && [ -z "${FORCE_DEV:-}" ]; then
+  echo "Este computador usa o MyBots oficial (AppImage): ele se atualiza pelo botão no app. Nada foi alterado."
+  echo "Para voltar ao modo de desenvolvimento: FORCE_DEV=1 scripts/build-desktop.sh (e restaure ~/.local/bin/mybots-desktop.dev)."
+  exit 0
+fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 (cd "$root/mobile" && rm -rf ../pc/ui && npx expo export --platform web --output-dir ../pc/ui)
 # The window is Electron (the system's own, no second copy): the bots' browser is real Chromium tabs inside it.

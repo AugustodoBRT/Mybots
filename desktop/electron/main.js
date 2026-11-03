@@ -6,7 +6,7 @@ const { randomBytes } = require('node:crypto');
 const { execFile, spawn } = require('node:child_process');
 const { join } = require('node:path');
 const { homedir } = require('node:os');
-const { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, chmodSync, createWriteStream } = require('node:fs');
+const { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, chmodSync, createWriteStream, readdirSync, statSync } = require('node:fs');
 const { createTabs, controlServer } = require('./tabs');
 const { createUpdates } = require('./updates');
 const { isOurs, PARK_RULE } = require('./hypr-core');
@@ -108,7 +108,17 @@ let window = null, ui = null, overlay = null, overlayState = null, overlayOpen =
 // Hyprland the window is therefore parked on a special workspace instead of hidden, so the bots keep working in the tray.
 const hypr = (...args) => new Promise(resolve => execFile('hyprctl', args, { timeout: 3000 }, (error, out) => resolve(error ? null : String(out))));
 const PARK = 'special:mybots';
-const onHypr = () => Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
+// Started from a launcher or systemd the session's variable may be missing: the running Hyprland's own socket folder says which it is.
+function findHypr() {
+  if (process.env.HYPRLAND_INSTANCE_SIGNATURE) return true;
+  try {
+    const base = join(process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`, 'hypr');
+    const live = readdirSync(base).filter(name => existsSync(join(base, name, '.socket.sock'))).sort((a, b) => statSync(join(base, b)).mtimeMs - statSync(join(base, a)).mtimeMs)[0];
+    if (live) { process.env.HYPRLAND_INSTANCE_SIGNATURE = live; return true; }
+  } catch {}
+  return false;
+}
+const onHypr = () => process.platform === 'linux' && findHypr();
 async function client() { try { return JSON.parse(await hypr('clients', '-j') || '[]').find(item => isOurs(item, process.pid)); } catch { return null; } }
 async function park() {
   if (!onHypr()) { window.hide(); return; }

@@ -1613,3 +1613,9 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Dependência nova**: `unpdf` 2.1.0 (3,7 MB, JavaScript puro; o renderizador opcional não é instalado).
 - **Validação**: `tests/pdf-computer.test.mjs` (PDF real do repositório com acentos, faixas de páginas, PDF só de imagens, arquivo falso e danificado, criar PDF, e o caminho completo pelo supervisor do computador comparado com o do celular).
 - **Segundo erro do mesmo relato, em aberto**: "o navegador do MyBots não respondeu" (Google Drive). **Não reproduzido**: no app instalado (AppImage) do dono o navegador dos bots funciona (visão ao vivo com quadros e sem erro). Pede o `node.log` e o ambiente do amigo (como instalou, se há Chrome, o modo de navegador do bot).
+
+## 0.67.0 (versionCode 127)
+
+- **Janela invisível no Hyprland**: aberto pelo menu (via `systemd --user`) o app não recebia `HYPRLAND_INSTANCE_SIGNATURE`, achava que não estava no Hyprland e deixava a janela no workspace escondido `special:mybots`. Agora `findHypr()` (`desktop/electron/main.js`) descobre o Hyprland em execução pela pasta de sockets em `$XDG_RUNTIME_DIR/hypr`.
+- **Atualização com 404**: se o download falhar (o feed pode ter passado para uma versão mais nova), o app mostra o erro e verifica de novo na hora (`desktop/electron/updates.js`).
+- **README**: badges com a versão atual de Android, Linux, Windows e macOS, lidas das Releases.

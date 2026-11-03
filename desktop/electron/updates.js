@@ -46,7 +46,8 @@ function createUpdates({ changed = () => {}, log = () => {}, beforeInstall = () 
     if (!itself) { shell.openExternal(RELEASE_PAGE); return; }
     if (state.phase !== 'available') return;
     apply({ type: 'start' });
-    autoUpdater().downloadUpdate().catch(error => apply({ type: 'error', message: error?.message }));
+    // A failed download (the feed may have moved to a newer version meanwhile) shows the error and looks again at once.
+    autoUpdater().downloadUpdate().catch(async error => { apply({ type: 'error', message: error?.message }); await check(); });
   }
 
   return {

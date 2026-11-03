@@ -20,7 +20,9 @@ export const relayRoom = secret => b64(hmac(sha256, utf8ToBytes(String(secret)),
 
 /** What the computer's QR carries (mybots://computador?...): who it is, where, the relay and the one-use code. */
 export function parseQr(text) {
-  const match = /^mybots:\/\/computador\?(.*)$/.exec(String(text || '').trim());
+  // The iPhone opens a link (https://…/app/#p=<the same text>): the QR's text rides in the fragment, which never goes to a server.
+  let raw = String(text || '').trim(); const hashed = /#p=([^&\s]+)/.exec(raw); if (/^https?:\/\//i.test(raw) && hashed) { try { raw = decodeURIComponent(hashed[1]); } catch {} }
+  const match = /^mybots:\/\/computador\?(.*)$/.exec(raw);
   if (!match) throw new Error('Este QR não é de um computador com o MyBots.');
   const query = {}; for (const part of match[1].split('&')) { const at = part.indexOf('='); if (at > 0) query[decodeURIComponent(part.slice(0, at))] = decodeURIComponent(part.slice(at + 1).replace(/\+/g, ' ')); }
   const tlsPort = Number(query.p); const port = Number(query.q) || tlsPort; const addresses = String(query.a || '').split(',').filter(item => /^[0-9a-z.:-]{1,253}$/i.test(item)).slice(0, 6);
@@ -49,6 +51,8 @@ function open(WebSocketClass, url, options, timeout) {
 
 /** The computer's addresses first, with the relay joining when they fail or take more than a moment; the first one in wins. */
 function reach(WebSocketClass, target, options, room) {
+  // A page served over https cannot open the computer's plain ws:// address (mixed content): in the browser only the relay is possible.
+  if (globalThis.location?.protocol === 'https:' && target.relay) return open(WebSocketClass, `${secureRelay(target.relay)}/?role=guest&room=${encodeURIComponent(room)}`, options, RELAY_MS).then(channel => { channel.path = 'relay'; channel.via = 'relay'; return channel; });
   const first = direct(WebSocketClass, target, options).then(channel => ({ channel, via: 'direct' }));
   if (!target.relay) return first.then(({ channel }) => channel);
   return new Promise((resolve, reject) => {

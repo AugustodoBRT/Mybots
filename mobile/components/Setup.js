@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { Modal, View, ScrollView, Text, Pressable, StyleSheet, Linking } from 'react-native';
+import { Modal, View, ScrollView, Text, Pressable, StyleSheet, Linking, TextInput } from 'react-native';
+import { pwa } from '../desktop';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
@@ -9,6 +10,27 @@ const PATHS = { direct: 'pela rede local', relay: 'pelo relé do MyBots' };
 
 /** Reads the QR the computer's MyBots shows. Calls `onRead(text)` once. */
 export function QrScanner({ visible, onRead, onClose, title = 'Aponte para o QR do MyBots no computador.' }) {
+  if (pwa) return <PasteLink visible={visible} onRead={onRead} onClose={onClose} />;
+  return <CameraScanner visible={visible} onRead={onRead} onClose={onClose} title={title} />;
+}
+
+/** The iPhone's web app has no QR reader of its own (the iPhone's camera opens the link): the link can also be pasted. */
+function PasteLink({ visible, onRead, onClose }) {
+  const [text, setText] = useState('');
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <View style={{ flex: 1, justifyContent: 'center', padding: 22, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+      <View style={styles.modeOption}>
+        <Text style={styles.optionLabel}>Colar o link do computador</Text>
+        <Text style={styles.optionDetail}>No MyBots do computador, abra Ajustes → Celular → iPhone, copie o link e cole aqui.</Text>
+        <TextInput value={text} onChangeText={setText} autoCapitalize="none" autoCorrect={false} placeholder="https://…" placeholderTextColor={C.faint} style={styles.formInput} accessibilityLabel="Link de pareamento" />
+        <PrimaryButton icon="phone" title="Parear" disabled={!text.trim()} onPress={() => { const value = text.trim(); setText(''); onRead(value); }} style={{ marginTop: 12 }} />
+        <Pressable accessibilityRole="button" onPress={onClose} style={{ marginTop: 12, alignSelf: 'center' }}><Text style={styles.stopText}>Cancelar</Text></Pressable>
+      </View>
+    </View>
+  </Modal>;
+}
+
+function CameraScanner({ visible, onRead, onClose, title }) {
   const [permission, requestPermission] = useCameraPermissions(); const reading = useRef(false);
   return <Modal visible={visible} animationType="slide" onRequestClose={onClose} onShow={() => { reading.current = false; if (!permission?.granted) requestPermission(); }}>
     <View style={styles.scanner}>
@@ -52,14 +74,14 @@ export function SetupScreen({ onScanned, onTermux, busy, error }) {
       <Text style={[styles.loadingText, { textAlign: 'center' }]}>Seus bots trabalham no seu computador, e este app é a tela deles no celular.</Text>
       <View style={[styles.modeOption, { marginTop: 18 }]}>
         <Text style={styles.optionLabel}>1. No computador</Text>
-        <Text style={styles.optionDetail}>Instale o MyBots, entre nas suas contas de IA por lá e abra Ajustes → Celular → Mostrar QR.</Text>
+        <Text style={styles.optionDetail}>{pwa ? 'Instale o MyBots, entre nas suas contas de IA por lá e abra Ajustes → Celular → iPhone.' : 'Instale o MyBots, entre nas suas contas de IA por lá e abra Ajustes → Celular → Mostrar QR.'}</Text>
         <Text style={[styles.optionLabel, { marginTop: 10 }]}>2. Aqui</Text>
-        <Text style={styles.optionDetail}>Leia o QR. Pronto: a conversa, os bots e as rotinas aparecem, de qualquer rede. O computador precisa ficar ligado.</Text>
-        <PrimaryButton icon="phone" title={busy ? 'Conectando…' : 'Ler o QR do computador'} disabled={busy} onPress={() => setScanning(true)} style={{ marginTop: 14 }} />
+        <Text style={styles.optionDetail}>{pwa ? 'Aponte a câmera do iPhone para o QR da tela do computador e abra o link. Se preferir, cole o link abaixo. Pronto: os bots, as conversas e as rotinas aparecem. O computador precisa ficar ligado.' : 'Leia o QR. Pronto: a conversa, os bots e as rotinas aparecem, de qualquer rede. O computador precisa ficar ligado.'}</Text>
+        <PrimaryButton icon="phone" title={busy ? 'Conectando…' : pwa ? 'Colar o link do computador' : 'Ler o QR do computador'} disabled={busy} onPress={() => setScanning(true)} style={{ marginTop: 14 }} />
       </View>
       {error ? <Text style={[styles.optionDetail, { color: C.amber, textAlign: 'center' }]}>{error}</Text> : null}
-      <Pressable accessibilityRole="button" onPress={() => setGuide(true)} style={{ marginTop: 18, alignSelf: 'center', padding: 8 }}>
-        <Text style={styles.stopText}>Prefere usar só o celular, sem depender do computador? (avançado, com Termux)</Text></Pressable>
+      {pwa ? null : <Pressable accessibilityRole="button" onPress={() => setGuide(true)} style={{ marginTop: 18, alignSelf: 'center', padding: 8 }}>
+        <Text style={styles.stopText}>Prefere usar só o celular, sem depender do computador? (avançado, com Termux)</Text></Pressable>}
     </>}
     <QrScanner visible={scanning} onClose={() => setScanning(false)} onRead={data => { setScanning(false); onScanned(data); }} />
   </ScrollView>;

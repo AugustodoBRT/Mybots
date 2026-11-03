@@ -178,6 +178,9 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   // The window draws the pairing QR itself; the code it carries is the one-use code the phone trades.
   const qr = await client.call('desktop.pair');
   assert.match(qr.svg, /^<svg/); assert.ok(readFileSync(join(pcDir, 'pairing.json'), 'utf8').includes('"code"'));
+  // For the iPhone the QR is a link to the web app (the pairing rides in the fragment); without a relay it cannot work, and says so.
+  if (/[?&]r=/.test(node.pairing().link)) { const iphone = await client.call('desktop.pair', { iphone: true }); assert.match(iphone.text, /^https:\/\/.+#p=mybots%3A%2F%2Fcomputador/); assert.match(iphone.svg, /^<svg/); }
+  else await assert.rejects(client.call('desktop.pair', { iphone: true }), /relé/);
   const disconnected = await client.call('desktop.status');
   assert.equal(disconnected.lastPaired, null); assert.equal(disconnected.tailscale, false); assert.ok(disconnected.offlineSince);
   await app.rpc('computer.pair', { link: node.pairing().link });

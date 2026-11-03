@@ -63,8 +63,8 @@ export default function Office({
   onCreate,
   onNewRoom
 }) {
-  const host = useRef(null), office = useRef(null);
-  const [panel, setPanel] = useState('team');
+  const host = useRef(null), office = useRef(null), initialFocus = useRef(false);
+  const [panel, setPanel] = useState(null);
   const [query, setQuery] = useState('');
   const [panelWidth, setPanelWidth] = useState(410);
   const [sceneError, setSceneError] = useState('');
@@ -98,6 +98,11 @@ export default function Office({
           }
         });
         made.update(latest.current.snap);
+        const rooms = latest.current.snap.rooms;
+        if (!initialFocus.current && rooms.length) {
+          made.focus([...rooms].sort((a, b) => b.botIds.length - a.botIds.length)[0].id);
+          initialFocus.current = true;
+        }
       })
       .catch(() => {
         if (alive) setSceneError('Não foi possível carregar a cena. Você pode continuar pela lista de bots.');
@@ -109,7 +114,14 @@ export default function Office({
     };
   }, []);
 
-  useEffect(() => { office.current?.update(snap); }, [snap]);
+  useEffect(() => {
+    office.current?.update(snap);
+    if (!initialFocus.current && office.current && snap.rooms.length) {
+      const room = [...snap.rooms].sort((a, b) => b.botIds.length - a.botIds.length)[0];
+      office.current.focus(room.id);
+      initialFocus.current = true;
+    }
+  }, [snap]);
   useEffect(() => { if (selectionKey) setPanel('conversation'); }, [selectionKey]);
   useEffect(() => desktopBus.on('office-escape', () => { setPanel(null); setShowPip(false); }), []);
 
@@ -123,6 +135,7 @@ export default function Office({
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const approvals = data?.approvals || [];
   const routines = data?.routines || [];
+  const finished = (data?.tasks || []).filter(task => task.state === 'done' && bots.some(bot => bot.id === task.bot_id)).slice(0, 3);
   const count = state => snap.bots.filter(bot => bot.state === state).length;
   const needle = query.trim().toLocaleLowerCase('pt-BR');
   const order = { waiting: 0, working: 1, idle: 2, sleeping: 3 };
@@ -174,7 +187,7 @@ export default function Office({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 13, paddingVertical: 7, borderRadius: 999, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
           <View style={{ width: 7, height: 7, borderRadius: 99, backgroundColor: '#22c55e' }} />
           <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 13 }}>Escritório</Text>
-          <Text style={{ color: '#9ca3af', fontFamily: F.m, fontSize: 11.5 }}>{bots.length} bots · {count('working')} trabalhando</Text>
+          <Text style={{ color: '#9ca3af', fontFamily: F.m, fontSize: 12 }}>Ao vivo · {bots.length} bots</Text>
           {action('Ver tudo', () => office.current?.fit())}
         </View>
 
@@ -222,11 +235,11 @@ export default function Office({
       </View>
 
       {/* 4. LEFT FLOATING PODS STACK (Salas, Esperando você, Equipe/Finalizados, Rotinas) */}
-      <View pointerEvents="box-none" style={{ position: 'absolute', top: 60, left: 14, width: stacked ? 210 : 236, gap: 9 }}>
+      <ScrollView style={{ position: 'absolute', top: 72, left: 16, width: stacked ? 220 : 280, maxHeight: '73%' }} contentContainerStyle={{ gap: 10 }}>
         {/* POD: SALAS (with colored status dots like the reference) */}
-        <View style={{ padding: 11, borderRadius: 18, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
+        <View style={{ padding: 15, borderRadius: 20, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-            <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 12 }}>Salas</Text>
+            <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 14 }}>Salas</Text>
             <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)' }}>
               <Text style={{ color: '#9ca3af', fontFamily: F.s, fontSize: 10.5 }}>{(data?.rooms || []).length + 1}</Text>
             </View>
@@ -246,8 +259,8 @@ export default function Office({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingHorizontal: 8,
-                    paddingVertical: 6,
-                    borderRadius: 11,
+                    paddingVertical: 10,
+                    borderRadius: 12,
                     backgroundColor: isSelected ? 'rgba(255,255,255,0.13)' : hovered ? 'rgba(255,255,255,0.06)' : 'transparent',
                     borderWidth: isSelected ? 1 : 0,
                     borderColor: 'rgba(255,255,255,0.14)'
@@ -298,7 +311,7 @@ export default function Office({
         {approvals.length ? (
           <View style={{ padding: 11, borderRadius: 18, backgroundColor: 'rgba(44, 34, 18, 0.92)', borderWidth: 1, borderColor: 'rgba(234, 179, 8, 0.35)', gap: 6 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ color: '#fef08a', fontFamily: F.b, fontSize: 12 }}>Precisa de você</Text>
+              <Text style={{ color: '#fef08a', fontFamily: F.b, fontSize: 14 }}>Esperando você</Text>
               <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: 'rgba(234, 179, 8, 0.25)' }}>
                 <Text style={{ color: '#fde047', fontFamily: F.b, fontSize: 10.5 }}>{approvals.length}</Text>
               </View>
@@ -329,7 +342,7 @@ export default function Office({
         ) : null}
 
         {/* POD: EQUIPE & ATIVIDADE DOS BOTS (Compact Floating Pod that hugs content) */}
-        <View style={{ maxHeight: 310, padding: 11, borderRadius: 18, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
+        <View style={{ maxHeight: 310, padding: 15, borderRadius: 20, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
           <Pressable
             accessibilityRole="button"
             onPress={() => setTeamOpen(v => !v)}
@@ -410,9 +423,28 @@ export default function Office({
           ) : null}
         </View>
 
+        {finished.length ? (
+          <View style={{ padding: 15, borderRadius: 20, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER, gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 14 }}>Finalizados</Text>
+              <Text style={{ color: '#9ca3af', fontFamily: F.s, fontSize: 11 }}>{finished.length}</Text>
+            </View>
+            {finished.map(task => {
+              const bot = bots.find(item => item.id === task.bot_id);
+              return <Pressable key={task.id} accessibilityRole="button" onPress={() => selectBot(bot.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Avatar bot={bot} size={34} animated={false} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 13 }} numberOfLines={1}>{bot.name}</Text>
+                  <Text style={{ color: '#9ca3af', fontFamily: F.m, fontSize: 12 }} numberOfLines={1}>{task.step || 'Tarefa concluída'}</Text>
+                </View>
+              </Pressable>;
+            })}
+          </View>
+        ) : null}
+
         {/* POD: ROTINAS (if any exist) */}
         {routines.length ? (
-          <View style={{ padding: 11, borderRadius: 18, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER, gap: 5 }}>
+          <View style={{ padding: 15, borderRadius: 20, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER, gap: 5 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={{ color: '#f3f4f6', fontFamily: F.b, fontSize: 11.5 }}>Rotinas</Text>
               <Text style={{ color: '#9ca3af', fontFamily: F.m, fontSize: 10.5 }}>{routines.length}</Text>
@@ -427,12 +459,12 @@ export default function Office({
             ))}
           </View>
         ) : null}
-      </View>
+      </ScrollView>
 
       {/* 5. BOTTOM-LEFT FLOATING ACTIVITY POD */}
-      <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, left: 14, width: stacked ? 210 : 268, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 16, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
-        <Text style={{ color: '#9ca3af', fontFamily: F.b, fontSize: 10.5, marginBottom: 4 }}>Atividade ao vivo</Text>
-        {lines.slice(0, 2).map(({ bot, state, line }) => (
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 14, left: 14, width: stacked ? 220 : 300, paddingHorizontal: 15, paddingVertical: 12, borderRadius: 16, backgroundColor: POD_BG, borderWidth: 1, borderColor: POD_BORDER }}>
+        <Text style={{ color: '#9ca3af', fontFamily: F.b, fontSize: 12, marginBottom: 6 }}>Atividade</Text>
+        {lines.slice(0, 4).map(({ bot, state, line }) => (
           <View key={bot.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: COLOR[state?.state || 'idle'] }} />
             <Text style={{ color: '#d1d5db', fontFamily: F.m, fontSize: 11, flex: 1 }} numberOfLines={1}>
@@ -537,14 +569,14 @@ export default function Office({
 
         {/* TOP FLOATING BOT HERO CARD (like QT Scout in the reference when a bot is selected) */}
         {selectedBot ? (
-          <View style={{ padding: 13, borderRadius: 20, backgroundColor: heroBg, borderWidth: 1, borderColor: heroBorder, gap: 7 }}>
+          <View style={{ padding: 18, borderRadius: 22, backgroundColor: heroBg, borderWidth: 1, borderColor: heroBorder, gap: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                <Avatar bot={selectedBot} size={34} state={selectedBotLine?.state} animated={false} />
+                <Avatar bot={selectedBot} size={46} state={selectedBotLine?.state} animated={false} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: '#ffffff', fontFamily: F.b, fontSize: 15 }} numberOfLines={1}>{selectedBot.name}</Text>
+                  <Text style={{ color: '#ffffff', fontFamily: F.b, fontSize: 18 }} numberOfLines={1}>{selectedBot.name}</Text>
                   <Text style={{ color: 'rgba(255,255,255,0.75)', fontFamily: F.m, fontSize: 11 }} numberOfLines={1}>
-                    {selectedRoomName} · {LABEL[selectedBotState?.state || 'idle']}
+                    {selectedRoomName}
                   </Text>
                 </View>
               </View>
@@ -558,7 +590,11 @@ export default function Office({
                 </Pressable>
               </View>
             </View>
-            <Text style={{ color: '#ffffff', fontFamily: F.s, fontSize: 12.5 }} numberOfLines={2}>
+            <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.24)' }}>
+              <View style={{ width: 7, height: 7, borderRadius: 99, backgroundColor: COLOR[selectedBotState?.state || 'idle'] }} />
+              <Text style={{ color: '#f3f4f6', fontFamily: F.s, fontSize: 12 }}>{LABEL[selectedBotState?.state || 'idle']}</Text>
+            </View>
+            <Text style={{ color: '#ffffff', fontFamily: F.s, fontSize: 14 }} numberOfLines={2}>
               {selectedBotState?.text || selectedBotLine?.text || 'Pronto para trabalhar com você'}
             </Text>
           </View>

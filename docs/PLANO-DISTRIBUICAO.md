@@ -110,6 +110,8 @@ Cada instalador sai na sua Release assim que passar nos testes do próprio siste
 
 ## 6. Fase 2 — PWA do iPhone
 
+**Estado (0.68.0): feito.** Servido em `https://mybots-rele.duckdns.org/` (Caddy, na mesma VM do relé: WebSocket vai para o relé, o resto é o site estático em `/var/www/mybots`, com CSP que só deixa a página falar com o relé). Publicar: `scripts/publish-pwa.sh` (constrói com `scripts/build-pwa.mjs` e troca a pasta). O QR do iPhone é o link `https://…/#p=<QR do Android>`; o computador mostra em Ajustes → Celular → Mostrar QR (iPhone). Como a página é HTTPS, só o relé é possível (`ws://` direto é bloqueado como conteúdo misto). O pareamento fica no `localStorage` da página. Não testado em iPhone de verdade (só no Chrome com viewport de celular, pelo `.build-tools/pwa-e2e.mjs`).
+
 - **Base**: a versão web do app (a que a janela do PC já usa) com o layout de celular, mais o canal cifrado (`mobile/pc-channel.js`, JavaScript puro, que roda no Safari) e o cliente (`mobile/pc-client.js`) sobre `wss://`.
 - **Onde fica**: página estática em HTTPS (GitHub Pages ou a própria VPS). Uma página HTTPS só abre `wss://`, por isso a Etapa 0 vem antes.
 - **QR que abre direto**: o QR do PC passa a ser também um link `https://…/#pareamento` (os dados no fragmento, que nunca vai ao servidor). A câmera do iPhone abre o link e a página pareia sozinha, sem leitor de QR dentro do app. Tela de colar o código como reserva.

@@ -25,6 +25,7 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 | 🐧 **Linux** | [AppImage ou .deb](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | botão "Atualizar e reiniciar" (AppImage) |
 | 🪟 **Windows** | [Instalador .exe](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | botão "Atualizar e reiniciar" |
 | 🍎 **macOS** | [.dmg (Apple Silicon ou Intel)](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | o botão abre a página de download |
+| 🍏 **iPhone** | [Abrir o web app](https://mybots-rele.duckdns.org/) (pareie pelo QR do computador) | atualiza sozinho: é uma página |
 
 <sub>As versões acima (e os links) são lidas direto das Releases, então se atualizam sozinhas a cada lançamento.</sub>
 
@@ -103,8 +104,9 @@ flowchart LR
    - **Linux**: `MyBots-<versão>-linux-x86_64.AppImage` (`chmod +x` e abra) ou `MyBots-<versão>-linux-amd64.deb`. No Ubuntu 24.04 o AppImage pode exigir `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`; o `.deb` não. O comando `bubblewrap` precisa estar instalado (os comandos dos bots rodam isolados nele).
    - **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro em [docs/windows.md](docs/windows.md).
    - **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
-2. **No celular Android**: baixe o APK em **[Releases](../../releases/latest)**, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Pronto, sem Termux.
-3. **Atualizações**: nos dois aparece "Nova versão · Atualizar e reiniciar" e um clique baixa, instala e reinicia sozinho. No computador isso vale para o **Windows** e o **AppImage do Linux**; no **.deb** e no **macOS** (sem assinatura) o botão abre a página de download.
+2. **No iPhone** (web app, sem App Store): no MyBots do computador, abra Ajustes → Celular → **Mostrar QR (iPhone)**, aponte a câmera do iPhone para o QR e toque no link. No Safari, **Compartilhar → Adicionar à Tela de Início** para virar um ícone. Ele conversa com os bots do computador pelo relé cifrado de ponta a ponta, então o computador precisa ficar ligado. Não tem notificações em segundo plano, navegador ao vivo dos bots, senhas nem carteira.
+3. **No celular Android**: baixe o APK em **[Releases](../../releases/latest)**, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Pronto, sem Termux.
+4. **Atualizações**: no computador e no Android aparece "Nova versão · Atualizar e reiniciar" e um clique baixa, instala e reinicia sozinho. No computador isso vale para o **Windows** e o **AppImage do Linux**; no **.deb** e no **macOS** (sem assinatura) o botão abre a página de download.
 
 O computador precisa ficar ligado (o MyBots fica na bandeja) para o celular usar os bots dele. Se preferir o celular independente, ative o **Termux** em Ajustes → Termux (avançado), que traz o tutorial completo.
 

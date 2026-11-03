@@ -87,7 +87,7 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch }) {
+function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
@@ -119,7 +119,7 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={s.modeChip}>
         <View style={[styles.statusDot, data?.connection?.loggedIn && styles.statusGood]} />
-        <Text style={styles.modeButtonText}>{desktop ? 'No computador' : phone ? 'No celular' : 'No PC'}</Text>
+        <Text style={styles.modeButtonText}>{desktop || remote ? 'No computador' : phone ? 'No celular' : 'No PC'}</Text>
       </Pressable>
       <Text style={s.greeting} numberOfLines={2}>{greeting()}{data?.person?.name ? `, ${data.person.name}` : ''}.</Text>
       {bots.length ? <Pressable accessibilityRole="button" disabled={!summary} onPress={phone ? onActivity : onConnection}>
@@ -146,10 +146,10 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
           <Text style={s.emptyText}>Cada bot cuida de uma parte da sua vida: faculdade, e-mails, lembretes. Você decide o que cada um pode fazer.</Text>
           <PrimaryButton icon="plus" title="Criar meu primeiro bot" onPress={onCreate} disabled={!data?.models?.length} style={{ marginTop: 20, alignSelf: 'stretch' }} />
         </View>}
-      <View style={s.footer}><Icon name="shield" size={14} color={C.faint} /><Text style={s.footerText}>{phone ? 'Bots, conversas e arquivos ficam neste celular.' : 'Bots e conversas ficam no computador.'}</Text></View>
+      <View style={s.footer}><Icon name="shield" size={14} color={C.faint} /><Text style={s.footerText}>{phone && !remote ? 'Bots, conversas e arquivos ficam neste celular.' : 'Bots e conversas ficam no computador.'}</Text></View>
     </ScrollView>
     {phone && onSearch ? <CommandBar onPress={onSearch} /> : null}
-    <Drawer visible={menu} onClose={() => setMenu(false)} items={menuItems} footer={phone ? 'Bots, conversas e arquivos ficam neste celular.' : 'Bots e conversas ficam no computador.'} />
+    <Drawer visible={menu} onClose={() => setMenu(false)} items={menuItems} footer={phone && !remote ? 'Bots, conversas e arquivos ficam neste celular.' : 'Bots e conversas ficam no computador.'} />
     <RoutinesSheet visible={routinesOpen} routines={data?.routines || []} bots={data?.bots || []} onClose={() => setRoutinesOpen(false)} onOpen={onProfile} />
     <NegotiationsSheet visible={negotiationsOpen} negotiations={data?.negotiations || []} bots={data?.bots || []} onClose={() => setNegotiationsOpen(false)} onOpen={onProfile} />
   </View>;

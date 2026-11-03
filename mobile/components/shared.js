@@ -7,10 +7,10 @@ import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, Scro
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
-import { desktop } from '../desktop';
+import { desktop, pwa } from '../desktop';
 
 export const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
 
@@ -499,19 +499,21 @@ export function DesktopPair({ call, compact = false }) {
     }, 2000);
     return () => clearInterval(timer);
   }, [qr]);
-  const show = async () => {
+  const show = async (iphone = false) => {
     setBusy(true); setNote('');
-    try { const result = await call('desktop.pair'); setQr({ ...result, shownAt: new Date(Date.now() - 1000).toISOString() }); }
+    try { const result = await call('desktop.pair', iphone ? { iphone: true } : {}); setQr({ ...result, iphone, shownAt: new Date(Date.now() - 1000).toISOString() }); }
     catch (error) { setNote(error.message); } finally { setBusy(false); }
   };
   return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
     <Text style={styles.optionLabel}>Parear um celular</Text>
     <DesktopNetwork call={call} />
     <Text style={styles.optionDetail}>No celular, abra o MyBots e leia o QR: na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (com o Termux ativo, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
-    {qr ? <View style={styles.pairQr}><View accessibilityLabel="QR para parear o celular"><SvgXml xml={qr.svg} width={260} height={260} /></View>
-      <Text style={styles.limitMeta}>Esperando o celular ler…</Text></View> : null}
+    {qr ? <View style={styles.pairQr}><View accessibilityLabel={qr.iphone ? 'QR para parear o iPhone' : 'QR para parear o celular'}><SvgXml xml={qr.svg} width={260} height={260} /></View>
+      <Text style={styles.limitMeta}>{qr.iphone ? 'Abra a câmera do iPhone, aponte para o QR e toque no link.' : 'Esperando o celular ler…'}</Text>
+      {qr.text ? <Pressable accessibilityRole="button" onPress={() => copyText(qr.text).then(() => setNote('Link copiado.')).catch(() => {})} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="copy" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Copiar o link</Text></Pressable> : null}</View> : null}
     <View style={{ flexDirection: 'row', gap: 14, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : show} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : () => show(false)} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR (Android)'}</Text></Pressable>
+      {qr ? null : <Pressable accessibilityRole="button" disabled={busy} onPress={() => show(true)} style={styles.stopButton}><Icon name="phone" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Mostrar QR (iPhone)</Text></Pressable>}
     </View>
     {note ? <Text style={[styles.optionDetail, /pareado/.test(note) ? { color: C.accent } : { color: C.amber }]}>{note}</Text> : null}
   </View>;
@@ -840,10 +842,11 @@ export function ShareSheet({ share, bots: ignored, phone, onPick, onClose }) {
 
 export function useDictation({ phone, call, setValue, onError }) {
   const [voice, setVoice] = useState(null); const [, tick] = useState(0);
-  const available = phone || Boolean(desktop && call);
+  // The iPhone's web app has no dictation of its own (the keyboard's microphone does it).
+  const available = !pwa && (phone || Boolean(desktop && call));
   const add = text => { if (text) setValue(old => old.trim() ? `${old.trim()} ${text}` : text); };
   useEffect(() => {
-    if (!phone) return undefined;
+    if (!phone || pwa) return undefined;
     const subscription = onSpeech(event => {
       if (event.type === 'level') setVoice(old => old && { ...old, level: event.level });
       else if (event.type === 'partial') setVoice(old => old && { ...old, text: event.text });

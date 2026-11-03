@@ -11,7 +11,7 @@ import { C, Icon } from '../theme';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
-import { desktop, readingColumn } from '../desktop';
+import { desktop, pwa, readingColumn } from '../desktop';
 
 function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
@@ -100,7 +100,7 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
       <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
-        onAttach={phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= 5}
+        onAttach={pwa ? attachWeb : phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= 5}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>

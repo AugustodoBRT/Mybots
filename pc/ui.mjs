@@ -7,6 +7,10 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { DESKTOP_METHODS } from '../supervisor/link.mjs';
+
+export const PWA_URL = process.env.MYBOTS_PWA_URL || 'https://mybots-rele.duckdns.org/';
+/** The link the iPhone opens: the web app, with the computer's pairing text in the fragment. */
+export const iphoneLink = (link, base = PWA_URL) => `${base}#p=${encodeURIComponent(link)}`;
 import { openCommand } from './platform.mjs';
 
 export const DEFAULT_UI_PORT = 3232;
@@ -144,8 +148,12 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
         else if (method === 'desktop.pair') {
           if (!pairing) throw new Error('O pareamento não está disponível.');
           const { link, name } = pairing();
+          // For the iPhone the QR is a link to the web app with the pairing in the fragment (never sent to a server); it only works through the relay.
+          const iphone = Boolean(params?.iphone);
+          if (iphone && !/[?&]r=/.test(link)) throw new Error('O iPhone precisa do relé do MyBots, que está desligado neste computador.');
+          const text = iphone ? iphoneLink(link) : link;
           const { default: QRCode } = await import('qrcode');
-          reply(id, { result: { name, svg: await QRCode.toString(link, { type: 'svg', margin: 2, errorCorrectionLevel: 'L', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000 } });
+          reply(id, { result: { name, svg: await QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'L', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000, ...(iphone ? { text } : {}) } });
         }
         else {
           const result = await backend(method, params || {});

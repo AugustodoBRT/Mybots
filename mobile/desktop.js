@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 // The MyBots window on the computer: the page served by the computer's node carries its local connection
 // (port and token). Everything else in the app keeps working as on the phone, through the phone's supervisor.
 export const desktop = Platform.OS === 'web' && globalThis.MYBOTS_DESKTOP?.token ? globalThis.MYBOTS_DESKTOP : null;
+// The iPhone's web app: the same page opened in a browser, with no computer-injected connection. It pairs with the computer and uses its MyBots through the relay.
+export const pwa = Platform.OS === 'web' && !desktop;
 // The Electron window hosts the bots' browser as real tabs and offers them to the interface (desktop/electron/preload.js).
 export const native = desktop && globalThis.mybotsNative ? globalThis.mybotsNative : null;
 // On the computer, sheets open as centered dialogs instead of rising from the bottom.

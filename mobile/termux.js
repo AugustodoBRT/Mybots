@@ -6,16 +6,22 @@ try { native = requireNativeModule('TermuxBridge'); } catch { /* Expo Go uses on
 
 export const termuxAvailable = Boolean(native);
 // The link to the computer, for the phone without Termux (kept encrypted by the native side), and secure random bytes.
-export const readPcLink = async () => { const raw = native ? await native.readPcLink() : null; if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } };
-export const savePcLink = value => native.savePcLink(JSON.stringify(value));
-export const clearPcLink = () => native?.clearPcLink();
+// In the browser (the iPhone's web app) there is no native side: the pairing and the small cache live in the page's own storage.
+const webStore = !native && typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
+const webRead = key => { try { return webStore?.getItem(key) ?? null; } catch { return null; } };
+const webWrite = (key, value) => { try { if (value == null) webStore?.removeItem(key); else webStore?.setItem(key, value); } catch {} };
+if (webStore) { try { globalThis.navigator?.storage?.persist?.(); } catch {} }
+// The link to the computer, for the phone without Termux (kept encrypted by the native side), and secure random bytes.
+export const readPcLink = async () => { const raw = native ? await native.readPcLink() : webRead('mybots.pcLink'); if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } };
+export const savePcLink = value => native ? native.savePcLink(JSON.stringify(value)) : webWrite('mybots.pcLink', JSON.stringify(value));
+export const clearPcLink = () => native ? native.clearPcLink() : webWrite('mybots.pcLink', null);
 export const randomBytesNative = count => {
   if (native?.randomBase64) { const binary = atob(native.randomBase64(count)); const out = new Uint8Array(count); for (let i = 0; i < count; i++) out[i] = binary.charCodeAt(i); return out; }
   if (globalThis.crypto?.getRandomValues) return globalThis.crypto.getRandomValues(new Uint8Array(count));
   throw new Error('Este aparelho não tem fonte de números aleatórios seguros.');
 };
-export const readLocalStore = async () => native ? JSON.parse(await native.readStore()) : null;
-export const writeLocalStore = value => native?.writeStore(JSON.stringify(value));
+export const readLocalStore = async () => { if (native) return JSON.parse(await native.readStore()); const raw = webRead('mybots.store'); try { return raw ? JSON.parse(raw) : null; } catch { return null; } };
+export const writeLocalStore = value => native ? native.writeStore(JSON.stringify(value)) : webWrite('mybots.store', JSON.stringify(value));
 export const readPairing = () => native.readPairing();
 export const savePairing = value => native.savePairing(value);
 export const readDeviceInfo = () => native.deviceInfo();

@@ -12,7 +12,8 @@ import { NewBot } from './components/NewBot';
 import { DesktopShell } from './components/DesktopShell';
 import { ActivityColumns, ActivityPage } from './components/Activity';
 import { UsagePanel } from './components/Usage';
-import { desktop, column, paintPage } from './desktop';
+import { desktop, pwa, column, paintPage } from './desktop';
+import { downloadFromComputer } from './web-file';
 import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './pc-backend';
 import { SetupScreen } from './components/Setup';
 import { DesktopUpdate } from './components/DesktopUpdate';
@@ -71,6 +72,9 @@ async function api(path, data, token, apiUrl) {
   if (!response.ok) throw new Error(value.error || 'Não foi possível concluir o pedido.');
   return value;
 }
+
+// Where the pairing and the small cache can be kept: the phone's native side, or the page's own storage in the iPhone's web app.
+const canStore = termuxAvailable || pwa;
 
 export default function App() {
   const [fonts] = useFonts({ PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold });
@@ -164,7 +168,7 @@ function AppMain() {
     let timer; let writing = Promise.resolve();
     const persist = () => {
       const { data, chats } = appStore.getSnapshot();
-      if (phoneMode.current !== 'phone' || !data?.supervisorConnected || desktop) return;
+      if (phoneMode.current !== 'phone' || !data?.supervisorConnected || desktop || pwa) return;
       const cache = conversationCache(localCacheRef.current, data, chats);
       localCacheRef.current = cache;
       writing = writing.catch(() => {}).then(() => writeLocalStore(cache)).catch(() => setLoadError('Não consegui atualizar a cópia local. Os dados continuam salvos no supervisor.'));
@@ -221,7 +225,7 @@ function AppMain() {
     // The window on the computer only talks to the phone; secrets, connectors and the time zone are the phone's.
     if (desktop) return;
     // Without Termux there is no supervisor here to prepare: the computer has its own. Only the notices need a permission.
-    if (backendRef.current === 'pc') { notificationPermission().catch(() => {}); return; }
+    if (backendRef.current === 'pc') { if (!pwa) notificationPermission().catch(() => {}); return; }
     await supervisor.current.call('secrets.unlock', { key: await readSecretsKey() });
     // Bot notifications are shown by MyBots itself; Android 13+ asks once.
     notificationPermission().catch(() => {});
@@ -264,6 +268,7 @@ function AppMain() {
     WebSocketClass: function BackendSocket(url) { return backendRef.current === 'pc' ? new RemoteSocket(url) : new globalThis.WebSocket(url); },
     onEvent: (event, data) => {
       // A bot notice while the app is open: MyBots shows it and confirms, so Termux:API does not repeat it.
+      if (event === 'bot.notify' && data?.id && pwa) return;
       if (event === 'bot.notify' && data?.id && !desktop) {
         showBotNotification(data).then(shown => shown && backendRef.current !== 'pc' && supervisor.current.call('outbox.ack', { ids: [data.id] })).catch(() => {});
         return;
@@ -302,7 +307,7 @@ function AppMain() {
     return next;
   }, [apiBase, apiToken]);
   const refreshPhone = useCallback(async (saved = localCache) => {
-    if (!termuxAvailable && !desktop) throw new Error('O supervisor exige o APK próprio do MyBots.');
+    if (!termuxAvailable && !desktop && !pwa) throw new Error('O supervisor exige o APK próprio do MyBots.');
     if (phoneConnecting.current) return phoneConnecting.current;
     phoneConnecting.current = (async () => {
       // Without Termux the computer is the backend: connect to it over the secure channel and load its state.
@@ -358,11 +363,18 @@ function AppMain() {
     let mounted = true;
     const loadFromLink = async url => {
       if (desktop) { if (mounted) setMode('phone'); await refreshPhone(); return; }
+      // The iPhone: the computer's QR opens this page with the pairing in the fragment (never sent to a server). Pair and clear it.
+      if (pwa && /#p=/.test(globalThis.location?.hash || '')) {
+        const link = globalThis.location.href;
+        try { globalThis.history.replaceState(null, '', globalThis.location.pathname + globalThis.location.search); } catch {}
+        if (mounted) setSetup(true);
+        await pairPc(link); return;
+      }
       const params = url ? new URL(url).searchParams : null;
       const token = params?.get('token');
       if (!token) {
-        const saved = termuxAvailable ? await readLocalStore() : null;
-        const pc = termuxAvailable ? await loadLink() : null;
+        const saved = canStore ? await readLocalStore() : null;
+        const pc = canStore ? await loadLink() : null;
         // The person's choice wins; before any choice, a pairing with a computer means the computer's MyBots, and a phone that
         // already ran its own supervisor keeps it (nothing changes for people who set Termux up before this).
         const chosen = saved?.backend || (saved?.supervisorMigrated || saved?.mode === 'phone' ? 'termux' : pc ? 'pc' : null);
@@ -437,6 +449,12 @@ function AppMain() {
     // On the computer the node saves the file in ~/Downloads and opens it with the default app.
     if (desktop) {
       try { const result = await supervisor.current.call('desktop.file', { id: file.id, name: file.name, action }); if (action === 'save') setFileNote(`Salvo em ${result.path}.`); else setFileSheet(null); }
+      catch (error) { setFileNote(error.message); } finally { setFileBusy(null); }
+      return;
+    }
+    // The iPhone's web app: the file is read from the computer and handed to the browser as a download.
+    if (pwa) {
+      try { await downloadFromComputer((method, params) => supervisor.current.call(method, params), file); if (action === 'save') setFileNote('Arquivo baixado.'); else setFileSheet(null); }
       catch (error) { setFileNote(error.message); } finally { setFileBusy(null); }
       return;
     }
@@ -525,7 +543,7 @@ function AppMain() {
     if (nextMode === 'phone') {
       setMode('phone'); setData(null);
       try {
-        let saved = termuxAvailable ? (await readLocalStore()) || emptyLocalStore() : emptyLocalStore();
+        let saved = canStore ? (await readLocalStore()) || emptyLocalStore() : emptyLocalStore();
         if (apiToken && apiBase) {
           try {
             const remote = await api('/api/state', undefined, apiToken, apiBase);
@@ -545,20 +563,20 @@ function AppMain() {
     }
     try {
       if (supervisor.current.authenticated) await loadSupervisorState();
-      const saved = termuxAvailable ? await readLocalStore() : localCache;
+      const saved = canStore ? await readLocalStore() : localCache;
       if (!apiToken || !apiBase) throw new Error('Abra o QR code do computador para conectar ao modo Celular + computador.');
       if (saved?.bots?.length) await api('/api/sync', { bots: saved.bots }, apiToken, apiBase);
       const remote = await api('/api/state', undefined, apiToken, apiBase);
       setMode('computer'); setData(remote); setLocalCache({ ...saved, mode: 'computer' });
-      if (termuxAvailable) await writeLocalStore({ ...saved, mode: 'computer' });
+      if (canStore) await writeLocalStore({ ...saved, mode: 'computer' });
     } catch (error) { setLoadError(error.message); }
     finally { setConnectionBusy(false); }
   };
   // Where this phone's MyBots lives. Without Termux it is the computer's (paired by its QR); with Termux, a supervisor of its own that
   // syncs with the computer. Switching never deletes anything: the data stays where it was.
   const saveChoice = async (patch) => {
-    const saved = { ...((termuxAvailable ? await readLocalStore() : null) || emptyLocalStore()), ...patch, mode: 'phone' };
-    if (termuxAvailable) await writeLocalStore(saved); setLocalCache(saved); return saved;
+    const saved = { ...((canStore ? await readLocalStore() : null) || emptyLocalStore()), ...patch, mode: 'phone' };
+    if (canStore) await writeLocalStore(saved); setLocalCache(saved); return saved;
   };
   const openBackend = async (next, saved) => {
     backendRef.current = next; setBackend(next); setMode('phone'); setSetup(false); setLoadError('');
@@ -583,8 +601,8 @@ function AppMain() {
   };
   const forgetPc = async () => {
     await forgetLink(); supervisor.current.close();
-    const saved = { ...((termuxAvailable ? await readLocalStore() : null) || emptyLocalStore()) }; delete saved.backend;
-    if (termuxAvailable) await writeLocalStore(saved);
+    const saved = { ...((canStore ? await readLocalStore() : null) || emptyLocalStore()) }; delete saved.backend;
+    if (canStore) await writeLocalStore(saved);
     backendRef.current = null; setBackend(null); setData(null); setMaintenanceVisible(false); setSetup(true);
   };
   const saveBackup = async () => {
@@ -804,7 +822,7 @@ function AppMain() {
           onOpen={openDesktopBot} onRoom={openDesktopRoom} onHome={() => { setSelected(null); setRoomId(null); setDraft(''); }} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView}</DesktopShell>
-      : roomView || chatView || <HomeScreen onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+      : roomView || chatView || <HomeScreen remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}

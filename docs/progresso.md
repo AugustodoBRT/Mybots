@@ -1619,3 +1619,13 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Janela invisível no Hyprland**: aberto pelo menu (via `systemd --user`) o app não recebia `HYPRLAND_INSTANCE_SIGNATURE`, achava que não estava no Hyprland e deixava a janela no workspace escondido `special:mybots`. Agora `findHypr()` (`desktop/electron/main.js`) descobre o Hyprland em execução pela pasta de sockets em `$XDG_RUNTIME_DIR/hypr`.
 - **Atualização com 404**: se o download falhar (o feed pode ter passado para uma versão mais nova), o app mostra o erro e verifica de novo na hora (`desktop/electron/updates.js`).
 - **README**: badges com a versão atual de Android, Linux, Windows e macOS, lidas das Releases.
+
+## 0.68.0 (versionCode 128): MyBots no iPhone (web app)
+
+- **Web app do iPhone**: a mesma interface do app, exportada para o navegador (`scripts/build-pwa.mjs`) e publicada em `https://mybots-rele.duckdns.org/` (`scripts/publish-pwa.sh`). Sem Termux: o computador é o backend, pelo mesmo canal cifrado do Android sem Termux (`mobile/pc-channel.js`, `pc-client.js`).
+- **Pareamento**: Ajustes → Celular → **Mostrar QR (iPhone)** (e "Copiar o link") no computador; a câmera do iPhone abre `…/#p=<pareamento>`. O pareamento vai no fragmento (nunca chega a um servidor), a página o guarda e limpa a barra de endereço. Reserva: colar o link.
+- **Só relé**: página HTTPS não abre `ws://` do computador; `pc-client.js` pula o caminho direto quando `location.protocol === 'https:'`.
+- **Servidor**: Caddy da VM serve o site estático e continua encaminhando WebSocket e `/health` ao relé; CSP restringe a página a falar só com o relé; backup em `/etc/caddy/Caddyfile.bak-pwa`.
+- **Ajustes de interface**: em quem usa o computador como base (Android sem Termux e iPhone) a Início diz "No computador" e "Bots e conversas ficam no computador"; anexos pelo seletor do navegador; arquivos do bot viram download (`mobile/web-file.js`); sem ditado (o microfone do teclado faz isso).
+- **Validação**: `tests/pwa.test.mjs` (link do iPhone, `parseQr` com fragmento, só relé em HTTPS), `tests/link.test.mjs` (QR do iPhone), teste de ponta a ponta no Chrome (`.build-tools/pwa-e2e.mjs`: pareia pelo link, recarrega sem duplicar aparelho, bot do computador aparece, com a CSP) e a página em produção (carrega sem erro e abre o WebSocket do relé).
+- **Limites**: sem notificações em segundo plano, navegador ao vivo, senhas e carteira; depende do computador ligado; o Safari apaga dados de sites após 7 dias sem uso fora da Tela de Início.

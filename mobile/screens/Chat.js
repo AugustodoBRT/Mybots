@@ -5,7 +5,7 @@ import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
 import { useState, useEffect, useRef } from 'react';
 import { termuxAvailable, pickFile } from '../termux';
-import { desktop, desktopBus, readingColumn } from '../desktop';
+import { desktop, pwa, desktopBus, readingColumn } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
@@ -185,7 +185,7 @@ function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onStee
       <Composer value={draft} setValue={setDraft} editable={!typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
         onSend={async () => { if (await onSend(draft, files)) { setFiles([]); toEnd(); } }} accessibilityLabel="Sua mensagem"
         placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
-        onAttach={phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
+        onAttach={pwa ? pickWebFile : phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
     </View>
     </View>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />

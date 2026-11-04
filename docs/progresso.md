@@ -1704,3 +1704,9 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Defeito achado**: o PC já estava na v137 com o cofre vazio e nenhuma linha no log. A troca de senhas com o celular no Termux passa pelo supervisor do celular; um supervisor antigo responde "Isto só pode ser feito no celular" e eu tratava isso como silêncio. Agora o log do PC diz uma vez que o MyBots do celular está numa versão sem a troca de senhas.
 - **Só o PC mudou** (o APK segue o da v137; a versão sobe para o instalador do PC ser reconhecido como novo).
 
+## 0.71.8 (versionCode 139): as senhas do celular finalmente chegam ao PC
+
+- **Causa real**: o nó fala com os dois supervisores por uma lista de métodos permitidos (`SYNC_METHODS` em `supervisor/link.mjs`), inclusive com o do próprio computador. `passwords.export` e `passwords.merge` não estavam nela, então o supervisor do PC recusava ("Isto só pode ser feito no celular") antes de a troca chegar ao celular. Meu diagnóstico anterior (supervisor do celular antigo) estava errado: o diagnóstico do celular mostrava o supervisor novo. Os testes usavam lados falsos que não passam por essa lista.
+- **Correção**: os três métodos entram na lista; o teste agora passa pelo `Link.desktop` de verdade. O log mostra o erro real em vez de supor a versão do celular.
+- **Entrega**: só o PC precisa atualizar (a recusa era do supervisor do computador; o do celular já aceitava `passwords.sync`). O APK segue o da v137.
+

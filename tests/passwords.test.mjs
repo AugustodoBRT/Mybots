@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { generateKeyPairSync, privateDecrypt, createDecipheriv, constants } from 'node:crypto';
 import { Passwords } from '../supervisor/passwords.mjs';
 import { createSync } from '../pc/sync.mjs';
+import { SYNC_METHODS, Link } from '../supervisor/link.mjs';
 
 const BOT = '11111111-1111-4111-8111-111111111111', OTHER = '22222222-2222-4222-8222-222222222222';
 const made = async t => { const dir = await mkdtemp(join(tmpdir(), 'mybots-pw-')); t.after(() => rm(dir, { recursive: true, force: true })); return dir; };
@@ -99,4 +100,11 @@ test('the computer vault imports a password export like the phone does: web logi
   assert.equal(vault.forPage(BOT, 'https://sig.cefetmg.br/').password, 'nova');
   assert.throws(() => vault.importCsv('a,b\n1,2\n'), /não parece uma exportação/);
   assert.throws(() => vault.importCsv(''), /vazio/);
+});
+
+test('every method the node uses to meet the vaults is on the list a supervisor answers to the node (the computer\'s own too)', async () => {
+  for (const method of ['passwords.export', 'passwords.merge', 'passwords.sync']) assert.ok(SYNC_METHODS.includes(method), method);
+  const link = new Link({}, {}, { port: 1 }); link.rpc = async (method, params) => ({ method, params });
+  for (const method of ['passwords.export', 'passwords.merge', 'passwords.sync']) assert.deepEqual(await link.desktop({ method, params: { a: 1 } }), { result: { method, params: { a: 1 } } });
+  assert.match((await link.desktop({ method: 'passwords.dump', params: {} })).error || '', /Isto só/, 'an unknown method is refused');
 });

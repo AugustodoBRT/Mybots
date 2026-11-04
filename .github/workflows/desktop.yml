@@ -12,6 +12,10 @@ on:
         description: 'Publicar na Release de destino'
         type: boolean
         default: false
+      run_tests:
+        description: 'Rodar também a suíte de testes (demora; ela já roda no computador antes de cada entrega)'
+        type: boolean
+        default: false
       release:
         description: 'Tag da Release de destino: pc-latest (canal de atualização) ou outra pc-* (pré-Release à parte, por exemplo pc-windows-beta)'
         default: pc-latest
@@ -26,7 +30,8 @@ env:
 
 jobs:
   tests:
-    # Ainda informativo: parte dos testes usa programas do computador do autor (Chrome, bubblewrap, as IAs).
+    # Informativo e fora do caminho dos instaladores: só roda quando pedido (run_tests). Parte dos testes usa programas do computador do autor.
+    if: ${{ inputs.run_tests }}
     runs-on: ubuntu-24.04
     continue-on-error: true
     steps:

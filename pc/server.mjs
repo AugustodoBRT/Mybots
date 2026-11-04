@@ -137,7 +137,11 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
   // Skills turned on for the bot: only their folder, at the same absolute path, mounted after the folders hidden above
   // (a skill under ~/.claude stays reachable for a Codex bot while the rest of ~/.claude is empty). Read-only unless
   // the person allowed improving it.
-  const folders = [...skills.filter(skill => skill?.path && existsSync(skill.path)).flatMap(skill => [skill.write ? '--bind' : '--ro-bind', skill.path, skill.path]), ...(accountDir && existsSync(accountDir) ? ['--bind', accountDir, accountDir] : [])];
+  // The launcher of Node that the tools server (MCP) of each IA is started with lives in <directory>/bin, which the empty folder above hides:
+  // without it the MyBots tools fail to load ("fork/exec .../bin/node: no such file") and the IA hunts for them on the disk. Only that
+  // folder is mounted back, read-only; it holds a one-line script, no keys.
+  const nodeLauncher = join(directory, 'bin');
+  const folders = [...(existsSync(nodeLauncher) && hidden.includes(directory) ? ['--ro-bind', nodeLauncher, nodeLauncher] : []), ...skills.filter(skill => skill?.path && existsSync(skill.path)).flatMap(skill => [skill.write ? '--bind' : '--ro-bind', skill.path, skill.path]), ...(accountDir && existsSync(accountDir) ? ['--bind', accountDir, accountDir] : [])];
   // The graphics card only when the person turned it on for this bot: the private /dev has no render devices.
   const devices = gpu ? gpuDevices(dev).flatMap(path => ['--dev-bind', path, path]) : [];
   return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', '--unshare-pid', '--proc', '/proc', '--dev', '/dev',

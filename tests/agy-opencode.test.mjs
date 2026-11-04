@@ -188,3 +188,32 @@ test('a wrapper that finds no agy or opencode (exit 127) reads as not installed,
   await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: missing.binary }), /não foi encontrado/);
   await assert.rejects(opencodeRunner.runReply({ model: 'a/b' }, 'oi', { binary: missing.binary }), /não foi encontrado/);
 });
+
+test('agy: a model that keeps hunting for the MyBots tools on the disk is cut short, and the guidance says the tools are already loaded', async t => {
+  const hunting = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+for (let i = 2; i < 40; i++) out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: i, state: 'ACTIVE', step_type: 'tool', tool_name: 'run_command', tool_info: { name: 'run_command', parameters: { CommandLine: i % 2 ? 'mount' : 'find /home/x/.gemini -name "*.json"' } } } });
+setTimeout(() => {}, 5000);`);
+  await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: hunting.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' } }), /procurando as ferramentas do MyBots no disco/);
+  const editing = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 2, state: 'ACTIVE', step_type: 'tool', tool_name: 'replace_file_content', tool_info: { name: 'replace_file_content', parameters: { TargetFile: '/home/x/.gemini/config/mcp_config.json' } } } });
+setTimeout(() => {}, 5000);`);
+  await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: editing.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' } }), /procurando as ferramentas do MyBots no disco/);
+  assert.match(agyRunner.guidanceFor({ token: 't' }), /já estão carregadas.*não rode find, mount/s);
+  assert.equal(agyRunner.guidanceFor(null), '');
+});
+
+test('the sandbox hides ~/.mybots-pc but mounts its bin folder back, so the MyBots tools server can start its Node there', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'mybots-home-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(join(home, '.mybots-pc', 'bin'), { recursive: true });
+  const args = sandboxFor('agy', home, '/usr/bin/bwrap', join(home, '.mybots-pc'));
+  const bin = join(home, '.mybots-pc', 'bin');
+  assert.ok(args.includes(join(home, '.mybots-pc')) && args[args.indexOf(join(home, '.mybots-pc')) - 1] === '--tmpfs');
+  const at = args.findIndex((item, i) => item === '--ro-bind' && args[i + 1] === bin && args[i + 2] === bin);
+  assert.ok(at > args.indexOf('--tmpfs'), 'the bin folder is mounted after the empty folder that hides the rest');
+});

@@ -1652,3 +1652,11 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 
 - **Computador**: o app procurava versão nova ao abrir e a cada 6 horas; quem deixava o app aberto só via o aviso horas depois (ou nunca, se só fechasse a janela para a bandeja). Agora procura a cada hora e também sempre que a janela volta à tela ou ganha o foco, se a última procura tiver mais de 10 minutos (`checkIfStale` em `desktop/electron/updates.js`, chamado por `show()` e pelo evento `focus`). O aviso aparece na janela ("Nova versão · Atualizar e reiniciar"), na bandeja e como notificação.
 - **Android**: ao voltar para o app, ele confere de novo se a última conferência tiver mais de 15 minutos (antes, 1 hora).
+
+## 0.71.1 (versionCode 132): Antigravity sem alucinar procurando as ferramentas
+
+- **Defeito achado**: com o Gemini (Antigravity), o bot não abria o navegador e ficava rodando `find`, `mount`, `ls ~/.gemini` e até editando `mcp_config.json`. Os próprios bots explicaram: o servidor de ferramentas `mybots-tools` não subia, com `fork/exec /home/augusto/.mybots-pc/bin/node: no such file or directory`. O sandbox (`sandboxFor`, em `pc/server.mjs`) esconde `~/.mybots-pc` inteira e o Node que o MCP usa mora em `~/.mybots-pc/bin/node`. Sem as ferramentas, o modelo improvisava e narrava no chat (cada texto antes de uma ferramenta vira mensagem), o que virou o monólogo em laço visto num passo ~190.
+- **Correção**: o sandbox remonta só `~/.mybots-pc/bin` (somente leitura, um script de uma linha) por cima da pasta escondida; o `ui-token` e o resto continuam ocultos.
+- **Antigravity**: a instrução diz que as ferramentas já estão carregadas, manda parar e contar o erro exato se uma falhar, e pede no máximo uma frase curta entre as etapas, sem reler nem tirar screenshot à toa. Se o modelo insistir em procurar no disco (mais de 3 comandos em `.gemini`, `mount` e afins) ou tentar editar `mcp_config.json`, a execução é interrompida com uma mensagem clara.
+- **Validação**: `tests/agy-opencode.test.mjs` (corte da busca, edição do `mcp_config`, `bin` remontado depois do tmpfs), `bwrap` real (o `node` roda dentro do sandbox, o `ui-token` não aparece) e os dois bots do app no computador.
+- **Limites**: não testado em celular real; o fluxo ponta a ponta com o Gemini ainda precisa ser conferido no app depois de atualizar.

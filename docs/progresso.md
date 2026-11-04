@@ -1667,3 +1667,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Correção**: `pc/desktop.mjs` (`systemEnv`) roda os programas do sistema (`notify-send`, `gdbus`, `grim`, `hyprctl`, `ydotool`, `wl-copy`) sem nada do ponto de montagem do app em `LD_LIBRARY_PATH`, `GSETTINGS_SCHEMA_DIR`, `XDG_DATA_DIRS` e `PATH`.
 - **Validação**: `tests/desktop.test.mjs` (o ambiente limpo) e o `notify-send` real com o ambiente do app, antes quebrado e agora com id de notificação.
 - **Limites**: o fluxo do Gemini abrindo o SIGAA e as vagas ainda precisa ser visto no app já atualizado; sem teste em celular real.
+
+## 0.71.3 (versionCode 134): o celular volta a parear (teste de rotinas dependia das contas do aparelho)
+
+- **Defeito achado**: ao parear, o celular roda 7 arquivos de teste do supervisor e, se algum falha, mostra "Não consegui preparar o supervisor". No celular do dono falhou `schedules run when due...` (tests/routines.test.mjs), que simula o Codex desconectado e espera "Codex desconectado.", mas recebeu "Este modelo não aparece mais no catálogo do Codex". Causa: o supervisor conta uma IA como conectada se qualquer conta extra dela estiver logada (v129), e os testes liam as contas extras REAIS do aparelho (`~/.mybots-accounts`), onde o dono tem uma. No PC do dono não há conta extra do Codex, por isso nunca falhou lá.
+- **Correção**: `tests/isolate-accounts.mjs` aponta `MYBOTS_ACCOUNTS` para uma pasta vazia antes de qualquer outra importação, e é a primeira linha dos 7 testes que o celular roda (supervisor, tools, claude, routines, apps, access, default-access). O módulo entra no pacote do supervisor (`scripts/package-supervisor.mjs`).
+- **Validação**: reproduzi com um `codex` falso logado e uma conta extra (falhava antes, passa depois); os 7 arquivos dão 49 de 49 nessas condições; suíte completa 445 ok.
+- **Limites**: o PC não mudou nesta versão (só testes e pacote do celular), por isso não gerei instaladores do PC; o pareamento no celular real depende de o dono tocar em "Tentar" depois de atualizar.

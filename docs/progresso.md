@@ -1685,3 +1685,9 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Testes**: `tests/passwords.test.mjs` (cofre, envelope aberto como o navegador faz, união de dois cofres com exclusão, rodada de sincronização com o app fechado) e dois do Gemini; o pacote do supervisor inclui `passwords.mjs`; `tests/isolate-accounts.mjs` apaga a pasta temporária ao sair (achado da revisão da v134).
 - **Não testado em aparelho real**: o Kotlin novo (`PasswordVault.syncMerge`, op `passwordsSync`) só compila na build do APK; o fluxo completo com o celular fica para o dono conferir.
 
+## 0.71.5 (versionCode 136): o Gemini retoma sozinho quando trava e os bots enxergam o que baixam
+
+- **Gemini parado**: "O Antigravity ficou tempo demais sem dar sinal" era o `agy` mudo por 10 minutos (a chamada ao modelo travava). Agora o silêncio de 4 minutos para o processo e o mesmo diálogo é retomado ("Continue de onde parou"), até 3 vezes; só depois vira erro.
+- **Downloads**: um arquivo baixado no navegador do computador ficava numa pasta que o bot não enxerga (só a pessoa podia abri-lo), então ele "não conseguia baixar". Agora o download vira arquivo do bot na hora (`fileId` no resultado; leia com `attachment_read`, mande com `file_send`) e `files_list` junta o que baixou depois. Documentos que a página abre dentro do navegador (PDF no visualizador, Office), que o Chrome não trata como download, também são salvos (`isInlineDocument`); a espera pelo início de um download passou de 1,5 s para 4 s (o SIGAA demora).
+- **Testes**: `tests/inline-download.test.mjs` e o de retomada do Gemini.
+

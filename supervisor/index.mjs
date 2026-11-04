@@ -217,6 +217,13 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       db.run('INSERT INTO browser_downloads VALUES(?,?,?,?,?,?,?,?)', randomUUID(), botId, 'pc', file.name, stored.size, stored.mime, stored.id, now());
       return stored;
     };
+    tools.importDownload = (botId, name) => downloadFile(botId, 'pc:' + name);
+    tools.importDownloads = async botId => {
+      if (link.status().state !== 'online') return;
+      const have = new Set(db.all("SELECT name FROM browser_downloads WHERE bot_id=? AND place='pc'", botId).map(row => row.name));
+      const { files } = await browserDownloads(botId);
+      for (const file of files.filter(item => item.where === 'pc' && !have.has(item.id.slice(3))).slice(0, 5)) await downloadFile(botId, file.id).catch(() => {});
+    };
     // file_send with a path from a bot that runs on the computer: the file comes here in parts and becomes the bot's file.
     tools.pcFile = async (botId, path) => {
       let offset = 0, id = null, started = null;

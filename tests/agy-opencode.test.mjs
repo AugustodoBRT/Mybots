@@ -258,3 +258,21 @@ out({ event: 'result', result: { status: 'SUCCESS', response: text, usage: { inp
   // Without the MyBots tools (a plain chat) nothing is added; an answer is not an announcement.
   assert.ok(agyRunner.ANNOUNCES.test('Vou abrir a página') && !agyRunner.ANNOUNCES.test('Encontrei três atividades.'));
 });
+
+test('agy: a run that goes silent is stopped and the conversation resumed, instead of failing after ten minutes', async t => {
+  const agy = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+const first = !args.includes('--conversation');
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+if (first) { setTimeout(() => {}, 60000); return; }
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 1, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'Pronto: 3 atividades.' } });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 1, state: 'DONE', step_type: 'agent_response' } });
+out({ event: 'result', result: { status: 'SUCCESS', response: 'Pronto: 3 atividades.', usage: {} } });`);
+  const steps = [];
+  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' }, idleMs: 400, onProgress: item => item.step && steps.push(item.step) });
+  assert.equal(result.text, 'Pronto: 3 atividades.');
+  assert.ok(steps.some(step => /parou de responder/.test(step)));
+  assert.equal((await agy.calls()).length, 2);
+  // Without the MyBots tools (nothing to resume with) the silence is still an error.
+  await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, idleMs: 400, maxMs: 2000 }).then(r => { throw new Error('esperava erro ' + r.text); }, e => { throw e; }), () => true);
+});

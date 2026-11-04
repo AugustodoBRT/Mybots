@@ -307,6 +307,8 @@ export class Tools {
         result = { ...file, sent: tool === 'file.send' || args.send, message: tool === 'file.send' || args.send ? 'O arquivo aparece para a pessoa junto da sua resposta, com Abrir, Compartilhar e Salvar.' : 'Arquivo criado (não mandado). Use file_send com o id para mandar.' };
       } else if (tool === 'file.list') {
         if (!this.attachments) throw new Error('Os arquivos não estão disponíveis.');
+        // Downloads made in the computer's browser that the bot has not met yet (a slow download that finished after its click) join its files first.
+        await this.importDownloads?.(run.botId).catch(() => {});
         result = this.attachments.list(run.botId, args.limit);
       } else if (tool.startsWith('routine.')) {
         if (!this.routines) throw new Error('As rotinas não estão disponíveis.');
@@ -643,7 +645,14 @@ export class Tools {
         result = { mcpContent: [{ type: 'text', text: `${IMAGE_HINT}\n${BROWSER_NOTICE}\n${shot.title || ''} · ${shot.url || ''} · ${shot.width} × ${shot.height}` }, { type: 'image', data: shot.image, mimeType: 'image/jpeg' }] };
       } else result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, tool.slice(8), args) };
       if (tool !== 'browser.ask_user') await this.browserStep(run, tool, args, result, target, command);
-      if (result?.download && !result.download.error) this.changed('browser.download', { botId: run.botId });
+      if (result?.download && !result.download.error) {
+        this.changed('browser.download', { botId: run.botId });
+        // The file the bot just downloaded on the computer becomes one of its files, so it can read it or send it (before, only the person could).
+        if (result.download.where === 'pc' && this.importDownload) try {
+          const stored = await this.importDownload(run.botId, result.download.name);
+          result = { ...result, download: { ...result.download, fileId: stored.id }, next: `O arquivo baixado já está nos arquivos deste bot (id ${stored.id}): leia com attachment_read ou mande à pessoa com file_send.` };
+        } catch {}
+      }
       this.db.record('tool_done', label + ': concluído.', run.botId, run.taskId); this.changed('activity.new'); return result;
     } catch (error) {
       this.db.record('tool_denied', `${label}: ${error.message}`.slice(0, 300), run.botId, run.taskId); this.changed('activity.new'); throw error;

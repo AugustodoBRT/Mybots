@@ -60,6 +60,17 @@ function iconData(type, body) {
   }
   return `data:${type};base64,${body.toString('base64')}`;
 }
+const DOCUMENT_TYPES = /^(application\/(pdf|msword|rtf|zip|x-zip-compressed|vnd\.(ms-|openxmlformats-officedocument|oasis\.opendocument)[^;]*)|text\/csv)$/;
+/** A page's own navigation answered with a document shown inline (no attachment header, which Chrome already saves as a download). */
+export function isInlineDocument(response, page) {
+  try {
+    const request = response.request();
+    if (!request.isNavigationRequest() || request.frame() !== page.mainFrame() || response.status() >= 400) return false;
+    const headers = response.headers();
+    return DOCUMENT_TYPES.test((headers['content-type'] || '').split(';')[0].trim().toLowerCase()) && !/attachment/i.test(headers['content-disposition'] || '');
+  } catch { return false; }
+}
+
 /** A download's name inside the bot's folder: no paths, no executables, never overwriting another file. */
 export function downloadName(value, folder) {
   let name = String(value || 'arquivo').replace(/[\u0000-\u001f/\\]/g, '_').replace(/^\.+/, '').trim().slice(0, 120) || 'arquivo';
@@ -159,6 +170,9 @@ export class BrowserSession {
       // In the shared Chrome a popup belongs to the bot whose page opened it (the context's route checks its address).
       if (this.mode === 'shared') page.on('popup', add);
       if (this.mode !== 'mine') page.on('download', download => this.saveDownload(download));
+      // A document the page shows inline (a PDF in the viewer, an Office file) is no "download" for Chrome, but it is the file the person
+      // wants: it is saved too, so the bot gets it like any other download.
+      if (this.mode !== 'mine') page.on('response', response => { if (isInlineDocument(response, page)) this.saveInline(response); });
       page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) (this.cdp || this.device) && this.emitFrame({ loading: true }); });
       page.on('domcontentloaded', () => { if (this.cdp || this.device) this.emitFrame({ loading: false }); if (this.device && page === this.page) this.deviceView(this.device).catch(() => {}); if (this.cdp) this.info().then(() => this.view(true)).catch(() => {}); });
       page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
@@ -384,15 +398,36 @@ export class BrowserSession {
     })().catch(error => ({ error: /executáveis|100 MB/.test(error.message) ? error.message : 'O download falhou.' }));
     return this.downloading;
   }
+  /** The bytes of a document the page opened inline, saved in the bot's folder like a download (the same limits). */
+  saveInline(response) {
+    this.downloadSerial++;
+    this.downloading = (async () => {
+      const folder = join(downloadsRoot(), this.botId); mkdirSync(folder, { recursive: true, mode: 0o700 });
+      const headers = response.headers();
+      const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(headers['content-disposition'] || '')?.[1];
+      let last = ''; try { last = decodeURIComponent(new URL(response.url()).pathname.split('/').pop() || ''); } catch {}
+      const type = (headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const extension = type === 'application/pdf' ? '.pdf' : '';
+      let base = (named ? decodeURIComponent(named) : last || 'arquivo').replace(/[\u0000-\u001f/\\]/g, ' ').trim() || 'arquivo';
+      if (extension && !/\.[A-Za-z0-9]{2,5}$/.test(base)) base += extension;
+      const name = downloadName(base, folder);
+      const body = await response.body();
+      if (body.length > MAX_DOWNLOAD) throw new Error('O arquivo passa de 100 MB.');
+      writeFileSync(join(folder, name), body, { mode: 0o600 });
+      const file = { name, size: body.length, at: new Date().toISOString(), where: 'pc' };
+      this.emitFrame({ download: file }); return file;
+    })().catch(error => ({ error: /executáveis|100 MB/.test(error.message) ? error.message : 'O download falhou.' }));
+    return this.downloading;
+  }
   // A download starts a moment after the click; when one starts, wait for it (up to 90 s) and report the saved file.
   async awaitDownload(before) {
-    for (let start = Date.now(); this.downloadSerial === before && Date.now() - start < 1500;) await sleep(100);
+    for (let start = Date.now(); this.downloadSerial === before && Date.now() - start < 4000;) await sleep(100);
     if (this.downloadSerial === before) return null;
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => resolve({ error: 'O download ainda não terminou.' }), 90000); timer.unref(); });
     try { return await Promise.race([this.downloading, late]); } finally { clearTimeout(timer); }
   }
-  withDownload(result, file) { return file ? { ...result, download: file, ...(file.error ? {} : { next: 'O arquivo foi salvo nos downloads deste bot no computador. A pessoa pode abri-lo ou enviá-lo a você pela lista de downloads do navegador.' }) } : result; }
+  withDownload(result, file) { return file ? { ...result, download: file, ...(file.error ? {} : { next: 'O arquivo foi salvo nos downloads deste bot no computador.' }) } : result; }
   queueFrame(cdp, frame) {
     this.pendingFrame = frame;
     if (this.frameTimer) return;

@@ -214,3 +214,10 @@ test('each bot has its own browser on the computer: a bot using it does not bloc
   assert.equal(f.actions.filter(a => a.op === 'open').length, 2);
   await f.app.queue.cancel(first);
 });
+
+test('the system programs of the desktop tools run without the libraries of the installed app (its old libnotify broke notify-send)', async () => {
+  const { systemEnv } = await import('../pc/desktop.mjs');
+  const env = systemEnv({ HOME: '/h', PATH: '/home/a/.local/bin:/tmp/.mount_MyBotsX:/tmp/.mount_MyBotsX/usr/sbin:/usr/bin', LD_LIBRARY_PATH: '/tmp/.mount_MyBotsX/usr/lib:/tmp/.mount_MyBotsY/usr/lib', XDG_DATA_DIRS: '/tmp/.mount_MyBotsX/usr/share/:/usr/share', GSETTINGS_SCHEMA_DIR: '/tmp/.mount_MyBotsX/usr/share/glib-2.0/schemas' });
+  assert.deepEqual(env, { HOME: '/h', PATH: '/home/a/.local/bin:/usr/bin', XDG_DATA_DIRS: '/usr/share' });
+  assert.deepEqual(systemEnv({ LD_LIBRARY_PATH: '/opt/lib:/usr/lib', PATH: '/usr/bin' }), { LD_LIBRARY_PATH: '/opt/lib:/usr/lib', PATH: '/usr/bin' });
+});

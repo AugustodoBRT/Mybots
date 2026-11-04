@@ -1660,3 +1660,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Antigravity**: a instrução diz que as ferramentas já estão carregadas, manda parar e contar o erro exato se uma falhar, e pede no máximo uma frase curta entre as etapas, sem reler nem tirar screenshot à toa. Se o modelo insistir em procurar no disco (mais de 3 comandos em `.gemini`, `mount` e afins) ou tentar editar `mcp_config.json`, a execução é interrompida com uma mensagem clara.
 - **Validação**: `tests/agy-opencode.test.mjs` (corte da busca, edição do `mcp_config`, `bin` remontado depois do tmpfs), `bwrap` real (o `node` roda dentro do sandbox, o `ui-token` não aparece) e os dois bots do app no computador.
 - **Limites**: não testado em celular real; o fluxo ponta a ponta com o Gemini ainda precisa ser conferido no app depois de atualizar.
+
+## 0.71.2 (versionCode 133): o aviso de controle do computador voltou a funcionar no app instalado
+
+- **Defeito achado**: no AppImage, toda ação no computador (abrir o navegador do bot, tela, mouse) falhava com "Não consegui mostrar o aviso de controle. Confira o swaync; nenhuma ação foi executada." O AppImage traz uma `libnotify.so.4` antiga em `usr/lib` e a põe no `LD_LIBRARY_PATH`; o `notify-send` do sistema carregava essa biblioteca e morria com `symbol lookup error`, e como o aviso é obrigatório a ação era bloqueada. Foi o que derrubou também a rotina das 10h10 do Maniaco.
+- **Correção**: `pc/desktop.mjs` (`systemEnv`) roda os programas do sistema (`notify-send`, `gdbus`, `grim`, `hyprctl`, `ydotool`, `wl-copy`) sem nada do ponto de montagem do app em `LD_LIBRARY_PATH`, `GSETTINGS_SCHEMA_DIR`, `XDG_DATA_DIRS` e `PATH`.
+- **Validação**: `tests/desktop.test.mjs` (o ambiente limpo) e o `notify-send` real com o ambiente do app, antes quebrado e agora com id de notificação.
+- **Limites**: o fluxo do Gemini abrindo o SIGAA e as vagas ainda precisa ser visto no app já atualizado; sem teste em celular real.

@@ -4,8 +4,21 @@ import { toolArguments } from '../supervisor/tool-policy.mjs';
 import { hasDesktopControl } from './platform.mjs';
 
 const execAsync = promisify(execFile);
+// The installed app (AppImage) puts its own libraries (an old libnotify among them) on LD_LIBRARY_PATH. The system programs this file
+// starts (notify-send, grim, hyprctl, ydotool, wl-copy...) would load them and die ("symbol lookup error"), so they get the environment
+// without anything from the app's own mount.
+const OWN_MOUNT = /^\/tmp\/\.mount_/;
+export function systemEnv(env = process.env) {
+  const clean = { ...env };
+  for (const name of ['LD_LIBRARY_PATH', 'GSETTINGS_SCHEMA_DIR', 'XDG_DATA_DIRS', 'PATH']) {
+    if (typeof clean[name] !== 'string') continue;
+    const kept = clean[name].split(':').filter(part => part && !OWN_MOUNT.test(part));
+    if (kept.length) clean[name] = kept.join(':'); else delete clean[name];
+  }
+  return clean;
+}
 const exec = (bin, argv, { input, ...options } = {}) => {
-  const pending = execAsync(bin, argv, options);
+  const pending = execAsync(bin, argv, { ...options, env: systemEnv(options.env || process.env) });
   if (input !== undefined) pending.child.stdin.end(input);
   return pending;
 };

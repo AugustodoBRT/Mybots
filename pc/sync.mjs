@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 export const FILE_LIMIT = 20 * 1024 * 1024;
 // Events that mean data changed. Not 'connection.changed' or 'activity.new': the sync's own notes cause those, and it would never settle.
-const WORTH = new Set(['message.added', 'message.updated', 'bot.updated', 'chat.reset', 'task.done']);
+const WORTH = new Set(['message.added', 'message.updated', 'bot.updated', 'chat.reset', 'task.done', 'passwords.changed']);
 export const worthSyncing = event => WORTH.has(event);
 
 /**
@@ -20,6 +20,7 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
   const state = { peers: saved.peers || {}, files: Array.isArray(saved.files) ? saved.files : [] };
   const save = () => { try { writeFileSync(file + '.tmp', JSON.stringify(state), { mode: 0o600 }); renameSync(file + '.tmp', file); } catch {} };
   let running = null, again = false, timer = null, closed = false, lastStart = 0, current = { state: 'waiting', online: false, error: null, progress: null };
+  let passwordsNote = null;
   let lastPair = null; const sides = { phone, local };
 
   const set = patch => { current = { ...current, ...patch }; return current; };
@@ -70,7 +71,13 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
       const mine = await local.call('passwords.export');
       const theirs = await phone.call('passwords.sync', mine);
       await local.call('passwords.merge', theirs);
-    } catch (error) { if (!/app do celular não está aberto|demorou para|só pode ser feito|Isto só/.test(error.message)) log(`Senhas não sincronizaram: ${error.message}`); }
+      if (passwordsNote !== 'ok') log('Senhas do celular e do computador sincronizadas.'); passwordsNote = 'ok';
+    } catch (error) {
+      // Said once per change, not every minute: the app closed is normal, an error is worth reading.
+      const waiting = /app do celular não está aberto|demorou para/.test(error.message), note = waiting ? 'waiting' : 'error:' + error.message;
+      if (note !== passwordsNote && !/só pode ser feito|Isto só/.test(error.message)) log(waiting ? 'Senhas: aguardando o app do celular ficar aberto para sincronizar.' : `Senhas não sincronizaram: ${error.message}`);
+      passwordsNote = note;
+    }
   }
 
   async function round() {

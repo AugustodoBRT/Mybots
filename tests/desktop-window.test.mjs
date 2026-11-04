@@ -140,7 +140,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByLabel('Ajustes', { exact: true }).first().click(); await seen('Conta e IA', { state: 'visible' }); await railStays();
   assert.equal(await page.getByLabel('Conversar com Atlas').count(), 0, 'a lista de conversas sai da frente');
   assert.equal(await page.getByLabel('Fechar os ajustes').count(), 0, 'não é um diálogo com botão de fechar');
-  assert.equal(await page.getByText('Senhas e carteira').count(), 0);
+  assert.equal(await page.getByText('Senhas e carteira').count(), 0, 'a carteira (cartões) é só do celular');
+  await page.getByLabel(/^Senhas\./).first().waitFor();   // as senhas de sites também são do computador (v137)
   for (const label of ['Bots', 'Celular', 'Sobre']) await page.getByLabel(new RegExp(`^${label}\\.`)).first().waitFor();
   await seen('Aparência');
   const settingsBox = await page.getByText('Aparência', { exact: true }).first().boundingBox(); assert.ok(settingsBox.x > 300, 'o conteúdo ocupa o espaço ao lado das categorias');

@@ -44,12 +44,12 @@ export function PasswordsScreen({ bots, onChanged }) {
       const result = await passwordImport(form?.bots?.length ? form.bots : null); if (!result) return;
       await load(); setForm(null);
       setNote(`${result.imported} ${result.imported === 1 ? 'senha importada' : 'senhas importadas'}${result.skipped ? ` (${result.skipped} sem site ou senha ficaram de fora)` : ''}. Os bots escolhidos já podem entrar nesses sites.`);
-      Alert.alert('Apagar o arquivo exportado?', `${result.name} tem todas as suas senhas sem proteção. Elas já estão guardadas no MyBots.`, [{ text: 'Manter', style: 'cancel' },
+      if (result.name) Alert.alert('Apagar o arquivo exportado?', `${result.name} tem todas as suas senhas sem proteção. Elas já estão guardadas no MyBots.`, [{ text: 'Manter', style: 'cancel' },
         { text: 'Apagar arquivo', style: 'destructive', onPress: () => passwordImportDelete().then(done => setNote(old => old + (done ? ' Arquivo apagado.' : ' Não consegui apagar o arquivo; apague pelo gerenciador de arquivos.'))).catch(() => {}) }]);
     } catch (error) { setNote(nativeMessage(error)); } finally { setBusy(false); }
   };
   const header = <View>
-    <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste celular e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
+    <Text style={styles.optionDetail}>O bot entra sozinho (ex.: no SIGAA) com a senha salva aqui. Ela fica protegida neste aparelho (computador e celular guardam as mesmas senhas, sincronizadas sozinhos) e só é preenchida no site em que foi salva; a IA nunca vê a senha. Dica: entre uma vez pelo Assumir do navegador do bot e toque em Salvar.</Text>
     {form ? <View style={{ marginTop: 10 }}>
       {form.importing ? <Text style={styles.optionDetail}>No Chrome: Gerenciador de senhas → Configurações → Exportar senhas, e escolha o arquivo aqui. Também aceita CSV do Firefox, Bitwarden e 1Password. Só entram logins de sites (http/https); um site e usuário já salvo fica com a senha nova.</Text> : <>
         <TextInput style={styles.formInput} placeholder="Site (ex.: sig.cefetmg.br)" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" value={form.site || ''} onChangeText={value => field('site', value)} />

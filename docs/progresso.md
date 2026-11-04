@@ -1691,3 +1691,11 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Downloads**: um arquivo baixado no navegador do computador ficava numa pasta que o bot não enxerga (só a pessoa podia abri-lo), então ele "não conseguia baixar". Agora o download vira arquivo do bot na hora (`fileId` no resultado; leia com `attachment_read`, mande com `file_send`) e `files_list` junta o que baixou depois. Documentos que a página abre dentro do navegador (PDF no visualizador, Office), que o Chrome não trata como download, também são salvos (`isInlineDocument`); a espera pelo início de um download passou de 1,5 s para 4 s (o SIGAA demora).
 - **Testes**: `tests/inline-download.test.mjs` e o de retomada do Gemini.
 
+## 0.71.6 (versionCode 137): senhas também no computador, com a mesma tela, nos dois sentidos
+
+- **Pedido**: as senhas têm que estar no computador também, com as mesmas opções do celular; na primeira vez o PC pega as do celular e guarda, e dali em diante o PC as tem mesmo com o celular desligado ou perdido; o que for salvo no PC passa para o celular e vice-versa, sozinho.
+- **Tela no PC**: Ajustes → Senhas na janela do computador (adicionar, apagar, buscar, escolher quais bots usam, importar CSV por seletor de arquivo). Fala com o supervisor do computador (`passwords.list/save/remove/import`, só no computador); a carteira de cartões continua só no celular.
+- **Nos dois sentidos**: cada rodada leva as do PC ao celular e as do celular ao PC (a mais recente por site e usuário vale; apagar também passa). Salvar, apagar ou importar no PC dispara uma rodada na hora (`passwords.changed`). Com o celular no Termux, a troca acontece enquanto o app do celular está aberto; sem Termux, o app a faz a cada 30 s. O PC guarda tudo em `~/.mybots-pc`, então nada depende de o celular voltar.
+- **Log**: quando o app do celular está fechado, o log do PC diz uma vez "Senhas: aguardando o app do celular ficar aberto" (antes ficava mudo) e, ao conseguir, "Senhas do celular e do computador sincronizadas".
+- **Testes**: importação de CSV no cofre do PC, aviso único no log, e a janela do PC agora espera a linha "Senhas".
+

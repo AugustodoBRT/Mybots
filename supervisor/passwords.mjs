@@ -58,6 +58,32 @@ export class Passwords {
     state.gone = state.gone.filter(item => keyOf(item) !== keyOf(entry));
     this.store(state); return { id: entry.id, host, username };
   }
+  /**
+   * A password export (Chrome, Google, Firefox, Bitwarden, 1Password: CSV with url, username and password columns), kept like the logins
+   * saved by hand. Lines without a web address or password are skipped. Same rules as the phone's import.
+   */
+  importCsv(text, bots = null) {
+    if (typeof text !== 'string' || text.length > 20_000_000) throw new Error('O arquivo é grande demais.');
+    if (bots !== null && (!Array.isArray(bots) || bots.some(id => typeof id !== 'string' || !UUID.test(id)))) throw new Error('Bot inválido.');
+    const rows = csvRows(text.replace(/^\uFEFF/, ''));
+    if (!rows.length) throw new Error('O arquivo está vazio.');
+    const header = rows[0].map(item => item.trim().toLowerCase());
+    const column = (...names) => names.map(name => header.indexOf(name)).find(index => index >= 0) ?? -1;
+    const url = column('url', 'login_uri', 'website', 'login url', 'site'), user = column('username', 'login_username', 'login', 'user', 'email'), pass = column('password', 'login_password');
+    if (url < 0 || pass < 0) throw new Error('Este CSV não parece uma exportação de senhas: faltam as colunas de site e senha.');
+    const state = this.load(); let imported = 0, skipped = 0; const at = this.now();
+    for (const row of rows.slice(1)) {
+      const password = row[pass] ?? '', username = (row[user] ?? '').trim(), site = (row[url] ?? '').trim();
+      let host = null; if (/^https?:\/\//i.test(site)) { try { host = hostOf(site); } catch {} }
+      if (!host || !password || password.length > 500 || username.length > 200) { if (row.some(item => item.trim())) skipped++; continue; }
+      const entry = { id: randomUUID(), host, username, password, bots, createdAt: at, updatedAt: at };
+      state.entries = [...state.entries.filter(item => keyOf(item) !== keyOf(entry)), entry];
+      state.gone = state.gone.filter(item => keyOf(item) !== keyOf(entry));
+      imported++;
+    }
+    if (imported) this.store(state);
+    return { imported, skipped };
+  }
   remove(id) {
     const state = this.load(); const found = state.entries.find(item => item.id === id); if (!found) return false;
     state.entries = state.entries.filter(item => item !== found);
@@ -112,4 +138,20 @@ export class Passwords {
       return { key: rsa.toString('base64'), iv: iv.toString('base64'), data: data.toString('base64'), tag: cipher.getAuthTag().toString('base64') };
     } finally { bytes.fill(0); key.fill(0); }
   }
+}
+
+/** RFC 4180: commas, quotes doubled inside quoted fields, and line breaks inside them (notes). */
+export function csvRows(text) {
+  const rows = []; let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) { if (char === '"' && text[i + 1] === '"') { field += '"'; i++; } else if (char === '"') quoted = false; else field += char; }
+    else if (char === '"') quoted = true;
+    else if (char === ',') { row.push(field); field = ''; }
+    else if (char === '\r') continue;
+    else if (char === '\n') { row.push(field); field = ''; rows.push(row); row = []; }
+    else field += char;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(item => item.length > 1 || item[0]);
 }

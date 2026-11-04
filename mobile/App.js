@@ -16,6 +16,7 @@ import { desktop, pwa, column, paintPage } from './desktop';
 import { downloadFromComputer } from './web-file';
 import { DEFAULT_ACCOUNT } from './ai-accounts';
 import { syncPasswords } from './password-sync';
+import { useComputerVault } from './termux';
 import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './pc-backend';
 import { SetupScreen } from './components/Setup';
 import { DesktopUpdate } from './components/DesktopUpdate';
@@ -100,6 +101,8 @@ function AppMain() {
   const [localCache, setLocalCache] = useState(emptyLocalStore());
   const localCacheRef = useRef(localCache);
   useEffect(() => { localCacheRef.current = localCache; }, [localCache]);
+  // On the computer's window the saved logins are the computer's own vault, asked through its supervisor (see termux.js).
+  useEffect(() => { if (desktop) useComputerVault((method, params) => supervisor.current.call(method, params)); }, []);
   const [selected, setSelected] = useState(null);
   const desktopDrafts = useRef(new Map());
   const [conversationDrafts, setConversationDrafts] = useState({});

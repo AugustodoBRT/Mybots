@@ -80,8 +80,23 @@ test('the sync round also meets the two vaults, and a phone app that is closed i
   const pc = side('local', { 'passwords.export': () => local.export(), 'passwords.merge': params => local.merge(params) });
   const sync = createSync({ directory: await made(t), phone, local: pc, log: line => logged.push(line), intervalMs: 3600000 });
   t.after(() => sync.close());
-  open = false; await sync.now(); assert.equal(local.list().length, 1); assert.deepEqual(logged.filter(line => /Senhas/.test(line)), []);
+  open = false; await sync.now(); await sync.now(); assert.equal(local.list().length, 1); assert.deepEqual(logged.filter(line => /Senhas/.test(line)), ['Senhas: aguardando o app do celular ficar aberto para sincronizar.'], 'said once, not every round');
   open = true; await sync.now();
   assert.deepEqual(local.list().map(item => item.host).sort(), ['do-pc.com', 'sig.cefetmg.br']);
   assert.deepEqual(phoneVault.list().map(item => item.host).sort(), ['do-pc.com', 'sig.cefetmg.br']);
+  assert.ok(logged.includes('Senhas do celular e do computador sincronizadas.'));
+});
+
+test('the computer vault imports a password export like the phone does: web logins only, quotes and line breaks handled, the same site and user replaced', async t => {
+  const vault = new Passwords(await made(t), clock());
+  const csv = '﻿name,url,username,password,note\nSIGAA,https://sig.cefetmg.br/sigaa,ana,"se,nha""1",\n' +
+    'Nota,https://exemplo.com,bob,"abc","linha 1\nlinha 2"\nApp,android://x,cris,zzz,\nSem senha,https://a.com,dan,,\n';
+  assert.deepEqual(vault.importCsv(csv, [BOT]), { imported: 2, skipped: 2 });
+  assert.equal(vault.forPage(BOT, 'https://sig.cefetmg.br/').password, 'se,nha"1');
+  assert.equal(vault.forPage(OTHER, 'https://exemplo.com/'), null, 'only the bot chosen on import');
+  vault.importCsv('url,username,password\nhttps://sig.cefetmg.br,ana,nova\n');
+  assert.equal(vault.list().filter(item => item.host === 'sig.cefetmg.br').length, 1);
+  assert.equal(vault.forPage(BOT, 'https://sig.cefetmg.br/').password, 'nova');
+  assert.throws(() => vault.importCsv('a,b\n1,2\n'), /não parece uma exportação/);
+  assert.throws(() => vault.importCsv(''), /vazio/);
 });

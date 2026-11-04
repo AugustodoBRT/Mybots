@@ -40,7 +40,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const { data, mode } = a; const phone = mode === 'phone';
   const [page, setPage] = useState(null); const [query, setQuery] = useState(''); const [passwords, setPasswords] = useState(null);
   useEffect(() => { if (!visible) { setPage(null); setQuery(''); } }, [visible]);
-  useEffect(() => { if (visible && termuxAvailable) passwordsList().then(setPasswords).catch(() => setPasswords(null)); }, [visible, page]);
+  useEffect(() => { if (visible && (termuxAvailable || desktop)) passwordsList().then(setPasswords).catch(() => setPasswords(null)); }, [visible, page]);
   const remote = a.backend === 'pc';   // the phone without Termux: the computer's MyBots is the backend
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
@@ -52,7 +52,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
     // Termux is optional: a guide for the whole process, and the switch to a supervisor of the phone's own.
     ...(!desktop && termuxAvailable ? [{ key: 'termux', icon: 'bolt', title: 'Termux (avançado)', summary: remote ? 'Usar o celular sem depender do computador' : 'Ativo: o celular tem o próprio MyBots', keywords: ['termux', 'sozinho', 'sem computador', 'offline', 'tutorial', 'instalar', 'codex'] }] : []),
-    ...(termuxAvailable ? [{ key: 'secrets', icon: 'key', title: 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
+    ...(termuxAvailable || desktop ? [{ key: 'secrets', icon: 'key', title: desktop ? 'Senhas' : 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : desktop ? 'Senhas de sites, as mesmas do celular' : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
     ...(!desktop && !remote ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar', 'termux'] }] : []),
     { key: 'about', icon: 'info', title: 'Sobre', summary: `MyBots ${a.update?.info?.currentName || ''}${a.update?.info?.available ? ' · atualização disponível' : ''}`.trim(), keywords: ['versão', 'atualização', 'atualizar', 'novidades', 'privacidade'] }
   ], [data, phone, remote, passwords, a.update?.info?.available, a.update?.info?.currentName, data?.aiAccounts]);

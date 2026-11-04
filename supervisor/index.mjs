@@ -594,6 +594,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();
         // Saved logins between the two devices (only the node asks): the computer merges into its own vault; the phone hands them to the app.
+        // The computer's own screen of saved logins (the window); the passwords never come back out of these.
+        case 'passwords.list': if (!tools.passwords) throw new Error('Isto só existe no computador.'); return tools.passwords.list();
+        case 'passwords.save': if (!tools.passwords) throw new Error('Isto só existe no computador.'); { const saved = tools.passwords.save({ site: params.site, username: params.username, password: params.password, bots: params.bots ?? null }); broadcast('passwords.changed'); return saved; }
+        case 'passwords.remove': if (!tools.passwords) throw new Error('Isto só existe no computador.'); { const removed = tools.passwords.remove(params.id); broadcast('passwords.changed'); return { removed }; }
+        case 'passwords.import': if (!tools.passwords) throw new Error('Isto só existe no computador.'); { const done = tools.passwords.importCsv(params.text, params.bots ?? null); broadcast('passwords.changed'); return done; }
         case 'passwords.export': if (!tools.passwords) throw new Error('Isto só existe no computador.'); return tools.passwords.export();
         case 'passwords.merge': if (!tools.passwords) throw new Error('Isto só existe no computador.'); return tools.passwords.merge(params);
         case 'passwords.sync': {

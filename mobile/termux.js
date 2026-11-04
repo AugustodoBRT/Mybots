@@ -56,13 +56,25 @@ export const walletFreeze = () => native.walletFreeze();
 export const walletRulesEditor = () => native.walletRulesEditor(currentTheme() === 'light');
 export const walletPurchases = async () => JSON.parse(await native.walletPurchases());
 export const walletDismiss = id => native.walletDismiss(id);
-export const passwordsList = () => native.passwordsList();
-export const passwordSave = (site, username, password, bots) => native.passwordSave(site, username, password, bots);
+// On the computer's own window the saved logins are the computer's vault (the local supervisor); on the phone, the app's Keystore.
+let vaultCall = null;
+export const useComputerVault = call => { vaultCall = call; };
+const pickText = () => new Promise((resolve, reject) => {
+  const input = globalThis.document.createElement('input'); input.type = 'file'; input.accept = '.csv,text/csv,text/plain';
+  input.onchange = async () => { const file = input.files?.[0]; if (!file) { resolve(null); return; } try { resolve({ name: file.name, text: await file.text() }); } catch (error) { reject(error); } };
+  input.click();
+});
+export const passwordsList = () => vaultCall ? vaultCall('passwords.list', {}) : native.passwordsList();
+export const passwordSave = (site, username, password, bots) => vaultCall ? vaultCall('passwords.save', { site, username, password, bots }) : native.passwordSave(site, username, password, bots);
 export const passwordsSyncState = async () => JSON.parse(await native.passwordsSyncState());
 export const passwordsSyncMerge = async state => JSON.parse(await native.passwordsSyncMerge(JSON.stringify(state)));
-export const passwordDelete = id => native.passwordDelete(id);
-export const passwordImport = bots => native.passwordImport(bots);
-export const passwordImportDelete = () => native.passwordImportDelete();
+export const passwordDelete = async id => vaultCall ? (await vaultCall('passwords.remove', { id })).removed : native.passwordDelete(id);
+export const passwordImport = async bots => {
+  if (!vaultCall) return native.passwordImport(bots);
+  const file = await pickText(); if (!file) return null;
+  return { ...await vaultCall('passwords.import', { text: file.text, bots }), name: '' };
+};
+export const passwordImportDelete = () => vaultCall ? Promise.resolve(false) : native.passwordImportDelete();
 export const passwordOffer = () => native.passwordOffer();
 export const passwordOfferAnswer = scope => native.passwordOfferAnswer(scope);
 export const onPasswordOffer = listener => native.addListener('onPasswordOffer', listener);

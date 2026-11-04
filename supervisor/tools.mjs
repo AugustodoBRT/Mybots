@@ -570,6 +570,10 @@ export class Tools {
         if (typeof value.url === 'string') this.browser.pages.set(botId, { url: value.url, title: value.title || '', where: 'pc' });
         if (op !== 'login') return value;
         try {
+          // This computer's own vault first: no phone needed. Only when it has nothing for the page does the phone's vault get asked.
+          const own = this.passwords?.forPage(botId, value.url);
+          if (own) return await this.pcCommand(run, 'browser.login_fill', this.passwords.envelope(own, value));
+          if (!this.browser.available()) throw new Error('Não há senha salva para este site neste computador, e o celular não está respondendo. Cadastre a senha em Ajustes → Senhas no celular (ela passa para o computador sozinha) ou peça à pessoa para entrar com browser_ask_user. Não tente browser_login de novo agora.');
           // Only ciphertext crosses the supervisor; the private key stays in the browser worker.
           const encrypted = await this.browser.queue({ botId, op: 'pcLogin', args: value, signal: run.signal });
           this.requireGrant(run, 'browser');

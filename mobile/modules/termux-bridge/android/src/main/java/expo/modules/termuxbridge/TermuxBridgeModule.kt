@@ -164,6 +164,9 @@ class TermuxBridgeModule : Module() {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       try { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) } catch (_: Exception) { false }
     }
+    // Only for the app talking to the computer over the encrypted channel (no Termux): the vault's whole state out, the computer's in.
+    AsyncFunction("passwordsSyncState") { PasswordVault.syncState(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")).toString() }
+    AsyncFunction("passwordsSyncMerge") { json: String -> PasswordVault.syncMerge(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), org.json.JSONObject(json)).toString() }
     AsyncFunction("passwordDelete") { id: String -> PasswordVault.delete(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id) }
     AsyncFunction("passwordOffer") { PasswordVault.pendingOffer() }
     AsyncFunction("passwordOfferAnswer") { scope: String ->

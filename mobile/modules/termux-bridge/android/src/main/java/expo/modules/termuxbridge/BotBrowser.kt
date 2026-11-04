@@ -155,7 +155,7 @@ internal object BotBrowser {
       val envelope = if (command.optString("op") in setOf("pcLogin", "pcPay") && answer.optBoolean("ok")) answer.optJSONObject("value") else null
       val encrypted = envelope != null && envelope.keys().asSequence().toSet() == (if (command.optString("op") == "pcPay") setOf("key", "iv", "data", "tag", "id") else setOf("key", "iv", "data", "tag")) &&
         listOf("key", "iv", "data", "tag").all { envelope.opt(it) is String }
-      val safe = if (encrypted) answer else (redactCards(VerificationCodes.redactJson(answer), tab) as JSONObject).put("id", command.optString("id"))
+      val safe = if (encrypted || command.optString("op") == "passwordsSync") answer else (redactCards(VerificationCodes.redactJson(answer), tab) as JSONObject).put("id", command.optString("id"))
       result.outputStream.use { it.write(safe.toString().toByteArray(Charsets.UTF_8)) }
       result.responseCode; result.disconnect()
     } catch (_: Exception) {}
@@ -290,6 +290,8 @@ internal object BotBrowser {
     when (command.getString("op")) {
       "pdfRead" -> return DeviceFiles.pdfRead(context, command.optJSONObject("args") ?: JSONObject())
       "pdfCreate" -> return DeviceFiles.pdfCreate(context, (command.optJSONObject("args") ?: JSONObject()).getString("html"))
+      // The logins of the computer's vault meet the phone's (see PasswordVault.syncMerge); not tied to a bot.
+      "passwordsSync" -> return PasswordVault.syncMerge(context, command.optJSONObject("args") ?: JSONObject())
     }
     val botId = command.getString("botId")
     if (!botId.matches(UUID)) throw IllegalArgumentException("Bot inválido.")

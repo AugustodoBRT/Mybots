@@ -15,6 +15,7 @@ import { UsagePanel } from './components/Usage';
 import { desktop, pwa, column, paintPage } from './desktop';
 import { downloadFromComputer } from './web-file';
 import { DEFAULT_ACCOUNT } from './ai-accounts';
+import { syncPasswords } from './password-sync';
 import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './pc-backend';
 import { SetupScreen } from './components/Setup';
 import { DesktopUpdate } from './components/DesktopUpdate';
@@ -416,6 +417,14 @@ function AppMain() {
     return () => clearInterval(timer);
   }, [data?.active?.length, loadError, mode, refresh]);
 
+  // Without Termux the computer holds the other half of the saved logins: they meet whenever the app is open and connected, and every 30 s.
+  useEffect(() => {
+    if (!termuxAvailable || backend !== 'pc' || mode !== 'phone' || desktop || pwa) return;
+    let busy = false;
+    const run = () => { if (busy || AppState.currentState !== 'active' || !supervisor.current.authenticated) return; busy = true; syncPasswords((method, params) => supervisor.current.call(method, params)).catch(() => {}).finally(() => { busy = false; }); };
+    run(); const timer = setInterval(run, 30000);
+    return () => clearInterval(timer);
+  }, [backend, mode, data?.supervisorConnected]);
   useEffect(() => {
     if (mode !== 'phone') { supervisor.current.close(); return; }
     const refreshState = () => {

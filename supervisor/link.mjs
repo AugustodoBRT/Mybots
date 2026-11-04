@@ -19,7 +19,7 @@ export const DESKTOP_METHODS = ['state.get', 'ai.accounts', 'google.accounts.add
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput'];
 // What only the computer's own node may ask (the sync between the two supervisors); never the window.
-export const SYNC_METHODS = ['sync.status', 'sync.changes', 'sync.apply', 'sync.mark', 'sync.have', 'sync.file', 'sync.fileWrite'];
+export const SYNC_METHODS = ['sync.status', 'sync.changes', 'sync.apply', 'sync.mark', 'sync.have', 'sync.file', 'sync.fileWrite', 'passwords.sync'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
 const DESKTOP_EVENTS = ['task.progress', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 

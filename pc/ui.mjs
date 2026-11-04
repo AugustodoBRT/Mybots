@@ -122,6 +122,12 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           if (!browser || typeof params?.botId !== 'string') throw new Error('Navegador indisponível.');
           reply(id, { result: await browser.input(params.botId, params.input) });
         }
+        // The phone app's saved logins meet this computer's vault: the app sends its own, gets the merged whole back (see supervisor/passwords.mjs).
+        else if (method === 'passwords.sync') {
+          if (!ws.remote) throw new Error('Isto só pode ser feito pelo celular.');
+          if (!ws.session || ws.session.closed) throw new Error(STARTING);
+          reply(id, { result: await ws.session.call('passwords.merge', params && typeof params === 'object' && !Array.isArray(params) ? params : {}) });
+        }
         else if (method === 'desktop.status' && ws.remote) reply(id, { result: { phone: false, remote: true, source: 'local', localAvailable: true, sync: null } });
         else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, apps: appsOf().map(({ id, name, pairedAt }) => ({ id, name, pairedAt })), lastPaired: [...phones(), ...appsOf()].map(item => item.pairedAt).sort().at(-1) || null } });
         // A phone app that is lost or no longer wanted: forgotten here, it is cut off at once and cannot come back without a new QR.

@@ -20,7 +20,7 @@ const OPS = ['act', 'tabs', 'find', 'open', 'read', 'inspect', 'click', 'type', 
 // Phone work that is not a bot's browser: reading and writing PDFs with Android's own tools.
 const DEVICE_OPS = ['pdfRead', 'pdfCreate'];
 // open and click may start a download (up to 90 s on the phone).
-const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, pay: 60000, pcPay: 30000, payDone: 20000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, phoneOpenApp: 30000, phoneScreen: 25000 };
+const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, pay: 60000, pcPay: 30000, passwordsSync: 30000, payDone: 20000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, phoneOpenApp: 30000, phoneScreen: 25000 };
 
 // Loopback and link-local hosts are never opened: the supervisor and other local services live there.
 export function safeUrl(value) {

@@ -64,6 +64,15 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
     state.files = state.files.slice(0, 200); save();
   }
 
+  /** The saved logins: the computer's vault and the phone's (in the app) become one. Needs the app open; when it is not, the next round tries again. */
+  async function passwords() {
+    try {
+      const mine = await local.call('passwords.export');
+      const theirs = await phone.call('passwords.sync', mine);
+      await local.call('passwords.merge', theirs);
+    } catch (error) { if (!/app do celular não está aberto|demorou para|só pode ser feito|Isto só/.test(error.message)) log(`Senhas não sincronizaram: ${error.message}`); }
+  }
+
   async function round() {
     if (!phone.online() || !local.online()) { set({ online: false, state: 'waiting', progress: null }); return; }
     let ps, ls;
@@ -92,6 +101,7 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
       await Promise.all([tell('phone', { state: 'error', error: current.error, progress: null }), tell('local', { state: 'error', error: current.error, progress: null })]);
       return;
     }
+    await passwords();
     const at = now(); entry.lastAt = at; entry.firstAt ||= at; save();
     set({ state: 'idle', error: null, progress: null, at, firstAt: entry.firstAt });
     if (totals.applied) log(`Sincronizado: ${totals.pulled} do celular, ${totals.pushed} do computador${totals.conflicts ? `, ${totals.conflicts} conflito(s) resolvido(s)` : ''}.`);

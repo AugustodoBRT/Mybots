@@ -58,6 +58,8 @@ export const walletPurchases = async () => JSON.parse(await native.walletPurchas
 export const walletDismiss = id => native.walletDismiss(id);
 export const passwordsList = () => native.passwordsList();
 export const passwordSave = (site, username, password, bots) => native.passwordSave(site, username, password, bots);
+export const passwordsSyncState = async () => JSON.parse(await native.passwordsSyncState());
+export const passwordsSyncMerge = async state => JSON.parse(await native.passwordsSyncMerge(JSON.stringify(state)));
 export const passwordDelete = id => native.passwordDelete(id);
 export const passwordImport = bots => native.passwordImport(bots);
 export const passwordImportDelete = () => native.passwordImportDelete();

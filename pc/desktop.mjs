@@ -94,7 +94,12 @@ export class Desktop {
     }
     return { done: true };
   }
+  /**
+   * The "MyBots está controlando o computador" notice. Off by default (the person found it noisy on every run): the bot still stops
+   * with Cancelar in the MyBots window or app, and the screen shows what it does. MYBOTS_CONTROL_NOTICE=1 brings the persistent notice back.
+   */
   async indicate(bot) {
+    if (process.env.MYBOTS_CONTROL_NOTICE !== '1') return async () => {};
     try {
       const { stdout } = await this.run('notify-send', ['--print-id', '--app-name=MyBots', '--urgency=critical', '--expire-time=0', '--hint=boolean:resident:true', 'MyBots está controlando o computador', `${String(bot.name).slice(0, 60)} · Para interromper: Super+Shift+Esc (se configurado) ou Cancelar no MyBots.`], { timeout: 3000 });
       const id = stdout.trim();

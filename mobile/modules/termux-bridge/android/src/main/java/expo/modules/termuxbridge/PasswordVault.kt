@@ -28,6 +28,7 @@ internal object PasswordVault {
   private const val KEY = "entries"
   private const val CARD_KEY = "wallet_card"
   private const val CARDS_KEY = "wallet_cards"
+  private const val GONE_KEY = "gone"
   @Volatile var offerListener: ((Map<String, Any?>) -> Unit)? = null
   // A login the person just typed in a bot's browser ("Assumir"), waiting for "Salvar?" in the chat.
   @Volatile private var offer: JSONObject? = null
@@ -38,6 +39,21 @@ internal object PasswordVault {
       EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV, EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM)
   }
   private fun entries(context: Context) = try { JSONArray(prefs(context).getString(KEY, "[]")) } catch (_: Exception) { JSONArray() }
+  // Deleted logins leave a mark (site, user, when) so the computer's vault deletes them too; see syncMerge.
+  private fun gone(context: Context) = try { JSONArray(prefs(context).getString(GONE_KEY, "[]")) } catch (_: Exception) { JSONArray() }
+  private fun writeGone(context: Context, list: JSONArray) { prefs(context).edit().putString(GONE_KEY, list.toString()).commit() }
+  private fun markGone(context: Context, host: String, username: String) {
+    val kept = JSONArray(); val old = gone(context)
+    for (i in 0 until old.length()) old.getJSONObject(i).let { if (!(it.optString("host") == host && it.optString("username") == username)) kept.put(it) }
+    kept.put(JSONObject().put("host", host).put("username", username).put("updatedAt", System.currentTimeMillis().toDouble())); writeGone(context, kept)
+  }
+  private fun clearGone(context: Context, host: String, username: String) {
+    val old = gone(context); val kept = JSONArray()
+    for (i in 0 until old.length()) old.getJSONObject(i).let { if (!(it.optString("host") == host && it.optString("username") == username)) kept.put(it) }
+    if (kept.length() != old.length()) writeGone(context, kept)
+  }
+  private fun stamp(item: JSONObject): Double = if (item.has("updatedAt")) item.optDouble("updatedAt", 0.0) else item.optDouble("createdAt", 0.0)
+
   private fun write(context: Context, list: JSONArray) {
     if (!prefs(context).edit().putString(KEY, list.toString()).commit()) throw IllegalStateException("Não consegui guardar a senha protegida.")
   }
@@ -152,8 +168,8 @@ internal object PasswordVault {
     // One login per site and user: saving again replaces the password.
     for (i in 0 until list.length()) list.getJSONObject(i).let { if (!(it.optString("host") == host && it.optString("username") == username)) kept.put(it) }
     val entry = JSONObject().put("id", UUID.randomUUID().toString()).put("host", host).put("username", username).put("password", password)
-      .put("bots", bots?.let { JSONArray(it) } ?: JSONObject.NULL).put("createdAt", System.currentTimeMillis().toDouble())
-    kept.put(entry); write(context, kept)
+      .put("bots", bots?.let { JSONArray(it) } ?: JSONObject.NULL).put("createdAt", System.currentTimeMillis().toDouble()).put("updatedAt", System.currentTimeMillis().toDouble())
+    kept.put(entry); write(context, kept); clearGone(context, host, username)
     return mapOf("id" to entry.getString("id"), "host" to host, "username" to username)
   }
 
@@ -178,7 +194,8 @@ internal object PasswordVault {
       // One login per site and user, as when saving by hand: importing again replaces the password.
       for (i in list.length() - 1 downTo 0) list.getJSONObject(i).let { if (it.optString("host") == host && it.optString("username") == username) list.remove(i) }
       list.put(JSONObject().put("id", UUID.randomUUID().toString()).put("host", host).put("username", username).put("password", password)
-        .put("bots", bots?.let { JSONArray(it) } ?: JSONObject.NULL).put("createdAt", System.currentTimeMillis().toDouble()))
+        .put("bots", bots?.let { JSONArray(it) } ?: JSONObject.NULL).put("createdAt", System.currentTimeMillis().toDouble()).put("updatedAt", System.currentTimeMillis().toDouble()))
+      clearGone(context, host, username)
       imported++
     }
     if (imported > 0) write(context, list)
@@ -209,7 +226,7 @@ internal object PasswordVault {
 
   fun delete(context: Context, id: String): Boolean {
     val list = entries(context); val kept = JSONArray(); var removed = false
-    for (i in 0 until list.length()) list.getJSONObject(i).let { if (it.optString("id") == id) removed = true else kept.put(it) }
+    for (i in 0 until list.length()) list.getJSONObject(i).let { if (it.optString("id") == id) { removed = true; markGone(context, it.optString("host"), it.optString("username")) } else kept.put(it) }
     write(context, kept); return removed
   }
 
@@ -245,6 +262,49 @@ internal object PasswordVault {
       fun b64(value: ByteArray) = Base64.encodeToString(value, Base64.NO_WRAP)
       return JSONObject().put("key", b64(rsa.doFinal(key))).put("iv", b64(iv)).put("data", b64(encrypted.copyOfRange(0, encrypted.size - 16))).put("tag", b64(encrypted.copyOfRange(encrypted.size - 16, encrypted.size)))
     } finally { bytes.fill(0); key.fill(0) }
+  }
+
+  /** Everything for the computer's vault (the person's own devices, over the encrypted channel): logins with passwords, and the deletions. */
+  fun syncState(context: Context): JSONObject = JSONObject().put("entries", entries(context)).put("gone", gone(context))
+
+  /**
+   * The computer's logins and deletions come in; the newest change per site and user wins, on both sides. Returns the merged whole,
+   * which the computer then merges back, so after one round both vaults are the same.
+   */
+  fun syncMerge(context: Context, incoming: JSONObject): JSONObject {
+    fun key(item: JSONObject) = item.optString("host") + "\n" + item.optString("username")
+    val entries = LinkedHashMap<String, JSONObject>(); val marks = LinkedHashMap<String, JSONObject>()
+    entries(context).let { list -> for (i in 0 until list.length()) list.getJSONObject(i).let { entries[key(it)] = it } }
+    gone(context).let { list -> for (i in 0 until list.length()) list.getJSONObject(i).let { marks[key(it)] = it } }
+    var changed = false
+    val valid = Regex("[a-z0-9.-]{3,253}"); val uuid = Regex("[0-9a-fA-F-]{36}")
+    incoming.optJSONArray("entries")?.let { list ->
+      for (i in 0 until minOf(list.length(), 5000)) {
+        val item = list.optJSONObject(i) ?: continue
+        val host = item.optString("host"); val user = item.optString("username"); val password = item.optString("password")
+        if (!host.matches(valid) || user.length > 200 || password.isEmpty() || password.length > 500) continue
+        val at = stamp(item); val k = key(item)
+        if ((entries[k]?.let { stamp(it) >= at } == true) || (marks[k]?.let { stamp(it) >= at } == true)) continue
+        val bots = item.optJSONArray("bots")?.let { b -> JSONArray((0 until b.length()).map { b.optString(it) }.filter { it.matches(uuid) }) }
+        entries[k] = JSONObject().put("id", item.optString("id").takeIf { it.matches(uuid) } ?: UUID.randomUUID().toString()).put("host", host).put("username", user).put("password", password)
+          .put("bots", bots ?: JSONObject.NULL).put("createdAt", item.optDouble("createdAt", at)).put("updatedAt", at)
+        marks.remove(k); changed = true
+      }
+    }
+    incoming.optJSONArray("gone")?.let { list ->
+      for (i in 0 until minOf(list.length(), 5000)) {
+        val item = list.optJSONObject(i) ?: continue
+        if (!item.optString("host").matches(valid) || item.optString("username").length > 200) continue
+        val at = stamp(item); val k = key(item)
+        if (entries[k]?.let { stamp(it) >= at } == true) continue
+        if (entries.remove(k) != null) changed = true
+        if (marks[k]?.let { stamp(it) < at } != false) { marks[k] = JSONObject().put("host", item.optString("host")).put("username", item.optString("username")).put("updatedAt", at); changed = true }
+      }
+    }
+    val old = System.currentTimeMillis() - 90L * 86400000L
+    val keptMarks = marks.values.filter { stamp(it) > old }
+    if (changed) { write(context, JSONArray(entries.values.toList())); writeGone(context, JSONArray(keptMarks)) }
+    return JSONObject().put("entries", JSONArray(entries.values.toList())).put("gone", JSONArray(keptMarks))
   }
 
   // A login typed by the person while they had taken over a bot's browser.

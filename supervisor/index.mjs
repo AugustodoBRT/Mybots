@@ -21,6 +21,7 @@ import { Team } from './team.mjs';
 import { selectionFor, PROVIDER_NAMES } from '../lib/models.mjs';
 import { handleMcp } from './mcp/http.mjs';
 import { Vault } from './vault.mjs';
+import { Passwords } from './passwords.mjs';
 import { ConnectorBundle } from './connector-bundle.mjs';
 import { EmailConnector } from './email.mjs';
 import { Device, ingestNotifications, notificationStats } from './device.mjs';
@@ -231,6 +232,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const apps = new Apps(db, vault, { changed: broadcast, fetch: appFetch }); tools.apps = apps;
     browser = new Browser({ changed: broadcast, profile: botId => { const bot = db.bot(botId); return bot && browserMode(bot) === 'separate' ? 'separate' : 'shared'; } }); tools.browser = browser;
     // PDFs: on the phone they are read and made by the app (Android); the computer's own MyBots does it itself (pc/pdf.mjs), no phone needed.
+    // The computer keeps its own saved logins (the phone's are in the app) and the node moves them between the two: see passwords.mjs.
+    if (kind === 'computer') tools.passwords = new Passwords(directory);
     if (kind === 'computer') { const { pdfRead, pdfCreate } = await import('../pc/pdf.mjs'); attachments.pdf = pdfRead; tools.pdfCreate = pdfCreate; }
     else attachments.pdf = args => browser.device('pdfRead', args);
     // The phone's other apps (Livre): Parar cancels the controlling turn; the app's own stop flag acts first.
@@ -583,6 +586,14 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'computer.pair': { if (typeof params.link !== 'string' || params.link.length > 2000) throw new Error('Leia o QR do computador.'); const result = await link.pair(params.link); broadcast('activity.new'); return result; }
         case 'computer.forget': { const result = link.forget(); broadcast('activity.new'); return result; }
         case 'computer.retry': link.kick(); return link.status();
+        // Saved logins between the two devices (only the node asks): the computer merges into its own vault; the phone hands them to the app.
+        case 'passwords.export': if (!tools.passwords) throw new Error('Isto só existe no computador.'); return tools.passwords.export();
+        case 'passwords.merge': if (!tools.passwords) throw new Error('Isto só existe no computador.'); return tools.passwords.merge(params);
+        case 'passwords.sync': {
+          if (tools.passwords) return tools.passwords.merge(params);
+          if (!browser.available()) throw new Error('O app do celular não está aberto agora.');
+          return browser.queue({ botId: null, op: 'passwordsSync', args: { entries: Array.isArray(params.entries) ? params.entries : [], gone: Array.isArray(params.gone) ? params.gone : [] } });
+        }
         // The change log (see database.mjs): where this device's counter stands, and the changes after a given counter.
         case 'sync.status': return { ...db.syncState(), schema: SCHEMA, kind, tables: Object.fromEntries(db.all('SELECT tbl, count(*) AS n FROM changes GROUP BY tbl').map(row => [row.tbl, row.n])) };
         case 'sync.changes': return db.changesSince(params.after, params.limit, params.exclude);

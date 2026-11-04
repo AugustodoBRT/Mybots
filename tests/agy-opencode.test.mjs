@@ -217,3 +217,44 @@ test('the sandbox hides ~/.mybots-pc but mounts its bin folder back, so the MyBo
   const at = args.findIndex((item, i) => item === '--ro-bind' && args[i + 1] === bin && args[i + 2] === bin);
   assert.ok(at > args.indexOf('--tmpfs'), 'the bin folder is mounted after the empty folder that hides the rest');
 });
+
+test('agy: reading what agy saved for the run is not hunting, and a MyBots tool in between resets the count', async t => {
+  const step = (i, name, parameters) => `out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: ${i}, state: 'ACTIVE', step_type: 'tool', tool_name: '${name}', tool_info: { name: '${name}', parameters: ${JSON.stringify(parameters)} } } });`;
+  const lines = [];
+  for (let i = 2; i < 12; i++) lines.push(step(i, 'view_file', { AbsolutePath: '/home/x/.gemini/antigravity/brain/abc/screenshot.png' }));
+  // Three finds, a MyBots tool, three finds again: never more than three in a row.
+  for (let i = 12; i < 15; i++) lines.push(step(i, 'run_command', { CommandLine: 'find / -name mybots' }));
+  lines.push(step(15, 'mcp_mybots-tools_browser_read', {}));
+  for (let i = 16; i < 19; i++) lines.push(step(i, 'run_command', { CommandLine: 'which node' }));
+  const agy = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+${lines.join('\n')}
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 30, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'Terminei.' } });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 30, state: 'DONE', step_type: 'agent_response' } });
+out({ event: 'result', result: { status: 'SUCCESS', response: 'Terminei.', usage: {} } });`);
+  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' } });
+  assert.equal(result.text, 'Terminei.');
+  assert.ok(agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/brain/abc/a.png') && !agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/mcp_config.json'));
+});
+
+test('agy: a turn that ends only announcing the next step is told to carry it out, a few times at most', async t => {
+  const agy = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+const resume = args.includes('--conversation');
+const prompts = fs.existsSync(calls + '.n') ? Number(fs.readFileSync(calls + '.n', 'utf8')) : 0; fs.writeFileSync(calls + '.n', String(prompts + 1));
+const text = !resume || prompts < 1 ? 'Vou abrir a página de atividades.' : 'Abri: são 3 atividades.';
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 1, state: 'ACTIVE', step_type: 'agent_response', text_delta: text } });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 1, state: 'DONE', step_type: 'agent_response' } });
+out({ event: 'result', result: { status: 'SUCCESS', response: text, usage: { input_tokens: 10, output_tokens: 5 } } });`);
+  const said = [];
+  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' }, onProgress: item => item.say && said.push(item.say) });
+  assert.equal(result.text, 'Abri: são 3 atividades.');
+  assert.deepEqual(said, ['Vou abrir a página de atividades.']);
+  assert.equal(result.usage.input, 20);
+  const calls = await agy.calls(); assert.equal(calls.length, 2);
+  assert.ok(calls[1].args.includes('--conversation') && calls[1].args.some(item => /só anunciando o próximo passo/.test(item)));
+  // Without the MyBots tools (a plain chat) nothing is added; an answer is not an announcement.
+  assert.ok(agyRunner.ANNOUNCES.test('Vou abrir a página') && !agyRunner.ANNOUNCES.test('Encontrei três atividades.'));
+});

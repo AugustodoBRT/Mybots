@@ -1699,3 +1699,8 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Log**: quando o app do celular está fechado, o log do PC diz uma vez "Senhas: aguardando o app do celular ficar aberto" (antes ficava mudo) e, ao conseguir, "Senhas do celular e do computador sincronizadas".
 - **Testes**: importação de CSV no cofre do PC, aviso único no log, e a janela do PC agora espera a linha "Senhas".
 
+## 0.71.7 (versionCode 138): o log do PC diz por que as senhas do celular não chegaram
+
+- **Defeito achado**: o PC já estava na v137 com o cofre vazio e nenhuma linha no log. A troca de senhas com o celular no Termux passa pelo supervisor do celular; um supervisor antigo responde "Isto só pode ser feito no celular" e eu tratava isso como silêncio. Agora o log do PC diz uma vez que o MyBots do celular está numa versão sem a troca de senhas.
+- **Só o PC mudou** (o APK segue o da v137; a versão sobe para o instalador do PC ser reconhecido como novo).
+

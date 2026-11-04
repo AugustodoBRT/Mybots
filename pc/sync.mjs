@@ -74,8 +74,9 @@ export function createSync({ directory, phone, local, log = () => {}, pageSize =
       if (passwordsNote !== 'ok') log('Senhas do celular e do computador sincronizadas.'); passwordsNote = 'ok';
     } catch (error) {
       // Said once per change, not every minute: the app closed is normal, an error is worth reading.
-      const waiting = /app do celular não está aberto|demorou para/.test(error.message), note = waiting ? 'waiting' : 'error:' + error.message;
-      if (note !== passwordsNote && !/só pode ser feito|Isto só/.test(error.message)) log(waiting ? 'Senhas: aguardando o app do celular ficar aberto para sincronizar.' : `Senhas não sincronizaram: ${error.message}`);
+      const waiting = /app do celular não está aberto|demorou para/.test(error.message), old = /só pode ser feito|Isto só/.test(error.message);
+      const note = waiting ? 'waiting' : old ? 'old' : 'error:' + error.message;
+      if (note !== passwordsNote) log(waiting ? 'Senhas: aguardando o app do celular ficar aberto para sincronizar.' : old ? 'Senhas: o MyBots do celular ainda está numa versão sem a troca de senhas (precisa da v137 ou mais nova, com o supervisor reiniciado).' : `Senhas não sincronizaram: ${error.message}`);
       passwordsNote = note;
     }
   }

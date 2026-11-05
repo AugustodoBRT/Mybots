@@ -60,6 +60,10 @@ function iconData(type, body) {
   }
   return `data:${type};base64,${body.toString('base64')}`;
 }
+/** A tab's identity for telling copies apart: the address without the session id (";jsessionid=…") and the #fragment. */
+export function tabKey(value) {
+  try { const url = new URL(value); if (!/^https?:$/.test(url.protocol)) return String(value); return url.origin + url.pathname.replace(/;jsessionid=[^/?#]*/i, '') + url.search; } catch { return String(value); }
+}
 const DOCUMENT_TYPES = /^(application\/(pdf|msword|rtf|zip|x-zip-compressed|vnd\.(ms-|openxmlformats-officedocument|oasis\.opendocument)[^;]*)|text\/csv)$/;
 /** A page's own navigation answered with a document shown inline (no attachment header, which Chrome already saves as a download). */
 export function isInlineDocument(response, page) {
@@ -136,7 +140,7 @@ const KEYS = ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowUp', 'Arrow
 
 export class BrowserSession {
   // No window on the computer: the person watches and takes over inside MyBots, from the frames the page streams.
-  constructor(profile, { headless = true, mode = 'own', connect, botId = basename(profile) } = {}) { this.profile = profile; this.mode = mode; this.botId = botId; this.downloadSerial = 0; this.connect = connect; this.headless = headless; this.login = null; this.payment = null; this.secrets = new Set(); this.cardSecrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
+  constructor(profile, { headless = true, mode = 'own', connect, botId = basename(profile) } = {}) { this.profile = profile; this.mode = mode; this.botId = botId; this.downloadSerial = 0; this.popupSerial = 0; this.popping = null; this.tabNote = null; this.connect = connect; this.headless = headless; this.login = null; this.payment = null; this.secrets = new Set(); this.cardSecrets = new Set(); this.frame = null; this.seq = 0; this.devices = new Map(); this.device = null;
     try { this.siteViews = JSON.parse(readFileSync(join(profile, 'site-views.json'), 'utf8')); } catch { this.siteViews = {}; }
     this.autoReturn = this.siteViews.__autoReturn === true;
   }
@@ -168,7 +172,7 @@ export class BrowserSession {
         page.on('popup', popup => { this.closePage(popup).catch(() => {}); this.tabError = 'Use browser_tabs para abrir uma nova aba com endereço conferido.'; });
       }
       // In the shared Chrome a popup belongs to the bot whose page opened it (the context's route checks its address).
-      if (this.mode === 'shared') page.on('popup', add);
+      if (this.mode === 'shared') page.on('popup', popup => { this.popupSerial++; add(popup); this.popping = this.settlePopup(popup); });
       if (this.mode !== 'mine') page.on('download', download => this.saveDownload(download));
       // A document the page shows inline (a PDF in the viewer, an Office file) is no "download" for Chrome, but it is the file the person
       // wants: it is saved too, so the bot gets it like any other download.
@@ -226,6 +230,26 @@ export class BrowserSession {
     await this.observe(page);
     if (safe) await page.goto(safe, { waitUntil: 'domcontentloaded' });
     return page;
+  }
+  /**
+   * A link that opens a new tab (the SIGAA does it for most links) used to leave the bot reading the old tab: it saw nothing change, clicked
+   * again and piled up copies of the same page. Now the new tab becomes the active one once it loads, and when a tab with the same address is
+   * already open (ignoring the session id and the #fragment) the copy is closed and that one is used.
+   */
+  async settlePopup(popup) {
+    try {
+      try { await popup.waitForLoadState('domcontentloaded', { timeout: 8000 }); } catch {}
+      if (popup.isClosed() || !this.pages.includes(popup)) return;
+      const key = tabKey(popup.url());
+      const twin = key !== 'about:blank' && this.pages.find(item => item !== popup && !item.isClosed() && tabKey(item.url()) === key);
+      if (twin) { await this.activate(twin); await this.closePage(popup).catch(() => {}); this.tabNote = 'Essa página já estava aberta em outra aba; usei a que já existia em vez de abrir uma cópia.'; }
+      else { await this.activate(popup); this.tabNote = 'O link abriu uma nova aba e ela agora é a aba ativa (veja browser_tabs).'; }
+    } catch {}
+  }
+  /** After a click: when it opened a tab, wait for that tab to be settled so the next read sees it. */
+  async afterPopup(before) {
+    for (let start = Date.now(); this.popupSerial === before && Date.now() - start < 700;) await sleep(100);
+    if (this.popupSerial !== before) await this.popping;
   }
   async closePage(page) {
     if (page.isClosed()) return;
@@ -421,12 +445,13 @@ export class BrowserSession {
   }
   // A download starts a moment after the click; when one starts, wait for it (up to 90 s) and report the saved file.
   async awaitDownload(before) {
-    for (let start = Date.now(); this.downloadSerial === before && Date.now() - start < 4000;) await sleep(100);
+    for (let start = Date.now(); this.downloadSerial === before && Date.now() - start < 1500;) await sleep(100);
     if (this.downloadSerial === before) return null;
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => resolve({ error: 'O download ainda não terminou.' }), 90000); timer.unref(); });
     try { return await Promise.race([this.downloading, late]); } finally { clearTimeout(timer); }
   }
+  withTabNote(result) { const note = this.tabNote; this.tabNote = null; return note ? { ...result, tabNote: note } : result; }
   withDownload(result, file) { return file ? { ...result, download: file, ...(file.error ? {} : { next: 'O arquivo foi salvo nos downloads deste bot no computador.' }) } : result; }
   queueFrame(cdp, frame) {
     this.pendingFrame = frame;
@@ -704,7 +729,7 @@ export class BrowserSession {
     if (op === 'act') {
       const target = await this.pageData(inspectPoint, args);
       if (expectedTarget && ['kind','label','url'].some(key => target[key] !== expectedTarget[key])) throw new Error('O alvo mudou. Leia a página e tente de novo.');
-      const mouse = this.page.mouse, before = this.downloadSerial;
+      const mouse = this.page.mouse, before = this.downloadSerial, popups = this.popupSerial;
       await this.showAction('act', args, target, target.rect, ['key','scroll'].includes(args.action) ? null : { x: args.x, y: args.y });
       if (args.action === 'key') await this.page.keyboard.press(args.key);
       else if (args.action === 'hover') await mouse.move(args.x, args.y);
@@ -713,14 +738,17 @@ export class BrowserSession {
       else if (args.action === 'double_click') await mouse.dblclick(args.x, args.y);
       else await mouse.click(args.x, args.y, { button: args.action === 'right_click' ? 'right' : 'left' });
       const { rect, ...shown } = target;
-      return this.withDownload({ ...await this.info(), target: shown }, await this.awaitDownload(before));
+      await this.afterPopup(popups);
+      return this.withDownload(this.withTabNote({ ...await this.info(), target: shown }), await this.awaitDownload(before));
     }
     if (op === 'inspect') return args.action ? this.pageData(inspectPoint, args) : this.inspect(args.id);
     if (op === 'click') {
       const inspected = await this.inspect(args.id), before = this.downloadSerial;
       await this.showAction('click', args, inspected, await this.target(args.id).boundingBox().catch(() => null));
+      const popups = this.popupSerial;
       await this.target(args.id).click({ noWaitAfter: true });
-      return this.withDownload(await this.info(), await this.awaitDownload(before));
+      await this.afterPopup(popups);
+      return this.withDownload(this.withTabNote(await this.info()), await this.awaitDownload(before));
     }
     if (op === 'type') {
       const target = this.target(args.id); const inspected = await this.inspect(args.id);

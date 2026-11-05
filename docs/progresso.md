@@ -1710,3 +1710,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Correção**: os três métodos entram na lista; o teste agora passa pelo `Link.desktop` de verdade. O log mostra o erro real em vez de supor a versão do celular.
 - **Entrega**: só o PC precisa atualizar (a recusa era do supervisor do computador; o do celular já aceitava `passwords.sync`). O APK segue o da v137.
 
+## 0.71.9 (versionCode 140): o bot deixa de abrir a mesma página em várias abas
+
+- **Defeito achado**: no SIGAA a maioria dos links abre uma nova aba. O bot continuava lendo a aba antiga, via que nada mudara, clicava de novo e empilhava cópias da mesma página (três abas iguais da turma de Gestão Organizacional).
+- **Correção** (`pc/browser-worker.mjs`): a aba nova vira a ativa quando carrega, e o resultado do clique traz `tabNote` ("O link abriu uma nova aba…"). Se já existe uma aba com o mesmo endereço (sem o `;jsessionid` e o `#fragmento`, `tabKey`), a cópia é fechada e a existente é usada. A orientação aos bots (Codex, Claude, Antigravity e o texto do celular) diz: uma aba por assunto, reutilize a que já tem a página e feche as que não precisa.
+- **Efeito colateral que eu tinha criado e desfiz**: a espera de download de 4 s (v136) atrasava todo clique sem download; voltou a 1,5 s. Downloads tardios entram pela lista de arquivos.
+- **Testes**: `tabKey`, e o teste de abas compartilhadas passou a abrir o mesmo link duas vezes e conferir que não nasce cópia.
+

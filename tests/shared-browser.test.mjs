@@ -94,9 +94,13 @@ test('shared Chrome: a login made by one bot serves another, a separate bot stay
   await separate.command('open', { url: 'https://example.com/' });
   assert.doesNotMatch(await separate.page.evaluate(() => document.cookie), /sessao/);
   // A's popup becomes A's tab; B never sees it.
-  await a.page.evaluate(() => { const button = document.createElement('button'); button.id = 'abrir'; button.onclick = () => window.open('https://example.com/#popup'); document.body.append(button); });
+  await a.page.evaluate(() => { const button = document.createElement('button'); button.id = 'abrir'; button.onclick = () => window.open('https://example.com/?aba=popup'); document.body.append(button); });
   await a.page.click('#abrir'); await wait(() => a.tabList().length === 2);
-  assert.equal(b.tabList().length, 1); assert.match((await a.command('tabs', { action: 'switch', tab: 2 })).url, /#popup$/);
+  assert.equal(b.tabList().length, 1); assert.match((await a.command('tabs', { action: 'switch', tab: 2 })).url, /aba=popup$/);
+  // The new tab became the active one by itself; the same link again opens no copy (the page already open is used instead).
+  await a.page.click('#abrir').catch(() => {});
+  await new Promise(resolve => setTimeout(resolve, 2500));
+  assert.equal(a.tabList().length, 2, 'no second copy of the same page');
   // Taking over A (phone size) leaves B's page as it was.
   await a.deviceView({ width: 360, height: 640, deviceScaleFactor: 2 });
   assert.equal(await a.page.evaluate(() => innerWidth), 360); assert.equal(await b.page.evaluate(() => innerWidth), 1280);

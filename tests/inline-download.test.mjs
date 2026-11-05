@@ -15,3 +15,11 @@ test('a document the page opens inline (PDF, Office) counts as a file to keep; p
   assert.equal(isInlineDocument(response({ 'content-type': 'application/pdf' }, { navigation: false }), page), false);
   assert.equal(isInlineDocument(response({ 'content-type': 'application/pdf' }, { frame: {} }), page), false);
 });
+
+import { tabKey } from '../pc/browser-worker.mjs';
+test('two tabs of the same page are told apart from different pages: the session id and the #fragment do not count', () => {
+  assert.equal(tabKey('https://sig.cefetmg.br/sigaa/ava/index.jsf;jsessionid=AAA.inst06?x=1#topo'), tabKey('https://sig.cefetmg.br/sigaa/ava/index.jsf;jsessionid=BBB.inst06?x=1'));
+  assert.notEqual(tabKey('https://sig.cefetmg.br/sigaa/ava/index.jsf?x=1'), tabKey('https://sig.cefetmg.br/sigaa/ava/index.jsf?x=2'));
+  assert.notEqual(tabKey('https://a.com/x'), tabKey('https://b.com/x'));
+  assert.equal(tabKey('about:blank'), 'about:blank');
+});

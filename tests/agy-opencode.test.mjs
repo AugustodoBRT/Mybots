@@ -276,3 +276,39 @@ out({ event: 'result', result: { status: 'SUCCESS', response: 'Pronto: 3 ativida
   // Without the MyBots tools (nothing to resume with) the silence is still an error.
   await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, idleMs: 400, maxMs: 2000 }).then(r => { throw new Error('esperava erro ' + r.text); }, e => { throw e; }), () => true);
 });
+
+test('agy: the model thinking out loud (ids, coordinates, shouting, paths of its pictures) is kept out of the conversation', async t => {
+  const NOTE = 'OLHA QUE MARAVILHA! Vou clicar em id: 4 e ler a próxima etapa!';
+  const BOOK = '• id: 14 (Responder agora) NÃO TINHA box: {"x":24}. VAMOS VER ONDE ESTÁ O BOTÃO NA IMAGEM steps/512/media_0.jpg!';
+  assert.ok(agyRunner.thinkingAloud(NOTE) && !agyRunner.thinkingAloud('Vou abrir a vaga da BHS e continuar a candidatura.'));
+  assert.ok(agyRunner.thinkingAloud('a'.repeat(300)), 'a long in-between message is not news');
+  assert.ok(agyRunner.notebook(BOOK) && !agyRunner.notebook('Terminei a BHS. Falta o Banco Inter, que pediu um teste.'));
+  const step = (i, text, tool) => `out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: ${i}, state: 'ACTIVE', step_type: 'agent_response', text_delta: ${JSON.stringify(text)} } }); out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: ${i}, state: 'DONE', step_type: 'agent_response' } });${tool ? `\nout({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: ${i + 1}, state: 'ACTIVE', step_type: 'tool', tool_name: 'mcp_browser_read', tool_info: { name: 'mcp_browser_read', parameters: {} } } });` : ''}`;
+  // First turn: shouting before a tool, then a final answer that is only the notebook. The resumed turn answers properly.
+  const agy = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+const resume = args.includes('--conversation');
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+if (!resume) { ${step(1, NOTE, true)}
+  ${step(3, BOOK)}
+  out({ event: 'result', result: { status: 'SUCCESS', response: ${JSON.stringify(BOOK)}, usage: {} } }); }
+else { ${step(1, 'Terminei a BHS e falta o Banco Inter.')}
+  out({ event: 'result', result: { status: 'SUCCESS', response: 'Terminei a BHS e falta o Banco Inter.', usage: {} } }); }`);
+  const said = [], steps = [];
+  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' }, onProgress: item => { if (item.say) said.push(item.say); if (item.step) steps.push(item.step); } });
+  assert.equal(result.text, 'Terminei a BHS e falta o Banco Inter.');
+  assert.deepEqual(said, [], 'the shouting and the notebook never reach the conversation');
+  assert.ok(steps.includes('Analisando a página'));
+  const calls = await agy.calls(); assert.equal(calls.length, 2);
+  assert.ok(calls[1].args.some(item => /mostrou o seu raciocínio interno/.test(item)));
+  // A model that keeps writing the notebook gets a short honest line instead.
+  const stubborn = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+${step(1, BOOK)}
+out({ event: 'result', result: { status: 'SUCCESS', response: ${JSON.stringify(BOOK)}, usage: {} } });`);
+  const last = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: stubborn.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' } });
+  assert.match(last.text, /anotações técnicas minhas/);
+  assert.equal((await stubborn.calls()).length, 4, 'asked three times before giving up');
+  assert.match(agyRunner.guidanceFor({ token: 't' }), /sem exclamações.*nunca escreva ids de elementos, coordenadas/s);
+});

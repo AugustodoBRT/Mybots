@@ -1725,3 +1725,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Gradle**: `scripts/build-apk.sh` para os daemons ao terminar (guardavam ~2,8 GB depois de cada APK).
 - **Não mexi** no limite de memória do supervisor: o banco tem 5 MB e o consumo é do próprio Node; sem medir em campo, um limite pode derrubar o supervisor.
 - **Miniaturas das abas**: a barra lateral capturava cada página a cada 4 s; agora a cada 15 s e não com a janela escondida.
+
+## 0.71.11 (versionCode 142): o Antigravity não mostra mais o próprio raciocínio
+
+- **Defeito achado** (ProcuraVaga, Gemini 4 Argon): as mensagens de andamento saíam eufóricas ("OLHA QUE MARAVILHA!", "BINGO!!") com ids de elementos e coordenadas, e a resposta final virou um despejo do raciocínio ("VAMOS VER ONDE ESTÁ O BOTÃO NA IMAGEM steps/512/media_0.jpg…").
+- **Correção** (`lib/agy-runner.cjs`): (1) a orientação pede português simples e calmo, sem exclamações, ids, coordenadas, números de passo nem caminhos de captura; (2) uma mensagem de andamento com qualquer vestígio disso, com mais de 280 caracteres ou gritada vira só o passo "Analisando a página" em vez de aparecer; (3) uma resposta final com dois ou mais vestígios é devolvida ao modelo, no mesmo diálogo, para reescrever só o resultado (até 3 vezes) e, se ele insistir, aparece uma linha curta e honesta no lugar.
+- **Testes**: três casos (detecção, turno que grita antes de uma ferramenta e responde com anotações, modelo teimoso que recebe a linha de aviso).
+

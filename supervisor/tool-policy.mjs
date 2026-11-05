@@ -142,7 +142,11 @@ export function toolArguments(tool, args) {
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
-  if (!fields || Object.keys(args).some(key => !fields.includes(key))) throw new Error('Ferramenta ou argumento não permitido.');
+  // Say which argument was not accepted and which ones are: "não permitido" alone left the model (and the person) guessing, and the bot
+  // stopped at the first failure believing it lacked permission.
+  const extra = fields ? Object.keys(args).filter(key => !fields.includes(key)) : [];
+  if (!fields) throw new Error('Ferramenta ou argumento não permitido.');
+  if (extra.length) throw new Error(`Ferramenta ou argumento não permitido: ${tool.replace('.', '_')} não aceita ${extra.slice(0, 5).map(key => `"${String(key).slice(0, 30)}"`).join(', ')}. Os argumentos aceitos são: ${fields.length ? fields.join(', ') : 'nenhum'}. Não é falta de permissão: tente de novo só com esses.`);
   const text = (name, max, optional = false) => {
     // Models often send "" for a filter they do not want; for optional fields that means no filter.
     if (optional && (args[name] === undefined || args[name] === null || (typeof args[name] === 'string' && !args[name].trim()))) return '';

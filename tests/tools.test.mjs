@@ -166,3 +166,10 @@ test('chat.send marks a message live only while a private turn of that bot is ru
   await until(() => app.db.task(first.taskId).state === 'done');
   await until(() => app.db.task(second.taskId).state === 'done');
 });
+
+test('an argument a tool does not take is named in the error, with the ones it does take, and is not mistaken for a missing permission', async t => {
+  const f = await setup(t);
+  await assert.rejects(f.call('team.create_bot', { name: 'Caça', instructions: 'x', model: 'gpt', personality: 'y' }), error => /não aceita "model", "personality"/.test(error.message) && /aceitos são: name, instructions, color, avatar, access, home/.test(error.message) && /Não é falta de permissão/.test(error.message));
+  await assert.rejects(f.call('memory.read', { botId: f.bot.id }), /argumento/);
+  await assert.rejects(f.call('coisa.inexistente', {}), /^Error: Ferramenta ou argumento não permitido\.$/);
+});

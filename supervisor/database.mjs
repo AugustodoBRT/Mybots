@@ -745,6 +745,27 @@ export class Database {
       return this.task(requestId);
     });
   }
+  /**
+   * Messages the person sent while this bot's turn was running ("live": see chat.send): they are handed to the running turn with
+   * the next tool result instead of waiting for it to end. Each one is marked delivered (message complete, its own turn done, no
+   * reply of its own: the running turn answers it). Returns what to show the model. Nothing for room turns and routine runs.
+   */
+  takeLive(botId, runTaskId) {
+    const running = this.task(runTaskId);
+    if (!running || running.bot_id !== botId || !['running', 'waiting_approval'].includes(running.state) || this.roomTurn(runTaskId) || this.get('SELECT 1 FROM routine_runs WHERE task_id=?', runTaskId)) return [];
+    return this.transaction(() => {
+      const rows = this.all("SELECT t.id AS id, t.message_id AS message_id FROM tasks t JOIN messages m ON m.id=t.message_id WHERE t.bot_id=? AND t.state='queued' AND json_extract(m.body,'$.live')=1 AND t.id NOT IN (SELECT task_id FROM routine_runs) ORDER BY t.created_at, t.rowid", botId);
+      const taken = [];
+      for (const row of rows) {
+        const message = this.message(row.message_id); if (!message) continue;
+        this.updateMessage(row.message_id, { status: 'complete', delivered: 'live', deliveredAt: now() });
+        this.run("UPDATE tasks SET state='done',updated_at=? WHERE id=? AND state='queued'", now(), row.id);
+        this.event(row.id, 'done');
+        taken.push({ text: message.text, attachments: (message.attachments || []).map(file => ({ id: file.id, name: file.name, mime: file.mime, size: file.size })) });
+      }
+      return taken;
+    });
+  }
   event(id, state) {
     const task = this.task(id);
     this.run('INSERT INTO task_events(task_id,state,created_at) VALUES(?,?,?)', id, state, now());

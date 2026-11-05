@@ -540,7 +540,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const files = previous ? db.message(previous.message_id)?.attachments : attachments.save(bot.id, params.attachments);
           const text = typeof params.text === 'string' && params.text.trim() ? params.text : files?.length ? 'Veja o anexo.' : params.text;
           let task;
-          try { task = db.enqueue(bot.id, params.requestId, text, selection, files?.length ? { attachments: files } : {}); }
+          // While this bot's private turn is running, the message goes to it live (with its next tool result) instead of waiting for the end.
+          const working = db.activeTasks(bot.id).find(item => ['running', 'waiting_approval'].includes(item.state));
+          const live = Boolean(working) && !previous && !db.roomTurn(working.id) && !db.get('SELECT 1 FROM routine_runs WHERE task_id=?', working.id);
+          try { task = db.enqueue(bot.id, params.requestId, text, selection, { ...(files?.length ? { attachments: files } : {}), ...(live ? { live: true } : {}) }); }
           catch (error) { if (!previous && files?.length) attachments.discard(files); throw error; }
           broadcast('task.progress', { taskId: task.id }); queue.schedule();
           return { taskId: task.id, messageId: task.message_id, state: task.state };
@@ -809,7 +812,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             : request.url === '/tools/claim' ? (tools.context(runToken, body.bridgeId, true), { connected: true })
             : request.url === '/tools/list' ? { tools: tools.toolList(runToken, body.bridgeId) }
             : body.name !== undefined ? await tools.callMcp(runToken, body) : await tools.call(runToken, body);
-          response.end(JSON.stringify(result));
+          // A message the person sent meanwhile rides along with a tool result (never with the list of tools or the Chrome hook).
+          response.end(JSON.stringify(request.url === '/tools/call' ? tools.withLive(runToken, result) : result));
         } catch (error) { response.writeHead(400).end(JSON.stringify({ error: error.code || error instanceof SyntaxError ? 'Pedido de ferramenta inválido.' : error.message })); }
         return;
       }

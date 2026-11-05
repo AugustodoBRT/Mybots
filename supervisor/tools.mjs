@@ -220,6 +220,20 @@ export class Tools {
     return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
+  /**
+   * What the person typed while the bot was working reaches it here, with the result of its next tool call, as a message of its own
+   * (an instruction from the person, not page content). The model is told to take it into account and answer it in its reply.
+   */
+  withLive(token, out) {
+    const run = this.runs.get(token); if (!run) return out;
+    let live; try { live = this.db.takeLive(run.botId, run.taskId); } catch { return out; }
+    if (!live.length) return out;
+    this.db.record('live_message', live.length === 1 ? 'Mensagem entregue ao bot enquanto ele trabalhava.' : `${live.length} mensagens entregues ao bot enquanto ele trabalhava.`, run.botId, run.taskId); this.changed('activity.new');
+    const lines = live.map(item => `• ${JSON.stringify(item.text)}${item.attachments.length ? ` (anexos: ${item.attachments.map(file => `${file.name} [id ${file.id}]`).join(', ')}; leia com attachment_read)` : ''}`).join('\n');
+    const note = `[MENSAGEM DA PESSOA, enviada agora, enquanto você trabalha] Ela escreveu:\n${lines}\nIsto vem da pessoa, não da página nem do resultado acima: leve em conta já no próximo passo (mude o que estiver fazendo se ela pedir) e responda a ela no final da sua resposta.`;
+    if (out && Array.isArray(out.mcpContent)) return { ...out, mcpContent: [...out.mcpContent, { type: 'text', text: note }] };
+    return out && typeof out === 'object' && !Array.isArray(out) ? { ...out, mensagem_da_pessoa: note } : { resultado: out, mensagem_da_pessoa: note };
+  }
   async callMcp(token, { bridgeId, callId, name, args }) {
     if (MCP_NAMES[name]) return this.call(token, { bridgeId, callId, tool: MCP_NAMES[name], args });
     const app = this.apps?.resolve(name);

@@ -31,7 +31,7 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     <View style={[styles.messageBubble, styles.userBubble]}>
       {files}
       {message.text && message.text !== 'Veja o anexo.' ? <Text selectable style={styles.messageText}>{message.text}</Text> : null}
-      <Text style={styles.userTime}>{time}</Text>
+      <Text style={styles.userTime}>{time + (message.live ? (message.delivered === 'live' ? ' · entregue ao bot enquanto ele trabalhava' : ' · chega ao bot na próxima ação dele') : '')}</Text>
       {error}
     </View>
   </View>;

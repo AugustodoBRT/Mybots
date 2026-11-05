@@ -123,3 +123,46 @@ test('changing a grant starts a new model session so the bot learns about its ne
   app.tools.grant(bot.id, 'memory.read', true);
   assert.equal(app.db.bot(bot.id).codexSessionId, undefined);
 });
+
+test('a message sent while the bot works reaches the running turn with its next tool result, once, and is not left waiting', async t => {
+  const f = await setup(t);
+  const messageOf = id => f.db.message(f.db.task(id).message_id);
+  // The person writes twice while the turn runs (the app marks them live), the second with a file.
+  const one = f.db.enqueue(f.bot.id, randomUUID(), 'Pula essa vaga e vai para a próxima', selection, { live: true });
+  const two = f.db.enqueue(f.bot.id, randomUUID(), 'Use o currículo novo', selection, { live: true, attachments: [{ id: randomUUID(), name: 'curriculo.pdf', mime: 'application/pdf', size: 10 }] });
+  assert.equal(messageOf(one.id).status, 'pending');
+  const first = f.tools.withLive(f.capability.token, { ok: true });
+  assert.equal(first.ok, true);
+  assert.match(first.mensagem_da_pessoa, /MENSAGEM DA PESSOA.*"Pula essa vaga e vai para a próxima".*"Use o currículo novo".*curriculo\.pdf/s);
+  assert.match(first.mensagem_da_pessoa, /responda a ela no final/);
+  for (const task of [one, two]) { assert.equal(f.db.task(task.id).state, 'done'); assert.equal(messageOf(task.id).status, 'complete'); assert.equal(messageOf(task.id).delivered, 'live'); }
+  // Nothing is delivered twice, and a picture result keeps its picture and gets the note after it.
+  assert.deepEqual(f.tools.withLive(f.capability.token, { ok: true }), { ok: true });
+  const three = f.db.enqueue(f.bot.id, randomUUID(), 'E também confira o prazo', selection, { live: true });
+  const picture = f.tools.withLive(f.capability.token, { mcpContent: [{ type: 'text', text: 'tela' }, { type: 'image', data: 'AA==', mimeType: 'image/jpeg' }] });
+  assert.equal(picture.mcpContent.length, 3); assert.match(picture.mcpContent[2].text, /confira o prazo/); assert.equal(f.db.task(three.id).state, 'done');
+  // A message that was not sent live (the bot was idle) keeps waiting for its own turn; a turn of another bot never receives it.
+  const normal = f.db.enqueue(f.bot.id, randomUUID(), 'Mensagem normal', selection);
+  assert.deepEqual(f.tools.withLive(f.capability.token, { ok: 1 }), { ok: 1 }); assert.equal(f.db.task(normal.id).state, 'queued');
+  assert.deepEqual(f.db.takeLive(f.bot.id, randomUUID()), [], 'an unknown or finished turn takes nothing');
+  assert.ok(f.db.all("SELECT 1 FROM activity WHERE kind='live_message'").length >= 2);
+});
+
+test('chat.send marks a message live only while a private turn of that bot is running; an idle bot takes it as a normal turn', async t => {
+  const { SupervisorClient } = await import('../mobile/supervisor-client.js');
+  const { default: WS } = await import('../supervisor/node_modules/ws/wrapper.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-live-')); let release; const gate = new Promise(resolve => { release = resolve; });
+  const app = await createSupervisor({ directory, port: 0, codex, execute: async bot => { await gate; return { text: 'pronto', codexSessionId: bot.codexSessionId || randomUUID(), ...selection }; } });
+  const client = new SupervisorClient({ WebSocketClass: WS }); await client.connect({ port: app.port, token: app.token });
+  t.after(async () => { release(); client.close(); await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await client.call('bot.create', { name: 'Vivo', ...selection });
+  const first = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'primeira' });
+  assert.equal(app.db.message(first.messageId).live, undefined, 'the bot was idle: a normal turn');
+  await until(() => app.db.task(first.taskId).state === 'running');
+  const second = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'segunda, enquanto trabalha' });
+  assert.equal(app.db.message(second.messageId).live, true);
+  assert.equal(app.db.task(second.taskId).state, 'queued', 'waits only if the turn ends before a tool result carries it');
+  release();
+  await until(() => app.db.task(first.taskId).state === 'done');
+  await until(() => app.db.task(second.taskId).state === 'done');
+});

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { styles } from '../styles';
-import { C } from '../theme';
+import { C, Icon, F } from '../theme';
 import { native } from '../desktop';
 import { PrimaryButton } from './shared';
 
@@ -28,6 +28,18 @@ export function DesktopUpdate({ full = false }) {
   const check = async () => { setChecking(true); try { setState(await api.check()); } catch {} finally { setChecking(false); } };
   if (!full && !text) return null;
   const busy = state.phase === 'downloading' || state.phase === 'installing';
+  // Not in Ajustes: a small pill in the top corner, not a banner that pushes everything down.
+  if (!full) {
+    const label = state.phase === 'downloading' ? `Baixando ${state.percent}%` : state.phase === 'installing' ? 'Reiniciando…' : self ? `Atualizar · ${state.version}` : `Baixar · ${state.version}`;
+    return <View pointerEvents="box-none" style={{ position: 'absolute', top: 8, right: 12, zIndex: 60, alignItems: 'flex-end', gap: 4 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={self ? `Atualizar para a versão ${state.version} e reiniciar` : `Baixar a versão ${state.version}`} disabled={busy} onPress={() => api.install()}
+        style={({ hovered, pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: C.accent, opacity: busy ? 0.75 : pressed ? 0.85 : hovered ? 0.95 : 1, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } })}>
+        <Icon name={busy ? 'refresh' : 'download'} size={13} color={C.accentInk} />
+        <Text style={{ color: C.accentInk, fontFamily: F.b, fontSize: 12.5 }}>{label}</Text>
+      </Pressable>
+      {state.error ? <Text style={{ color: C.amber, fontFamily: F.m, fontSize: 12, maxWidth: 260, textAlign: 'right' }}>{state.error}</Text> : null}
+    </View>;
+  }
   return <View style={[styles.modeOption, full ? null : { margin: 12, flexShrink: 1 }]}>
     <Text style={styles.optionLabel}>{full ? `MyBots ${state.current || ''}` : text}</Text>
     {full ? <Text style={[styles.optionDetail, text && { color: C.accent }]}>{text || (checking ? 'Procurando…' : 'Você está na versão mais nova.')}</Text> : null}

@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, nativeMessage, IconButton, RoomFaces, Dots, EarlierButton, ApprovalCard, Avatar, offline, HUE_OF, ToEndButton, Composer } from '../components/shared';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { pickFile } from '../termux';
 import { FlatList, View, Text, ScrollView, Pressable } from 'react-native';
 import { styles } from '../styles';
@@ -44,16 +44,32 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       setFiles(old => [...old, file]);
     } catch (e) { setError(nativeMessage(e)); }
   };
-  const attachWeb = () => {
-    const picker = globalThis.document.createElement('input'); picker.type = 'file'; picker.multiple = true;
-    picker.onchange = () => {
-      const picked = Array.from(picker.files || []);
-      if (files.length + picked.length > 5) { setError('Uma mensagem leva até 5 arquivos.'); return; }
-      if (picked.some(file => !file.size)) { setError('O arquivo está vazio.'); return; }
-      if (files.reduce((sum, file) => sum + file.size, 0) + picked.reduce((sum, file) => sum + file.size, 0) > 10 * 1024 * 1024) { setError('Os anexos de uma mensagem podem somar até 10 MB.'); return; }
-      setError(''); setFiles(old => [...old, ...picked.map(file => ({ name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file }))]);
-    }; picker.click();
+  const addWebFiles = list => {
+    const picked = Array.from(list || []); if (!picked.length) return;
+    if (files.length + picked.length > 5) { setError('Uma mensagem leva até 5 arquivos.'); return; }
+    if (picked.some(file => !file.size)) { setError('O arquivo está vazio.'); return; }
+    if (files.reduce((sum, file) => sum + file.size, 0) + picked.reduce((sum, file) => sum + file.size, 0) > 10 * 1024 * 1024) { setError('Os anexos de uma mensagem podem somar até 10 MB.'); return; }
+    setError(''); setFiles(old => [...old, ...picked.map(file => ({ name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file }))]);
   };
+  const attachWeb = () => { const picker = globalThis.document.createElement('input'); picker.type = 'file'; picker.multiple = true; picker.onchange = () => addWebFiles(picker.files); picker.click(); };
+  // Like the private chat on the computer: files dropped anywhere in the window, or pasted with Ctrl+V (a screenshot, a copied picture or file), attach to the room.
+  const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles; const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    if (!desktop) return undefined;
+    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files'));
+    const enter = event => { if (has(event)) { depth++; setDragging(true); } };
+    const over = event => { if (has(event)) event.preventDefault(); };
+    const leave = event => { if (has(event) && --depth <= 0) { depth = 0; setDragging(false); } };
+    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
+    const paste = event => {
+      const list = Array.from(event.clipboardData?.files || []); if (!list.length) return;
+      if (event.clipboardData.getData('text/plain').trim()) return;   // copied text that also carries a picture stays text
+      event.preventDefault(); dropRef.current(list);
+    };
+    const events = [['dragenter', enter], ['dragover', over], ['dragleave', leave], ['drop', drop], ['paste', paste]];
+    for (const [name, handler] of events) globalThis.addEventListener(name, handler);
+    return () => { for (const [name, handler] of events) globalThis.removeEventListener(name, handler); setDragging(false); };
+  }, []);
   const mention = bot => { setDraft(old => (old.trim() ? old.replace(/\s*$/, ' ') : '') + `@${bot.name} `); input.current?.focus(); };
   const retry = useLiveCallback((text, message) => { const asked = shown.find(item => item.id === message.replyTo); const bot = byId[message.botId]; if (asked && bot) send(`@${bot.name} ${asked.text.replace(/@\S+\s?/g, '').trim() || asked.text}`); });
   return <View style={styles.chatScreen}>
@@ -105,6 +121,7 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
     </View>
+    {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem da sala</Text></View></View> : null}
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => send(message.text)} canResend={!sending} />
   </View>;
 }

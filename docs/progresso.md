@@ -1751,3 +1751,9 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Sem recuperação**: nada tratava a queda da página da interface, uma trava longa ou a queda do processo gráfico (`desktop/electron/main.js`). Agora a interface recarrega sozinha quando o processo da página cai, quando fica 10 s sem responder, quando a carga falha ou quando o processo gráfico morre; os dados estão no supervisor, então nada se perde.
 - **Não testado em campo**: o Electron real não roda na suíte; só a sintaxe foi conferida.
 
+## 0.71.15 (versionCode 146): as salas respondem todas ao mesmo tempo e aceitam arrastar e colar arquivos
+
+- **Mensagem sem @ numa sala**: os bots respondiam um de cada vez (cada um lendo o que o anterior disse) e os outros ficavam esperando. Agora todos os bots chamados começam juntos, cada um na sua fila, até o limite que a máquina roda em paralelo (3 no celular, 4 no PC; os que passarem disso esperam a vez). Troca: numa mensagem para todos, um bot não lê a resposta de outro da mesma rodada; para um reagir ao outro, ele o chama com @ (continua valendo, sem limite de rodadas). Antes só os bots chamados com @ trabalhavam juntos (`supervisor/rooms.mjs`).
+- **Arrastar e colar arquivos na sala** (`mobile/screens/Room.js`): na janela do PC, arquivos soltos em qualquer ponto da janela ou colados com Ctrl+V (captura de tela, imagem ou arquivo copiado) entram na mensagem da sala, como no chat, com a faixa "Solte para anexar à mensagem da sala". Mesmos limites da sala: até 5 arquivos e 10 MB juntos; todos os bots da sala leem os arquivos.
+- **Testes**: a sala agora confere que uma mensagem sem @ também começa todos juntos. O arrastar na sala não tem teste automático (a janela de teste não tem sala); a lógica é a mesma do chat.
+

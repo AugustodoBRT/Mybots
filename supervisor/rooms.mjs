@@ -110,8 +110,9 @@ export class Rooms {
     const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', ...(saved.length ? { attachments: saved } : {}), createdAt: stamp };
     try { this.db.transaction(() => {
       this.db.appendRoomMessage(room.id, message);
-      // Without @ the bots answer in turn (each reads what the ones before it said); bots named with @ work side by side.
-      targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, named.length ? randomUUID() : message.id, selectionFor(bot), index === 0 ? requestId : randomUUID()));
+      // Every bot that is addressed starts at once (each in its own line, up to what the machine runs in parallel): a message to everyone no
+      // longer makes the others wait for the one before. They answer the person; to react to each other, a bot calls another with @.
+      targets.forEach((bot, index) => this.turn(room.id, bot, message.id, 0, randomUUID(), selectionFor(bot), index === 0 ? requestId : randomUUID()));
     }); } catch (error) { if (saved.length) this.attachments.discard(saved); throw error; }
     this.changed('task.progress'); this.schedule();
     return { messageId: message.id, targets: targets.map(bot => bot.id) };

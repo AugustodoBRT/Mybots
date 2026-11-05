@@ -112,7 +112,7 @@ test('a bot working for a long time does not hold the others: private chats and 
   assert.equal(f.app.db.messages(outside.id).length, 0);
 });
 
-test('bots called together with @ (by the person or by another bot) work at the same time; a message to everyone still goes in turn', async t => {
+test('bots called together with @ (by the person or by another bot) work at the same time; a message to everyone also starts all of them at once', async t => {
   let running = 0, most = 0; const release = [];
   const f = await setup(t, async bot => {
     if (['Produtor', 'Operador'].includes(bot.name)) { running++; most = Math.max(most, running); await new Promise(resolve => release.push(resolve)); running--; }
@@ -128,6 +128,12 @@ test('bots called together with @ (by the person or by another bot) work at the 
   // The person names two at once: also together.
   most = 0; running = 0;
   await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: '@Produtor e @Operador, comecem' });
+  await until(() => release.length === 2);
+  assert.equal(most, 2);
+  release.splice(0).forEach(resolve => resolve()); await f.idle();
+  // No @ at all: everyone addressed starts together too (it used to be one after the other, the rest waiting).
+  most = 0; running = 0;
+  await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: 'Bom dia a todos, como estão?' });
   await until(() => release.length === 2);
   assert.equal(most, 2);
   release.splice(0).forEach(resolve => resolve()); await f.idle();

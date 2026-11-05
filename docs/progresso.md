@@ -1717,3 +1717,11 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Efeito colateral que eu tinha criado e desfiz**: a espera de download de 4 s (v136) atrasava todo clique sem download; voltou a 1,5 s. Downloads tardios entram pela lista de arquivos.
 - **Testes**: `tabKey`, e o teste de abas compartilhadas passou a abrir o mesmo link duas vezes e conferir que não nasce cópia.
 
+## 0.71.10 (versionCode 141): fechar abas do navegador dos bots e menos memória
+
+- **Medida** (PC do dono, Linux): o monitor somava ~2,9 GB em 20 processos, mas isso conta duas vezes as páginas do binário do Electron que os processos compartilham; pela memória proporcional (PSS) o MyBots usa ~0,9 GB (janela principal 216 MB, GPU 141 MB, supervisor 135 MB, abas 45 a 63 MB cada). A soma bruta (RSS) era: supervisor 488 MB, 7 janelas/abas de 62 a 341 MB (cerca de 1,2 GB), GPU 334 MB, principal e utilitários ~620 MB, nó 159 MB. O resto que aparecia no monitor (2,8 GB de Java) era o Gradle dos builds do APK, não o MyBots.
+- **Fechar abas**: cada cartão de aba na barra lateral do navegador ganhou um × e há "Fechar as outras abas" (mantém a ativa). Antes só dava para fechar na tela cheia.
+- **Abas esquecidas fecham sozinhas** (`desktop/electron/tabs.js`): uma aba que não é a ativa e ficou 30 minutos sem mudar de página nem ser trazida à frente é fechada (sempre sobra uma).
+- **Gradle**: `scripts/build-apk.sh` para os daemons ao terminar (guardavam ~2,8 GB depois de cada APK).
+- **Não mexi** no limite de memória do supervisor: o banco tem 5 MB e o consumo é do próprio Node; sem medir em campo, um limite pode derrubar o supervisor.
+- **Miniaturas das abas**: a barra lateral capturava cada página a cada 4 s; agora a cada 15 s e não com a janela escondida.

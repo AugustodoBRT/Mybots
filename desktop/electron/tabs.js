@@ -55,9 +55,9 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
     const view = new WebContentsView({ webPreferences: { session: ses, // window.chrome, as a Chrome has it, comes from tab-preload.js
     preload: require('node:path').join(__dirname, 'tab-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false, backgroundThrottling: false } });
     view.setBackgroundColor('#ffffff');
-    const contents = view.webContents, tab = { view, contents, marker, owner, icon: '' };
+    const contents = view.webContents, tab = { view, contents, marker, owner, icon: '', lastUse: Date.now() };
     tabs.set(id, tab); order.push(id);
-    for (const event of ['page-title-updated', 'did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading']) contents.on(event, changed);
+    for (const event of ['page-title-updated', 'did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading']) contents.on(event, () => { tab.lastUse = Date.now(); changed(); });
     contents.on('page-favicon-updated', (_event, icons) => { tab.icon = icons[0] || ''; changed(); });
     // A link that wants a new window opens as a new tab, like in any browser.
     contents.setWindowOpenHandler(({ url: target }) => { if (/^https?:/i.test(target)) setImmediate(() => create(target, { owner })); return { action: 'deny' }; });
@@ -67,8 +67,16 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
     if (activate) active = id;
     layout(); changed(); return { id, marker };
   }
+  // A tab nobody has touched for a long time (no page change, not brought forward) is closed: each one is a whole page in memory.
+  // The tab being shown and the last one stay; the idle time is long enough for a bot reading a page between steps.
+  const IDLE_TAB_MS = 30 * 60000;
+  const sweep = setInterval(() => {
+    if (window.isDestroyed()) { clearInterval(sweep); return; }
+    if (order.length <= 1) return;
+    for (const id of [...order]) { const tab = tabs.get(id); if (tab && id !== active && !tab.contents.isDestroyed() && Date.now() - (tab.lastUse || 0) > IDLE_TAB_MS && order.length > 1) close(id); }
+  }, 60000); sweep.unref?.();
   function close(id) { const tab = tabs.get(id); if (!tab) return false; if (!tab.contents.isDestroyed()) tab.contents.close(); return true; }
-  const activate = id => { if (!tabs.has(id)) return false; active = id; layout(); changed(); tabs.get(id).contents.focus(); return true; };
+  const activate = id => { if (!tabs.has(id)) return false; active = id; tabs.get(id).lastUse = Date.now(); layout(); changed(); tabs.get(id).contents.focus(); return true; };
   const go = (id, url) => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return false; const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : /^[^\s/]+\.[^\s/]+/.test(url) ? `https://${url}` : `https://www.google.com/search?q=${encodeURIComponent(url)}`; if (!/^https?:/i.test(target)) return false; contents.loadURL(target).catch(() => {}); return true; };
   const nav = (id, action) => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return false; if (action === 'back') contents.navigationHistory.goBack(); else if (action === 'forward') contents.navigationHistory.goForward(); else if (action === 'reload') contents.reload(); else return false; return true; };
   const thumb = async id => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return null; const image = await contents.capturePage(); const small = image.resize({ width: 480 }); return small.toDataURL(); };

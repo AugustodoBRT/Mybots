@@ -15,4 +15,8 @@ fi
 node "$project/scripts/package-connectors.mjs"
 node "$project/scripts/package-supervisor.mjs"
 cd "$project/mobile/android"
-./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain "$@"
+status=0
+./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain "$@" || status=$?
+# The Gradle daemons keep ~2.8 GB of memory after a build; nothing else needs them, so they stop with it.
+./gradlew --stop >/dev/null 2>&1 || true
+exit $status

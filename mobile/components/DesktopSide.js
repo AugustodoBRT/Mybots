@@ -123,14 +123,20 @@ function NativeCards({ onOpen }) {
   useEffect(() => {
     let live = true;
     const take = async () => { for (const tab of tabs.slice(0, 12)) { const uri = await native.thumb(tab.id).catch(() => null); if (!live) return; if (uri) setShots(old => ({ ...old, [tab.id]: uri })); } };
-    take(); const timer = setInterval(take, 4000); return () => { live = false; clearInterval(timer); };
+    // A picture of each page costs a capture and a few hundred KB: every 15 s (it was 4 s), and not while the window is hidden.
+    take(); const timer = setInterval(() => { if (!globalThis.document?.hidden) take(); }, 15000); return () => { live = false; clearInterval(timer); };
   }, [tabs.map(tab => tab.id).join()]);
   const open = async id => { await native.activate(id); onOpen(); };
   return <ScrollView contentContainerStyle={{ padding: 14, gap: 18 }}>
     <Pressable accessibilityRole="button" accessibilityLabel="Nova aba do navegador" onPress={async () => { await native.create(); onOpen(); }} style={({ hovered }) => [{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, hovered && s.hover]}><Icon name="plus" size={16} color={C.muted} /></Pressable>
+    {tabs.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Fechar todas as abas, menos a ativa" onPress={() => { for (const tab of tabs) if (tab.id !== active) native.close(tab.id); }}
+      style={({ hovered }) => [{ alignSelf: 'flex-start', paddingHorizontal: 12, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, hovered && { backgroundColor: C.surface2 }]}><Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Fechar as outras abas</Text></Pressable> : null}
     {tabs.map(tab => <Pressable key={tab.id} accessibilityRole="button" accessibilityLabel={`Abrir a aba ${tab.title || hostOf(tab.url) || tab.id}`} onPress={() => open(tab.id)} style={s.card}>
       <View style={[s.shot, { aspectRatio: 1.6 }, tab.id === active && { borderColor: C.line2 }]}>
         {shots[tab.id] ? <Image source={{ uri: shots[tab.id] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" fadeDuration={0} /> : <Icon name="globe" size={22} color={C.faint} />}
+        {/* every tab can be closed from here: each one is a whole page (a few hundred MB of memory) */}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Fechar a aba ${tab.title || hostOf(tab.url) || tab.id}`} hitSlop={6} onPress={() => native.close(tab.id)}
+          style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.65)' }}><Icon name="close" size={13} color="#fff" /></Pressable>
       </View>
       <Text style={s.cardTitle} numberOfLines={1}>{tab.title || hostOf(tab.url) || 'Nova aba'}</Text>
     </Pressable>)}

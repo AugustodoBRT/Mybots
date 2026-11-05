@@ -1744,3 +1744,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Correção** (`supervisor/tool-policy.mjs`): o erro agora nomeia o argumento recusado, lista os aceitos e diz "Não é falta de permissão: tente de novo só com esses." Uma ferramenta que não existe continua com a mensagem antiga. Vale para todas as ferramentas.
 - **Teste**: `team.create_bot` com `model` e `personality` recebe o erro nomeado; `memory.read` com `botId` e ferramenta inexistente continuam recusadas.
 
+## 0.71.14 (versionCode 145): a janela do MyBots não fica mais preta com muitos bots navegando
+
+- **Defeito relatado**: com vários bots testando ao mesmo tempo (o ProcuraVaga montou 4 bots de equipe, todos navegando), a janela do PC ficou toda preta. Na hora havia 13 processos de aba, um deles com 670 MB, e o processo gráfico com 320 MB. Não achei erro registrado nem consegui reproduzir; as duas fragilidades que o código tinha:
+- **Abas demais**: toda aba do navegador dos bots fica pintando em tamanho cheio sob a interface; empilhadas, o processo gráfico não aguenta. Agora o navegador do PC mantém no máximo 10 abas (`desktop/electron/tabs.js`): ao passar disso, fecha as tocadas há mais tempo, nunca a ativa nem a recém-criada.
+- **Sem recuperação**: nada tratava a queda da página da interface, uma trava longa ou a queda do processo gráfico (`desktop/electron/main.js`). Agora a interface recarrega sozinha quando o processo da página cai, quando fica 10 s sem responder, quando a carga falha ou quando o processo gráfico morre; os dados estão no supervisor, então nada se perde.
+- **Não testado em campo**: o Electron real não roda na suíte; só a sintaxe foi conferida.
+

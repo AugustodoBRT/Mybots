@@ -65,8 +65,16 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
     present(contents);
     contents.loadURL(url === 'about:blank' ? `about:blank#${marker}` : url).catch(() => {});
     if (activate) active = id;
-    layout(); changed(); return { id, marker };
+    layout(); changed(); enforceLimit(id); return { id, marker };
   }
+  // Every tab is a whole page kept painting at full size under the interface: with several bots browsing at once they pile up and the
+  // graphics process gives out (the window went black). Over this many, the ones touched longest ago (never the active one) are closed.
+  const MAX_TABS = 10;
+  const enforceLimit = keep => {
+    const excess = order.length - MAX_TABS; if (excess <= 0) return;
+    const victims = order.filter(id => id !== active && id !== keep && tabs.has(id)).sort((a, b) => (tabs.get(a).lastUse || 0) - (tabs.get(b).lastUse || 0)).slice(0, excess);
+    for (const id of victims) close(id);
+  };
   // A tab nobody has touched for a long time (no page change, not brought forward) is closed: each one is a whole page in memory.
   // The tab being shown and the last one stay; the idle time is long enough for a bot reading a page between steps.
   const IDLE_TAB_MS = 30 * 60000;

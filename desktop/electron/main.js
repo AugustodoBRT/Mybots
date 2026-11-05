@@ -162,6 +162,15 @@ if (first) app.whenReady().then(async () => {
   window.on('close', event => { if (!quitting) { event.preventDefault(); park(); } });
   // A reloaded interface knows nothing of the area it asked for: the browser goes back under it.
   ui.webContents.on('did-start-loading', () => tabs?.place(null));
+  // A blank interface (its page process crashed or hung, or the graphics process died) used to leave a black window until the person
+  // closed the app. It reloads by itself: nothing is lost, the data is in the supervisor.
+  const reloadUi = why => { if (ui.webContents.isDestroyed()) return; console.error('[MyBots] recarregando a interface:', why); setTimeout(() => { if (!ui.webContents.isDestroyed()) ui.webContents.reload(); }, 400); };
+  ui.webContents.on('render-process-gone', (_event, details) => { if (details.reason !== 'clean-exit') reloadUi(details.reason); });
+  let hung = null;
+  ui.webContents.on('unresponsive', () => { clearTimeout(hung); hung = setTimeout(() => reloadUi('sem resposta por 10 s'), 10000); });
+  ui.webContents.on('responsive', () => clearTimeout(hung));
+  ui.webContents.on('did-fail-load', (_event, code, _text, url, isMainFrame) => { if (isMainFrame && code !== -3) setTimeout(() => { if (!ui.webContents.isDestroyed()) ui.webContents.reload(); }, 2000); });
+  app.on('child-process-gone', (_event, details) => { if (details.type === 'GPU' && details.reason !== 'clean-exit') reloadUi('GPU ' + details.reason); });
   ui.webContents.loadFile(join(__dirname, '..', 'loader', 'index.html'), { query: { port: String(UI_PORT), embedded: embedded ? '1' : '' } });
 
   const downloads = join(node, 'downloads'); mkdirSync(downloads, { recursive: true, mode: 0o700 });

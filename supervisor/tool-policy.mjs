@@ -5,6 +5,7 @@ import { EYE_STYLES, MOUTHS, TOPS, LIMITS } from '../lib/mimo.mjs';
 export const TOOL_DEFINITIONS = [
   { name: 'memory.read', label: 'Ler memória', description: 'Lê somente as lembranças deste bot.', readOnly: true },
   { name: 'memory.write', label: 'Salvar memória', description: 'Guarda ou atualiza uma lembrança deste bot.' },
+  { name: 'memory.delete', label: 'Apagar memória', description: 'Apaga uma lembrança deste bot que ficou inútil ou que a pessoa pediu para esquecer.', defaultAllowed: true },
   { name: 'task.create_item', label: 'Criar pendências', description: 'Adiciona um item à sua lista local, com disciplina e prazo; o MyBots avisa um dia antes do prazo.' },
   { name: 'task.list_items', label: 'Ver pendências', description: 'Consulta as pendências deste bot.', readOnly: true, defaultAllowed: true },
   { name: 'task.update_item', label: 'Atualizar pendências', description: 'Corrige dados, muda o prazo ou marca como concluída uma pendência deste bot.', defaultAllowed: true },
@@ -130,7 +131,7 @@ export function validateProfile(data) {
 }
 export function toolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Argumentos inválidos.');
-  const fields = { 'memory.read': ['key'], 'memory.write': ['key','text'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
+  const fields = { 'memory.read': ['key'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
     'task.update_item': ['id','title','details','course','due','source','done'], 'notify.user': ['title','body'],
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
@@ -155,6 +156,7 @@ export function toolArguments(tool, args) {
   };
   if (tool === 'memory.read') return { key: text('key', 80, true) };
   if (tool === 'memory.write') return { key: text('key', 80), text: text('text', 4000) };
+  if (tool === 'memory.delete') return { key: text('key', 80) };
   // A deadline is a date, or a date and time on the phone's clock; a date alone is never turned into 23:59.
   const due = optional => {
     const value = text('due', 16, optional);

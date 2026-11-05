@@ -8,6 +8,7 @@ const { join } = require('node:path');
 const { homedir } = require('node:os');
 const { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, chmodSync, createWriteStream, readdirSync, statSync } = require('node:fs');
 const { createTabs, controlServer } = require('./tabs');
+const { chooseRenderNode } = require('./gpu');
 const { createUpdates } = require('./updates');
 const { isOurs, PARK_RULE } = require('./hypr-core');
 
@@ -31,6 +32,11 @@ app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 // The remote debugging port would otherwise tell every page it is automated (navigator.webdriver).
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('lang', 'pt-BR');
+// Notebooks with two graphics cards: the integrated one draws the screen, not the NVIDIA one Chromium picked (see gpu.js).
+const renderNode = chooseRenderNode();
+if (renderNode) app.commandLine.appendSwitch('render-node-override', renderNode);
+// Warnings and errors of Chromium itself (graphics process, GPU, tabs) go to a file, so a black window leaves a trace.
+try { mkdirSync(node, { recursive: true, mode: 0o700 }); app.commandLine.appendSwitch('enable-logging', 'file'); app.commandLine.appendSwitch('log-file', join(node, 'electron.log')); app.commandLine.appendSwitch('log-level', '1'); } catch {}
 const first = app.requestSingleInstanceLock();
 if (!first) app.quit();
 // A leftover from the last run would point the node at a port nobody listens on.

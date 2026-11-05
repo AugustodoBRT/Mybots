@@ -95,7 +95,7 @@ test('real stdio MCP handshake routes through HTTP and UI approval response with
   child.stdout.on('data', chunk => { buffer += chunk; let i; while ((i = buffer.indexOf('\n')) >= 0) { replies.push(JSON.parse(buffer.slice(0, i))); buffer = buffer.slice(i + 1); } });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   send(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); await until(() => replies.some(r => r.id === 1)); assert.equal(replies[0].result.serverInfo.name, 'mybots-tools');
-  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 50);
+  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 51);
   send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } });
   await until(() => replies.some(r => r.id === 3)); assert.equal(replies.find(r => r.id === 3).result.isError, undefined); assert.equal(app.db.all('SELECT * FROM pending_items').length, 1);
   assert.ok(!JSON.stringify(app.state()).includes(cap.token));
@@ -172,4 +172,20 @@ test('an argument a tool does not take is named in the error, with the ones it d
   await assert.rejects(f.call('team.create_bot', { name: 'Caça', instructions: 'x', model: 'gpt', personality: 'y' }), error => /não aceita "model", "personality"/.test(error.message) && /aceitos são: name, instructions, color, avatar, access, home/.test(error.message) && /Não é falta de permissão/.test(error.message));
   await assert.rejects(f.call('memory.read', { botId: f.bot.id }), /argumento/);
   await assert.rejects(f.call('coisa.inexistente', {}), /^Error: Ferramenta ou argumento não permitido\.$/);
+});
+
+test('a bot can delete its own memories that became useless, only its own, and learns when there was nothing to delete', async t => {
+  const f = await setup(t); const other = f.db.create({ name: 'Outro' }, selection);
+  f.tools.grant(f.bot.id, 'memory.read', true); f.tools.grant(f.bot.id, 'memory.write', true);
+  await f.call('memory.write', { key: 'velha', text: 'não serve mais' }); await f.call('memory.write', { key: 'boa', text: 'vale' });
+  // Memory of another bot with the same key stays.
+  f.db.run('INSERT INTO memory VALUES(?,?,?,?)', other.id + ':velha', other.id, JSON.stringify({ key: 'velha', text: 'do outro' }), new Date().toISOString());
+  // Deleting needs no grant of its own (it is on by default, like updating the pending items).
+  assert.deepEqual(await f.call('memory.delete', { key: 'velha' }), { deleted: true, key: 'velha' });
+  assert.deepEqual((await f.call('memory.read', {})).memories.map(item => item.key), ['boa']);
+  const missing = await f.call('memory.delete', { key: 'velha' });
+  assert.equal(missing.deleted, false); assert.match(missing.message, /memory_read/);
+  assert.equal(f.db.get('SELECT count(*) AS n FROM memory WHERE bot_id=?', other.id).n, 1, 'the other bot keeps its own');
+  await assert.rejects(f.call('memory.delete', { key: 'boa', botId: other.id }), /argumento/);
+  await assert.rejects(f.call('memory.delete', {}), /Preencha/);
 });

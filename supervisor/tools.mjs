@@ -17,7 +17,7 @@ import agentSkills from '../lib/agent-skills.cjs';
 const { commandInside, insideSkill } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
-const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close']);
+const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close']);
 
 // Connector actions whose names only read. Anything that also mentions a change goes to the person.
 const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view|download)([_.\-]|$)/i;
@@ -33,7 +33,7 @@ const RISKY = /(^|[;&|(\s])(sudo|su|doas|pkexec|mkfs\S*|dd|shutdown|reboot|power
 // On the phone's Termux (Livre): the supervisor's own data and code, where a bot's level and the "sempre perguntar" list live.
 const PHONE_PROTECTED = /(^|[\s/~'"=])\.mybots(\/|\s|$|['"])|mybots-supervisor|\.termux\/(boot|termux\.properties)|user_version|grants\b/i;
 
-const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
+const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'memory.delete': 'Apagar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
   'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina',
   'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva', 'wallet/pay': 'Pagar com a carteira',
   'termux': 'Rodar um comando no Termux', 'phone/act': 'Mexer em outro app do celular', 'phone.open_app': 'Abrir um app no celular', 'phone.fill_code': 'Preencher um código de verificação' };
@@ -287,7 +287,12 @@ export class Tools {
       this.requireGrant(run, tool);
       let result;
       if (tool === 'memory.read') result = { memories: this.db.all('SELECT body,updated_at FROM memory WHERE bot_id=? ORDER BY updated_at DESC', run.botId).map(row => ({ ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(item => !args.key || item.key === args.key).slice(0, 100) };
-      else if (tool === 'memory.write') {
+      else if (tool === 'memory.delete') {
+        const id = run.botId + ':' + args.key;
+        const had = Boolean(this.db.get('SELECT 1 FROM memory WHERE id=? AND bot_id=?', id, run.botId));
+        if (had) this.db.run('DELETE FROM memory WHERE id=? AND bot_id=?', id, run.botId);
+        result = had ? { deleted: true, key: args.key } : { deleted: false, key: args.key, message: 'Não há lembrança com essa chave; veja as chaves com memory_read.' };
+      } else if (tool === 'memory.write') {
         const id = run.botId + ':' + args.key;
         this.db.run('INSERT INTO memory VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at', id, run.botId, JSON.stringify(args), now()); result = { saved: true, key: args.key };
       } else if (tool === 'task.create_item' || tool === 'task.list_items' || tool === 'task.update_item') {

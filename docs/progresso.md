@@ -1771,3 +1771,10 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **Não feito** (a pedido): leituras de página mais enxutas.
 - **Testes**: sessão esquecida com conversa e memórias intactas, prompt curto sem a linha do sistema, estimativa de contexto, troca automática pelo supervisor real (com a nova sessão sendo retomada depois), recusa durante trabalho, e `/clear` numa sala.
 
+## 0.71.18 (versionCode 149): desfaz a troca de placa de vídeo que deixava a janela preta
+
+- **Defeito meu** (0.71.16 e 0.71.17): para evitar a tela preta, o MyBots passou a forçar a placa AMD integrada quando o computador tinha AMD e NVIDIA. No PC do dono o Hyprland desenha pela **NVIDIA** (`card2`, `boot_vga=1`, o compositor tem `/dev/nvidia0` aberto); o Chromium já escolhia essa mesma placa por padrão. Forçar a AMD fez a janela abrir toda preta, sempre. A hipótese da v147 estava errada, e o diagnóstico (a placa que o compositor usa) devia ter sido conferido antes.
+- **Correção** (`desktop/electron/gpu.js`): o MyBots não escolhe mais placa; só obedece `MYBOTS_GPU_NODE=/dev/dri/renderDNNN` se a pessoa forçar. Quem já está na 0.71.16 ou 0.71.17 e vê a janela preta pode abrir com `MYBOTS_GPU_NODE=auto` (o launcher do dono já foi ajustado) até atualizar.
+- **O que sobra da tela preta original** (ao abrir o navegador, com vários bots): o limite de 10 abas e a recarga automática da interface (v145) e o `~/.mybots-pc/electron.log` continuam; a causa real ainda não é conhecida.
+- **Teste**: sem variável, nunca há escolha de placa; só caminho `renderD…` é aceito; só no Linux.
+

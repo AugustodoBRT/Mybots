@@ -1,21 +1,12 @@
-const { readdirSync, readlinkSync, existsSync } = require('node:fs');
-const { basename } = require('node:path');
-
 /**
- * Notebooks with two graphics cards (an integrated AMD or Intel that draws the screen and an NVIDIA): Chromium picked the NVIDIA render
- * node, and with the bots' tabs (each one a layer of its own) the window went black. The integrated card draws everything fine and lets the
- * NVIDIA one sleep. MYBOTS_GPU_NODE=/dev/dri/renderDNNN picks a node by hand; MYBOTS_GPU_NODE=auto leaves the choice to Chromium.
- * Returns the render node to force, or null to leave Chromium's choice (one card, no NVIDIA, no integrated one, or "auto").
+ * Which render node Chromium uses. By default it is left to Chromium, which takes the card the screen compositor draws with (on a notebook
+ * with an AMD and an NVIDIA card where Hyprland draws on the NVIDIA, forcing the AMD one made the window open black: v0.71.16-17).
+ * MYBOTS_GPU_NODE=/dev/dri/renderDNNN forces one by hand (the person's choice); anything else, or "auto", leaves it to Chromium.
+ * Returns the render node to force, or null.
  */
-function chooseRenderNode({ platform = process.platform, env = process.env, drm = '/sys/class/drm', exists = existsSync } = {}) {
-  if (platform !== 'linux' || /^auto$/i.test(env.MYBOTS_GPU_NODE || '')) return null;
-  if (env.MYBOTS_GPU_NODE) return /^\/dev\/dri\/renderD\d+$/.test(env.MYBOTS_GPU_NODE) ? env.MYBOTS_GPU_NODE : null;
-  try {
-    const nodes = readdirSync(drm).filter(name => /^renderD\d+$/.test(name)).map(name => { try { return { path: `/dev/dri/${name}`, driver: basename(readlinkSync(`${drm}/${name}/device/driver`)) }; } catch { return null; } }).filter(Boolean);
-    if (!nodes.some(node => node.driver === 'nvidia')) return null;
-    const other = nodes.find(node => ['amdgpu', 'i915', 'xe'].includes(node.driver));
-    return other && exists(other.path) ? other.path : null;
-  } catch { return null; }
+function chooseRenderNode({ platform = process.platform, env = process.env } = {}) {
+  if (platform !== 'linux') return null;
+  return /^\/dev\/dri\/renderD\d+$/.test(env.MYBOTS_GPU_NODE || '') ? env.MYBOTS_GPU_NODE : null;
 }
 
 module.exports = { chooseRenderNode };

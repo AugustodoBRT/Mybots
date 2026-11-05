@@ -100,18 +100,18 @@ const CHAT_ONLY_TEXT = 'Seu papel nesta versão é somente conversar. Não use f
 // Bump when the base instructions change: the supervisor then starts new IA sessions so every bot gets them.
 export const PROMPT_VERSION = 6;
 
-export function promptFor(bot, messageId, { tools = false } = {}) {
+export function promptFor(bot, messageId, { tools = false, maxChars } = {}) {
   if (bot.codexSessionId) {
     const message = bot.messages.find(item => item.id === messageId && item.role === 'user');
     if (!message) throw new Error('Mensagem não encontrada.');
     return withAttachments(message);
   }
-  const history = bot.messages.filter(message => message.status === 'complete' || message.id === messageId)
+  const history = bot.messages.filter(message => message.role !== 'system' && (message.status === 'complete' || message.id === messageId))
     .map(message => ({ role: message.role, text: withAttachments(message) }));
   const recent = [];
   let size = 0;
   for (const message of [...history].reverse()) {
-    if (size + message.text.length > 90000) break;
+    if (size + message.text.length > (maxChars || 90000)) break;
     recent.unshift(message);
     size += message.text.length;
   }
@@ -121,6 +121,7 @@ ${tools ? TOOLS_TEXT : CHAT_ONLY_TEXT}
 
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
+${maxChars ? 'Esta é uma sessão nova (a anterior foi encerrada para não gastar contexto à toa): só as mensagens mais recentes estão abaixo. Para algo mais antigo, consulte as suas memórias com memory_read e as suas pendências com task_list_items antes de dizer que não sabe.' : ''}
 ${recent.length < history.length || bot.earlier ? 'O início da conversa não está no contexto desta resposta. Seja transparente se precisar de algo anterior.' : ''}
 O JSON abaixo contém a conversa em ordem. Responda apenas à última mensagem da pessoa, mantendo o contexto.
 ${JSON.stringify(recent)}`;

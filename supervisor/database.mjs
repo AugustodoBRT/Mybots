@@ -583,6 +583,51 @@ export class Database {
     if (!sessionId(id)) throw new Error('Sessão inválida.');
     this.run('INSERT INTO codex_sessions VALUES(?,?,?) ON CONFLICT(bot_id) DO UPDATE SET session_id=excluded.session_id, updated_at=excluded.updated_at', botId, id, now());
   }
+  /**
+   * How big the IA's context for this bot probably is. The usage of a turn adds up every model call of it (each tool call rereads the
+   * whole context), so the size is estimated from the last turn: its tokens divided by its calls, times 1.3 because the context grows
+   * during the turn. Turns counts the answers since the session began.
+   */
+  contextLoad(botId) {
+    const since = this.get('SELECT value FROM metadata WHERE key=?', 'session.since.' + botId)?.value || '';
+    // Only turns of the current session count: a new session must not inherit the size of the one it replaced.
+    const last = this.get('SELECT task_id, input, cached FROM usage WHERE bot_id=? AND created_at>? ORDER BY created_at DESC, rowid DESC LIMIT 1', botId, since);
+    const turns = this.get('SELECT count(*) AS n FROM usage WHERE bot_id=? AND created_at>?', botId, since).n;
+    if (!last) return { estimate: 0, turns };
+    const calls = 1 + (this.get("SELECT count(*) AS n FROM activity WHERE task_id=? AND kind IN ('tool_done','tool_denied')", last.task_id)?.n || 0);
+    return { estimate: Math.round(((last.input || 0) + (last.cached || 0)) / calls * 1.3), turns };
+  }
+  /**
+   * Forgets the IA's session of this bot in one conversation (its private chat, or the room given): the next answer starts a new one with
+   * only the latest messages, and the bot finds the rest in its memory and pending items. The conversation, memories and pending items
+   * stay as they are, and a line in the conversation says where the new session began.
+   */
+  newSession(botId, why, { roomId = null } = {}) {
+    this.requireBot(botId);
+    return this.transaction(() => {
+      this.forgetSession(botId, roomId);
+      this.record('session_reset', why, botId);
+      this.sessionNote(why, { botId, roomId });
+    });
+  }
+  /** The same for a whole room: every member starts a new session in it, with one line in the room. */
+  newRoomSession(roomId, why) {
+    const room = this.requireRoom(roomId);
+    return this.transaction(() => {
+      for (const botId of room.botIds || []) if (this.bot(botId)) this.forgetSession(botId, roomId);
+      this.record('session_reset', why); this.sessionNote(why, { roomId });
+    });
+  }
+  forgetSession(botId, roomId = null) {
+    if (roomId) this.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', roomId, botId); else { this.run('DELETE FROM codex_sessions WHERE bot_id=?', botId); const bot = this.bot(botId); if (bot?.codexSessionId) this.putBot({ ...bot, codexSessionId: undefined, updatedAt: now() }); }
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'session.since.' + botId, now());
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'session.compact.' + (roomId ? roomId + '.' : '') + botId, '1');
+  }
+  /** The line "Nova sessão…" in the conversation (a system message: shown, never sent to the IA as something the person said). */
+  sessionNote(text, { botId = null, roomId = null }) {
+    const message = { id: randomUUID(), role: 'system', text, status: 'complete', createdAt: now() };
+    if (roomId) this.appendRoomMessage(roomId, message); else this.appendMessage(botId, message);
+  }
   record(kind, detail, botId = null, taskId = null) {
     this.run('INSERT INTO activity(kind,detail,bot_id,task_id,created_at) VALUES(?,?,?,?,?)', kind, detail, botId, taskId, now());
   }

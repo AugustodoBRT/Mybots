@@ -548,6 +548,21 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           broadcast('task.progress', { taskId: task.id }); queue.schedule();
           return { taskId: task.id, messageId: task.message_id, state: task.state };
         }
+        // "/clear": the IA forgets its long session of this conversation; the conversation, memories and pending items stay (see Database.newSession).
+        case 'bot.newSession': {
+          const bot = db.requireBot(params.botId);
+          if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
+          db.newSession(bot.id, 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
+          broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
+          return { ok: true };
+        }
+        case 'room.newSession': {
+          const room = db.requireRoom(params.roomId);
+          if (rooms.active(room.id).length) throw new Error('Espere os bots da sala terminarem, ou pare as respostas, para começar uma sessão nova.');
+          db.newRoomSession(room.id, 'Nova sessão da IA iniciada a pedido da pessoa para todos os bots da sala. A sala, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
+          broadcast('activity.new');
+          return { ok: true };
+        }
         case 'tasks.list': return publicTasks();
         // The line of one bot: pause and resume it, or send the running turn a new instruction ("corrigir rumo").
         case 'queue.pause': return queue.pause(params.botId, params.paused !== false);

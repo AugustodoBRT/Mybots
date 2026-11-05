@@ -40,6 +40,12 @@ const LIMIT = /usage.limit|limite de uso|rate.limit|limit reached|insufficient_q
 
 // How much of a private chat a new IA session reads at most (promptFor keeps what fits in its size budget).
 const PROMPT_WINDOW = 400;
+// A session that grew past this (estimated tokens of context, or answers) is replaced by a new one before the next turn: the IA keeps
+// rereading all of it at every tool call. MYBOTS_CONTEXT_LIMIT / MYBOTS_CONTEXT_TURNS change the limits, MYBOTS_CONTEXT_AUTO=0 turns it off.
+export const CONTEXT_LIMIT = Number(process.env.MYBOTS_CONTEXT_LIMIT) || 150000;
+export const CONTEXT_TURNS = Number(process.env.MYBOTS_CONTEXT_TURNS) || 80;
+// What a fresh session replays after one of these resets: little (the bot has its memory and pending items for the rest).
+const COMPACT_CHARS = 24000;
 
 // How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
 // from talking to the others. Small on the phone, whose Termux has little memory.
@@ -131,11 +137,18 @@ export class Queue extends EventEmitter {
           if (turn) this.db.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', turn.room_id, task.bot_id); else this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', task.bot_id);
           this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', marker, sessionLane);
         }
+        // Too big a session is replaced before this turn (not while it is running, never for a routine's one-off), with the latest messages only.
+        if (process.env.MYBOTS_CONTEXT_AUTO !== '0' && (turn ? this.db.roomSession(turn.room_id, task.bot_id) : this.db.requireBot(task.bot_id).codexSessionId)) {
+          const load = this.db.contextLoad(task.bot_id);
+          if (load.estimate > CONTEXT_LIMIT || load.turns > CONTEXT_TURNS) this.db.newSession(task.bot_id, `Nova sessão da IA, iniciada sozinha para economizar contexto (${load.estimate > CONTEXT_LIMIT ? `cerca de ${Math.round(load.estimate / 1000)} mil tokens por chamada` : `${load.turns} respostas na anterior`}). A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova. Para recomeçar quando quiser, escreva /clear.`, { roomId: turn?.room_id || null });
+        }
+        const compactKey = 'session.compact.' + (turn ? turn.room_id + '.' : '') + task.bot_id;
+        const compact = this.db.get('SELECT 1 FROM metadata WHERE key=?', compactKey) ? COMPACT_CHARS : undefined;
         const owner = this.db.requireBot(task.bot_id);
         const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;
         // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
         const connectors = false, connectorDeny = [];
-        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId) }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools) });
+        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId), maxChars: compact }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools), maxChars: compact });
         // The reply as it is being written: the owner of the draft is the room (with the bot) or the private chat.
         const draftOf = text => { this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), text }); };
         // One try of the turn with `runBot`: the bot itself, or its reserve model when the subscription limit ended.
@@ -153,7 +166,7 @@ export class Queue extends EventEmitter {
             termux: next.lane === 'phone' && this.tools.policy(runBot.id, 'termux') === 'allow' && (runBot.provider === 'claude' || !this.tools.freeAsk('termux')),
             phone: this.tools.policy(runBot.id, 'phone') === 'allow' } : undefined,
           // The reserve model's session is never kept: the bot's own CLI could not resume it.
-          onSession: async id => { if (spare) return; if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); },
+          onSession: async id => { if (spare) return; if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); this.db.run('DELETE FROM metadata WHERE key=?', compactKey); },
           // What the bot says along the way becomes a message now; what it is doing shows under "Pensando".
           onProgress: ({ say, step } = {}) => {
             if (controller.signal.aborted) return;

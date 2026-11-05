@@ -137,7 +137,7 @@ export class Rooms {
     this.changed('task.progress'); this.schedule();
   }
   /** What a bot reads for its turn: who is in the room and the conversation (or, in a resumed session, what is new). */
-  prompt(bot, taskId, { tools = false, resumed = false } = {}) {
+  prompt(bot, taskId, { tools = false, resumed = false, maxChars } = {}) {
     const turn = this.db.roomTurn(taskId); const room = this.db.requireRoom(turn.room_id); const members = this.members(room);
     const names = Object.fromEntries(members.map(item => [item.id, item.name]));
     const speaker = message => message.role === 'user' ? 'Pessoa' : message.role === 'system' ? 'Aviso' : names[message.botId] || 'Bot que saiu da sala';
@@ -152,7 +152,7 @@ export class Rooms {
       return `[Sala ${JSON.stringify(room.name)} · novas mensagens]\n${visible.slice(last + 1).map(line).join('\n')}\n\nAgora é a sua vez (${bot.name}). ${task}`;
     }
     const recent = []; let size = 0;
-    for (const message of [...visible].reverse()) { if (size + message.text.length > 60000) break; recent.unshift(message); size += message.text.length; }
+    for (const message of [...visible].reverse()) { if (size + message.text.length > (maxChars || 60000)) break; recent.unshift(message); size += message.text.length; }
     return `Você é ${JSON.stringify(bot.name)}, um bot do aplicativo MyBots, numa sala de conversa chamada ${JSON.stringify(room.name)} com a pessoa e estes bots: ${members.map(item => `${item.name}${item.id === bot.id ? ' (você)' : item.instructions ? ` (${item.instructions.replace(/\s+/g, ' ').slice(0, 140)})` : ''}`).join('; ')}.
 ${this.db.person().name ? `A pessoa se chama ${JSON.stringify(this.db.person().name)}: fale com ela por "você" e, com outros bots, use o nome dela.` : 'Fale com a pessoa por "você" e, com outros bots, diga "a pessoa".'}
 Fale só por você, em português do Brasil, de forma curta e direta, sem repetir o que outro bot já disse. Para pedir algo a outro bot, basta escrever @Nome dele na sua resposta (ex.: "@${members.find(item => item.id !== bot.id)?.name || 'Bot'}, qual é…?"): o MyBots entrega a pergunta e ele responde logo depois de você. Também dá para dividir o trabalho: chame cada um com @ dizendo o que ele faz, e quando precisar de mais gente, de uma sala nova, ou quiser sair ou tirar alguém, use as ferramentas team_* sem pedir aprovação à pessoa. Quando a pessoa pedir para você perguntar algo a outro bot, faça a pergunta com @ em vez de dizer que não consegue. Só chame outro bot quando precisar dele de verdade, e nunca só para agradecer.
@@ -160,6 +160,7 @@ Cada bot tem as próprias pendências, memórias, rotinas e arquivos: o que outr
 ${tools ? TOOLS_TEXT : 'Nesta sala você só conversa.'}
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
+${maxChars ? 'Esta é uma sessão nova (a anterior foi encerrada para não gastar contexto à toa): só as mensagens mais recentes da sala estão abaixo; para algo mais antigo, consulte as suas memórias com memory_read.' : ''}
 ${recent.length < visible.length || window.more ? 'O início da sala não está no contexto desta resposta.' : ''}
 Conversa da sala, em ordem:
 ${recent.map(line).join('\n')}

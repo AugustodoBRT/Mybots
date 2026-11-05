@@ -157,3 +157,16 @@ test('a long room opens fast: the state carries no messages and chat.page brings
   // The stored history is whole.
   assert.equal(f.app.db.roomMessages(room.id).length, 150);
 });
+
+test('/clear in a room: every member starts a new session in that room, with one line in the room, and not while they answer', async t => {
+  const f = await setup(t);
+  const [a, b] = [await f.make('Um'), await f.make('Dois')];
+  const room = await f.app.rpc('room.create', { name: 'Sessões', botIds: [a.id, b.id] });
+  for (const bot of [a, b]) f.app.db.setRoomSession(room.id, bot.id, randomUUID());
+  assert.equal(f.app.db.get('SELECT count(*) AS n FROM room_sessions WHERE room_id=?', room.id).n, 2);
+  await f.app.rpc('room.newSession', { roomId: room.id });
+  assert.equal(f.app.db.get('SELECT count(*) AS n FROM room_sessions WHERE room_id=?', room.id).n, 0);
+  const lines = f.app.db.roomMessages(room.id).filter(item => item.role === 'system' && /Nova sessão/.test(item.text));
+  assert.equal(lines.length, 1);
+  assert.ok(f.app.db.get('SELECT 1 FROM metadata WHERE key=?', `session.compact.${room.id}.${a.id}`) && f.app.db.get('SELECT 1 FROM metadata WHERE key=?', `session.compact.${room.id}.${b.id}`));
+});

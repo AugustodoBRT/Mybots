@@ -45,6 +45,8 @@ const blobBase64 = blob => new Promise((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 /** Files picked in the computer's window go to the phone in 3 MB parts, so no size limit applies; the phone's own files travel inline. */
+// The command that starts a new IA session in the open conversation.
+const CLEAR = /^\/(clear|limpar|nova)$/i;
 async function uploadWebFiles(call, botId, files) {
   const out = [];
   for (const file of files) {
@@ -506,6 +508,12 @@ function AppMain() {
     // On the phone the supervisor queues messages sent while the bot works; the computer backend still answers one at a time.
     if (!bot || maintenanceBusy || (!text.trim() && !files.length) || sending || (mode === 'computer' && data.active?.includes(bot.id))) return false;
     const clearSentDraft = () => { desktopDrafts.current.delete(bot.id); if (selectedBotRef.current === bot.id) setDraft(''); };
+    // "/clear" (or /limpar, /nova): not a message for the bot but a new IA session for this conversation, like in a terminal chat.
+    if (CLEAR.test(text.trim()) && !files.length && mode !== 'computer') {
+      setSending(true);
+      try { await supervisor.current.call('bot.newSession', { botId: bot.id }); clearSentDraft(); await loadSupervisorState(); return true; }
+      catch (error) { setLoadError(error.message); return false; } finally { setSending(false); }
+    }
     setSending(true);
     if (mode === 'computer') {
       try {
@@ -761,7 +769,7 @@ function AppMain() {
   const roomFiles = room && desktop ? draftField(`room:${room.id}`, 'files', []) : null;
   const botFiles = bot && desktop ? draftField(`bot:${bot.id}`, 'files', []) : null;
   const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
-          onSend={async (text, files = []) => { const attachments = await Promise.all(files.map(async ({ name, mime, data, blob }) => ({ name, mime, data: blob ? await blobBase64(blob) : data }))); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
+          onSend={async (text, files = []) => { if (CLEAR.test(text.trim()) && !files.length) { await supervisor.current.call('room.newSession', { roomId: room.id }); await loadSupervisorState(); return; } const attachments = await Promise.all(files.map(async ({ name, mime, data, blob }) => ({ name, mime, data: blob ? await blobBase64(blob) : data }))); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}

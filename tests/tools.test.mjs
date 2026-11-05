@@ -189,3 +189,60 @@ test('a bot can delete its own memories that became useless, only its own, and l
   await assert.rejects(f.call('memory.delete', { key: 'boa', botId: other.id }), /argumento/);
   await assert.rejects(f.call('memory.delete', {}), /Preencha/);
 });
+
+test('new session: the IA session is forgotten, the conversation and memories stay, a line says where it began, and the next prompt is the short one', async t => {
+  const f = await setup(t);
+  const session = randomUUID(); f.db.session(f.bot.id, session);
+  assert.equal(f.db.requireBot(f.bot.id).codexSessionId, session);
+  f.db.run('INSERT INTO memory VALUES(?,?,?,?)', f.bot.id + ':fica', f.bot.id, JSON.stringify({ key: 'fica', text: 'vale' }), new Date().toISOString());
+  f.db.newSession(f.bot.id, 'Nova sessão da IA iniciada a pedido da pessoa.');
+  assert.equal(f.db.requireBot(f.bot.id).codexSessionId, undefined);
+  assert.equal(f.db.get('SELECT count(*) AS n FROM codex_sessions WHERE bot_id=?', f.bot.id).n, 0);
+  assert.equal(f.db.get('SELECT count(*) AS n FROM memory WHERE bot_id=?', f.bot.id).n, 1);
+  const last = f.db.page({ botId: f.bot.id, limit: 5 }).messages.at(-1);
+  assert.equal(last.role, 'system'); assert.match(last.text, /Nova sessão/);
+  assert.ok(f.db.get('SELECT 1 FROM metadata WHERE key=?', 'session.compact.' + f.bot.id));
+  const { promptFor } = await import('../mobile/local.js');
+  const withoutSession = { ...f.db.requireBot(f.bot.id), messages: f.db.page({ botId: f.bot.id, limit: 50 }).messages };
+  const short = promptFor(withoutSession, f.db.page({ botId: f.bot.id, limit: 50 }).messages.find(item => item.role === 'user').id, { tools: true, maxChars: 24000 });
+  assert.match(short, /sessão nova.*memory_read/s); assert.doesNotMatch(short, /Nova sessão da IA iniciada/, 'the line is not part of what the person said');
+});
+
+test('context estimate: tokens of the last turn over its calls, and the answers since the session began', async t => {
+  const f = await setup(t);
+  assert.deepEqual(f.db.contextLoad(f.bot.id), { estimate: 0, turns: 0 });
+  // A turn of 5 model calls (4 tools) that counted 1,000,000 tokens: about 200,000 per call, 260,000 with the growth.
+  for (let index = 0; index < 4; index++) f.db.record('tool_done', 'Navegador: ler página: concluído.', f.bot.id, f.task.id);
+  f.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), f.bot.id, f.task.id, 'codex', 'm', 100000, 900000, 5000, new Date().toISOString());
+  const load = f.db.contextLoad(f.bot.id);
+  assert.equal(load.estimate, 260000); assert.equal(load.turns, 1);
+  f.db.newSession(f.bot.id, 'x');
+  assert.equal(f.db.contextLoad(f.bot.id).turns, 0, 'the count starts again with the new session');
+});
+
+test('a session that grew too much is replaced before the next turn, and /clear-style new session is refused while the bot works', async t => {
+  const { SupervisorClient } = await import('../mobile/supervisor-client.js');
+  const { default: WS } = await import('../supervisor/node_modules/ws/wrapper.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-rotate-')); const seen = []; let release = null;
+  const app = await createSupervisor({ directory, port: 0, codex, execute: async (bot, prompt) => { seen.push({ session: bot.codexSessionId, prompt }); if (release) await release; return { text: 'ok', codexSessionId: randomUUID(), ...selection }; } });
+  const client = new SupervisorClient({ WebSocketClass: WS }); await client.connect({ port: app.port, token: app.token });
+  t.after(async () => { client.close(); await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await client.call('bot.create', { name: 'Longa', ...selection });
+  const done = async text => { const sent = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text }); await until(() => app.db.task(sent.taskId).state === 'done'); return sent; };
+  await done('primeira'); await done('segunda');
+  assert.equal(seen[1].session, app.db.requireBot(bot.id).codexSessionId ? seen[1].session : undefined); assert.ok(seen[1].session, 'the second turn resumes the first session');
+  // The last turn looked huge: the next one starts a new session, short prompt, and says so in the chat.
+  const lastTask = app.db.all('SELECT id FROM tasks WHERE bot_id=? ORDER BY created_at DESC, rowid DESC', bot.id)[0].id;
+  app.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, lastTask, 'codex', 'test', 100000, 400000, 100, new Date().toISOString());
+  await done('terceira');
+  assert.equal(seen[2].session, undefined, 'the session was replaced'); assert.match(seen[2].prompt, /sessão nova/);
+  assert.ok(app.db.page({ botId: bot.id, limit: 30 }).messages.some(item => item.role === 'system' && /iniciada sozinha para economizar contexto/.test(item.text)));
+  await done('quarta'); assert.ok(seen[3].session, 'and the new one is resumed again');
+  // While the bot works the command is refused; after, it starts a new session.
+  let open; release = new Promise(resolve => { open = resolve; });
+  const busy = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'devagar' }); await until(() => app.db.task(busy.taskId).state === 'running');
+  await assert.rejects(client.call('bot.newSession', { botId: bot.id }), /Espere o bot terminar/);
+  open(); await until(() => app.db.task(busy.taskId).state === 'done'); release = null;
+  await client.call('bot.newSession', { botId: bot.id });
+  await done('depois do clear'); assert.equal(seen.at(-1).session, undefined);
+});

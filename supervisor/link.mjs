@@ -14,7 +14,7 @@ const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = ['state.get', 'ai.accounts', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
+export const DESKTOP_METHODS = ['state.get', 'ai.accounts', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput', 'passwords.list', 'passwords.save', 'passwords.remove', 'passwords.import'];

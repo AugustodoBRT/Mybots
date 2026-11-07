@@ -50,7 +50,8 @@ if (!measure) {
   const browser = await chromium.launch({ executablePath: process.env.MYBOTS_TEST_BROWSER || '/usr/bin/google-chrome-stable', headless: true,
     args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const [vw, vh] = String(arg('viewport', '1440x900')).split('x').map(Number);
+    const page = await browser.newPage({ viewport: { width: vw, height: vh } });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(url);
     await page.getByRole('button', { name: 'Memória', exact: true }).first().click();
@@ -78,16 +79,16 @@ if (!measure) {
       return { fps: Math.round(1000 / (times.reduce((a, b) => a + b) / times.length)), p95ms: Math.round(times[Math.floor(times.length * 0.95)]) };
     }, action);
     const wheel = await fps('wheel');
-    const panStart = await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] g')?.getAttribute('transform'));
+    const panStart = await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] svg')?.parentElement.style.transform);
     const pan = await fps('pan');
-    pan.moved = panStart !== await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] g')?.getAttribute('transform'));
+    pan.moved = panStart !== await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] svg')?.parentElement.style.transform);
     // Pan with real mouse events (the responder system), timed from outside.
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
     const began = Date.now();
     for (let i = 0; i < 120; i++) await page.mouse.move(box.x + box.width / 2 + Math.sin(i / 10) * 200, box.y + box.height / 2 + Math.cos(i / 10) * 120);
     await page.mouse.up();
     const panMs = (Date.now() - began) / 120;
-    const transform = await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] g')?.getAttribute('transform'));
+    const transform = await page.evaluate(() => document.querySelector('[aria-label^="Grafo da memória com"] svg')?.parentElement.style.transform);
     const circles = await page.evaluate(() => document.querySelectorAll('[aria-label^="Grafo da memória com"] circle').length);
     console.log(JSON.stringify({ notes, stats, wheel, pan, panMsPerMove: Math.round(panMs * 10) / 10, circles, transform, errors }, null, 1));
   } finally { await browser.close(); await close(); }

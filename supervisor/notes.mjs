@@ -22,18 +22,48 @@ export function checkNote(row) {
   checkBody(row.title);
 }
 
-export function links(body) {
-  const paths = new Set();
-  for (const match of body.matchAll(/\[\[([^\[\]\r\n]+)\]\]/g)) {
-    let path = match[1].trim();
-    if (!path.includes('/')) path = 'chefe/' + path;
-    if (!path.endsWith('.md')) path += '.md';
-    if (validPath(path)) paths.add(path);
+const slug = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const FOLDER = /^(?:chefe|entregas|arquivo)\//;
+
+// The targets of [[links]], written like in Obsidian: [[Nome da nota]], [[nome|apelido]], [[nome#seção]] or a path.
+export function linkNames(body) {
+  const names = new Set();
+  for (const match of String(body).matchAll(/\[\[([^\[\]\r\n]+)\]\]/g)) {
+    const name = match[1].split('|')[0].split('#')[0].trim();
+    if (name && !name.includes('..')) names.add(name);
   }
-  return [...paths];
+  return [...names];
 }
 
-const slug = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// Where a link points without looking at the other notes: a path as written, or a note in chefe/ named after it
+// ("Central de Vagas" becomes chefe/central-de-vagas.md), the file a [[link]] to a missing note would create.
+export function linkPath(name) {
+  const file = name.endsWith('.md') ? name : name + '.md';
+  if (FOLDER.test(name)) return validPath(file) ? file : null;
+  if (validPath('chefe/' + file)) return 'chefe/' + file;
+  const stem = slug(name.replace(/\.md$/, ''));
+  return stem ? 'chefe/' + stem.slice(0, 110) + '.md' : null;
+}
+
+export function links(body) {
+  return [...new Set(linkNames(body).map(linkPath).filter(Boolean))];
+}
+
+// Resolves link names against existing notes, like Obsidian: the exact path first, then a note whose title or file name
+// matches ignoring case, accents and punctuation (chefe/ before entregas/ before arquivo/, newest first).
+export function linkResolver(rows) {
+  const byPath = new Set(rows.map(row => row.path)), byName = new Map(), rank = { chefe: 0, entrega: 1, arquivo: 2 };
+  const add = (key, row) => {
+    const old = key && byName.get(key);
+    if (key && (!old || rank[row.kind] < rank[old.kind])) byName.set(key, row);
+  };
+  for (const row of rows) { add(slug(row.title), row); add(slug(row.path.split('/').at(-1).slice(0, -3)), row); }
+  return name => {
+    const path = linkPath(name);
+    if (!path || byPath.has(path) || FOLDER.test(name)) return path;
+    return byName.get(slug(name.replace(/\.md$/, '')))?.path || path;
+  };
+}
 
 // Keep room for the timestamp and collision suffix even at the path length limit.
 function available(db, stem, ending = '') {
@@ -157,7 +187,7 @@ function matchRange(text, query) {
 
 // Nodes and [[links]] only, for the memory map. Over the limit, half the slots go to the newest notes and the rest to the most
 // linked ones, so neither a burst of fresh deliveries nor an old hub disappears. Rows arrive newest first.
-function graph(rows, byPath, outgoing, incoming, limit) {
+function graph(rows, byPath, outgoing, incoming, missing, limit) {
   const degree = row => outgoing.get(row.path).length + (incoming.get(row.path)?.length || 0);
   let chosen = rows;
   if (rows.length > limit) {
@@ -169,11 +199,20 @@ function graph(rows, byPath, outgoing, incoming, limit) {
   const included = new Set(chosen.map(row => row.path)), edges = [];
   for (const row of chosen) for (const to of outgoing.get(row.path)) {
     if (included.has(to)) edges.push({ from: row.path, to, exists: true });
-    else if (!byPath.has(to)) edges.push({ from: row.path, to, exists: false });
+    else if (!byPath.has(to)) edges.push({ from: row.path, to, exists: false, title: missing.get(to) });
   }
   const nodes = chosen.map(row => ({ path: row.path, title: row.title, kind: row.kind, botId: row.bot_id, botName: row.botName,
     updatedAt: row.updated_at, outgoingCount: outgoing.get(row.path).length, incomingCount: incoming.get(row.path)?.length || 0 }));
   return { nodes, edges, truncated: chosen.length < rows.length };
+}
+
+// The text a person reads first: without YAML front matter or the "Bot: / Data: / Assunto:" lines deliveries start with.
+const HEADER = /^(?:---\n[\s\S]*?\n---[ \t]*\n|(?:(?:bot|autor|data|assunto|projeto|status|tags|criada|atualizada|prazo|tipo|fonte)[ \t]*:[^\n]*\n){2,12})\s*/i;
+const lead = body => body.replace(HEADER, '');
+// Where a note mentions another, like Obsidian's backlinks: the line holding the [[link]].
+function mention(body, names) {
+  const line = body.split('\n').find(text => names.some(name => text.includes('[[' + name)));
+  return (line || lead(body)).trim().slice(0, 200);
 }
 
 function readNotes(records, method, p) {
@@ -181,9 +220,18 @@ function readNotes(records, method, p) {
   const rows = records.map(row => ({ ...row, updated_at: new Date(row.updated_at).toISOString() }))
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || (a.path > b.path) - (a.path < b.path));
   const byPath = new Map(rows.map(row => [row.path, row]));
-  const outgoing = new Map(), incoming = new Map();
+  const outgoing = new Map(), incoming = new Map(), names = new Map(), missing = new Map(), resolve = linkResolver(rows);
   for (const row of rows) {
-    const paths = links(row.body);
+    const spelled = new Map();
+    for (const name of linkNames(row.body)) {
+      const path = resolve(name);
+      if (!path) continue;
+      if (!spelled.has(path)) spelled.set(path, []);
+      spelled.get(path).push(name);
+      if (!byPath.has(path) && !missing.has(path)) missing.set(path, name);
+    }
+    const paths = [...spelled.keys()];
+    names.set(row.path, spelled);
     outgoing.set(row.path, paths);
     for (const path of paths) {
       if (!incoming.has(path)) incoming.set(path, []);
@@ -193,20 +241,22 @@ function readNotes(records, method, p) {
   const summary = row => {
     const outgoingPaths = outgoing.get(row.path), incomingPaths = incoming.get(row.path) || [];
     return { path: row.path, title: row.title, kind: row.kind, botId: row.bot_id, botName: row.botName,
-      createdAt: row.created_at, updatedAt: row.updated_at, snippet: row.body.slice(0, 140), outgoingPaths, incomingPaths,
+      createdAt: row.created_at, updatedAt: row.updated_at, snippet: lead(row.body).slice(0, 140), outgoingPaths, incomingPaths,
       outgoingCount: outgoingPaths.length, incomingCount: incomingPaths.length };
   };
   if (method === 'notes.read') {
     const row = byPath.get(p.path);
     if (!row) throw new Error('Nota não encontrada.');
     const note = summary(row);
-    return { ...note, body: row.body, links: note.outgoingPaths.map(path => ({ path, title: byPath.get(path)?.title || path, exists: byPath.has(path) })),
-      backlinks: note.incomingPaths.map(path => ({ path, title: byPath.get(path).title, snippet: byPath.get(path).body.slice(0, 140) })) };
+    return { ...note, body: row.body, links: note.outgoingPaths.map(path => ({ path, title: byPath.get(path)?.title || missing.get(path) || path, exists: byPath.has(path),
+      kind: byPath.get(path)?.kind || null, botId: byPath.get(path)?.bot_id ?? null, names: names.get(row.path).get(path) })),
+      backlinks: note.incomingPaths.map(path => ({ path, title: byPath.get(path).title, kind: byPath.get(path).kind, botId: byPath.get(path).bot_id,
+        snippet: mention(byPath.get(path).body, names.get(path).get(row.path)) })) };
   }
   const since = p.since && new Date(p.since).toISOString();
   const kept = row => !((p.prefix && !row.path.startsWith(p.prefix)) || (p.kind && row.kind !== p.kind) ||
     (p.botId && row.bot_id !== p.botId) || (since && row.updated_at < since));
-  if (method === 'notes.graph') return graph(rows.filter(kept), byPath, outgoing, incoming, p.limit || GRAPH_LIMIT);
+  if (method === 'notes.graph') return graph(rows.filter(kept), byPath, outgoing, incoming, missing, p.limit || GRAPH_LIMIT);
   const query = p.query && fold(p.query.trim()), limit = p.limit || 50, notes = [];
   const [at, after] = p.cursor?.split('|') || [];
   for (const row of rows) {

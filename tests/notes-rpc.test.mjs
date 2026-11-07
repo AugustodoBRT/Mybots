@@ -77,7 +77,7 @@ test('filters, stable pages, normalized edges and accent-insensitive search snip
   assert.deepEqual(filtered.map(n => [n.title, n.botName, n.botId]), [['Revisão', 'Sol', bot.id]]);
   const note = read(db, path);
   assert.deepEqual(note.links.map(n => [n.path, n.exists]), [[delivery, true], ['chefe/ausente.md', false]]);
-  assert.deepEqual(note.backlinks, [{ path: delivery, title: 'Revisão', snippet: read(db, delivery).body }]);
+  assert.deepEqual(note.backlinks, [{ path: delivery, title: 'Revisão', kind: 'entrega', botId: bot.id, snippet: read(db, delivery).body }]);
   const match = notesRpc(db, 'notes.search', { query: 'ACAO' }).notes[0];
   assert.equal(match.snippet.slice(...match.snippetMatch).normalize('NFC'), 'Ação');
   assert.ok(match.snippet.length <= 140);
@@ -146,7 +146,8 @@ test('notes.graph returns lean nodes, existing and broken edges, honours filters
   const key = e => e.from + '>' + e.to + ':' + e.exists;
   assert.deepEqual(all.edges.map(key).sort(), ['chefe/a.md>chefe/hub.md:true', 'chefe/hub.md>chefe/a.md:true', 'chefe/hub.md>chefe/b.md:true',
     'chefe/hub.md>chefe/sumida.md:false', 'chefe/hub.md>entregas/feita.md:true', 'entregas/feita.md>chefe/falta.md:false', 'entregas/feita.md>chefe/hub.md:true']);
-  for (const edge of all.edges) assert.deepEqual(Object.keys(edge), ['from', 'to', 'exists']);
+  for (const edge of all.edges) assert.deepEqual(Object.keys(edge), edge.exists ? ['from', 'to', 'exists'] : ['from', 'to', 'exists', 'title']);
+  assert.equal(all.edges.find(e => e.to === 'chefe/sumida.md').title, 'sumida');
   // Filters: edges only between included notes, plus broken targets of included notes; filtered-out real targets disappear.
   const chefe = notesRpc(db, 'notes.graph', { kind: 'chefe' });
   assert.ok(!chefe.nodes.some(n => n.kind !== 'chefe'));
@@ -165,4 +166,33 @@ test('notes.graph returns lean nodes, existing and broken edges, honours filters
   assert.equal(big.nodes.length, 500);
   assert.equal(big.truncated, true);
   assert.ok(big.nodes.some(n => n.path === 'chefe/hub.md'));
+});
+
+test('links are resolved like Obsidian: names with spaces and accents, aliases, headings, titles and file names', t => {
+  const db = database(t);
+  const at = '2026-11-07T15:53:00.000Z';
+  const add = (p, title, body, date = at) => saveNote(db, { path: p, bot_id: null, kind: p.startsWith('entregas/') ? 'entrega' : p.startsWith('arquivo/') ? 'arquivo' : 'chefe', title, body, created_at: date, updated_at: date });
+  add('chefe/central-de-vagas.md', 'central-de-vagas', 'Painel.');
+  add('entregas/2026-11-07-1553-rastreadorrh-rastreamento.md', 'Rastreamento de candidaturas — 07/11/2026',
+    'Publicado em [[Central de Vagas]]. Projeto: [[Candidaturas Augusto]]. [[Candidaturas LinkedIn 06/11/2026]] [[central de vagas|o painel]] [[Rastreamento de Candidaturas — 07/11/2026#Gupy]]');
+  add('entregas/outra.md', 'Outra', 'Ver [[Candidaturas Augusto]] e [[rastreamento de candidaturas 07/11/2026]].');
+  add('arquivo/historico/central.md', 'Central de Vagas', 'versão velha');
+  const note = read(db, 'entregas/2026-11-07-1553-rastreadorrh-rastreamento.md');
+  assert.deepEqual(note.links.map(l => [l.path, l.exists, l.title]), [
+    ['chefe/central-de-vagas.md', true, 'central-de-vagas'],
+    ['chefe/candidaturas-augusto.md', false, 'Candidaturas Augusto'],
+    ['chefe/candidaturas-linkedin-06-11-2026.md', false, 'Candidaturas LinkedIn 06/11/2026'],
+    ['entregas/2026-11-07-1553-rastreadorrh-rastreamento.md', true, 'Rastreamento de candidaturas — 07/11/2026']]);
+  assert.deepEqual(note.links[0].names, ['Central de Vagas', 'central de vagas']);
+  assert.deepEqual(read(db, 'chefe/central-de-vagas.md').backlinks.map(b => b.path), ['entregas/2026-11-07-1553-rastreadorrh-rastreamento.md']);
+  const graph = notesRpc(db, 'notes.graph', {});
+  // Two notes pointing at the same missing note meet on one ghost.
+  assert.deepEqual(graph.edges.filter(e => e.to === 'chefe/candidaturas-augusto.md').map(e => [e.from, e.title]).sort(),
+    [['entregas/2026-11-07-1553-rastreadorrh-rastreamento.md', 'Candidaturas Augusto'], ['entregas/outra.md', 'Candidaturas Augusto']]);
+  assert.ok(graph.edges.some(e => e.from === 'entregas/outra.md' && e.to === 'entregas/2026-11-07-1553-rastreadorrh-rastreamento.md' && e.exists));
+  assert.equal(graph.nodes.find(n => n.path === 'chefe/central-de-vagas.md').incomingCount, 1);
+  // Backlinks quote the line that holds the link; summaries skip the "Bot: / Data:" header of deliveries.
+  add('entregas/entrega.md', 'Entrega', 'Bot: Atlas\nData: 2026-11-07T15:00:00Z\nAssunto: x\n\nPrimeira linha.\nVer o [[Central de Vagas|painel]] hoje.', '2026-11-08T00:00:00.000Z');
+  assert.equal(read(db, 'chefe/central-de-vagas.md').backlinks.find(b => b.path === 'entregas/entrega.md').snippet, 'Ver o [[Central de Vagas|painel]] hoje.');
+  assert.equal(notesRpc(db, 'notes.list', { kind: 'entrega', limit: 1 }).notes[0].snippet, 'Primeira linha.\nVer o [[Central de Vagas|painel]] hoje.', '2026-11-08T00:00:00.000Z');
 });

@@ -3,7 +3,7 @@
 // springs on the links, weak gravity to the origin, velocity decay as friction and an alpha that cools every tick.
 
 export const LAYOUT = {
-  linkDistance: 46, charge: -150, gravity: 0.045, decay: 0.42, alphaDecay: 0.028, alphaMin: 0.002,
+  linkDistance: 46, linkStrength: 1, charge: -150, gravity: 0.045, decay: 0.42, alphaDecay: 0.028, alphaMin: 0.002,
   // Mean squared speed (px²/tick) under which the drawing counts as still.
   restEnergy: 0.004, theta: 0.9, distanceMax: 520, barnesHut: 150
 };
@@ -151,7 +151,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
   const fresh = n ? (n - known) / n : 0;
   const state = {
     ids, index, links, xs, ys, vx, vy, n, ticks: 0, energy: Infinity, done: n === 0,
-    alpha: known ? Math.min(1, 0.06 + 0.9 * fresh) : 1,
+    alpha: o.alpha ?? (known ? Math.min(1, 0.06 + 0.9 * fresh) : 1),
     tick, run, positions, nodes: list
   };
 
@@ -203,7 +203,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     for (const [s, t] of links) {
       let dx = xs[t] + vx[t] - xs[s] - vx[s], dy = ys[t] + vy[t] - ys[s] - vy[s];
       const l = Math.sqrt(dx * dx + dy * dy) || 1e-6;
-      const k = (l - o.linkDistance) / l * alpha / Math.min(count[s], count[t]);
+      const k = (l - o.linkDistance) / l * alpha * o.linkStrength / Math.min(count[s], count[t]);
       const bias = count[s] / (count[s] + count[t]);
       dx *= k; dy *= k;
       vx[t] -= dx * bias; vy[t] -= dy * bias; vx[s] += dx * (1 - bias); vy[s] += dy * (1 - bias);
@@ -249,15 +249,16 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
 
 // What the screen draws from a notes.graph result: real notes, optional ghost nodes for links to notes that do not exist,
 // a radius from the links shown and the neighbour sets used for highlighting. Orphans use the server counts, like the list badge.
-export function graphModel({ nodes, edges }, { ghosts = true } = {}) {
-  const list = nodes.map(node => ({ ...node, id: node.path, ghost: false, orphan: !node.outgoingCount && !node.incomingCount }));
+export function graphModel({ nodes, edges }, { ghosts = true, orphans = true } = {}) {
+  const list = nodes.map(node => ({ ...node, id: node.path, ghost: false, orphan: !node.outgoingCount && !node.incomingCount }))
+    .filter(node => orphans || !node.orphan);
   const byId = new Map(list.map(node => [node.id, node])), links = [];
   for (const edge of edges) {
     if (!byId.has(edge.from)) continue;
     if (edge.exists) { if (byId.has(edge.to)) links.push({ from: edge.from, to: edge.to, broken: false }); continue; }
     if (!ghosts) continue;
     if (!byId.has(edge.to)) {
-      const ghost = { id: edge.to, path: edge.to, title: edge.to.split('/').at(-1).replace(/\.md$/, ''), kind: 'ghost', ghost: true, orphan: false };
+      const ghost = { id: edge.to, path: edge.to, title: edge.title || edge.to.split('/').at(-1).replace(/\.md$/, ''), kind: 'ghost', ghost: true, orphan: false };
       list.push(ghost); byId.set(ghost.id, ghost);
     }
     links.push({ from: edge.from, to: edge.to, broken: true });

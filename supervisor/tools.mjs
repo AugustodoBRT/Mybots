@@ -1,3 +1,4 @@
+import { noteTool } from './notes.mjs';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
@@ -80,6 +81,7 @@ export function notifyUser({ title, body }, { id, botId }) {
 const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 'smsSearch', 'sms.send': 'smsSend', 'contacts.search': 'contactsSearch',
   'calls.search': 'callLog', 'location.get': 'location', 'device.status': 'status' };
 
+const chiefOnly = tool => tool.startsWith('shared.') || tool === 'team.status';
 export class Tools {
   constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null, approvalNotice = null } = {}) {
     this.approvalNotice = approvalNotice;
@@ -119,6 +121,7 @@ export class Tools {
   }
   allowed(botId, tool) {
     const saved = this.db.get('SELECT body FROM grants WHERE bot_id=? AND tool=?', botId, tool)?.body;
+    if (chiefOnly(tool)) return this.db.requireBot(botId).isChief && saved !== 'false';
     return saved === undefined ? Boolean(TOOL_DEFINITIONS.find(item => item.name === tool)?.defaultAllowed) : saved === 'true';
   }
   /**
@@ -145,6 +148,7 @@ export class Tools {
     this.db.requireBot(botId);
     const definition = this.definitions().find(item => item.name === tool);
     if (!definition || typeof allowed !== 'boolean') throw new Error('Permissão inválida.');
+    if (chiefOnly(tool) && allowed && !this.db.requireBot(botId).isChief) throw new Error('Esta permissão é exclusiva do Chefe.');
     const changed = this.allowed(botId, tool) !== allowed;
     this.db.run('INSERT INTO grants(id,bot_id,tool,body) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body', botId + ':' + tool, botId, tool, JSON.stringify(allowed));
     // A resumed session keeps concluding "I have no access"; a new one rebuilds the context with the history.
@@ -160,6 +164,7 @@ export class Tools {
    */
   policy(botId, tool) {
     const bot = this.db.requireBot(botId);
+    if (tool === 'delivery.write' || chiefOnly(tool)) return this.allowed(botId, tool) ? 'allow' : 'deny';
     if (['account.connectors', 'email.search', 'email.read'].includes(tool) || tool.startsWith('mcp:')) return 'deny';
     if (tool === 'phone') return bot.phoneControl === true ? 'allow' : 'deny';
     return 'allow';
@@ -208,7 +213,10 @@ export class Tools {
   requireGrant(run, tool) {
     const bot = this.db.requireBot(run.botId);
     if (!this.runsHas(run)) throw new Error('Esta tarefa já foi encerrada.');
-    if (this.policy(run.botId, tool) === 'deny') throw new Error(tool === 'phone' ? 'O controle do celular está desligado no perfil deste bot.' : 'Use o serviço diretamente pelo navegador.');
+    if (this.policy(run.botId, tool) === 'deny') {
+      if (tool === 'delivery.write' || chiefOnly(tool)) throw new Error('Esta ferramenta precisa de permissão para este bot.');
+      throw new Error(tool === 'phone' ? 'O controle do celular está desligado no perfil deste bot.' : 'Use o serviço diretamente pelo navegador.');
+    }
   }
   runsHas(run) { return !run.signal?.aborted && [...this.runs.values()].includes(run) && ['running','waiting_approval'].includes(this.db.task(run.taskId)?.state); }
   /** The tools one run may see: MyBots tools plus the connected apps granted to its bot. */
@@ -286,7 +294,9 @@ export class Tools {
       // Permission revocation and cancellation take effect even while the approval was open.
       this.requireGrant(run, tool);
       let result;
-      if (tool === 'memory.read') result = { memories: this.db.all('SELECT body,updated_at FROM memory WHERE bot_id=? ORDER BY updated_at DESC', run.botId).map(row => ({ ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(item => !args.key || item.key === args.key).slice(0, 100) };
+      if (tool === 'team.status') result = this.db.teamStatus();
+      else if (tool === 'delivery.write' || tool.startsWith('shared.')) result = noteTool(this.db, bot, tool, args);
+      else if (tool === 'memory.read') result = { memories: this.db.all('SELECT body,updated_at FROM memory WHERE bot_id=? ORDER BY updated_at DESC', run.botId).map(row => ({ ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(item => !args.key || item.key === args.key).slice(0, 100) };
       else if (tool === 'memory.delete') {
         const id = run.botId + ':' + args.key;
         const had = Boolean(this.db.get('SELECT 1 FROM memory WHERE id=? AND bot_id=?', id, run.botId));

@@ -81,3 +81,40 @@ test('saving the conversation cache keeps where the phone\'s MyBots lives (the c
   }
   assert.equal('backend' in conversationCache(null, store.getSnapshot().data, {}), false);
 });
+
+test('Home follows the chief, Team stays open, and an explicit chat or room wins', async () => {
+  const { destination } = await import('../mobile/state/chief-home.js');
+  const data = { bots: [{ id: 'a' }, { id: 'b', isChief: true }], rooms: [{ id: 'r' }] };
+  for (const bots of [[], [{ id: 'a' }], [{ id: 'a' }, { id: 'b' }]]) assert.equal(destination({ bots }).selected, null);
+  assert.equal(destination(data).selected, 'b');
+  assert.deepEqual(destination(data, { kind: 'team' }), { selected: null, roomId: null, team: true });
+  assert.equal(destination(data, { kind: 'bot', id: 'a' }).selected, 'a');
+  assert.equal(destination(data, { kind: 'room', id: 'r' }).roomId, 'r');
+  assert.equal(destination(data, { kind: 'home' }).selected, 'b');
+  assert.equal(destination(data, { kind: 'bot', id: 'deleted' }).selected, 'b');
+  assert.equal(destination({ bots: [{ id: 'a', isChief: true }, { id: 'b' }] }).selected, 'a');
+});
+
+test('chief status counts bots once, prioritizes approvals, and respects local date-only deadlines', async () => {
+  const { teamStatus } = await import('../mobile/state/chief-home.js');
+  const now = Date.parse('2026-11-07T15:00Z');
+  const data = { timeZone: 'America/Sao_Paulo', bots: ['a','b','c','d'].map(id => ({ id })),
+    active: ['a','a','b','c'], presence: { c: { online: false } }, approvals: [{ botId: 'b' }, { botId: 'b' }, { botId: 'd' }],
+    pendingItems: ['2026-11-06','2026-11-07','2026-11-08T12:00','2026-11-08T12:01','2026-11-07T11:59',null].map(due => ({ state: 'open', due })).concat({ state: 'done', due: '2026-11-07' }) };
+  assert.deepEqual(teamStatus(data, now), { working: 1, waiting: 2, soon: 2 });
+  assert.deepEqual(teamStatus({ bots: [] }, now), { working: 0, waiting: 0, soon: 0 });
+});
+
+test('chief delegation cards match room message IDs without loading or marking the room read', async () => {
+  const { delegationCards } = await import('../mobile/state/chief-home.js');
+  const store = createStore(); const data = initial();
+  data.bots[0].isChief = true; data.bots[1].name = 'Sol'; data.rooms[0].name = 'Projeto';
+  store.setData(data);
+  const add = (id, text, botId, replyTo) => store.event('message.added', { roomId: 'r', message: { ...message(id, text), botId, replyTo } });
+  add('1', '@Sol prepare a entrega.', 'a'); add('2', 'Sobre outro assunto', 'b', 'unrelated');
+  add('3', 'Pronto.', 'b', '1');
+  assert.deepEqual(delegationCards(store.getSnapshot()).map(({ label, roomId }) => [label, roomId]), [['O Chefe chamou Sol','r'], ['Sol respondeu','r']]);
+  assert.equal(store.getSnapshot().chats.r, undefined);
+  assert.equal(store.getSnapshot().data.rooms[0].unread, 3);
+  store.setData({ ...data, rooms: [] }); assert.deepEqual(delegationCards(store.getSnapshot()), []);
+});

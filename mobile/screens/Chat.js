@@ -1,3 +1,4 @@
+import { ChiefStatus, DelegationCards } from '../components/ChiefTeam';
 import { useKeyboardPad } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
@@ -20,7 +21,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 // stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
-function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
@@ -117,7 +118,7 @@ function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onStee
     : showBrowser ? <BotBrowserPanel key={browserKey} bot={bot} browser={data.browser} pc={pcBrowser} call={browserCall} onControl={onBrowserControl} onClose={() => setBrowserOpen(false)} side={side} onFile={onFile} color={hue} /> : null;
   return <View style={styles.chatScreen} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <View style={styles.chatHeader}>
-      {onBack ? <IconButton icon="back" label="Voltar à lista de bots" onPress={onBack} size={40} /> : null}
+      {onBack ? <IconButton icon="back" label="Voltar ao início" onPress={onBack} size={40} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`Abrir perfil de ${bot.name}`} onPress={onProfile}><Avatar bot={bot} size={desktop ? 32 : 44} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} /></Pressable>
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{bot.name}</Text>
@@ -126,9 +127,11 @@ function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onStee
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
             <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
+      {bot.isChief ? <Pressable accessibilityRole="button" onPress={onTeam} style={[styles.modelToggle, { alignSelf: 'center', minHeight: 40, gap: 5 }]}><Icon name="bots" size={18} color={C.accent} /><Text style={styles.chatSubtitle}>Equipe</Text></Pressable> : null}
       {browsing && !desktop ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
       {desktop ? null : <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />}
     </View>
+    {bot.isChief ? <ChiefStatus onTeam={onTeam} /> : null}
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
     {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} aiAccounts={data.aiAccounts} home={bot.home || 'phone'} account={bot.aiAccount} /></View> : null}
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
@@ -150,6 +153,7 @@ function ChatView({ interactive = true, savedFiles, drafts, onQueuePause, onStee
       </View>}
       renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : <Actionable message={item} onHold={hold}><Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} /></Actionable>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
+      {bot.isChief ? <DelegationCards onRoom={onTeamRoom} /> : null}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { openBrowser(); onBrowserControl('person').catch(() => {}); }} /> : null}
       {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id] || data.phone?.control === 'person') ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}

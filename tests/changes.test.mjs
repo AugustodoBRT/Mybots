@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { Database, SYNCED } from '../supervisor/database.mjs';
+import { Database, SYNCED, SCHEMA } from '../supervisor/database.mjs';
 import { createSupervisor } from '../supervisor/index.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
@@ -19,7 +19,7 @@ test('a new database has a device id and an empty log; the counter only grows', 
   const after = db.syncState(); assert.equal(after.device, first.device); assert.ok(after.counter > first.counter);
   db.appendMessage(bot.id, { id: randomUUID(), role: 'user', text: 'oi', status: 'complete', createdAt: stamp(1) });
   assert.ok(db.syncState().counter > after.counter);
-  assert.equal(db.get('PRAGMA user_version').user_version, 14);
+  assert.equal(db.get('PRAGMA user_version').user_version, SCHEMA);
 });
 
 test('every write to a synced table is logged, one line per row, and a newer write replaces the older line', async t => {
@@ -105,7 +105,7 @@ test('an existing database enters the log on upgrade, with each row\'s own time,
   for (const table of Object.keys(SYNCED)) db.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;`);
   db.close();
   const again = new Database(directory); t.after(() => { try { again.close(); } catch {} });
-  assert.equal(again.get('PRAGMA user_version').user_version, 14);
+  assert.equal(again.get('PRAGMA user_version').user_version, SCHEMA);
   const entries = Object.fromEntries(again.all('SELECT * FROM changes').map(row => [`${row.tbl}/${row.key}`, row]));
   assert.equal(entries[`messages/${message.id}`].at, stamp(5)); assert.equal(entries[`memory/${memory}`].at, stamp(9));
   assert.equal(entries[`grants/${grant}`].at, '1970-01-01T00:00:00.000Z'); assert.ok(entries[`bots/${bot.id}`]); assert.ok(entries['metadata/person.name']);
@@ -146,7 +146,7 @@ test('upgrading from the first log version (13) adds attachments and stops loggi
       ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport; END; PRAGMA user_version=13;`);
   db.close();
   const again = new Database(directory); t.after(() => { try { again.close(); } catch {} });
-  assert.equal(again.get('PRAGMA user_version').user_version, 14);
+  assert.equal(again.get('PRAGMA user_version').user_version, SCHEMA);
   const entry = again.get("SELECT at,deleted FROM changes WHERE tbl='attachments' AND key=?", file); assert.equal(entry.at, stamp(4)); assert.equal(entry.deleted, 0);
   const before = again.get("SELECT seq FROM changes WHERE tbl='routines' AND key=?", routine).seq;
   again.run('UPDATE routines SET last_run_at=?,next_run_at=? WHERE id=?', stamp(5), stamp(6), routine);

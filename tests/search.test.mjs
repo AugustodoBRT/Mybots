@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { Database } from '../supervisor/database.mjs';
+import { Database, SCHEMA } from '../supervisor/database.mjs';
 import { createSupervisor } from '../supervisor/index.mjs';
 
 const selection = { model: 'test', reasoningEffort: 'low' };
@@ -46,7 +46,7 @@ test('the index follows edits and deletions, and the migration can run twice wit
   // Lower the version and reopen: the migration runs again over the existing index.
   const directory = app.db.directory; app.db.db.exec('PRAGMA user_version=11');
   const again = new Database(directory);
-  assert.equal(again.get('PRAGMA user_version').user_version, 14);
+  assert.equal(again.get('PRAGMA user_version').user_version, SCHEMA);
   assert.equal(again.search({ query: 'final' }).results.length, 1);
   assert.equal(again.get('SELECT count(*) AS n FROM messages_fts').n, 1);
   again.db.close();

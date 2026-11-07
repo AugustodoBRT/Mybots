@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
-import { TOOLS_TEXT } from '../mobile/local.js';
+import { CHIEF_TEXT, TOOLS_TEXT } from '../mobile/local.js';
 
-const ACTIVE = ['queued', 'running', 'waiting_approval'];
+const ROOM_QUEUE_LIMIT = 12;
 // How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
 const PROMPT_WINDOW = 600;
 export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -72,26 +72,28 @@ export class Rooms {
    * A bot writes in a room by itself (not as an answer to a turn). The members it names with @ get a turn, one
    * round after the turn it is in (or the first, from a private chat), so a chain keeps counting its rounds.
    */
-  post(roomId, bot, text, selectionFor, round = 0) {
+  post(roomId, bot, text, selectionFor, taskId) {
     const room = this.db.requireRoom(roomId);
     if (!room.botIds.includes(bot.id)) throw new Error('Você não está nesta sala.');
     const clean = typeof text === 'string' ? text.trim() : '';
     if (!clean || clean.length > 4000) throw new Error('Escreva de 1 a 4.000 caracteres.');
     const called = mentions(clean, this.members(room)).filter(item => item.id !== bot.id);
-    const turns = called;
-    if (turns.length && this.active(roomId).length + turns.length > 12) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Espere um pouco.');
-    const stamp = now(); const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: stamp };
-    const waiting = new Set(this.active(roomId).filter(task => task.state === 'queued').map(task => task.bot_id));
+    const round = (taskId && this.db.roomTurn(taskId)?.round) || 0;
+    const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: now() };
     this.db.transaction(() => {
+      const active = this.active(roomId);
+      const waiting = new Set(active.filter(task => task.state === 'queued').map(task => task.bot_id));
+      const targets = called.filter(target => !waiting.has(target.id));
+      if (active.length + targets.length > ROOM_QUEUE_LIMIT && targets.length) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Espere um pouco.');
       this.db.appendRoomMessage(room.id, message);
-      for (const target of turns) if (!waiting.has(target.id)) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
+      for (const target of targets) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
     });
     this.changed('task.progress'); this.schedule();
-    return { posted: true, called: turns.map(item => item.name), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
+    return { posted: true, called: called.map(item => item.name), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };
   }
   /** The room's tasks still to answer, oldest first. */
   active(roomId) {
-    return this.db.all('SELECT t.*, r.round, r.room_id FROM room_turns r JOIN tasks t ON t.id=r.task_id WHERE r.room_id=? ORDER BY t.created_at, t.rowid', roomId).filter(task => ACTIVE.includes(task.state));
+    return this.db.all("SELECT t.*, r.round, r.room_id FROM room_turns r JOIN tasks t ON t.id=r.task_id WHERE r.room_id=? AND t.state IN ('queued','running','waiting_approval') ORDER BY t.created_at, t.rowid", roomId);
   }
   /** The person writes in the room: the named bots (or all of them) get a turn each, in order. */
   send(roomId, requestId, text, selectionFor, files) {
@@ -103,12 +105,12 @@ export class Rooms {
     if (this.db.task(requestId)) return { messageId: this.db.roomTurn(requestId)?.message_id || null, duplicate: true };
     const members = this.members(room);
     if (members.length < 2) throw new Error('A sala precisa de pelo menos 2 bots.');
-    if (this.active(roomId).length >= 12) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Aguarde um pouco.');
     const named = mentions(text, members); const targets = named.length ? named : members;
     // Files are stored once and opened to the room, so every member reads them with its own attachment_read.
     const saved = withFiles ? this.attachments.saveForRoom(room, files) : [];
     const stamp = now(); const message = { id: randomUUID(), requestId, role: 'user', text: text.trim(), status: 'complete', ...(saved.length ? { attachments: saved } : {}), createdAt: stamp };
     try { this.db.transaction(() => {
+      if (this.active(roomId).length + targets.length > ROOM_QUEUE_LIMIT) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Aguarde um pouco.');
       this.db.appendRoomMessage(room.id, message);
       // Every bot that is addressed starts at once (each in its own line, up to what the machine runs in parallel): a message to everyone no
       // longer makes the others wait for the one before. They answer the person; to react to each other, a bot calls another with @.
@@ -123,7 +125,7 @@ export class Rooms {
     this.db.run('INSERT INTO room_turns VALUES(?,?,?,?,?)', id, roomId, messageId, round, originId);
     this.db.event(id, 'queued');
   }
-  /** After a bot answered: the members it named (@) answer next, while rounds remain and they are not already in line. */
+  /** After a bot answered: the members it named (@) answer next, with no limit of rounds, unless they are already in line. */
   answered(taskId, selectionFor) {
     const turn = this.db.roomTurn(taskId); const task = this.db.task(taskId);
     if (!turn || task?.state !== 'done') return;
@@ -155,9 +157,9 @@ export class Rooms {
     for (const message of [...visible].reverse()) { if (size + message.text.length > (maxChars || 60000)) break; recent.unshift(message); size += message.text.length; }
     return `Você é ${JSON.stringify(bot.name)}, um bot do aplicativo MyBots, numa sala de conversa chamada ${JSON.stringify(room.name)} com a pessoa e estes bots: ${members.map(item => `${item.name}${item.id === bot.id ? ' (você)' : item.instructions ? ` (${item.instructions.replace(/\s+/g, ' ').slice(0, 140)})` : ''}`).join('; ')}.
 ${this.db.person().name ? `A pessoa se chama ${JSON.stringify(this.db.person().name)}: fale com ela por "você" e, com outros bots, use o nome dela.` : 'Fale com a pessoa por "você" e, com outros bots, diga "a pessoa".'}
-Fale só por você, em português do Brasil, de forma curta e direta, sem repetir o que outro bot já disse. Para pedir algo a outro bot, basta escrever @Nome dele na sua resposta (ex.: "@${members.find(item => item.id !== bot.id)?.name || 'Bot'}, qual é…?"): o MyBots entrega a pergunta e ele responde logo depois de você. Também dá para dividir o trabalho: chame cada um com @ dizendo o que ele faz, e quando precisar de mais gente, de uma sala nova, ou quiser sair ou tirar alguém, use as ferramentas team_* sem pedir aprovação à pessoa. Quando a pessoa pedir para você perguntar algo a outro bot, faça a pergunta com @ em vez de dizer que não consegue. Só chame outro bot quando precisar dele de verdade, e nunca só para agradecer.
-Cada bot tem as próprias pendências, memórias, rotinas e arquivos: o que outro bot diz sobre os dados dele não vale para os seus. Antes de responder sobre prazos, pendências, memórias ou arquivos, consulte as SUAS ferramentas (ex.: task_list_items). Você não vê a memória nem as conversas privadas dos outros bots. Use as suas ferramentas e permissões, como na sua conversa privada.
-${tools ? TOOLS_TEXT : 'Nesta sala você só conversa.'}
+Fale só por você, em português do Brasil, de forma curta e direta, sem repetir o que outro bot já disse. Para pedir algo a outro bot, basta escrever @Nome dele na sua resposta (ex.: "@${members.find(item => item.id !== bot.id)?.name || 'Bot'}, qual é…?"): o MyBots entrega a pergunta e ele responde logo depois de você. Também dá para dividir o trabalho: chame cada um com @ dizendo o que ele faz, e quando precisar de mais gente, de uma sala nova, ou quiser sair ou tirar alguém, use as ferramentas team_* sem pedir aprovação à pessoa. Quando a pessoa pedir para você perguntar algo a outro bot, faça a pergunta com @ em vez de dizer que não consegue. Cada cadeia permite até duas delegações, sem chamar de volta quem já participou. Para devolver o resultado, responda na sala. Só chame outro bot quando precisar dele de verdade, e nunca só para agradecer.
+Cada bot tem as próprias pendências, memórias, rotinas e arquivos: o que outro bot diz sobre os dados dele não vale para os seus. Antes de responder sobre prazos, pendências, memórias ou arquivos, consulte as SUAS ferramentas (ex.: task_list_items). Use as suas ferramentas e permissões, como na sua conversa privada. Você não vê a memória nem as conversas privadas dos outros bots.
+${tools ? (bot.isChief ? CHIEF_TEXT + '\n' : '') + TOOLS_TEXT : 'Nesta sala você só conversa.'}
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
 ${maxChars ? 'Esta é uma sessão nova (a anterior foi encerrada para não gastar contexto à toa): só as mensagens mais recentes da sala estão abaixo; para algo mais antigo, consulte as suas memórias com memory_read.' : ''}

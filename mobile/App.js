@@ -4,7 +4,7 @@ import { useStore } from './state/useStore';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { SearchSheet } from './components/Search';
 import { SettingsSheet } from './components/Settings';
@@ -31,6 +31,7 @@ import { createTermuxBackup } from './backup';
 import { RoomScreen } from './screens/Room';
 import { ChatScreen } from './screens/Chat';
 import { C, Icon, setTheme, resolveTheme } from './theme';
+import { destination } from './state/chief-home';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
@@ -105,7 +106,11 @@ function AppMain() {
   useEffect(() => { localCacheRef.current = localCache; }, [localCache]);
   // On the computer's window the saved logins are the computer's own vault, asked through its supervisor (see termux.js).
   useEffect(() => { if (desktop) useComputerVault((method, params) => supervisor.current.call(method, params)); }, []);
-  const [selected, setSelected] = useState(null);
+  const [route, navigate] = useState({ kind: 'home' });
+  const { selected, roomId, team } = destination(data, route);
+  const chiefId = data?.bots?.find(item => item.isChief && !item.deletedAt)?.id;
+  const setSelected = id => navigate(old => id ? { kind: 'bot', id } : old.kind === 'bot' ? { kind: 'home' } : old);
+  const setRoomId = id => navigate(old => id ? { kind: 'room', id } : old.kind === 'room' ? { kind: 'home' } : old);
   const desktopDrafts = useRef(new Map());
   const [conversationDrafts, setConversationDrafts] = useState({});
   const draftField = (key, field, fallback) => ({
@@ -118,9 +123,17 @@ function AppMain() {
   });
   const selectedBotRef = useRef(selected); selectedBotRef.current = selected;
   // The open room, and the create/edit sheet (null closed, {} new, {room} editing).
-  const [roomId, setRoomId] = useState(null);
   const [roomSheet, setRoomSheet] = useState(null);
   const [draft, setDraft] = useState('');
+  // A promotion can redirect Home while someone is typing. Keep that draft with its original recipient.
+  const lastChief = useRef(chiefId);
+  useLayoutEffect(() => {
+    const previous = lastChief.current;
+    lastChief.current = chiefId;
+    if (previous === chiefId || route.kind !== 'home') return;
+    if (previous) desktopDrafts.current.set(previous, draft);
+    setDraft(desktopDrafts.current.get(chiefId) || '');
+  }, [chiefId, route.kind, draft]);
   const [loadError, setLoadError] = useState('');
   const [termuxLog, setTermuxLog] = useState(null);
   const [logsVisible, setLogsVisible] = useState(false);
@@ -185,15 +198,22 @@ function AppMain() {
   }, []);
 
 
+  const goHome = () => {
+    if (selected) desktopDrafts.current.set(selected, draft);
+    navigate({ kind: 'home' }); setDeskPage(null);
+    setDraft(desktopDrafts.current.get(chiefId) || '');
+  };
+  const openTeam = () => {
+    if (selected) desktopDrafts.current.set(selected, draft);
+    navigate({ kind: 'team' }); setDeskPage(null); setDraft('');
+  };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (roomId) { setRoomId(null); return true; }
-      if (!selected) return false;
-      setSelected(null); setDraft('');
-      return true;
+      if (!roomId && !team && (!selected || selected === chiefId)) return false;
+      goHome(); return true;
     });
     return () => subscription.remove();
-  }, [selected, roomId]);
+  }, [selected, roomId, team, chiefId, draft]);
 
   const runPhoneCommand = useCallback(async (operation, payload = {}) => {
     const startedAt = new Date().toISOString();
@@ -768,12 +788,12 @@ function AppMain() {
   const roomText = room && desktop ? draftField(`room:${room.id}`, 'text', '') : null;
   const roomFiles = room && desktop ? draftField(`room:${room.id}`, 'files', []) : null;
   const botFiles = bot && desktop ? draftField(`bot:${bot.id}`, 'files', []) : null;
-  const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : () => setRoomId(null)} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
+  const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : goHome} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
           onSend={async (text, files = []) => { if (CLEAR.test(text.trim()) && !files.length) { await supervisor.current.call('room.newSession', { roomId: room.id }); await loadSupervisorState(); return; } const attachments = await Promise.all(files.map(async ({ name, mime, data, blob }) => ({ name, mime, data: blob ? await blobBase64(blob) : data }))); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
-          onBack={desktop ? null : () => { setSelected(null); setDraft(''); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
+          onBack={desktop || bot.isChief ? null : goHome} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
@@ -798,6 +818,13 @@ function AppMain() {
     if (selected) desktopDrafts.current.set(selected, draft);
     setRoomId(id); setSelected(null);
   };
+  // Desktop, PWA and paired phones use the same supervisor RPC. The old token-based HTTP API has no chief role.
+  const canCreateChief = mode === 'phone' && !chiefId;
+  const startChief = () => setCreateVisible('chief');
+  const teamView = data && <HomeScreen team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+            onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
+            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
+            onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
   // On the computer these are whole pages beside the icon bar instead of sheets.
   const deskPages = desktop ? {
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
@@ -808,7 +835,7 @@ function AppMain() {
       taskMessages={chatsRef.current[room?.id || bot?.id]?.messages || []}
       onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})} />
   } : {};
-  const profileSheet = data ? <BotProfile inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
+  const profileSheet = data ? <BotProfile chiefName={data.bots.find(item => item.isChief)?.name} inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} aiAccounts={data.aiAccounts} grants={shownProfile?.grants || []} nodes={data.nodes || []}
       memories={shownProfile?.memories || []} items={(data.pendingItems || []).filter(item => item.botId === profileId)}
       routines={(data.routines || []).filter(item => item.botId === profileId)}
@@ -840,13 +867,10 @@ function AppMain() {
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : desktop ? <DesktopShell fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
           filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
-          onOpen={openDesktopBot} onRoom={openDesktopRoom} onHome={() => { setSelected(null); setRoomId(null); setDraft(''); }} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
+          onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
-          {roomView || chatView}</DesktopShell>
-      : roomView || chatView || <HomeScreen remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={id => { setSelected(id); setDraft(''); }} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
-            update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
-            onRoom={id => { setRoomId(id); setSelected(null); }} onNewRoom={() => setRoomSheet({})} />}
+          {roomView || chatView || teamView}</DesktopShell>
+      : roomView || chatView || teamView}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
         <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}
@@ -856,7 +880,7 @@ function AppMain() {
       </View></View>
     </Modal> : null}
     {data ? <RoomSheet visible={Boolean(roomSheet)} room={roomSheet?.room} bots={data.bots || []} onClose={() => setRoomSheet(null)} onSave={roomSave} onDelete={() => roomDelete(roomSheet.room)} /> : null}
-    {data ? <NewBot visible={createVisible} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} aiAccounts={data.aiAccounts} nodes={data.nodes || []} phone={mode === 'phone'}
+    {data ? <NewBot canChooseChief={canCreateChief} firstBot={createVisible === 'chief' || !data.bots.length} visible={Boolean(createVisible)} models={data.models || []} defaultSelection={data.defaultSelection} connections={data.connections} aiAccounts={data.aiAccounts} nodes={data.nodes || []} phone={mode === 'phone'}
       freeChoice={mode === 'phone' && !desktop && termuxAvailable && backend !== 'pc'} onClose={() => setCreateVisible(false)} onCreate={createBot} /> : null}
     {desktop ? null : profileSheet}
     <SettingsSheet visible={maintenanceVisible} onClose={() => setMaintenanceVisible(false)} a={settingsContext} />
@@ -884,7 +908,7 @@ function AppMain() {
             {(data?.interruptions || []).slice(0, 5).map(item => <View key={item.id} style={styles.interruption}><Icon name={item.kind === 'supervisor_restarted' ? 'refresh' : 'pause'} size={14} color={item.kind === 'supervisor_restarted' ? C.accent : C.amber} /><Text style={[styles.optionDetail, { flex: 1, marginTop: 0 }]}>{item.detail}</Text></View>)}
             {!(data?.interruptions || []).length ? <Text style={styles.optionDetail}>Quando o celular pausar ou parar o supervisor, aparece aqui quando foi e como ele voltou.</Text> : null}
           </View> : null}
-          {(data?.approvals || []).length ? <Pressable accessibilityRole="button" onPress={() => { setActivityVisible(false); setSelected(null); setRoomId(null); }} style={[styles.modeOption, styles.rowOption]}>
+          {(data?.approvals || []).length ? <Pressable accessibilityRole="button" onPress={() => { setActivityVisible(false); openTeam(); }} style={[styles.modeOption, styles.rowOption]}>
             <View style={[styles.rowIcon, { backgroundColor: C.accent + '22' }]}><Icon name="hand" size={19} color={C.accent} /></View>
             <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{data.approvals.length > 1 ? `${data.approvals.length} decisões esperam você` : '1 decisão espera você'}</Text><Text style={styles.optionDetail}>Aprove ou recuse na tela inicial ou na conversa do bot. Cada decisão aparece num lugar só.</Text></View>
             <Icon name="right" size={16} color={C.faint} /></Pressable> : null}

@@ -10,7 +10,7 @@ export function share(previous, next) {
 }
 
 export function createStore() {
-  let state = { data: null, chats: {}, drafts: {} }; let seq = null;
+  let state = { data: null, chats: {}, drafts: {}, roomEvents: [] }; let seq = null;
   const listeners = new Set();
   const update = patch => { const next = share(state, { ...state, ...patch }); if (next === state) return; state = next; for (const listener of listeners) listener(); };
   return {
@@ -19,7 +19,7 @@ export function createStore() {
     setData(value) {
       const data = typeof value === 'function' ? value(state.data) : value;
       const known = data?.supervisorConnected && new Set([...(data.bots || []), ...(data.rooms || [])].map(item => item.id));
-      update({ data, ...(known ? { chats: Object.fromEntries(Object.entries(state.chats).filter(([id]) => known.has(id))) } : {}) });
+      update({ data, ...(!data ? { roomEvents: [] } : {}), ...(known ? { chats: Object.fromEntries(Object.entries(state.chats).filter(([id]) => known.has(id))) } : {}) });
     },
     setChats: value => update({ chats: typeof value === 'function' ? value(state.chats) : value }),
     sequence: value => { seq = value; },
@@ -41,7 +41,20 @@ export function createStore() {
         // The finished message takes the draft's place.
         if (event === 'message.added' && payload.message?.role === 'assistant') this.draft({ botId: payload.message.botId || payload.botId, roomId: payload.roomId, text: '' });
         const exists = state.chats[key]?.messages.some(message => message.id === payload.message?.id) || [...(state.data?.bots || []), ...(state.data?.rooms || [])].find(item => item.id === key)?.lastMessage?.id === payload.message?.id;
-        update({ chats: applyMessage(state.chats, event, payload), data: applyToLists(state.data, exists ? 'message.updated' : event, payload, open) });
+        // Unopened rooms only keep a short trail of delegation evidence; receiving an event never marks a room read.
+        const { message, roomId } = payload;
+        const chief = roomId && state.data?.bots?.find(bot => bot.isChief);
+        let roomEvents = state.roomEvents;
+        if (chief && message?.role === 'assistant' && message.status === 'complete' && !message.progress &&
+            (message.botId === chief.id || message.replyTo)) {
+          const { id, botId, role, status, replyTo, createdAt } = message;
+          const last = state.data.rooms?.find(room => room.id === roomId)?.lastMessage;
+          if (last?.botId === chief.id && last.text?.includes('@') && last.text.length < 280 && !roomEvents.some(item => item.id === last.id))
+            roomEvents = [...roomEvents, { ...last, roomId }];
+          roomEvents = [...roomEvents.filter(item => item.id !== id), { roomId, id, botId, role, status, replyTo, createdAt,
+            ...(botId === chief.id ? { text: message.text } : {}) }].slice(-100);
+        }
+        update({ roomEvents, chats: applyMessage(state.chats, event, payload), data: applyToLists(state.data, exists ? 'message.updated' : event, payload, open) });
       }
       else if (event === 'bot.updated') {
         const chats = { ...state.chats };

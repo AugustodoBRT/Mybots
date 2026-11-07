@@ -1778,3 +1778,14 @@ Nota: o primeiro APK desta versão (não publicado) saiu com um defeito meu (o m
 - **O que sobra da tela preta original** (ao abrir o navegador, com vários bots): o limite de 10 abas e a recarga automática da interface (v145) e o `~/.mybots-pc/electron.log` continuam; a causa real ainda não é conhecida.
 - **Teste**: sem variável, nunca há escolha de placa; só caminho `renderD…` é aceito; só no Linux.
 
+
+## 0.72.0 (versionCode 150): Chefe da equipe, memória compartilhada e bots mais calados
+
+Plano em `docs/PLANO-BOT-CHEFE.md` (fases 1 a 4 feitas; faltam o visualizador de memória e o grafo).
+
+- **Chefe** (`isChief`): um bot principal por pessoa, criado pelo cadastro ("Crie o seu Chefe") ou promovido pelo perfil. O app abre direto na conversa dele (celular, PC e PWA); a lista de bots e salas virou a tela **Equipe** (botão no cabeçalho e item na barra lateral do PC), e dela se abre qualquer conversa ou sala como antes. Faixa de status no topo (trabalhando, esperando você, pendências com prazo em 24 h), aviso de aprovações de todos os bots e até 3 cartões de delegação ("O Chefe chamou X", "X respondeu") que abrem a sala. Sem Chefe, o app continua como antes.
+- **Memória compartilhada** (`supervisor/notes.mjs`, tabela `notes`, schema 16, sincroniza PC e celular e entra no backup): `delivery_write` (qualquer bot deixa uma entrega datada, sem sobrescrever) e, só para o Chefe, `shared_index_read`, `shared_note_read`, `shared_note_write` (guarda a versão anterior), `shared_archive` e `team_status` (estado dos bots sem o conteúdo privado). Caminhos validados e notas com cara de senha ou token são recusadas.
+- **Salas sem limite de rodadas**: mantido como antes (uma cadeia só termina quando ninguém é chamado); a fila continua limitada a 12 respostas.
+- **Bots falam menos**: `PROGRESS_GUIDANCE` manda trabalhar em silêncio (sem narrar clique, digitação, rolagem nem senha), no máximo 1 ou 2 frases durante a tarefa, e uma resposta final natural e curta; no máximo 6 falas de andamento por resposta (antes 30). `PROMPT_VERSION` 9: as conversas abertas começam uma sessão nova uma vez, mantendo o histórico.
+- **Testes**: 484 na suíte; novos em `tests/shared-notes.test.mjs` e `tests/chief.test.mjs`, mais navegação e renderização mobile. Os de navegador (Electron, Meu Chrome, Escritório) e o de backup do Termux falham às vezes sob carga quando a suíte roda inteira e passam isolados. O teste do Escritório passou a clicar no último botão "Equipe" (agora há mais de um).
+- **Visto só no PC (Chrome headless, build web)**: Chefe como tela inicial, faixa de status, tela Equipe e cartões de delegação. Não testado em celular real: o layout do celular, o botão "Crie o seu Chefe" e as falas mais curtas dos bots com a IA de verdade. Os cartões só aparecem com eventos ao vivo ou depois de abrir a sala.

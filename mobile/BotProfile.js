@@ -28,7 +28,7 @@ export function useKeyboardRoom(scroll) {
   }, []);
   return height;
 }
-export default function BotProfile({ initialTab, visible, bot, models, defaultSelection, memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, aiAccounts, skills = [], onSkill, loadAgentSkills, onAgentSkills, onFallback, FallbackSettings, googleAccounts = [], onGoogleAccount, onGoogleLogin, onPhoneControl, onClose, onSave, onComplete, onRoutine, onDelete, ModelSettings, PhoneControl, inline = false }) {
+export default function BotProfile({ chiefName, initialTab, visible, bot, models, defaultSelection, memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, aiAccounts, skills = [], onSkill, loadAgentSkills, onAgentSkills, onFallback, FallbackSettings, googleAccounts = [], onGoogleAccount, onGoogleLogin, onPhoneControl, onClose, onSave, onComplete, onRoutine, onDelete, ModelSettings, PhoneControl, inline = false }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, aiAccount: bot.aiAccount || '', color: bot.color, avatar: bot.avatar || 'orbit', ...(bot.face ? { face: bot.face } : {}), autonomy: bot.autonomy || 'ask', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [account, setAccount] = useState(''); const [openRoutine, setOpenRoutine] = useState(null);
@@ -80,6 +80,10 @@ export default function BotProfile({ initialTab, visible, bot, models, defaultSe
               <View style={{ width: 20 }} />
             </ScrollView></> : null}
           <Text style={s.label}>Nome</Text><TextInput accessibilityLabel="Nome do bot" value={form.name || ''} onChangeText={v => field('name', v)} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.accent} style={s.input} />
+          {phone && bot && <View style={s.permission}>
+            <View style={s.permissionCopy}><Text style={s.itemTitle}>Chefe da equipe</Text><Text style={s.hint}>{chiefName && !bot.isChief ? `Ao salvar, este bot assume o lugar de ${chiefName}.` : 'Coordena os bots e cuida das notas compartilhadas.'}</Text></View>
+            {toggle(form.isChief ?? Boolean(bot.isChief), value => field('isChief', value), 'Chefe da equipe')}
+          </View>}
           <Text style={s.label}>Personalidade e função</Text><TextInput accessibilityLabel="Personalidade e função" value={form.instructions || ''} onChangeText={v => field('instructions', v)} maxLength={2000} multiline placeholder="Ex.: Me ajude com a faculdade. Seja direto, curioso e descontraído." placeholderTextColor={C.faint} selectionColor={C.accent} style={[s.input, s.instructions]} />
           <Text style={s.label}>Inteligência</Text><ModelSettings models={models} connections={connections} selection={form} disabled={saving || active} onChange={(model, reasoningEffort, provider, account) => setForm(old => ({ ...old, model, reasoningEffort, provider, ...(account !== undefined ? { aiAccount: account === 'default' ? '' : account } : {}) }))} aiAccounts={aiAccounts} home={bot?.home || 'any'} account={form.aiAccount} />
           {bot && phone && onFallback && FallbackSettings ? <FallbackSettings models={models} bot={bot} disabled={saving || active} onChange={fallback => act(() => onFallback(fallback))} /> : null}

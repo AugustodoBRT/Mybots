@@ -51,9 +51,11 @@ export function SideHeader({ tabs, active, onPick, onClose, onNew, wide, onWide,
 }
 
 /** Nothing open in the bar: the one place to pick what to open, always inside the bar. */
-export function SideMenu({ bot, waiting, onPick }) {
+export function SideMenu({ bot, waiting, onPick, onTeam }) {
   const rows = [bot ? ['browser', SIDE_KINDS.browser.open] : null, bot ? ['settings', SIDE_KINDS.settings.open] : null, ['today', waiting ? `${SIDE_KINDS.today.open} (${waiting})` : SIDE_KINDS.today.open]].filter(Boolean);
   return <View style={s.menu}>
+    <Pressable accessibilityRole="button" onPress={onTeam} style={({ hovered }) => [s.item, hovered && { backgroundColor: C.surface2 }]}>
+      <Icon name="bots" size={17} color={C.muted} /><Text style={s.itemText}>Equipe</Text></Pressable>
     {rows.map(([kind, label]) => <Pressable key={kind} accessibilityRole="button" onPress={() => onPick(kind)} style={({ hovered }) => [s.item, hovered && { backgroundColor: C.surface2 }]}>
       <Icon name={SIDE_KINDS[kind].icon} size={17} color={C.muted} /><Text style={s.itemText}>{label}</Text></Pressable>)}
   </View>;

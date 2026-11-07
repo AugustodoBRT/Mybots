@@ -148,7 +148,7 @@ function TodayPanel({ data, onOpen, onRespond, approvalBusy, onComplete, onActiv
 }
 
 // Nothing open yet: the busiest bot's big face, how the day looks and the decision that waits, as a plain block.
-function Welcome({ data, error, onRespond, approvalBusy, onCreate, onNewRoom, onSearch, onConnection, call }) {
+function Welcome({ onCreateChief, data, error, onRespond, approvalBusy, onCreate, onNewRoom, onSearch, onConnection, call }) {
   const bots = (data.bots || []).filter(bot => !bot.deletedAt);
   const working = (data.active || []).filter(id => !offline(data, id));
   const star = bots.find(bot => working.includes(bot.id)) || [...bots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
@@ -162,6 +162,7 @@ function Welcome({ data, error, onRespond, approvalBusy, onCreate, onNewRoom, on
     {error && !bots.length ? <DesktopPair call={call} /> : null}
     <View style={{ width: '100%', maxWidth: 560 }}>{(data.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}</View>
     <View style={s.acts}>
+      {onCreateChief ? <Pressable accessibilityRole="button" onPress={onCreateChief} disabled={!data.models?.length} style={s.act}><Icon name="plus" size={16} color={C.accent} /><Text style={s.actText}>Crie o seu Chefe</Text></Pressable> : null}
       <Pressable accessibilityRole="button" onPress={onCreate} disabled={!data.models?.length} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="plus" size={16} color={C.accent} /><Text style={s.actText}>Novo bot</Text></Pressable>
       {bots.length >= 2 ? <Pressable accessibilityRole="button" onPress={onNewRoom} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="bots" size={16} color={C.muted} /><Text style={s.actText}>Nova sala</Text></Pressable> : null}
       <Pressable accessibilityRole="button" onPress={onSearch} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="search" size={16} color={C.muted} /><Text style={s.actText}>Buscar · Ctrl+K</Text></Pressable>
@@ -173,7 +174,7 @@ function Welcome({ data, error, onRespond, approvalBusy, onCreate, onNewRoom, on
  * The computer's window: a narrow bar of icons, the list of conversations (one line each), the open conversation in the middle
  * with tabs on top, and a side panel that stays closed until asked. Ctrl+K searches, Ctrl+N creates a bot, Esc closes.
  */
-export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, filePanel, fileOpen, onFileClose, profilePanel, profileOpen, fileKey, onProfileClose, onBrowserControl, onSend, onFile, children }) {
+export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, filePanel, fileOpen, onFileClose, profilePanel, profileOpen, fileKey, onProfileClose, onBrowserControl, onSend, onFile, children }) {
   const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions(); const [collapsed, setCollapsed] = useState(false); const compact = width < 900 || collapsed;
   const [listWidth, setListWidth] = useState(264); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
@@ -194,7 +195,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
     setTabs(old => (old.some(tab => tab.kind === current.kind && tab.id === current.id) ? old : [...old, current].slice(-8)));
   }, [selected, roomId]);
   const go = target => (target ? (target.kind === 'room' ? onRoom(target.id) : onOpen(target.id)) : onHome?.());
-  const closeTab = tab => { const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
+  const closeTab = tab => { if (tabs.length === 1 && bot?.isChief && tab.id === bot.id) { onHome(); return; } const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
   useEffect(() => { if (profileOpen) openKind('settings'); else dropKind('settings', true); }, [profileOpen]);
   useEffect(() => { if (fileOpen) openKind('file'); else dropKind('file', true); }, [fileOpen, fileKey]);
   useEffect(() => desktopBus.on('browser-open', () => openKind('browser')), []);
@@ -230,7 +231,8 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
   const limit = provider => left(provider, 'five_hour') ?? (windowsOf(provider)[0] ? 100 - windowsOf(provider)[0].used : null);
   const weekLimit = provider => left(provider, 'five_hour') == null ? null : left(provider, 'week');
   const openPage = key => onPage(key);
-  const rail = [['bots', 'Conversas', () => onPage(null), page === null], ['office', 'Escritório', () => openPage('office'), page === 'office'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
+  const hasChief = bots.some(item => item.isChief);
+  const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['office', 'Escritório', () => openPage('office'), page === 'office'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
   const faceOf = tab => tab.kind === 'room' ? <Icon name="bots" size={16} color={C.muted} /> : <Avatar bot={bots.find(item => item.id === tab.id) || { name: '?' }} size={20} animated={false} />;
   return <View style={s.desk}>
@@ -260,7 +262,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
         {compact ? null : <View style={s.section}><Text style={s.sectionText}>Bots</Text></View>}
         {bots.map(item => { const line = botLine(item, data); return <Row key={item.id} compact={compact} selected={item.id === selected} label={`Conversar com ${item.name}`} onPress={() => onOpen(item.id)}
           onMenu={event => setMenu({ x: event.clientX || 0, y: event.clientY || 0, bot: item })} face={<Avatar bot={item} size={32} state={line.state} animated={line.state !== 'idle'} />}
-          title={item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
+          title={item.isChief ? item.name + ' · Chefe' : item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
         {!bots.length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
       </ScrollView>
       {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 10, fontFamily: F.s, letterSpacing: 0.2 }}>CAPACIDADE DISPONÍVEL</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
@@ -279,7 +281,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
         <Pressable accessibilityRole="button" accessibilityLabel="Barra lateral" accessibilityState={{ expanded: side.open }} onPress={() => setSide(old => ({ ...old, open: !old.open }))} style={({ hovered }) => [s.tool, hovered && s.rowHover, side.open && s.tabOn]}>
           <Icon name="sidebar" size={18} color={waiting && !side.open ? C.accent : C.text2} />{waiting ? <View style={s.badge}><Text style={s.badgeText}>{waiting}</Text></View> : null}</Pressable>
       </View> : null}
-      <View style={{ flex: 1 }}>{current ? children : <Welcome data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
+      <View style={{ flex: 1 }}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
     <DesktopReveal open={side.open} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>
@@ -291,7 +293,7 @@ export function DesktopShell({ data: fallback, error, selected, roomId, onOpen, 
           : side.active === 'browser' ? (native ? <BrowserCards onOpen={() => setFull(true)} /> : !bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
             : browserMode(bot) === 'claude' ? <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={who => onBrowserControl(bot.id, who)} onClose={() => closeKind('browser')} side onFile={onFile} />
             : <BrowserCards key={bot.id} bot={bot} call={call} onOpen={() => setFull(true)} />)
-          : <SideMenu bot={bot} waiting={waiting} onPick={kind => { if (kind === 'settings') { onProfile(bot); openKind('settings'); } else openKind(kind); }} />}
+          : <SideMenu onTeam={() => { setSide(old => ({ ...old, open: false })); onTeam(); }} bot={bot} waiting={waiting} onPick={kind => { if (kind === 'settings') { onProfile(bot); openKind('settings'); } else openKind(kind); }} />}
       </SideFrame>
     </DesktopReveal>
     {full && (bot || native) ? <BrowserFull bot={bot} data={data} call={call} onControl={who => onBrowserControl(bot.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={onSend} /> : null}

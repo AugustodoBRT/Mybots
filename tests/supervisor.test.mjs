@@ -39,9 +39,9 @@ test('SQLite migration preserves all bot/message/session IDs and imports exactly
   let db = new Database(path);
   assert.equal(db.importLegacy(source), true);
   assert.equal(db.importLegacy(source), false);
-  assert.deepEqual(db.snapshot().bots, source.bots.map(bot => ({ ...bot, browserMode: 'shared', access: 'full', home: 'any', phoneControl: false, gpu: true })));
+  assert.deepEqual(db.snapshot().bots, source.bots.map(bot => ({ ...bot, browserMode: 'shared', access: 'full', home: 'any', phoneControl: false, gpu: true, isChief: false })));
   db.close(); db = new Database(path);
-  assert.deepEqual(db.snapshot().bots, source.bots.map(bot => ({ ...bot, browserMode: 'shared', access: 'full', home: 'any', phoneControl: false, gpu: true })));
+  assert.deepEqual(db.snapshot().bots, source.bots.map(bot => ({ ...bot, browserMode: 'shared', access: 'full', home: 'any', phoneControl: false, gpu: true, isChief: false })));
   assert.equal(await readFile(file, 'utf8'), input);
   assert.equal((await stat(join(path, 'mybots.db'))).mode & 0o777, 0o600);
   for (const table of ['bots','messages','codex_sessions','tasks','task_events','memory','grants','approvals','activity','connector_state','heartbeats']) assert.ok(db.get("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table));

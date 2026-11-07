@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, ScrollView, Switch } from 'react-native';
 import { C, Icon, F, themed } from '../theme';
 import { IconButton, ModelSettings, PrimaryButton } from './shared';
 import { useKeyboardRoom } from '../BotProfile';
@@ -41,12 +41,13 @@ const s = themed(() => ({
  * Creating a bot in three steps: its face (Sortear or Montar), how it behaves and what it may do, and the first message.
  * The buttons sit at the end of each step, never over the options.
  */
-export function NewBot({ visible, models, defaultSelection, connections, aiAccounts, phone, onClose, onCreate }) {
+export function NewBot({ canChooseChief, firstBot, visible, models, defaultSelection, connections, aiAccounts, phone, onClose, onCreate }) {
   const [step, setStep] = useState(0); const [name, setName] = useState(''); const [face, setFace] = useState(null); const [instructions, setInstructions] = useState('');
+  const [chief, setChief] = useState(false);
   const [selection, setSelection] = useState({}); const [first, setFirst] = useState(GREETINGS[0]);
   const [template, setTemplate] = useState(null); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
-  useEffect(() => { if (visible) { setStep(0); setName(''); setFace(null); setInstructions(''); setSelection({ ...defaultSelection }); setFirst(GREETINGS[0]); setTemplate(null); setSaving(false); setError(''); } }, [visible]);
+  useEffect(() => { if (visible) { setChief(Boolean(firstBot)); setStep(0); setName(''); setFace(null); setInstructions(''); setSelection({ ...defaultSelection }); setFirst(GREETINGS[0]); setTemplate(null); setSaving(false); setError(''); } }, [visible]);
   useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [step]);
   const useTemplate = item => { setTemplate(item.id); setInstructions(item.profile.instructions); if (!name.trim()) setName(item.profile.name); };
   const finish = async () => {
@@ -54,7 +55,7 @@ export function NewBot({ visible, models, defaultSelection, connections, aiAccou
     const seed = face?.seed || name.trim();
     const profile = BOT_TEMPLATES.find(item => item.id === template)?.profile || {};
     try {
-      await onCreate({ ...profile, name: name.trim(), instructions: instructions.trim(), color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'full', home: 'any', ...selection,
+      await onCreate({ ...profile, ...(canChooseChief && chief ? { isChief: true } : {}), name: name.trim(), instructions: instructions.trim(), color: 'green', avatar: 'orbit', autonomy: 'ask', access: 'full', home: 'any', ...selection,
         face: { seed, color: face?.color || botColor({ name: name.trim(), face: { seed } }), ...(face?.mimo ? { mimo: face.mimo } : {}) } }, { first: first.trim() });
     } catch (failure) { setError(failure.message || 'Não deu para criar o bot.'); setSaving(false); }
   };
@@ -70,6 +71,10 @@ export function NewBot({ visible, models, defaultSelection, connections, aiAccou
         {step === 0 ? <>
           <Text style={s.label}>Nome</Text>
           <TextInput accessibilityLabel="Nome do bot" value={name} onChangeText={setName} maxLength={40} placeholder="Como ele vai se chamar?" placeholderTextColor={C.faint} selectionColor={C.accent} style={s.input} />
+          {canChooseChief && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}><Text style={s.label}>Chefe da equipe</Text><Text style={s.hint}>Delega tarefas, reúne as respostas e cuida das notas compartilhadas.</Text></View>
+            <Switch accessibilityLabel="Criar como Chefe" value={chief} onValueChange={setChief} />
+          </View>}
           <FacePicker name={name} face={face} onChange={setFace} />
           <PrimaryButton icon="right" title="Continuar" disabled={!ready[0]} onPress={() => setStep(1)} style={{ marginTop: 24 }} />
         </> : null}

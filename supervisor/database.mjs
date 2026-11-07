@@ -1,3 +1,4 @@
+import { checkNote, saveNote } from './notes.mjs';
 import { PROVIDER_NAMES } from '../lib/models.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
@@ -41,6 +42,7 @@ export const SYNCED = {
   bots: { key: 'id', at: "json_extract(body,'$.updatedAt')" },
   messages: { key: 'id', at: "json_extract(body,'$.createdAt')" },
   memory: { key: 'id', at: 'updated_at' },
+  notes: { key: 'path', at: 'updated_at' },
   grants: { key: 'id' },
   rooms: { key: 'id', at: 'updated_at' },
   room_messages: { key: 'id', at: 'created_at' },
@@ -49,10 +51,10 @@ export const SYNCED = {
   pending_items: { key: 'id', at: 'created_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
-  metadata: { key: 'key', where: "key IN ('person.name','person.theme','google.accounts','time_zone')" }
+  metadata: { key: 'key', where: "key IN ('person.name','person.theme','person.chief','google.accounts','time_zone')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 14;
+export const SCHEMA = 16;
 
 export class Database {
   constructor(directory) {
@@ -63,7 +65,7 @@ export class Database {
     chmodSync(join(directory, 'mybots.db'), 0o600);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.get('PRAGMA user_version').user_version;
-    if (version > 14) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
+    if (version > SCHEMA) { this.db.close(); throw new Error('O banco foi criado por uma versão mais recente do MyBots.'); }
     if (version === 0) this.transaction(() => {
       this.db.exec(`
         CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -191,25 +193,39 @@ export class Database {
         CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);`);
       this.run('INSERT OR IGNORE INTO sync_state(id,device,counter,applying) VALUES(1,?,0,0)', randomUUID());
       for (const [table, spec] of Object.entries(SYNCED)) {
-        const filter = spec.where ? ` AND ${spec.where}` : '';
-        const touch = (row, deleted) => `UPDATE sync_state SET counter=counter+1 WHERE id=1 AND applying=0;
-          INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) SELECT '${table}', ${row}.${spec.key}, counter, counter, device, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ${deleted} FROM sync_state WHERE id=1 AND applying=0
-          ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted;`;
-        const condition = row => spec.where ? `WHEN ${spec.where.replaceAll(/\bkey\b/g, `${row}.key`)}` : '';
-        const only = spec.updateOf ? ` OF ${spec.updateOf}` : '';
-        this.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;
-          CREATE TRIGGER ${table}_log_insert AFTER INSERT ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
-          CREATE TRIGGER ${table}_log_update AFTER UPDATE${only} ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
-          CREATE TRIGGER ${table}_log_delete AFTER DELETE ON ${table} ${condition('old')} BEGIN ${touch('old', 1)} END;`);
-        // What already exists starts in the log, with its own time when it has one (rows without one count as never edited).
-        const base = this.get('SELECT counter FROM sync_state WHERE id=1').counter;
-        this.db.exec(`INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted)
-          SELECT '${table}', ${spec.key}, ${base}+row_number() OVER (ORDER BY rowid), ${base}+row_number() OVER (ORDER BY rowid), (SELECT device FROM sync_state WHERE id=1), coalesce(${spec.at || 'NULL'}, '${EPOCH}'), 0
-          FROM ${table} WHERE 1=1${filter} AND ${spec.key} NOT IN (SELECT key FROM changes WHERE tbl='${table}')`);
-        this.db.exec('UPDATE sync_state SET counter=(SELECT coalesce(max(seq),0) FROM changes) WHERE id=1');
+        if (table !== 'notes') this.installSyncLog(table, spec);
       }
       this.db.exec('PRAGMA user_version=14;');
     });
+    if (version < 15) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS notes (path TEXT PRIMARY KEY, bot_id TEXT,
+        kind TEXT NOT NULL CHECK(kind IN ('chefe','entrega','arquivo')), title TEXT NOT NULL,
+        body TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+      this.installSyncLog('notes', SYNCED.notes);
+      this.db.exec('PRAGMA user_version=15;');
+    });
+    if (version < 16) this.transaction(() => {
+      this.installSyncLog('metadata', SYNCED.metadata);
+      this.db.exec('PRAGMA user_version=16;');
+    });
+  }
+  installSyncLog(table, spec) {
+    const filter = spec.where ? ` AND ${spec.where}` : '';
+    const touch = (row, deleted) => `UPDATE sync_state SET counter=counter+1 WHERE id=1 AND applying=0;
+      INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) SELECT '${table}', ${row}.${spec.key}, counter, counter, device, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ${deleted} FROM sync_state WHERE id=1 AND applying=0
+      ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted;`;
+    const condition = row => spec.where ? `WHEN ${spec.where.replaceAll(/\bkey\b/g, `${row}.key`)}` : '';
+    const only = spec.updateOf ? ` OF ${spec.updateOf}` : '';
+    this.db.exec(`DROP TRIGGER IF EXISTS ${table}_log_insert; DROP TRIGGER IF EXISTS ${table}_log_update; DROP TRIGGER IF EXISTS ${table}_log_delete;
+      CREATE TRIGGER ${table}_log_insert AFTER INSERT ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
+      CREATE TRIGGER ${table}_log_update AFTER UPDATE${only} ON ${table} ${condition('new')} BEGIN ${touch('new', 0)} END;
+      CREATE TRIGGER ${table}_log_delete AFTER DELETE ON ${table} ${condition('old')} BEGIN ${touch('old', 1)} END;`);
+    // What already exists starts in the log, with its own time when it has one (rows without one count as never edited).
+    const base = this.get('SELECT counter FROM sync_state WHERE id=1').counter;
+    this.db.exec(`INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted)
+      SELECT '${table}', ${spec.key}, ${base}+row_number() OVER (ORDER BY rowid), ${base}+row_number() OVER (ORDER BY rowid), (SELECT device FROM sync_state WHERE id=1), coalesce(${spec.at || 'NULL'}, '${EPOCH}'), 0
+      FROM ${table} WHERE 1=1${filter} AND ${spec.key} NOT IN (SELECT key FROM changes WHERE tbl='${table}')`);
+    this.db.exec('UPDATE sync_state SET counter=(SELECT coalesce(max(seq),0) FROM changes) WHERE id=1');
   }
   /** This device's id in the change log and how far its counter has gone. */
   syncState() { const row = this.get('SELECT device, counter FROM sync_state WHERE id=1'); return { device: row.device, counter: row.counter }; }
@@ -242,7 +258,7 @@ export class Database {
     const me = this.syncState().device; const result = { applied: 0, skipped: 0, conflicts: [], bots: [], chats: [], rooms: [], files: [] };
     const newer = (a, b) => (a.at > b.at) - (a.at < b.at) || (a.lamport - b.lamport) || (a.origin > b.origin) - (a.origin < b.origin);
     const columns = table => (this.columnCache ||= {})[table] ||= this.all(`PRAGMA table_info(${table})`).map(row => row.name);
-    const label = table => ({ bots: 'bot', rooms: 'sala', memory: 'memória', routines: 'rotina', pending_items: 'pendência', metadata: 'ajuste', attachments: 'anexo' }[table] || table);
+    const label = table => ({ bots: 'bot', rooms: 'sala', memory: 'memória', notes: 'nota', routines: 'rotina', pending_items: 'pendência', metadata: 'ajuste', attachments: 'anexo' }[table] || table);
     // What a record says apart from the bookkeeping that changes at every write (the edit time).
     const material = row => { try { const body = JSON.parse(row?.body ?? row?.value ?? 'null'); if (body && typeof body === 'object') delete body.updatedAt; return JSON.stringify(body ?? row?.value ?? null); } catch { return String(row?.body ?? row?.value ?? ''); } };
     const name = (table, data) => { try { const body = JSON.parse(data?.body || '{}'); return String(body.name || body.title || body.text || '').slice(0, 60); } catch { return ''; } };
@@ -252,6 +268,10 @@ export class Database {
         for (const change of [...changes].sort((a, b) => a.seq - b.seq)) {
           const spec = SYNCED[change?.table];
           if (!spec || change.table === 'grants' || typeof change.key !== 'string' || !change.key || change.key.length > 200 || !Number.isSafeInteger(change.lamport) || typeof change.at !== 'string' || change.at.length > 40 || typeof change.origin !== 'string' || !change.origin || change.origin.length > 64) { result.skipped++; continue; }
+          if (change.table === 'metadata' && change.key === 'person.chief' && !change.deleted && !uuid(change.data?.value)) { result.skipped++; continue; }
+          if (change.table === 'notes' && !change.deleted) {
+            try { checkNote(change.data); } catch { result.skipped++; continue; }
+          }
           if (change.origin === me) { result.skipped++; continue; }
           const remote = { at: change.at, lamport: change.lamport, origin: change.origin };
           const local = this.get('SELECT seq,lamport,origin,at FROM changes WHERE tbl=? AND key=?', change.table, change.key);
@@ -293,6 +313,11 @@ export class Database {
           this.run('INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted',
             change.table, change.key, counter, change.lamport, change.origin, change.at, change.deleted ? 1 : 0);
           result.applied++;
+          if (change.table === 'metadata' && change.key === 'person.chief') {
+            for (const id of [existing?.value, change.deleted ? null : change.data.value]) {
+              if (id && this.bot(id) && !result.bots.includes(id)) result.bots.push(id);
+            }
+          }
           const botId = change.table === 'bots' ? change.key : change.table === 'messages' || change.table === 'memory' ? (change.data?.bot_id || existing?.bot_id) : null;
           if (botId) { if (!result.bots.includes(botId)) result.bots.push(botId); if (change.table === 'messages' && !result.chats.includes(botId)) result.chats.push(botId); }
           if (change.table === 'room_messages' || change.table === 'rooms') { const roomId = change.table === 'rooms' ? change.key : (change.data?.room_id || existing?.room_id); if (roomId && !result.rooms.includes(roomId)) result.rooms.push(roomId); }
@@ -466,17 +491,31 @@ export class Database {
   close() { this.db.close(); }
   /** A bot's profile, without its messages (those are read by page, or whole with messages()). */
   bot(id) {
-    const row = this.get('SELECT body FROM bots WHERE id=?', id);
+    const row = this.get("SELECT body, id=(SELECT value FROM metadata WHERE key='person.chief') AS chief FROM bots WHERE id=?", id);
     if (!row) return null;
     const stored = JSON.parse(row.body);
     if (stored.phoneControl === undefined && stored.access === 'free' && this.get('SELECT body FROM grants WHERE bot_id=? AND tool=?', id, 'phone')?.body === 'false') stored.phoneControl = false;
     const bot = defaultBotAccess(stored);
+    bot.isChief = Boolean(row.chief && !bot.deletedAt);
     bot.browserMode = browserMode(bot); delete bot.mainChrome; delete bot.messages;
     const session = this.get('SELECT session_id FROM codex_sessions WHERE bot_id=?', id);
     if (session) bot.codexSessionId = session.session_id;
     return bot;
   }
   bots() { return this.all('SELECT id FROM bots').map(row => this.bot(row.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); }
+  teamStatus() {
+    const bots = this.all("SELECT id,json_extract(body,'$.name') AS name FROM bots WHERE json_extract(body,'$.deletedAt') IS NULL ORDER BY name,id");
+    return { bots: bots.map(bot => {
+      const openItems = this.all(`SELECT json_extract(body,'$.title') AS title,json_extract(body,'$.due') AS due,COUNT(*) OVER() AS total
+        FROM pending_items WHERE bot_id=? AND state='open' ORDER BY due IS NULL,due,created_at,id LIMIT 50`, bot.id);
+      const routines = this.all(`SELECT json_extract(body,'$.title') AS title,enabled,next_run_at AS nextRunAt
+        FROM routines WHERE bot_id=? ORDER BY created_at,id`, bot.id);
+      const tasks = this.all("SELECT state,COUNT(*) AS count FROM tasks WHERE bot_id=? AND state IN ('queued','running','waiting_approval') GROUP BY state", bot.id);
+      const lastActivity = this.get('SELECT kind,created_at AS at FROM activity WHERE bot_id=? ORDER BY id DESC LIMIT 1', bot.id) || null;
+      return { ...bot, activeTasks: Object.fromEntries(tasks.map(row => [row.state, row.count])), openItemCount: openItems[0]?.total || 0,
+        openItems: openItems.map(({ title, due }) => ({ title, due })), routines: routines.map(row => ({ ...row, enabled: Boolean(row.enabled) })), lastActivity };
+    }), untrusted: true };
+  }
   /** The bot with its whole conversation: for backups and the rare operations that rewrite it. */
   fullBot(id) { const bot = this.bot(id); return bot && { ...bot, messages: this.messages(id) }; }
   messages(botId) { return this.all('SELECT body FROM messages WHERE bot_id=? ORDER BY rowid', botId).map(parse); }
@@ -573,7 +612,7 @@ export class Database {
   }
   /** Saves the bot's profile only; its messages are written with appendMessage/updateMessage. */
   putBot(bot) {
-    const { messages, codexSessionId, lastMessage, messageCount, unread, ...body } = bot;
+    const { messages, codexSessionId, isChief, lastMessage, messageCount, unread, ...body } = bot;
     this.run('INSERT INTO bots(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body', bot.id, JSON.stringify(body));
     if (codexSessionId) this.session(bot.id, codexSessionId);
     else this.run('DELETE FROM codex_sessions WHERE bot_id=?', bot.id);
@@ -633,12 +672,21 @@ export class Database {
   }
   /** Everything, with every message: backups and export. The app's state is lighter (see the supervisor's state()). */
   snapshot() { return { schema: 1, googleAccounts: this.googleAccounts(), mode: 'phone', supervisorMigrated: true, bots: this.bots().map(bot => ({ ...bot, messages: this.messages(bot.id) })), roomsState: { schema: 1, rooms: this.rooms().map(room => ({ ...room, messages: this.roomMessages(room.id) })) }, skillsState: { schema: 1, skills: this.all('SELECT * FROM skills') }, toolsState: {
-    schema: 1, memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
+    schema: 1, notes: this.all('SELECT * FROM notes'), memory: this.all('SELECT * FROM memory'), pendingItems: this.all('SELECT * FROM pending_items'), grants: this.all('SELECT * FROM grants')
   } }; }
   validateTools(snapshot) {
     if (snapshot.toolsState === undefined) return;
     const state = snapshot.toolsState; const ids = new Set(snapshot.bots.map(bot => bot.id));
     if (state?.schema !== 1 || !['memory','pendingItems','grants'].every(key => Array.isArray(state[key]) && state[key].length <= 20000)) throw new Error('Backup de ferramentas inválido.');
+    if (state.notes !== undefined) {
+      if (!Array.isArray(state.notes) || state.notes.length > 20000) throw new Error('Lista de notas inválida no backup.');
+      const paths = new Set();
+      for (const row of state.notes) {
+        checkNote(row);
+        if (paths.has(row.path)) throw new Error('Caminho de nota repetido no backup.');
+        paths.add(row.path);
+      }
+    }
     for (const key of ['memory','pendingItems','grants']) {
       const seen = new Set();
       for (const row of state[key]) {
@@ -677,6 +725,8 @@ export class Database {
         this.putBot(bot); this.replaceMessages(bot.id, messages);
       }
       this.run("INSERT INTO metadata VALUES('legacy_imported',?)", now());
+      const chief = snapshot.bots.find(bot => bot.isChief && !bot.deletedAt);
+      if (chief) this.setChief(chief.id);
       this.record('migration', `${snapshot.bots.length} bots migrados com seus identificadores.`);
       return true;
     });
@@ -707,9 +757,15 @@ export class Database {
         this.run('DELETE FROM skills');
         for (const row of snapshot.skillsState.skills.slice(0, 200)) if (uuid(row?.id) && typeof row.body === 'string' && row.body.length < 300000 && typeof row.created_at === 'string') this.run('INSERT INTO skills VALUES(?,?,?)', row.id, row.body, row.created_at);
       }
+      if (snapshot.toolsState?.notes !== undefined) {
+        this.run('DELETE FROM notes');
+        for (const row of snapshot.toolsState.notes) saveNote(this, row);
+      }
       for (const row of snapshot.toolsState?.memory || []) this.run('INSERT INTO memory VALUES(?,?,?,?)', row.id, row.bot_id, row.body, row.updated_at);
       for (const row of snapshot.toolsState?.pendingItems || []) this.run('INSERT INTO pending_items VALUES(?,?,?,?,?)', row.id, row.bot_id, row.body, row.state, row.created_at);
       for (const row of snapshot.toolsState?.grants || []) this.run('INSERT INTO grants VALUES(?,?,?,?)', row.id, row.bot_id, row.tool, row.body);
+      const chief = snapshot.bots.find(bot => bot.isChief && !bot.deletedAt);
+      if (chief || snapshot.bots.some(bot => bot.isChief !== undefined) || !this.bots().some(bot => bot.isChief)) this.setChief(chief?.id || null);
       this.record('restore', 'Backup restaurado.');
     });
   }
@@ -721,6 +777,22 @@ export class Database {
       ...(existing.get(bot.id)?.codexSessionId ? { codexSessionId: existing.get(bot.id).codexSessionId } : {}) })));
     this.transaction(() => { for (const bot of merged) { this.putBot(bot); this.replaceMessages(bot.id, bot.messages); } });
   }
+  // One synchronized pointer makes concurrent offline promotions converge like any other personal setting.
+  setChief(id) {
+    return this.transaction(() => {
+      const previous = this.get("SELECT value FROM metadata WHERE key='person.chief'")?.value;
+      if (id) this.requireBot(id);
+      if ((previous || null) === id) return;
+      if (id) this.run("INSERT INTO metadata VALUES('person.chief',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", id);
+      else this.run("DELETE FROM metadata WHERE key='person.chief'");
+      for (const changed of [previous, id].filter(Boolean)) {
+        this.run('DELETE FROM codex_sessions WHERE bot_id=?', changed);
+        this.run('DELETE FROM room_sessions WHERE bot_id=?', changed);
+        this.notify('bot.updated', { botId: changed });
+      }
+      this.record('bot_updated', id ? 'Chefe da equipe escolhido.' : 'Papel de Chefe removido.', id || previous);
+    });
+  }
   create(data, selection) {
     validateProfile({ ...data, ...selection });
     if (typeof data.name !== 'string' || !data.name.trim() || data.name.trim().length > 40 ||
@@ -729,8 +801,16 @@ export class Database {
     const stamp = now();
     const bot = { id: randomUUID(), name: data.name.trim(), instructions: (data.instructions || '').trim(), color: data.color || 'green', avatar: data.avatar || 'orbit', ...(data.face ? { face: data.face } : {}), autonomy: data.autonomy || 'ask', ...(data.access ? { access: data.access } : {}), home: data.home || 'phone', browserMode: data.access === 'basic' && browserMode({ ...data, ...selection }) === 'shared' ? 'separate' : browserMode({ ...data, ...selection }), ...selection, ...(data.aiAccount && data.aiAccount !== 'default' ? { aiAccount: data.aiAccount } : {}), createdAt: stamp, updatedAt: stamp, messages: [] };
     Object.assign(bot, defaultBotAccess(bot), { googleAccount: data.googleAccount || '' });
-    this.transaction(() => { if (bot.googleAccount) this.addGoogleAccount(bot.googleAccount); this.putBot(bot); this.record('bot_created', `Bot ${bot.name} criado.`, bot.id); });
-    return bot;
+    this.transaction(() => {
+      if (bot.googleAccount) this.addGoogleAccount(bot.googleAccount);
+      this.putBot(bot);
+      if (data.isChief === true) {
+        if (this.bots().some(item => item.isChief)) throw new Error('Já existe um Chefe. Para trocar, promova o novo bot pelo perfil.');
+        this.setChief(bot.id);
+      }
+      this.record('bot_created', `Bot ${bot.name} criado.`, bot.id);
+    });
+    return { ...bot, isChief: data.isChief === true };
   }
   configure(id, selection, changes = {}) {
     const bot = this.requireBot(id);
@@ -756,15 +836,25 @@ export class Database {
     if (switched || moved || updated.name !== bot.name || updated.instructions !== bot.instructions || updated.access !== bot.access || updated.googleAccount !== bot.googleAccount || (updated.aiAccount || '') !== (bot.aiAccount || '')) delete updated.codexSessionId;   // a session lives in the folder of the account that made it
     const level = { basic: 'Pouco acesso', ask: 'Médio', full: 'Acesso total', free: 'Livre' }[updated.access];
     const where = { phone: 'no celular', pc: 'no computador', any: 'onde estiver ligado' }[updated.home || 'phone'];
-    this.transaction(() => { if (updated.googleAccount) this.addGoogleAccount(updated.googleAccount); this.putBot(updated); if (updated.googleAccount !== bot.googleAccount) this.run('DELETE FROM room_sessions WHERE bot_id=?', id); this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id); });
-    return updated;
+    this.transaction(() => {
+      if (updated.googleAccount) this.addGoogleAccount(updated.googleAccount);
+      this.putBot(updated);
+      if (changes.isChief !== undefined && changes.isChief !== bot.isChief) {
+        const previous = this.get("SELECT value FROM metadata WHERE key='person.chief'")?.value;
+        if (previous && this.activeTasks(previous).length) throw new Error('Aguarde o Chefe terminar a tarefa antes de trocar.');
+        this.setChief(changes.isChief ? id : null);
+      }
+      if (updated.googleAccount !== bot.googleAccount) this.run('DELETE FROM room_sessions WHERE bot_id=?', id);
+      this.record('bot_updated', switched ? `IA alterada para ${PROVIDER_NAMES[updated.provider] || 'Codex'}; a conversa continua com o histórico salvo.` : moved ? `Agora vive ${where}.` : updated.access !== bot.access ? `Nível de acesso: ${level}.` : 'Perfil atualizado.', id);
+    });
+    return this.requireBot(id);
   }
   delete(id) {
     this.requireBot(id);
     if (this.activeTasks(id).length) throw new Error('Aguarde a tarefa antes de apagar o bot.');
     this.backup();
     const next = deleteLocalBot({ bots: [this.fullBot(id)] }, id).bots[0];
-    this.transaction(() => { this.putBot(next); this.replaceMessages(id, []); this.run('DELETE FROM browser_steps WHERE bot_id=?', id); this.run('DELETE FROM browser_downloads WHERE bot_id=?', id); this.record('bot_deleted', 'Bot apagado.', id); });
+    this.transaction(() => { if (this.bot(id).isChief) this.setChief(null); this.putBot(next); this.replaceMessages(id, []); this.run('DELETE FROM browser_steps WHERE bot_id=?', id); this.run('DELETE FROM browser_downloads WHERE bot_id=?', id); this.record('bot_deleted', 'Bot apagado.', id); });
   }
   task(id) { return this.get('SELECT * FROM tasks WHERE id=?', id); }
   tasks(limit = -1) { return this.all('SELECT * FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?', limit); }

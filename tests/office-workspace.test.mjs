@@ -73,11 +73,11 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await page.getByRole('button', { name: 'Selecionar bot Atlas', exact: true }).click();
   const composer = page.getByLabel('Sua mensagem', { exact: true });
   await composer.fill('Rascunho do Atlas');
-  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Equipe', exact: true }).last().click();
   await page.getByLabel('Conversar com Clara no escritório').click();
   assert.equal(await composer.inputValue(), '');
   await composer.fill('Rascunho da Clara');
-  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Equipe', exact: true }).last().click();
   await page.getByLabel('Conversar com Atlas no escritório').click();
   assert.equal(await composer.inputValue(), 'Rascunho do Atlas');
   await page.getByLabel('Recolher painel do escritório').click();
@@ -103,7 +103,7 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   const roomChooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
   await (await roomChooser).setFiles({ name: 'sala.txt', mimeType: 'text/plain', buffer: Buffer.from('anexo da sala') });
   await seen('sala.txt');
-  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Equipe', exact: true }).last().click();
   await page.getByLabel('Conversar com Atlas no escritório').click();
   const botChooser = page.waitForEvent('filechooser'); await page.getByLabel('Anexar arquivo ou foto').click();
   await (await botChooser).setFiles({ name: 'bot.txt', mimeType: 'text/plain', buffer: Buffer.from('anexo do bot') });
@@ -113,7 +113,7 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   await seen('sala.txt');
   await page.getByLabel('Enviar mensagem', { exact: true }).click();
   await page.getByText('Rascunho da sala', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Equipe', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Equipe', exact: true }).last().click();
   await page.getByLabel('Conversar com Atlas no escritório').click();
   await seen('bot.txt');
   await page.getByLabel('Remover bot.txt').click();

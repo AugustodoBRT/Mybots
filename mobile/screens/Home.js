@@ -63,6 +63,7 @@ function BotRow({ bot, data, onPress, onProfile }) {
     <View style={s.rowCopy}>
       <View style={s.rowTop}>
         <Text style={s.name} numberOfLines={1}>{bot.name}</Text>
+        {bot.isChief ? <Text style={[s.stateWord, { color: C.accent }]}>Chefe</Text> : null}
         {word ? <Text style={[s.stateWord, { color: word[1] }]} numberOfLines={1}>{word[0]}</Text> : null}
         <Text style={s.time}>{time}</Text>{bot.unread ? <Text style={s.unread}>{bot.unread > 99 ? '99+' : bot.unread}</Text> : null}
       </View>
@@ -87,7 +88,7 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
@@ -114,7 +115,8 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
       <View style={s.header}>
         <View><IconButton icon="menu" label={waiting ? 'Abrir o menu, algo espera você' : 'Abrir o menu'} onPress={() => setMenu(true)} size={42} />
           {waiting ? <View style={{ position: 'absolute', top: 2, right: 2, width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg }} /> : null}</View>
-        <View style={s.wordmark}><Text style={s.wordmarkText}>mybots</Text><View style={s.wordmarkDot} /></View>
+        {onHome && team ? <IconButton icon="back" label="Voltar ao início" onPress={onHome} size={40} /> : null}
+        <View style={s.wordmark}><Text style={s.wordmarkText}>{team ? 'Equipe' : 'mybots'}</Text><View style={s.wordmarkDot} /></View>
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={42} />
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={s.modeChip}>
@@ -126,6 +128,7 @@ function HomeView({ data, error, onRetry, onLogs, onCreate, onOpen, onConnection
         <Text style={s.today}>{summary ? <Text style={s.todayLink}>{summary}</Text> : `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}. Tudo em dia.`}</Text></Pressable>
         : <Text style={s.today}>Seu pequeno time pessoal começa aqui.</Text>}
       {bots.length && ahead.length ? <View style={{ marginTop: -14, marginBottom: 20, gap: 2 }}>{ahead.map(line => <Text key={line} style={s.facts} numberOfLines={1}>{line}</Text>)}</View> : null}
+      {onCreateChief ? <PrimaryButton icon="plus" title="Crie o seu Chefe" onPress={onCreateChief} disabled={!data.models?.length} /> : null}
       {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
       {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
       {data?.modelsError ? <Notice text={data.modelsError} onRetry={onConnection} /> : null}

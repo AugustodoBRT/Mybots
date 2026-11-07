@@ -2,7 +2,14 @@ import { validGoogleAccount } from '../mobile/local.js';
 import { routineArguments } from '../mobile/routine-text.js';
 import { safeUrl } from './browser.mjs';
 import { EYE_STYLES, MOUTHS, TOPS, LIMITS } from '../lib/mimo.mjs';
+import { validPath, checkBody } from './notes.mjs';
 export const TOOL_DEFINITIONS = [
+  { name: 'team.status', label: 'Consultar estado da equipe', description: 'Mostra ao Chefe as pendências, rotinas e última atividade dos bots.', readOnly: true },
+  { name: 'delivery.write', label: 'Registrar entrega', description: 'Cria uma entrega datada deste bot.', defaultAllowed: true },
+  { name: 'shared.index_read', label: 'Ler índice compartilhado', description: 'Consulta o índice das notas do Chefe.', readOnly: true },
+  { name: 'shared.note_read', label: 'Consultar notas', description: 'Lê uma nota ou lista os títulos das notas compartilhadas.', readOnly: true },
+  { name: 'shared.note_write', label: 'Escrever nota', description: 'Cria uma nota do Chefe ou guarda a versão anterior ao substituir.' },
+  { name: 'shared.archive', label: 'Arquivar entrega', description: 'Move uma entrega para o arquivo, preservando o conteúdo.' },
   { name: 'memory.read', label: 'Ler memória', description: 'Lê somente as lembranças deste bot.', readOnly: true },
   { name: 'memory.write', label: 'Salvar memória', description: 'Guarda ou atualiza uma lembrança deste bot.' },
   { name: 'memory.delete', label: 'Apagar memória', description: 'Apaga uma lembrança deste bot que ficou inútil ou que a pessoa pediu para esquecer.', defaultAllowed: true },
@@ -114,6 +121,7 @@ export function validFace(face) {
   return Object.keys(face).every(key => ['seed', 'color', 'pieces', 'mimo'].includes(key));
 }
 export function validateProfile(data) {
+  if (data.isChief !== undefined && typeof data.isChief !== 'boolean') throw new Error('Papel de Chefe inválido.');
   if (data.googleAccount !== undefined && data.googleAccount !== '' && !validGoogleAccount(data.googleAccount)) throw new Error('Informe um e-mail Google válido.');
   if (data.face !== undefined && !validFace(data.face)) throw new Error('Escolha um rosto válido.');
   if (data.aiAccount !== undefined && data.aiAccount !== '' && !/^[a-z0-9-]{1,24}$/.test(data.aiAccount)) throw new Error('Escolha uma conta de IA válida.');
@@ -131,7 +139,8 @@ export function validateProfile(data) {
 }
 export function toolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Argumentos inválidos.');
-  const fields = { 'memory.read': ['key'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
+  const fields = { 'delivery.write': ['topic','text'], 'shared.index_read': [], 'shared.note_read': ['path','list','prefix'],
+    'shared.note_write': ['path','text','overwrite'], 'shared.archive': ['path','summary'], 'memory.read': ['key'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
     'task.update_item': ['id','title','details','course','due','source','done'], 'notify.user': ['title','body'],
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
@@ -139,7 +148,7 @@ export function toolArguments(tool, args) {
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger'], 'routine.update': ['id','enabled','delete'],
     'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
-    'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
+    'team.status': [], 'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
@@ -154,6 +163,26 @@ export function toolArguments(tool, args) {
     if (typeof args[name] !== 'string' || !args[name].trim() || args[name].length > max || /\u0000/.test(args[name])) throw new Error('Preencha os argumentos da ferramenta dentro dos limites.');
     return args[name].trim();
   };
+  if (tool === 'delivery.write') return { topic: checkBody(text('topic', 80)), text: checkBody(text('text', 4000)) };
+  if (tool === 'shared.index_read') return {};
+  if (tool.startsWith('shared.')) {
+    for (const key of ['list', 'overwrite']) if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error('Use true ou false em ' + key + '.');
+    if (args.list) {
+      if (args.path !== undefined) throw new Error('Escolha path ou list.');
+      const prefix = args.prefix === undefined ? '' : args.prefix;
+      if (typeof prefix !== 'string' || prefix.length > 120 || /[^a-zA-Z0-9_./-]/.test(prefix) || prefix.startsWith('/') || prefix.includes('..')) throw new Error('Prefixo de notas inválido.');
+      return { list: true, prefix };
+    }
+    const { path } = args;
+    if (args.prefix !== undefined || !validPath(path)) throw new Error('Caminho de nota inválido.');
+    if (tool === 'shared.note_read') return { path };
+    if (tool === 'shared.archive' && path.startsWith('entregas/')) return { path, summary: checkBody(text('summary', 4000, true)) };
+    if (tool === 'shared.note_write' && path.startsWith('chefe/')) {
+      text('text', 8000);
+      return { path, text: checkBody(args.text), overwrite: args.overwrite === true };
+    }
+    throw new Error('Caminho não permitido para esta ferramenta.');
+  }
   if (tool === 'memory.read') return { key: text('key', 80, true) };
   if (tool === 'memory.write') return { key: text('key', 80), text: text('text', 4000) };
   if (tool === 'memory.delete') return { key: text('key', 80) };
@@ -225,7 +254,7 @@ export function toolArguments(tool, args) {
     if (!['open', 'done', 'all'].includes(state)) throw new Error('Use state open, done ou all.');
     return { state, limit: integer('limit', 1, 200, 50) };
   }
-  if (tool === 'team.bots' || tool === 'team.rooms') return {};
+  if (tool === 'team.status' || tool === 'team.bots' || tool === 'team.rooms') return {};
   if (tool === 'team.create_bot') {
     const color = text('color', 10, true); const avatar = text('avatar', 10, true); const access = text('access', 10, true); const home = text('home', 10, true);
     if (color && !['green','blue','purple','orange'].includes(color)) throw new Error('Use color green, blue, purple ou orange.');

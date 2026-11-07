@@ -62,7 +62,7 @@ jobs:
         include:
           - { id: linux, os: ubuntu-24.04, args: '--linux AppImage deb' }
           - { id: windows, os: windows-2022, args: '--win nsis' }
-          - { id: mac, os: macos-14, args: '--mac dmg --arm64 --x64' }
+          - { id: mac, os: macos-15, args: '--mac dmg --arm64 --x64' }
     runs-on: ${{ matrix.os }}
     steps:
       - name: Esse sistema foi pedido?

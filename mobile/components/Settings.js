@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, View, ScrollView, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
+import { Modal, View, ScrollView, Text, Pressable, TextInput, Switch, useWindowDimensions } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
 import { termuxAvailable, passwordsList } from '../termux';
@@ -12,6 +12,7 @@ import { DesktopUpdate } from './DesktopUpdate';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
+import { FACES_3D_AVAILABLE, setFaces3d, useFaces3d } from '../faces3d';
 
 /** "3 contas em 2 IAs", or the invitation when there is only the main login of each. */
 function aiSummary(aiAccounts) {
@@ -44,10 +45,11 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const remote = a.backend === 'pc';   // the phone without Termux: the computer's MyBots is the backend
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
+  const solid = useFaces3d();
   const categories = useMemo(() => [
     { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
     ...(phone ? [{ key: 'ai', icon: 'user', title: 'Contas de IA', summary: aiSummary(data?.aiAccounts), keywords: ['claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
-    { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', ...bots.map(bot => bot.name)] },
+    { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', '3d', 'aparência', 'rosto', ...bots.map(bot => bot.name)] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
     // Termux is optional: a guide for the whole process, and the switch to a supervisor of the phone's own.
@@ -68,6 +70,11 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     </>;
     if (key === 'ai') return <AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} />;
     if (key === 'bots') return <>
+      {FACES_3D_AVAILABLE ? <View style={[s.botRow, { gap: 12 }]}>
+        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Bots em 3D (teste)</Text>
+          <Text style={s.rowSummary}>Mostra em todo o app os bots do Escritório 3D, com volume, luz e brilho. Vale só neste aparelho.</Text></View>
+        <Switch accessibilityLabel="Bots em 3D" value={solid} onValueChange={setFaces3d} />
+      </View> : null}
       {bots.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Perfil de ${bot.name}`} onPress={() => { onClose(); a.openProfile(bot); }} style={({ pressed }) => [s.botRow, pressed && { opacity: 0.7 }]}>
         <Avatar bot={bot} size={44} animated={false} state={offline(data, bot.id) ? 'sleeping' : 'idle'} />
         <View style={{ flex: 1 }}><Text style={s.rowTitle} numberOfLines={1}>{bot.name}</Text><Text style={s.rowSummary} numberOfLines={1}>{bot.phoneControl ? 'Acesso total · controla o celular' : 'Acesso total'}</Text></View>

@@ -3,7 +3,7 @@
     "name": "MyBots",
     "slug": "mybots",
     "scheme": "mybots",
-    "version": "0.74.3",
+    "version": "0.75.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [

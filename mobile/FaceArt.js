@@ -5,6 +5,8 @@ import { Mimo, specFromFace, particleCount, moodFor, airyMinR } from '../lib/mim
 import { paintFrame } from '../lib/mimo-canvas.mjs';
 import { currentTheme } from './theme';
 import { useBotMood } from './mood-director';
+import { useFaces3d } from './faces3d';
+import FaceArt3D from './FaceArt3D';
 
 // Only a handful of bots move at once (measured: eight cost nothing, thirty do); the rest of a long list wears a calm still frame.
 const MAX_ANIMATED = 8; const slots = new Set();
@@ -47,10 +49,11 @@ function FaceArt({ bot, state = 'idle', size = 54, animated = false, mood: force
   const specJson = useMemo(() => JSON.stringify(spec), [spec]);
   const on = useAnimation(animated && size >= 28), live = useBotMood(bot?.id);
   const mood = forced || (on && live ? live : moodFor(state)), light = currentTheme();
-  const count = particleCount(size, true);
+  const count = particleCount(size, true), solid = useFaces3d();
   return <View accessible accessibilityLabel={`${bot?.name || 'Bot'}${NAMES[mood] ? `, ${NAMES[mood]}` : ''}`} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
     {MimoView ? <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />
-      : Platform.OS === 'web' ? <WebFace spec={spec} mood={mood} size={size} light={light} on={on} /> : null}
+      : Platform.OS === 'web' ? solid ? <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<WebFace spec={spec} mood={mood} size={size} light={light} on={on} />} />
+        : <WebFace spec={spec} mood={mood} size={size} light={light} on={on} /> : null}
   </View>;
 }
 export default memo(FaceArt);

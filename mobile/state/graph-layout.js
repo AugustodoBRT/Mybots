@@ -154,8 +154,22 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     alpha: o.alpha ?? (known ? Math.min(1, 0.06 + 0.9 * fresh) : 1), target: 0,
     tick, run, positions, nodes: list, pin, unpin, warm
   };
-  // Nodes held by a finger or the mouse: they stay where they are put and the rest reacts, like d3's fx/fy.
+  // Nodes held by a finger or the mouse: they stay where they are put, like d3's fx/fy. While dragging, only the held node,
+  // the notes linked to it and the ones it passes close to move (`moving`); everything else stays exactly where it was.
   const pinned = new Map();
+  let moving = null, around = null;
+  const reach = Math.max(40, o.linkDistance * 0.9);
+  function wakeAround() {
+    if (!around) {
+      around = Array.from({ length: n }, () => []);
+      for (const [s, t] of links) { around[s].push(t); around[t].push(s); }
+    }
+    for (const [i, [x, y]] of pinned) {
+      moving[i] = 1;
+      for (const j of around[i]) moving[j] = 1;
+      for (let j = 0; j < n; j++) if (!moving[j] && Math.abs(xs[j] - x) < reach && Math.abs(ys[j] - y) < reach && Math.hypot(xs[j] - x, ys[j] - y) < reach) moving[j] = 1;
+    }
+  }
 
   function repulse(alpha) {
     const strength = o.charge * alpha, max2 = o.distanceMax * o.distanceMax;
@@ -200,6 +214,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
 
   function tick() {
     if (state.done) return false;
+    if (moving) wakeAround();
     const alpha = state.alpha;
     repulse(alpha);
     for (const [s, t] of links) {
@@ -215,7 +230,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
       vx[i] -= xs[i] * o.gravity * alpha; vy[i] -= ys[i] * o.gravity * alpha;
       vx[i] *= 1 - o.decay; vy[i] *= 1 - o.decay;
       const held = pinned.get(i);
-      if (held) { xs[i] = held[0]; ys[i] = held[1]; vx[i] = vy[i] = 0; continue; }
+      if (held || (moving && !moving[i])) { if (held) { xs[i] = held[0]; ys[i] = held[1]; } vx[i] = vy[i] = 0; continue; }
       xs[i] += vx[i]; ys[i] += vy[i];
       energy += vx[i] * vx[i] + vy[i] * vy[i];
     }
@@ -223,7 +238,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     state.alpha += (state.target - alpha) * o.alphaDecay;
     state.ticks++;
     // Stops by itself: cold enough, or nothing moves any more (never while something is being dragged).
-    if (!state.target && (state.alpha < o.alphaMin || (state.ticks > 15 && state.energy < o.restEnergy))) state.done = true;
+    if (!state.target && (state.alpha < o.alphaMin || (state.ticks > 15 && state.energy < o.restEnergy))) { state.done = true; moving = null; }
     return !state.done;
   }
 
@@ -246,9 +261,13 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     return true;
   }
   function unpin(id) { const i = index.get(id); if (i !== undefined) pinned.delete(i); }
-  function warm(target) {
+  // `local`: only what the drag touches moves (Obsidian-like); without it the whole drawing reheats (a change of forces).
+  function warm(target, { local = false } = {}) {
     state.target = target;
+    if (local && !moving && state.done) moving = new Uint8Array(n);
+    if (!local) moving = null;
     if (target) { state.alpha = Math.max(state.alpha, target); state.done = n === 0; state.ticks = 0; }
+    else if (moving) { state.done = false; state.ticks = 0; }
   }
 
   function positions() {

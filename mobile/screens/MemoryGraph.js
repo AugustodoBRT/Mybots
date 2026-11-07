@@ -64,8 +64,8 @@ export function useLayout(model, store, forces, onFirst) {
   const reheat = () => { heat.current = 0.5; };
   // Dragging a node, like Obsidian: it follows the pointer and its neighbours come along; let go and it settles.
   const drag = useMemo(() => ({
-    move(id, x, y) { const run = live.current; if (run?.layout.pin(id, x, y)) { run.layout.warm(0.3); run.wake(); } },
-    end(id) { const run = live.current; if (!run) return; run.layout.unpin(id); run.layout.warm(0); run.wake(); }
+    move(id, x, y) { const run = live.current; if (run?.layout.pin(id, x, y)) { run.layout.warm(0.3, { local: true }); run.wake(); } },
+    end(id) { const run = live.current; if (!run) return; run.layout.unpin(id); run.layout.warm(0, { local: true }); run.wake(); }
   }), []);
   return { positions, fitKey, reheat, drag };
 }
@@ -227,10 +227,14 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
       if (id !== shown) { shown = id; setHover(id); }
     };
     const leave = () => { shown = null; setHover(null); };
+    // Dragging over the titles must not select them as text.
+    const press = e => { if (e.button === 0) e.preventDefault(); };
+    element.style.userSelect = 'none'; element.style.webkitUserSelect = 'none';
+    element.addEventListener('mousedown', press);
     element.addEventListener('wheel', wheel, { passive: false });
     element.addEventListener('pointermove', move);
     element.addEventListener('pointerleave', leave);
-    return () => { element.removeEventListener('wheel', wheel); element.removeEventListener('pointermove', move); element.removeEventListener('pointerleave', leave); };
+    return () => { element.removeEventListener('mousedown', press); element.removeEventListener('wheel', wheel); element.removeEventListener('pointermove', move); element.removeEventListener('pointerleave', leave); };
   }, []);
 
   // The zoom in half-steps: what the layers depend on, so they re-render a few times per zoom, not every frame.

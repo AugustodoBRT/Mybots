@@ -146,3 +146,29 @@ test('a dragged node stays where it is put, pulls its neighbours along and the l
   const ticks = layout.run();
   assert.ok(layout.done && ticks < 1000, 'settles by itself after letting go');
 });
+
+test('a local drag moves only the held node, its links and what it passes by; the rest of the drawing stays put', () => {
+  const nodes = [], edges = [];
+  for (let i = 0; i < 40; i++) nodes.push({ id: 'n' + i });
+  for (let i = 1; i < 40; i++) edges.push({ from: 'n' + (i % 7), to: 'n' + i });
+  const layout = createLayout({ nodes, edges });
+  layout.run();
+  const before = layout.positions();
+  // Drag n10 (linked only to n3) straight through the spot where n25 sits.
+  const target = before.n25, start = before.n10;
+  const moved = () => Object.keys(before).filter(id => Math.hypot(layout.positions()[id].x - before[id].x, layout.positions()[id].y - before[id].y) > 0.01);
+  for (let step = 1; step <= 40; step++) {
+    const t = step / 40;
+    layout.pin('n10', start.x + (target.x - start.x) * t, start.y + (target.y - start.y) * t);
+    layout.warm(0.3, { local: true });
+    layout.tick();
+  }
+  const touched = new Set(moved());
+  assert.ok(touched.has('n10') && touched.has('n3'), 'the held node and its link move');
+  assert.ok(touched.has('n25'), 'the node it passed over was pushed aside');
+  assert.ok(touched.size < 20, 'most of the drawing did not move: ' + touched.size);
+  layout.unpin('n10'); layout.warm(0, { local: true });
+  layout.run();
+  assert.ok(layout.done);
+  assert.ok(new Set(moved()).size < 20, 'nor while it settles');
+});

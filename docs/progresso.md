@@ -1832,3 +1832,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Arrastar uma nota no grafo**, como no Obsidian: apertar uma bolinha e mover leva a bolinha junto com o mouse ou o dedo. As notas ligadas acompanham, e ao soltar o desenho se acomoda sozinho. Antes, qualquer arraste movia o grafo inteiro. Arrastar o fundo continua movendo o grafo, e clicar ou tocar sem mover continua abrindo a nota. No PC, o cursor vira a mãozinha de pegar. Também vale no grafo local da nota. No motor do layout (`mobile/state/graph-layout.js`), `pin`/`unpin` prendem a nota e `warm` mantém o layout ativo enquanto ela é arrastada.
 - **Testes**: 508 na suíte (507 passam, 1 opcional pulado); novo caso no `tests/graph-layout.test.mjs`. Conferido no Chrome headless: no mouse, a bolinha fica exatamente sob o ponteiro; no toque (390 px), segue o dedo; o fundo ainda arrasta o grafo e o clique ainda abre a nota.
 - **Não testado em celular real**: o arraste com o dedo no Android.
+
+## 0.74.2 (versionCode 156): arrastar no grafo como no Obsidian
+
+- **Só a bolinha arrastada se mexe**: na v155, arrastar reaquecia o desenho inteiro e todas as notas andavam. Agora a simulação roda só onde o arraste toca: a nota segura, as notas ligadas a ela (puxadas pelas linhas) e as que ela encosta ao passar (empurradas para o lado). O resto do grafo fica exatamente onde estava, inclusive enquanto tudo se acomoda depois de soltar. Mudar as forças no painel continua reorganizando o desenho todo.
+- **Texto não fica mais selecionado** ao arrastar por cima dos nomes no PC.
+- **Testes**: 509 na suíte (508 passam, 1 opcional pulado); novo caso de arraste local no `tests/graph-layout.test.mjs`. Conferido no Chrome headless: arrastando o hub "Central de Vagas", só ele e as notas ligadas se mexeram, nenhum texto ficou selecionado (mouse e toque), o fundo ainda move o grafo e o clique abre a nota.

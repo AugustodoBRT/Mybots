@@ -225,20 +225,25 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
       dx *= k; dy *= k;
       vx[t] -= dx * bias; vy[t] -= dy * bias; vx[s] += dx * (1 - bias); vy[s] += dy * (1 - bias);
     }
-    let energy = 0;
+    let energy = 0, fastest = 0, free = 0;
     for (let i = 0; i < n; i++) {
-      vx[i] -= xs[i] * o.gravity * alpha; vy[i] -= ys[i] * o.gravity * alpha;
+      // A drag leaves the rest of the drawing still, so the pull to the centre would only make the moving part creep.
+      if (!moving) { vx[i] -= xs[i] * o.gravity * alpha; vy[i] -= ys[i] * o.gravity * alpha; }
       vx[i] *= 1 - o.decay; vy[i] *= 1 - o.decay;
       const held = pinned.get(i);
       if (held || (moving && !moving[i])) { if (held) { xs[i] = held[0]; ys[i] = held[1]; } vx[i] = vy[i] = 0; continue; }
       xs[i] += vx[i]; ys[i] += vy[i];
-      energy += vx[i] * vx[i] + vy[i] * vy[i];
+      const v2 = vx[i] * vx[i] + vy[i] * vy[i];
+      energy += v2; free++; if (v2 > fastest) fastest = v2;
     }
-    state.energy = n ? energy / n : 0;
+    state.energy = moving ? (free ? energy / free : 0) : n ? energy / n : 0;
     state.alpha += (state.target - alpha) * o.alphaDecay;
     state.ticks++;
     // Stops by itself: cold enough, or nothing moves any more (never while something is being dragged).
-    if (!state.target && (state.alpha < o.alphaMin || (state.ticks > 15 && state.energy < o.restEnergy))) { state.done = true; moving = null; }
+    // After a drag it eases out until even the fastest dot moves less than a twentieth of a pixel per frame.
+    const still = moving ? fastest < 0.0025 : state.energy < o.restEnergy;
+    if (!state.target && (state.alpha < o.alphaMin || (state.ticks > 15 && still))) { state.done = true; moving = null; }
+    state.local = Boolean(moving);
     return !state.done;
   }
 
@@ -268,6 +273,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     if (!local) moving = null;
     if (target) { state.alpha = Math.max(state.alpha, target); state.done = n === 0; state.ticks = 0; }
     else if (moving) { state.done = false; state.ticks = 0; }
+    state.local = Boolean(moving);
   }
 
   function positions() {

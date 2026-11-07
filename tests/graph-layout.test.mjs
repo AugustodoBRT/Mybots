@@ -172,3 +172,29 @@ test('a local drag moves only the held node, its links and what it passes by; th
   assert.ok(layout.done);
   assert.ok(new Set(moved()).size < 20, 'nor while it settles');
 });
+
+test('after a drag the moving dots ease out: their speed falls off steadily and they stop by themselves', () => {
+  const nodes = [], edges = [];
+  for (let i = 0; i < 30; i++) nodes.push({ id: 'n' + i });
+  for (let i = 1; i < 30; i++) edges.push({ from: 'n' + (i % 5), to: 'n' + i });
+  const layout = createLayout({ nodes, edges });
+  layout.run();
+  const start = layout.positions().n7;
+  for (let step = 1; step <= 20; step++) { layout.pin('n7', start.x + step * 8, start.y + step * 5); layout.warm(0.3, { local: true }); layout.tick(); }
+  assert.equal(layout.local, true);
+  layout.unpin('n7'); layout.warm(0, { local: true });
+  const speeds = [];
+  let last = layout.positions();
+  while (!layout.done && speeds.length < 2000) {
+    layout.tick();
+    const now = layout.positions();
+    speeds.push(Math.max(...Object.keys(now).map(id => Math.hypot(now[id].x - last[id].x, now[id].y - last[id].y))));
+    last = now;
+  }
+  assert.ok(layout.done && speeds.length < 400, 'stops within a few seconds at one step per frame: ' + speeds.length);
+  assert.equal(layout.local, false);
+  assert.ok(speeds.at(-1) < 0.05, 'the last frame is imperceptible: ' + speeds.at(-1));
+  // No wobble: after the first quarter, the speed never jumps back up noticeably.
+  const tail = speeds.slice(Math.floor(speeds.length / 4));
+  for (let i = 1; i < tail.length; i++) assert.ok(tail[i] <= tail[i - 1] * 1.25 + 0.01, `speed rose at ${i}: ${tail[i - 1]} -> ${tail[i]}`);
+});

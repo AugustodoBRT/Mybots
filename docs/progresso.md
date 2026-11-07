@@ -1838,3 +1838,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Só a bolinha arrastada se mexe**: na v155, arrastar reaquecia o desenho inteiro e todas as notas andavam. Agora a simulação roda só onde o arraste toca: a nota segura, as notas ligadas a ela (puxadas pelas linhas) e as que ela encosta ao passar (empurradas para o lado). O resto do grafo fica exatamente onde estava, inclusive enquanto tudo se acomoda depois de soltar. Mudar as forças no painel continua reorganizando o desenho todo.
 - **Texto não fica mais selecionado** ao arrastar por cima dos nomes no PC.
 - **Testes**: 509 na suíte (508 passam, 1 opcional pulado); novo caso de arraste local no `tests/graph-layout.test.mjs`. Conferido no Chrome headless: arrastando o hub "Central de Vagas", só ele e as notas ligadas se mexeram, nenhum texto ficou selecionado (mouse e toque), o fundo ainda move o grafo e o clique abre a nota.
+
+## 0.74.3 (versionCode 157): movimento suave no grafo
+
+- **Desliza em vez de pular**: enquanto você arrasta e enquanto as bolinhas se acomodam depois de soltar, a simulação dá um passo por quadro e a tela é redesenhada a cada quadro, como no d3/Obsidian. Antes ela dava vários passos de uma vez e só redesenhava a cada 33 ms, o que fazia o movimento sair aos saltos.
+- **Para sem ficar tremendo**: durante o arraste, a força que puxa para o centro não age mais só nas notas que se mexem (o resto está parado, e por isso elas ficavam andando devagar até parar). O movimento termina quando a bolinha mais rápida anda menos de 1/20 de pixel por quadro.
+- **Testes**: 510 na suíte (509 passam, 1 opcional pulado); novo caso no `tests/graph-layout.test.mjs` (a velocidade cai sem voltar a subir e tudo para sozinho). Medido no Chrome headless quadro a quadro: depois de soltar, o hub desliza por ~2,4 s (145 quadros seguidos), maior salto de 8 px no primeiro quadro, e para.

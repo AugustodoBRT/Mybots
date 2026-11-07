@@ -38,10 +38,12 @@ export function useLayout(model, store, forces, onFirst) {
     let handle = 0, last = 0, first = true, settled = false;
     const step = () => {
       handle = 0;
-      layout.run({ budget: first ? 24 : 10, now: clock });
+      // While dragging and while it settles afterwards: one step per frame, drawn every frame, so the motion glides like
+      // Obsidian's instead of jumping several steps at once.
+      const touched = layout.target || layout.local;
+      layout.run(touched ? { maxTicks: 1 } : { budget: first ? 24 : 10, now: clock });
       const now = clock();
-      // While a node is dragged, every frame, so it stays under the pointer.
-      if (first || layout.done || layout.target || now - last >= 33) {
+      if (first || layout.done || touched || now - last >= 33) {
         last = now; setPositions(layout.nodes());
         if (first) { onFirst?.(); if (!known) setFitKey(n => n + 1); }
         first = false;

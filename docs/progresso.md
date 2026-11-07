@@ -1826,3 +1826,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Links continuam funcionando**: `[[entregas/...]]` de uma entrega movida aponta para a cópia no arquivo, e o link pelo título já achava a cópia. Se o Chefe pedir o caminho antigo, recebe a nota com o aviso "Esta entrega já foi para o arquivo".
 - **RPC `notes.prune`** (só da pessoa) roda a poda na hora. Cada poda aparece na atividade ("Memória arrumada: N entregas antigas foram para o arquivo"), e a pasta Arquivo da lista explica o que vai para lá.
 - **Testes**: 507 na suíte (506 passam, 1 opcional pulado); novo `tests/notes-prune.test.mjs`. Cobre o corpo intacto, as 30 mais recentes preservadas, o resumo e as partes, a limpeza do índice com histórico, os links e a leitura pelo caminho antigo, o limite do índice, a poda que não refaz nada na segunda vez e a poda na abertura.
+
+## 0.74.1 (versionCode 155): arrastar as bolinhas do grafo
+
+- **Arrastar uma nota no grafo**, como no Obsidian: apertar uma bolinha e mover leva a bolinha junto com o mouse ou o dedo. As notas ligadas acompanham, e ao soltar o desenho se acomoda sozinho. Antes, qualquer arraste movia o grafo inteiro. Arrastar o fundo continua movendo o grafo, e clicar ou tocar sem mover continua abrindo a nota. No PC, o cursor vira a mãozinha de pegar. Também vale no grafo local da nota. No motor do layout (`mobile/state/graph-layout.js`), `pin`/`unpin` prendem a nota e `warm` mantém o layout ativo enquanto ela é arrastada.
+- **Testes**: 508 na suíte (507 passam, 1 opcional pulado); novo caso no `tests/graph-layout.test.mjs`. Conferido no Chrome headless: no mouse, a bolinha fica exatamente sob o ponteiro; no toque (390 px), segue o dedo; o fundo ainda arrasta o grafo e o clique ainda abre a nota.
+- **Não testado em celular real**: o arraste com o dedo no Android.

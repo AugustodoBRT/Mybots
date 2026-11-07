@@ -27,7 +27,7 @@ const periods = [[0, 'Sempre'], [1, '24 h'], [7, '7 dias'], [30, '30 dias']];
 export function useLayout(model, store, forces, onFirst) {
   const [positions, setPositions] = useState(null);
   const [fitKey, setFitKey] = useState(0);
-  const heat = useRef(null);
+  const heat = useRef(null), live = useRef(null);
   useEffect(() => {
     if (!model) return;
     const known = model.nodes.some(node => store.positions[node.id]);
@@ -35,11 +35,13 @@ export function useLayout(model, store, forces, onFirst) {
     if (heat.current) { options.alpha = heat.current; heat.current = null; }
     const layout = createLayout({ nodes: model.nodes, edges: model.edges, previous: known ? store.positions : null, options });
     const began = clock();
-    let handle = 0, last = 0, first = true;
+    let handle = 0, last = 0, first = true, settled = false;
     const step = () => {
+      handle = 0;
       layout.run({ budget: first ? 24 : 10, now: clock });
       const now = clock();
-      if (first || layout.done || now - last >= 33) {
+      // While a node is dragged, every frame, so it stays under the pointer.
+      if (first || layout.done || layout.target || now - last >= 33) {
         last = now; setPositions(layout.nodes());
         if (first) { onFirst?.(); if (!known) setFitKey(n => n + 1); }
         first = false;
@@ -47,16 +49,25 @@ export function useLayout(model, store, forces, onFirst) {
       if (!layout.done) handle = raf(step);
       else {
         Object.assign(store.positions, layout.positions());
-        Object.assign(stats, { nodes: layout.n, edges: layout.links.length, ticks: layout.ticks, layoutMs: Math.round(clock() - began) });
-        if (!known) setFitKey(n => n + 1);
+        if (!settled) {
+          settled = true;
+          Object.assign(stats, { nodes: layout.n, edges: layout.links.length, ticks: layout.ticks, layoutMs: Math.round(clock() - began) });
+          if (!known) setFitKey(n => n + 1);
+        }
       }
     };
+    live.current = { layout, wake: () => { if (!handle) handle = raf(step); } };
     step();
-    return () => { cancelRaf(handle); Object.assign(store.positions, layout.positions()); };
+    return () => { cancelRaf(handle); live.current = null; Object.assign(store.positions, layout.positions()); };
   }, [model, forces]);
   // A change of forces shakes the drawing a little, like Obsidian, instead of starting over.
   const reheat = () => { heat.current = 0.5; };
-  return { positions, fitKey, reheat };
+  // Dragging a node, like Obsidian: it follows the pointer and its neighbours come along; let go and it settles.
+  const drag = useMemo(() => ({
+    move(id, x, y) { const run = live.current; if (run?.layout.pin(id, x, y)) { run.layout.warm(0.3); run.wake(); } },
+    end(id) { const run = live.current; if (!run) return; run.layout.unpin(id); run.layout.warm(0); run.wake(); }
+  }), []);
+  return { positions, fitKey, reheat, drag };
 }
 
 const EdgeLayer = memo(function EdgeLayer({ d, color, width, opacity }) {
@@ -95,13 +106,13 @@ function RoundButton({ label, name, onPress, L }) {
  * label layers are memoized on positions and highlight, so moving the view does not re-render them.
  */
 export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey = 0, initialView = null, initialFocus = null, store = cache,
-  display = DEFAULTS, compact = false, current = null, children }) {
+  display = DEFAULTS, compact = false, current = null, drag = null, children }) {
   const L = look();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState(() => initialView || store.view);
-  const [hover, setHover] = useState(null), [focus, setFocus] = useState(initialFocus);
+  const [hover, setHover] = useState(null), [focus, setFocus] = useState(initialFocus), [dragged, setDragged] = useState(null);
   const viewRef = useRef(view), frame = useRef(0), box = useRef(null), gesture = useRef({}).current, userMoved = useRef(Boolean(store.view));
-  const active = hover && model.byId.has(hover) ? hover : focus && model.byId.has(focus) ? focus : null;
+  const active = dragged && model.byId.has(dragged) ? dragged : hover && model.byId.has(hover) ? hover : focus && model.byId.has(focus) ? focus : null;
   const placed = useMemo(() => {
     const at = new Map((positions || []).map(p => [p.id, p]));
     return model.nodes.filter(node => at.has(node.id)).map(node => ({ node, id: node.id, x: at.get(node.id).x, y: at.get(node.id).y, r: node.r * 0.72 * display.nodeSize }));
@@ -133,7 +144,8 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
       if (node && !node.ghost && node.id !== current) onOpen(node.path);
       else setFocus(node ? node.id : null);
     },
-    hold(id) { setFocus(id); }
+    hold(id) { setFocus(id); },
+    drag
   };
   useEffect(() => { if (!userMoved.current || !viewRef.current) fit(); }, [fitKey, size.width, size.height]);
   useEffect(() => () => cancelRaf(frame.current), []);
@@ -151,7 +163,9 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
       onPanResponderGrant: e => {
         const n = e.nativeEvent;
         gesture.offset = { x: (n.pageX ?? 0) - (n.locationX ?? 0), y: (n.pageY ?? 0) - (n.locationY ?? 0) };
-        rebase(local(e)); gesture.at = gesture.points[0]; gesture.moved = false; gesture.held = false;
+        rebase(local(e)); gesture.at = gesture.points[0]; gesture.moved = false; gesture.held = false; gesture.dragging = false;
+        // Pressing on a node and moving drags that node; pressing on the background pans.
+        gesture.node = handlers.current.drag ? hitAt(gesture.at.x, gesture.at.y, 8) : null;
         clearTimeout(gesture.timer);
         // Holding a node (the phone's hover) highlights it and its neighbours without opening it.
         gesture.timer = setTimeout(() => {
@@ -163,6 +177,8 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
       onPanResponderMove: e => {
         const points = local(e);
         if (points.length >= 2) {
+          if (gesture.dragging) { gesture.dragging = false; handlers.current.drag.end(gesture.node); setDragged(null); }
+          gesture.node = null;
           if (gesture.points.length < 2) rebase(points);
           const [a, b] = points, [a0, b0] = gesture.points, v = gesture.start;
           const k = clamp(v.k * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, Math.hypot(a0.x - b0.x, a0.y - b0.y)));
@@ -173,15 +189,26 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
         }
         if (gesture.points.length >= 2) rebase(points);
         const dx = points[0].x - gesture.points[0].x, dy = points[0].y - gesture.points[0].y;
-        if (!gesture.moved && Math.hypot(dx, dy) < 6) return;
-        gesture.moved = true; userMoved.current = true; clearTimeout(gesture.timer);
+        if (!gesture.moved && Math.hypot(dx, dy) < (gesture.node ? 3 : 6)) return;
+        gesture.moved = true; clearTimeout(gesture.timer);
+        if (gesture.node) {
+          const v = viewRef.current || { k: 1, x: 0, y: 0 };
+          if (!gesture.dragging) { gesture.dragging = true; setDragged(gesture.node); }
+          handlers.current.drag.move(gesture.node, (points[0].x - v.x) / v.k, (points[0].y - v.y) / v.k);
+          return;
+        }
+        userMoved.current = true;
         commit({ ...gesture.start, x: gesture.start.x + dx, y: gesture.start.y + dy });
       },
       onPanResponderRelease: () => {
         clearTimeout(gesture.timer);
+        if (gesture.dragging) { gesture.dragging = false; handlers.current.drag.end(gesture.node); setDragged(null); return; }
         if (!gesture.moved && !gesture.held) handlers.current.tap(hitAt(gesture.at.x, gesture.at.y, 8));
       },
-      onPanResponderTerminate: () => clearTimeout(gesture.timer)
+      onPanResponderTerminate: () => {
+        clearTimeout(gesture.timer);
+        if (gesture.dragging) { gesture.dragging = false; handlers.current.drag.end(gesture.node); setDragged(null); }
+      }
     });
   }, []);
 
@@ -194,9 +221,9 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     const point = e => { const rect = element.getBoundingClientRect(); return [e.clientX - rect.left, e.clientY - rect.top]; };
     const wheel = e => { e.preventDefault(); const [x, y] = point(e); zoomAt(x, y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))); };
     const move = e => {
-      if (e.buttons) return;
+      if (e.buttons) { if (gesture.dragging) element.style.cursor = 'grabbing'; return; }
       const id = hitAt(...point(e), 2);
-      element.style.cursor = id ? 'pointer' : 'default';
+      element.style.cursor = id ? 'grab' : 'default';
       if (id !== shown) { shown = id; setHover(id); }
     };
     const leave = () => { shown = null; setHover(null); };
@@ -401,7 +428,7 @@ export function MemoryGraph({ bots, call, version, filters, onFilters, onOpen })
   const model = useMemo(() => data && graphModel(data, { ghosts: settings.ghosts, orphans: settings.orphans }), [data, settings.ghosts, settings.orphans]);
   const forces = useMemo(() => ({ center: settings.center, repel: settings.repel, link: settings.link, distance: settings.distance }),
     [settings.center, settings.repel, settings.link, settings.distance]);
-  const { positions, fitKey, reheat } = useLayout(model, cache, forces);
+  const { positions, fitKey, reheat, drag } = useLayout(model, cache, forces);
   useEffect(() => { if (positions && stats.start) { stats.firstDrawMs = Math.round(clock() - stats.start); stats.start = 0; } }, [positions]);
   const set = (patch, shake) => { if (shake) reheat(); setSettings(old => (cache.settings = { ...old, ...patch })); };
   const hues = useMemo(() => botHues(bots), [bots, L]);
@@ -442,7 +469,7 @@ export function MemoryGraph({ bots, call, version, filters, onFilters, onOpen })
   if (model && !model.nodes.length) return <View style={[s.fill, s.center, { backgroundColor: L.bg }]}>
     <Text style={[s.message, { color: L.muted }]}>{filtered || !settings.orphans ? 'Nenhuma nota com esses filtros.' : 'Ainda não há notas para desenhar.'}</Text>{overlay}</View>;
   if (!model) return <View style={[s.fill, { backgroundColor: L.bg }]}>{overlay}</View>;
-  return <GraphCanvas model={model} positions={positions} matches={matches} colorOf={colorOf} onOpen={onOpen} fitKey={fitKey} display={settings}>{overlay}</GraphCanvas>;
+  return <GraphCanvas model={model} positions={positions} matches={matches} colorOf={colorOf} onOpen={onOpen} fitKey={fitKey} display={settings} drag={drag}>{overlay}</GraphCanvas>;
 }
 
 const s = themed(() => ({

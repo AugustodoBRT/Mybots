@@ -115,11 +115,11 @@ function LocalGraph({ note, hues, onOpen, L }) {
   }, [note]);
   const model = useMemo(() => graphModel(data), [data]);
   const store = useMemo(() => ({ positions: {}, view: null }), [note.path]);
-  const { positions, fitKey } = useLayout(model, store, LOCAL_FORCES);
+  const { positions, fitKey, drag } = useLayout(model, store, LOCAL_FORCES);
   // Same colours as the big map: each bot its own, the person's notes grey.
   const colorOf = useMemo(() => node => node.botId ? hues.get(node.botId) || L.node : L.node, [hues, L]);
   return <View style={[s.local, { borderColor: L.panelBorder, backgroundColor: L.bg }]}>
-    <GraphCanvas key={note.path} model={model} positions={positions} colorOf={colorOf} onOpen={onOpen} fitKey={fitKey} store={store} compact current={note.path} />
+    <GraphCanvas key={note.path} model={model} positions={positions} colorOf={colorOf} onOpen={onOpen} fitKey={fitKey} store={store} compact current={note.path} drag={drag} />
   </View>;
 }
 

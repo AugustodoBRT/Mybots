@@ -151,9 +151,11 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
   const fresh = n ? (n - known) / n : 0;
   const state = {
     ids, index, links, xs, ys, vx, vy, n, ticks: 0, energy: Infinity, done: n === 0,
-    alpha: o.alpha ?? (known ? Math.min(1, 0.06 + 0.9 * fresh) : 1),
-    tick, run, positions, nodes: list
+    alpha: o.alpha ?? (known ? Math.min(1, 0.06 + 0.9 * fresh) : 1), target: 0,
+    tick, run, positions, nodes: list, pin, unpin, warm
   };
+  // Nodes held by a finger or the mouse: they stay where they are put and the rest reacts, like d3's fx/fy.
+  const pinned = new Map();
 
   function repulse(alpha) {
     const strength = o.charge * alpha, max2 = o.distanceMax * o.distanceMax;
@@ -212,14 +214,16 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
     for (let i = 0; i < n; i++) {
       vx[i] -= xs[i] * o.gravity * alpha; vy[i] -= ys[i] * o.gravity * alpha;
       vx[i] *= 1 - o.decay; vy[i] *= 1 - o.decay;
+      const held = pinned.get(i);
+      if (held) { xs[i] = held[0]; ys[i] = held[1]; vx[i] = vy[i] = 0; continue; }
       xs[i] += vx[i]; ys[i] += vy[i];
       energy += vx[i] * vx[i] + vy[i] * vy[i];
     }
     state.energy = n ? energy / n : 0;
-    state.alpha += (0 - alpha) * o.alphaDecay;
+    state.alpha += (state.target - alpha) * o.alphaDecay;
     state.ticks++;
-    // Stops by itself: cold enough, or nothing moves any more.
-    if (state.alpha < o.alphaMin || (state.ticks > 15 && state.energy < o.restEnergy)) state.done = true;
+    // Stops by itself: cold enough, or nothing moves any more (never while something is being dragged).
+    if (!state.target && (state.alpha < o.alphaMin || (state.ticks > 15 && state.energy < o.restEnergy))) state.done = true;
     return !state.done;
   }
 
@@ -232,6 +236,19 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
       if (budget !== Infinity && (done & 3) === 0 && now() - start >= budget) break;
     }
     return done;
+  }
+
+  // Dragging: pin a node at a point, keep the simulation warm while it moves, and let go (it cools down by itself).
+  function pin(id, x, y) {
+    const i = index.get(id);
+    if (i === undefined || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    pinned.set(i, [x, y]); xs[i] = x; ys[i] = y; vx[i] = vy[i] = 0;
+    return true;
+  }
+  function unpin(id) { const i = index.get(id); if (i !== undefined) pinned.delete(i); }
+  function warm(target) {
+    state.target = target;
+    if (target) { state.alpha = Math.max(state.alpha, target); state.done = n === 0; state.ticks = 0; }
   }
 
   function positions() {

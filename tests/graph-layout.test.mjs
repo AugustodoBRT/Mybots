@@ -123,3 +123,26 @@ test('300 and 1000 notes settle within a reasonable time', () => {
     console.log(`# layout ${notes} notas, ${layout.links.length} ligações: ${ms.toFixed(0)} ms, ${layout.ticks} passos`);
   }
 });
+
+test('a dragged node stays where it is put, pulls its neighbours along and the layout settles after letting go', () => {
+  const nodes = ['a', 'b', 'c', 'd'].map(id => ({ id })), edges = [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }];
+  const layout = createLayout({ nodes, edges });
+  layout.run();
+  assert.ok(layout.done);
+  const before = layout.positions();
+  assert.equal(layout.pin('nada', 0, 0), false);
+  assert.equal(layout.pin('a', NaN, 0), false);
+  // Holding "a" far away for a while: it does not move, "b" follows, the unlinked "d" barely does.
+  layout.warm(0.3);
+  assert.equal(layout.done, false);
+  for (let i = 0; i < 300; i++) { layout.pin('a', 400, 300); layout.tick(); }
+  assert.equal(layout.done, false, 'never stops while dragging');
+  const held = layout.positions();
+  assert.deepEqual(held.a, { x: 400, y: 300 });
+  const gain = id => Math.hypot(before[id].x - 400, before[id].y - 300) - Math.hypot(held[id].x - 400, held[id].y - 300);
+  assert.ok(gain('b') > 100, 'the neighbour came closer: ' + gain('b'));
+  assert.ok(gain('b') > gain('d'));
+  layout.unpin('a'); layout.warm(0);
+  const ticks = layout.run();
+  assert.ok(layout.done && ticks < 1000, 'settles by itself after letting go');
+});

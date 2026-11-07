@@ -150,24 +150,30 @@ export function parseBlocks(text, { keepMath = false } = {}) {
 }
 
 /** Inline runs: [{ text, bold?, italic?, code?, href? }]. External links only http(s); local files are separate actions. */
-export function parseInline(text) {
+export function parseInline(text, resolveNote) {
   const runs = []; const source = String(text || '');
   const pattern = /(\*\*|__)(.+?)\1|`([^`]+)`|\[([^\]]+)\]\(([^\n)]+)\)|(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)|(^|[^\w])_(?!\s)([^_\n]+?)_(?!\w)/g;
+  const inline = resolveNote ? new RegExp(pattern.source + '|' + /\[\[([^\[\]\r\n]+)\]\]/.source, 'g') : pattern;
   let last = 0, match;
-  while ((match = pattern.exec(source))) {
+  while ((match = inline.exec(source))) {
     if (match[4] !== undefined && !/^https?:\/\//i.test(match[5]) && !fileReference(match[5])) continue;
     const lead = match[6] ?? match[8] ?? '';
     const start = match.index + lead.length;
     if (start > last) runs.push({ text: source.slice(last, start) });
-    if (match[2] !== undefined) runs.push(...parseInline(match[2]).map(run => ({ ...run, bold: true })));
+    if (match[2] !== undefined) runs.push(...parseInline(match[2], resolveNote).map(run => ({ ...run, bold: true })));
     else if (match[3] !== undefined) runs.push({ text: match[3], code: true });
     else if (match[4] !== undefined) {
       if (/^https?:\/\//i.test(match[5])) runs.push({ text: match[4], href: match[5] });
       else if (fileReference(match[5])) runs.push({ text: match[4], file: match[5] });
       else runs.push({ text: match[0] });
     }
-    else runs.push({ text: match[7] ?? match[9], italic: true });
-    last = pattern.lastIndex;
+    else if (match[10] !== undefined) runs.push({ text: match[0], note: resolveNote(match[10]) });
+    else {
+      const italic = match[7] ?? match[9];
+      if (resolveNote) runs.push(...parseInline(italic, resolveNote).map(run => ({ ...run, italic: true })));
+      else runs.push({ text: italic, italic: true });
+    }
+    last = inline.lastIndex;
   }
   if (last < source.length) runs.push({ text: source.slice(last) });
   return runs.filter(run => run.text);

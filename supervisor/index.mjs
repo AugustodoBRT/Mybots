@@ -1,3 +1,4 @@
+import { notesRpc } from './notes.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync, rmSync } from 'node:fs';
@@ -661,6 +662,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           return { summary: await runSkill({ title: skill.title, skill: skill.id, input: params.input && typeof params.input === 'object' ? params.input : {}, notify: false }, bot, true).catch(error => error.message) };
         }
         case 'skill.remove': return skills.remove(params.id);
+        case 'notes.list': case 'notes.read': case 'notes.search': case 'notes.graph':
+        case 'notes.write': case 'notes.archive': case 'notes.remove': return notesRpc(db, method, params);
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
           if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');

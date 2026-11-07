@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 export const FILE_LIMIT = 20 * 1024 * 1024;
 // Events that mean data changed. Not 'connection.changed' or 'activity.new': the sync's own notes cause those, and it would never settle.
-const WORTH = new Set(['message.added', 'message.updated', 'bot.updated', 'chat.reset', 'task.done', 'passwords.changed']);
+const WORTH = new Set(['notes.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'task.done', 'passwords.changed']);
 export const worthSyncing = event => WORTH.has(event);
 
 /**

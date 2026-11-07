@@ -1,3 +1,4 @@
+import { MemoryScreen } from './screens/Memory';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { appStore, selectShell } from './state/store';
 import { useStore } from './state/useStore';
@@ -172,6 +173,8 @@ function AppMain() {
   const updateChecked = useRef(0);
   const staged = useRef(new Set());
   const supervisor = useRef(null);
+  const [notesVersion, setNotesVersion] = useState(0);
+  const callNotes = useCallback((method, params) => supervisor.current.call(method, params), []);
   const phoneMode = useRef(mode); phoneMode.current = mode;
   const eventRefresh = useRef(null);
   // The supervisor's state has no messages: the open conversations are loaded by page (chat.page) and kept up to date
@@ -209,11 +212,12 @@ function AppMain() {
   };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (deskPage === 'memory') return false;
       if (!roomId && !team && (!selected || selected === chiefId)) return false;
       goHome(); return true;
     });
     return () => subscription.remove();
-  }, [selected, roomId, team, chiefId, draft]);
+  }, [selected, roomId, team, chiefId, draft, deskPage]);
 
   const runPhoneCommand = useCallback(async (operation, payload = {}) => {
     const startedAt = new Date().toISOString();
@@ -302,6 +306,7 @@ function AppMain() {
       }
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
       // The reply as it is written goes straight to the store, without reloading anything.
+      if (event === 'notes.changed') { setNotesVersion(version => version + 1); return; }
       if (event === 'message.draft') { appStore.draft(data); return; }
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
       // The browser's timeline and downloads go to the open conversation's panels.
@@ -318,6 +323,7 @@ function AppMain() {
       eventRefresh.current = setTimeout(() => { if (phoneMode.current === 'phone') loadSupervisorState().catch(error => setLoadError(error.message)); }, 150);
     },
     onConnection: connected => {
+      if (connected) setNotesVersion(version => version + 1);
       if (phoneMode.current !== 'phone') return;
       if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => resync().catch(error => setLoadError(error.message)));
       else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : backendRef.current === 'pc' ? 'Sem conexão com o computador. Ele precisa estar ligado. Reconectando…' : 'Supervisor desconectado. Reconectando ao Termux…' } } : current);
@@ -793,7 +799,7 @@ function AppMain() {
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
-          onBack={desktop || bot.isChief ? null : goHome} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
+          onBack={desktop || bot.isChief ? null : goHome} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
@@ -821,12 +827,14 @@ function AppMain() {
   // Desktop, PWA and paired phones use the same supervisor RPC. The old token-based HTTP API has no chief role.
   const canCreateChief = mode === 'phone' && !chiefId;
   const startChief = () => setCreateVisible('chief');
-  const teamView = data && <HomeScreen team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+  const teamView = data && <HomeScreen onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
   // On the computer these are whole pages beside the icon bar instead of sheets.
+  const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} />;
   const deskPages = desktop ? {
+    memory: memoryView,
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
     settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />,
     office: <Office data={data} onOpen={openDesktopBot} onRoom={openDesktopRoom}
@@ -870,7 +878,7 @@ function AppMain() {
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView || teamView}</DesktopShell>
-      : roomView || chatView || teamView}
+      : memoryView || roomView || chatView || teamView}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
         <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}

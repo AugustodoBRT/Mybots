@@ -16,7 +16,7 @@ const s = themed(() => ({
 }));
 
 // What the bots did today that ended well (or not), as plain lines.
-const FINISHED = /done|created|accepted|reminder|downloaded|fail|denied|late|error/;
+const FINISHED = /^note_(written|archived|removed)$|done|created|accepted|reminder|downloaded|fail|denied|late|error/;
 
 /**
  * The computer's Activity as a dashboard: on the left the plans' limits side by side, the line of the week's spend and what each

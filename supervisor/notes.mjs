@@ -1,3 +1,5 @@
+import { fold, uuid } from './validation.mjs';
+
 const kinds = { chefe: 'chefe', entregas: 'entrega', arquivo: 'arquivo' };
 const secret = /\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,})|(?:^|\n)[ \t]*(?:password|senha|token|api[_ -]?key)[ \t]*[:=][ \t]*\S|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/i;
 
@@ -47,6 +49,22 @@ export function saveNote(db, row) {
   checkNote(row);
   db.run('INSERT INTO notes(path,bot_id,kind,title,body,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',
     row.path, row.bot_id, row.kind, row.title, row.body, row.created_at, row.updated_at);
+  db.notify('notes.changed', { path: row.path });
+}
+
+function keepHistory(db, previous, at) {
+  const history = available(db, 'arquivo/historico/' + previous.path.slice(0, -3), '-' + at.replace(/[:.]/g, '-'));
+  saveNote(db, { ...previous, path: history, kind: 'arquivo', updated_at: at });
+  return history;
+}
+
+function archive(db, previous, summary, at) {
+  const path = available(db, previous.path.replace(/^[^/]+\//, 'arquivo/').slice(0, -3));
+  const body = summary ? previous.body + '\n\nResumo: ' + summary : previous.body;
+  saveNote(db, { ...previous, path, kind: 'arquivo', updated_at: at, body });
+  db.run('DELETE FROM notes WHERE path=?', previous.path);
+  db.notify('notes.changed', { path: previous.path });
+  return { path };
 }
 
 export function noteTool(db, bot, tool, args) {
@@ -73,20 +91,184 @@ export function noteTool(db, bot, tool, args) {
     const previous = read(args.path);
     if (tool === 'shared.archive') {
       if (!previous) throw new Error('Entrega não encontrada.');
-      const path = available(db, args.path.replace(/^entregas\//, 'arquivo/').slice(0, -3));
-      const body = args.summary ? previous.body + '\n\nResumo: ' + args.summary : previous.body;
-      saveNote(db, { ...previous, path, kind: 'arquivo', updated_at: at, body });
-      db.run('DELETE FROM notes WHERE path=?', args.path);
-      return { path };
+      return archive(db, previous, args.summary, at);
     }
     if (previous) {
       if (!args.overwrite) throw new Error('A nota já existe. Use overwrite: true para guardar a versão anterior e substituir.');
-      const history = available(db, 'arquivo/historico/' + args.path.slice(0, -3), '-' + at.replace(/[:.]/g, '-'));
-      saveNote(db, { ...previous, path: history, kind: 'arquivo', updated_at: at });
+      const history = keepHistory(db, previous, at);
       db.run('UPDATE notes SET body=?,bot_id=?,updated_at=? WHERE path=?', args.text, bot.id, at, args.path);
+      db.notify('notes.changed', { path: args.path });
       return { path: args.path, history };
     }
     saveNote(db, { path: args.path, bot_id: bot.id, kind: 'chefe', title: args.path.split('/').at(-1).slice(0, -3), body: args.text, created_at: at, updated_at: at });
     return { path: args.path };
+  });
+}
+
+const fields = {
+  'notes.list': ['prefix', 'kind', 'botId', 'since', 'limit', 'cursor'],
+  'notes.read': ['path'],
+  'notes.search': ['query', 'kind', 'botId', 'since', 'limit'],
+  'notes.graph': ['kind', 'botId', 'since', 'limit'],
+  'notes.write': ['path', 'text', 'create'],
+  'notes.archive': ['path', 'summary'],
+  'notes.remove': ['path', 'confirm']
+};
+export const noteMethods = Object.keys(fields);
+export const GRAPH_LIMIT = 500;
+const dateString = value => typeof value === 'string' && value.length <= 30 &&
+  /^\d{4}-\d\d-\d\d(?:T\d\d:\d\d:\d\d(?:\.\d{1,3})?Z)?$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value.slice(0, 10);
+
+function validate(method, p) {
+  const allowed = fields[method];
+  if (!allowed || !p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some(k => !allowed.includes(k))) throw new Error('Parâmetros de notas inválidos.');
+  if (allowed.includes('path') && !validPath(p.path)) throw new Error('Caminho de nota inválido.');
+  if ('prefix' in p && !(typeof p.prefix === 'string' && p.prefix.length <= 120 &&
+    !p.prefix.includes('..') && /^(?:chefe|entregas|arquivo)\/(?:[\w-][\w.-]*\/)*[\w.-]*$/.test(p.prefix))) throw new Error('Prefixo de pasta inválido.');
+  if ('kind' in p && !Object.values(kinds).includes(p.kind)) throw new Error('Tipo de nota inválido.');
+  if ('botId' in p && !uuid(p.botId)) throw new Error('Identificador do bot inválido.');
+  if ('since' in p && !dateString(p.since)) throw new Error('Data inválida.');
+  const most = method === 'notes.graph' ? GRAPH_LIMIT : 100;
+  if ('limit' in p && !(Number.isInteger(p.limit) && p.limit >= 1 && p.limit <= most)) throw new Error('Use um limite entre 1 e ' + most + '.');
+  if ('cursor' in p) {
+    const [at, path, ...rest] = typeof p.cursor === 'string' && p.cursor.length <= 152 ? p.cursor.split('|') : [];
+    if (!dateString(at) || !validPath(path) || rest.length) throw new Error('Cursor de notas inválido.');
+  }
+  if (method === 'notes.search' && !(typeof p.query === 'string' && p.query.length <= 200 && fold(p.query.trim()))) throw new Error('Busque por um texto de até 200 caracteres.');
+  if ('create' in p && typeof p.create !== 'boolean') throw new Error('Opção de criação inválida.');
+  if (method === 'notes.write') checkBody(p.text);
+  if ('summary' in p) checkBody(p.summary);
+  if (method === 'notes.remove' && p.confirm !== true) throw new Error('Confirme para apagar a nota para sempre.');
+}
+
+// Map folded offsets back to the original text, including combining accents.
+function matchRange(text, query) {
+  const offset = fold(text).indexOf(query);
+  if (offset < 0) return null;
+  const offsets = [];
+  let pos = 0;
+  for (const char of text) {
+    const width = fold(char).length;
+    for (let i = 0; i < width; i++) offsets.push(pos);
+    pos += char.length;
+  }
+  return [offsets[offset], offsets[offset + query.length] ?? pos];
+}
+
+// Nodes and [[links]] only, for the memory map. Over the limit, half the slots go to the newest notes and the rest to the most
+// linked ones, so neither a burst of fresh deliveries nor an old hub disappears. Rows arrive newest first.
+function graph(rows, byPath, outgoing, incoming, limit) {
+  const degree = row => outgoing.get(row.path).length + (incoming.get(row.path)?.length || 0);
+  let chosen = rows;
+  if (rows.length > limit) {
+    const newest = rows.slice(0, Math.ceil(limit / 2)), picked = new Set(newest.map(row => row.path));
+    const linked = rows.filter(row => !picked.has(row.path)).sort((a, b) => degree(b) - degree(a)).slice(0, limit - newest.length);
+    for (const row of linked) picked.add(row.path);
+    chosen = rows.filter(row => picked.has(row.path));
+  }
+  const included = new Set(chosen.map(row => row.path)), edges = [];
+  for (const row of chosen) for (const to of outgoing.get(row.path)) {
+    if (included.has(to)) edges.push({ from: row.path, to, exists: true });
+    else if (!byPath.has(to)) edges.push({ from: row.path, to, exists: false });
+  }
+  const nodes = chosen.map(row => ({ path: row.path, title: row.title, kind: row.kind, botId: row.bot_id, botName: row.botName,
+    updatedAt: row.updated_at, outgoingCount: outgoing.get(row.path).length, incomingCount: incoming.get(row.path)?.length || 0 }));
+  return { nodes, edges, truncated: chosen.length < rows.length };
+}
+
+function readNotes(records, method, p) {
+  // Backups can contain timestamps with offsets. Use UTC for filters, ordering and cursors.
+  const rows = records.map(row => ({ ...row, updated_at: new Date(row.updated_at).toISOString() }))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at) || (a.path > b.path) - (a.path < b.path));
+  const byPath = new Map(rows.map(row => [row.path, row]));
+  const outgoing = new Map(), incoming = new Map();
+  for (const row of rows) {
+    const paths = links(row.body);
+    outgoing.set(row.path, paths);
+    for (const path of paths) {
+      if (!incoming.has(path)) incoming.set(path, []);
+      incoming.get(path).push(row.path);
+    }
+  }
+  const summary = row => {
+    const outgoingPaths = outgoing.get(row.path), incomingPaths = incoming.get(row.path) || [];
+    return { path: row.path, title: row.title, kind: row.kind, botId: row.bot_id, botName: row.botName,
+      createdAt: row.created_at, updatedAt: row.updated_at, snippet: row.body.slice(0, 140), outgoingPaths, incomingPaths,
+      outgoingCount: outgoingPaths.length, incomingCount: incomingPaths.length };
+  };
+  if (method === 'notes.read') {
+    const row = byPath.get(p.path);
+    if (!row) throw new Error('Nota não encontrada.');
+    const note = summary(row);
+    return { ...note, body: row.body, links: note.outgoingPaths.map(path => ({ path, title: byPath.get(path)?.title || path, exists: byPath.has(path) })),
+      backlinks: note.incomingPaths.map(path => ({ path, title: byPath.get(path).title, snippet: byPath.get(path).body.slice(0, 140) })) };
+  }
+  const since = p.since && new Date(p.since).toISOString();
+  const kept = row => !((p.prefix && !row.path.startsWith(p.prefix)) || (p.kind && row.kind !== p.kind) ||
+    (p.botId && row.bot_id !== p.botId) || (since && row.updated_at < since));
+  if (method === 'notes.graph') return graph(rows.filter(kept), byPath, outgoing, incoming, p.limit || GRAPH_LIMIT);
+  const query = p.query && fold(p.query.trim()), limit = p.limit || 50, notes = [];
+  const [at, after] = p.cursor?.split('|') || [];
+  for (const row of rows) {
+    if (!kept(row) || (at && (row.updated_at > at || (row.updated_at === at && row.path <= after)))) continue;
+    const result = summary(row);
+    if (query) {
+      result.titleMatch = matchRange(row.title, query);
+      const match = matchRange(row.body, query);
+      if (!result.titleMatch && !match) continue;
+      if (match) {
+        const start = Math.max(0, match[0] - 40);
+        result.snippet = row.body.slice(start, start + 140);
+        result.snippetMatch = [match[0] - start, Math.min(match[1] - start, 140)];
+      }
+    }
+    notes.push(result);
+    if (notes.length > limit) break;
+  }
+  const more = notes.length > limit;
+  if (more) notes.pop();
+  const last = notes.at(-1);
+  return { notes, more, nextCursor: !query && more ? last.updatedAt + '|' + last.path : null };
+}
+
+export function notesRpc(db, method, params = {}) {
+  validate(method, params);
+  if (['notes.list', 'notes.read', 'notes.search', 'notes.graph'].includes(method)) {
+    const records = db.all("SELECT n.*,json_extract(b.body,'$.name') AS botName FROM notes n LEFT JOIN bots b ON b.id=n.bot_id");
+    return readNotes(records, method, params);
+  }
+  const { path, text, create, summary } = params;
+  return db.transaction(() => {
+    const previous = db.get('SELECT * FROM notes WHERE path=?', path);
+    const kind = kinds[path.split('/')[0]], at = new Date().toISOString();
+    let result = { path }, action, detail;
+    if (method === 'notes.write') {
+      if (kind === 'arquivo') throw new Error('Escolha uma nota em chefe/ ou entregas/ para editar.');
+      if (previous && create) throw new Error('Já existe uma nota com esse caminho.');
+      if (!previous && !create) throw new Error('Nota não encontrada. Escolha criar uma nova nota.');
+      if (previous) {
+        result.history = keepHistory(db, previous, at);
+        db.run('UPDATE notes SET body=?,updated_at=? WHERE path=?', text, at, path);
+        db.notify('notes.changed', { path });
+      } else {
+        saveNote(db, { path, kind, title: path.split('/').at(-1).slice(0, -3), body: text, bot_id: null, created_at: at, updated_at: at });
+      }
+      action = 'note_written'; detail = previous ? 'Você editou a nota' : 'Você criou a nota';
+    } else {
+      if (!previous) throw new Error('Nota não encontrada.');
+      if (method === 'notes.archive') {
+        if (kind === 'arquivo') throw new Error('Esta nota já está no arquivo.');
+        result = archive(db, previous, summary, at);
+        action = 'note_archived'; detail = 'Você arquivou a nota';
+      } else {
+        if (kind !== 'arquivo') throw new Error('Arquive a nota antes de apagar para sempre.');
+        db.run('DELETE FROM notes WHERE path=?', path);
+        db.notify('notes.changed', { path });
+        action = 'note_removed'; detail = 'Você apagou permanentemente a nota';
+      }
+    }
+    db.record(action, detail + ': ' + path, previous?.bot_id || null);
+    db.notify('activity.new', {});
+    return result;
   });
 }

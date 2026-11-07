@@ -88,7 +88,7 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
@@ -117,6 +117,7 @@ function HomeView({ team, onHome, onCreateChief, data, error, onRetry, onLogs, o
           {waiting ? <View style={{ position: 'absolute', top: 2, right: 2, width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg }} /> : null}</View>
         {onHome && team ? <IconButton icon="back" label="Voltar ao início" onPress={onHome} size={40} /> : null}
         <View style={s.wordmark}><Text style={s.wordmarkText}>{team ? 'Equipe' : 'mybots'}</Text><View style={s.wordmarkDot} /></View>
+        {onMemory ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={42} /> : null}
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={42} />
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={s.modeChip}>

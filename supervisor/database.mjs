@@ -1,3 +1,4 @@
+import { uuid } from './validation.mjs';
 import { checkNote, saveNote } from './notes.mjs';
 import { PROVIDER_NAMES } from '../lib/models.mjs';
 import { DatabaseSync } from 'node:sqlite';
@@ -11,7 +12,7 @@ import { validateBackup, mergeBotLists, deleteLocalBot, defaultBotAccess, validG
 export const now = () => new Date().toISOString();
 // An IA's session: Codex, Claude and Antigravity use a UUID; opencode, "ses_" and letters/digits.
 export const sessionId = value => uuid(value) || (typeof value === 'string' && /^ses_[A-Za-z0-9]{8,60}$/.test(value));
-export const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+export { uuid };
 const ACTIVE = ['queued', 'running', 'waiting_approval'];
 // The two kinds of conversation: a bot's private chat and a room. Both are read in pages by rowid and only appended to.
 const CHATS = { bot: ['messages', 'bot_id'], room: ['room_messages', 'room_id'] };
@@ -312,6 +313,7 @@ export class Database {
           this.run('UPDATE sync_state SET counter=? WHERE id=1', counter);
           this.run('INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted',
             change.table, change.key, counter, change.lamport, change.origin, change.at, change.deleted ? 1 : 0);
+          if (change.table === 'notes') this.notify('notes.changed', { path: change.key });
           result.applied++;
           if (change.table === 'metadata' && change.key === 'person.chief') {
             for (const id of [existing?.value, change.deleted ? null : change.data.value]) {
@@ -758,6 +760,10 @@ export class Database {
         for (const row of snapshot.skillsState.skills.slice(0, 200)) if (uuid(row?.id) && typeof row.body === 'string' && row.body.length < 300000 && typeof row.created_at === 'string') this.run('INSERT INTO skills VALUES(?,?,?)', row.id, row.body, row.created_at);
       }
       if (snapshot.toolsState?.notes !== undefined) {
+        const restoredPaths = new Set(snapshot.toolsState.notes.map(row => row.path));
+        for (const { path } of this.all('SELECT path FROM notes')) {
+          if (!restoredPaths.has(path)) this.notify('notes.changed', { path });
+        }
         this.run('DELETE FROM notes');
         for (const row of snapshot.toolsState.notes) saveNote(this, row);
       }

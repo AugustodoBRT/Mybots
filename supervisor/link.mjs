@@ -1,3 +1,4 @@
+import { noteMethods } from './notes.mjs';
 import { browserMode } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
@@ -14,14 +15,14 @@ const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = ['state.get', 'ai.accounts', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
+export const DESKTOP_METHODS = [...noteMethods, 'state.get', 'ai.accounts', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput', 'passwords.list', 'passwords.save', 'passwords.remove', 'passwords.import'];
 // What only the computer's own node may ask (the sync between the two supervisors); never the window.
 export const SYNC_METHODS = ['sync.status', 'sync.changes', 'sync.apply', 'sync.mark', 'sync.have', 'sync.file', 'sync.fileWrite', 'passwords.sync', 'passwords.export', 'passwords.merge'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.
-const DESKTOP_EVENTS = ['task.progress', 'passwords.changed', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
+const DESKTOP_EVENTS = ['notes.changed', 'task.progress', 'passwords.changed', 'message.draft', 'task.done', 'activity.new', 'connection.changed', 'browser.changed', 'message.added', 'message.updated', 'bot.updated', 'chat.reset', 'browser.step', 'browser.download', 'phone.changed'];
 
 /** What the phone proves at each connection: it holds the secret the computer gave it at pairing. */
 export const proof = (secret, nonce) => createHmac('sha256', secret).update('mybots-link:' + nonce).digest('base64url');
@@ -269,6 +270,7 @@ export class Link {
     // The Livre level is chosen on the phone only, with its warning, never from the computer.
     if (['bot.create', 'bot.update'].includes(method) && params?.access === 'free') return { error: 'O nível Livre só se escolhe no app do celular.' };
     if (method === 'phone.stop') params = { source: 'computer' };
+    if (noteMethods.includes(method) && params !== undefined && (!params || typeof params !== 'object' || Array.isArray(params))) return { error: 'Parâmetros de notas inválidos.' };
     try { return { result: await this.rpc(method, params && typeof params === 'object' && !Array.isArray(params) ? params : {}) }; }
     catch (error) { return { error: error.code ? 'Não foi possível gravar ou ler os dados do supervisor.' : error.message }; }
   }

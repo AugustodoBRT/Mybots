@@ -1,3 +1,4 @@
+import { fold } from './validation.mjs';
 import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
 import { CHIEF_TEXT, TOOLS_TEXT } from '../mobile/local.js';
@@ -5,7 +6,7 @@ import { CHIEF_TEXT, TOOLS_TEXT } from '../mobile/local.js';
 const ROOM_QUEUE_LIMIT = 12;
 // How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
 const PROMPT_WINDOW = 600;
-export const fold = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+export { fold };
 
 /** The members named with @ in a text ("@Faculdade", "@pobre jobs"), in order, without repeats. */
 export function mentions(text, bots) {

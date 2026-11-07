@@ -162,6 +162,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           reply(id, { result: { name, svg: await QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'L', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000, ...(iphone ? { text } : {}) } });
         }
         else {
+          if (method.startsWith('notes.') && params !== undefined && (!params || typeof params !== 'object' || Array.isArray(params))) throw new Error('Parâmetros de notas inválidos.');
           const result = await backend(method, params || {});
           reply(id, { result: method === 'state.get' && result && typeof result === 'object' ? { ...result, source: ws.source, localAvailable: Boolean(own()) } : result });
         }

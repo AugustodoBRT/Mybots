@@ -1,3 +1,4 @@
+import { noteDestination } from './state/note-view';
 import { desktop } from './desktop';
 import { messageMarkdown } from './message-cache';
 import React, { useState, useContext, createContext } from 'react';
@@ -11,11 +12,16 @@ import { C, F, Icon, themed } from './theme';
 const chartColors = () => [C.sky, C.peach, C.accent, '#F58AB0', C.lilac, '#62CFD9'];
 const number = value => Number.isInteger(value) ? String(value) : value.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
+const NoteContext = createContext(null);
 const FileContext = createContext(null);
 function Inline({ text, style, cache }) {
   const context = useContext(FileContext);
-  const runs = cache ? cache.runs(text) : parseInline(text);
+  const notes = useContext(NoteContext);
+  const runs = notes ? parseInline(text, name => noteDestination(name, notes.links)) : cache ? cache.runs(text) : parseInline(text);
   return <Text selectable style={style}>{(context ? referenceRuns(runs) : runs).map((run, index) => {
+    if (run.note) return <Text key={index} accessibilityRole={run.note.exists ? 'link' : undefined}
+      onPress={run.note.exists ? () => notes.onOpen(run.note.path) : undefined}
+      style={[run.bold && s.bold, run.italic && s.italic, run.note.exists ? s.link : { color: C.faint }]}>{run.text}</Text>;
     const reference = context && fileReference(run.file || (run.code ? run.text : ''));
     const file = reference && ((context.files || []).find(file => file.id === reference.reference || file.name === reference.reference || file.name === reference.name) || { ...reference, botId: context.botId });
     const kind = file && previewKind(file);
@@ -86,9 +92,9 @@ export function Chart({ spec }) {
   </View>;
 }
 
-export function RichText({ id, text, textStyle, files, botId, onFile }) {
+export function RichText({ id, text, textStyle, files, botId, onFile, notes }) {
   const cache = messageMarkdown(id, text);
-  return <FileContext.Provider value={onFile ? { files, botId, onFile } : null}><View style={s.rich}>{cache.blocks.map((block, index) => {
+  return <NoteContext.Provider value={notes}><FileContext.Provider value={onFile ? { files, botId, onFile } : null}><View style={s.rich}>{cache.blocks.map((block, index) => {
     if (block.type === 'heading') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.heading, block.level === 1 && s.h1]} />;
     if (block.type === 'paragraph') return <Inline cache={cache} key={index} text={block.text} style={textStyle} />;
     // One Text per item: a flex row inside an auto-width bubble shrinks the words to a narrow column.
@@ -99,7 +105,7 @@ export function RichText({ id, text, textStyle, files, botId, onFile }) {
     if (block.type === 'code') return <Text key={index} selectable style={s.codeBlock}>{block.text}</Text>;
     if (block.type === 'quote') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.quote]} />;
     return <View key={index} style={s.rule} />;
-  })}</View></FileContext.Provider>;
+  })}</View></FileContext.Provider></NoteContext.Provider>;
 }
 
 const ICONS = { 'application/pdf': '📕', 'text/csv': '📊', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📘', 'application/vnd.openxmlformats-officedocument.presentationml.presentation': '📙' };

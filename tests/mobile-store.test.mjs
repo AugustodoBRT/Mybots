@@ -118,3 +118,16 @@ test('chief delegation cards match room message IDs without loading or marking t
   assert.equal(store.getSnapshot().data.rooms[0].unread, 3);
   store.setData({ ...data, rooms: [] }); assert.deepEqual(delegationCards(store.getSnapshot()), []);
 });
+
+test('note links keep Markdown formatting, missing destinations and code; a remote edit is detected even in the same millisecond', async () => {
+  const { noteDestination, noteChanged } = await import('../mobile/state/note-view.js');
+  const { parseInline } = await import('../mobile/markdown.js');
+  const links = [{ path: 'chefe/uma_nota.md', exists: true }, { path: 'entregas/ausente.md', exists: false }];
+  const runs = parseInline('**[[uma_nota]]** e [[entregas/ausente]] ou `[[uma_nota]]`', name => noteDestination(name, links));
+  assert.deepEqual(runs.filter(run => run.note).map(run => [run.note.exists, Boolean(run.bold)]), [[true, true], [false, false]]);
+  assert.ok(runs.at(-1).code && !runs.at(-1).note);
+  const base = { path: 'chefe/a.md', updatedAt: 'mesma hora', body: 'antes' };
+  assert.equal(noteChanged(base, { ...base }), false);
+  assert.equal(noteChanged(base, { ...base, body: 'depois' }), true);
+  assert.equal(noteChanged(base, null), true);
+});

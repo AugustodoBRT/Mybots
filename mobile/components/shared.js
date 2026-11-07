@@ -21,7 +21,7 @@ export const COLOR_NAMES = { green: 'Verde', blue: 'Azul', purple: 'Lilás', ora
 
 export const EFFORT_NAMES = { none: 'Sem raciocínio', minimal: 'Mínimo', low: 'Baixo', medium: 'Médio', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo', ultra: 'Ultra' };
 
-export const TERMUX_COMMANDS = { status: 'codex login status', models: 'catálogo de modelos do Codex', reply: 'codex exec / resume (mensagem pela entrada padrão)', recover: 'recuperação da resposta salva no Termux' };
+export const TERMUX_COMMANDS = { status: 'codex login status', models: 'catálogo de modelos do Codex', reply: 'codex exec / resume (mensagem pela entrada padrão)', recover: 'recuperação da resposta salva no Termux', merge: 'juntar as conversas salvas no celular', open: 'abrir o MyBots' };
 
 export const nativeMessage = error => String(error?.message || error).split(/Exception: /).pop().trim();
 

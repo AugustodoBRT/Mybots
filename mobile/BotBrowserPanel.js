@@ -18,6 +18,24 @@ export function BrowserHelpCard({ bot, help, onOpen, onPc }) {
   </View>;
 }
 
+// The computer's window shows the bot's page as real Chromium, which has no takeover bar of its own: after "Assumir"
+// this card (in the conversation, the right bar and the full browser) is where the person hands the browser back.
+export function ReturnCard({ bot, onReturn, compact }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const give = () => { setBusy(true); setError(''); Promise.resolve().then(onReturn).catch(e => setError(e?.message || 'Não consegui devolver.')).finally(() => setBusy(false)); };
+  const button = <Pressable accessibilityRole="button" accessibilityLabel={`Devolver o navegador para ${bot?.name || 'o bot'}`} disabled={busy} onPress={give}
+    style={[styles.helpButton, compact && { marginTop: 0, minHeight: 36, paddingHorizontal: 14 }, busy && { opacity: 0.6 }]}>
+    <Icon name="bots" size={17} color="#0F1D2E" stroke={2} /><Text style={styles.helpButtonText}>{busy ? 'Devolvendo…' : 'Devolver ao bot'}</Text></Pressable>;
+  if (compact) return button;
+  return <View style={styles.helpCard}>
+    <View style={styles.helpHead}><View style={styles.helpIcon}><Icon name="hand" size={18} color={C.sky} /></View><Text style={styles.helpEyebrow}>Navegador do bot</Text></View>
+    <Text style={styles.helpTitle}>Você está com o navegador de {bot?.name || 'um bot'}</Text>
+    <Text style={styles.helpHint}>Faça o que precisa na página. Quando terminar, devolva: {bot?.name || 'o bot'} espera até lá.</Text>
+    {button}
+    {error ? <Text style={[styles.helpHint, { color: C.red }]}>{error}</Text> : null}
+  </View>;
+}
+
 // The same takeover surface hosts the remote Chrome and the phone's own WebView. Beside the conversation (wide screens)
 // it stays in place instead of covering the screen.
 function BrowserSurface({ assumed, control, inline, children }) {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Image } from 'react-native';
 import { C, Icon, F, themed } from '../theme';
 import { IconButton } from './shared';
-import BotBrowserPanel, { browserFrames, TabStrip, AddressRow } from '../BotBrowserPanel';
+import BotBrowserPanel, { browserFrames, TabStrip, AddressRow, ReturnCard } from '../BotBrowserPanel';
 import { native } from '../desktop';
 
 const s = themed(() => ({
@@ -151,7 +151,7 @@ function NativeCards({ onOpen }) {
  * the area this component leaves empty, so the page has its own mouse, selection, keyboard and speed. The tabs, the address
  * and the field to talk to the bot are ours. Anywhere else the page is streamed as pictures (BotBrowserPanel).
  */
-function NativeFull({ bot, data, onClose, onSend }) {
+function NativeFull({ bot, data, onClose, onSend, onControl }) {
   const { tabs, active } = useNativeTabs(); const hole = useRef(null);
   const busy = Boolean(bot && data.active?.includes(bot.id));
   const current = tabs.find(tab => tab.id === active);
@@ -171,6 +171,7 @@ function NativeFull({ bot, data, onClose, onSend }) {
     <View style={{ paddingTop: 8, paddingHorizontal: 10, gap: 8, backgroundColor: C.bg2 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <View style={{ flex: 1, minWidth: 0 }}><TabStrip max={50} enabled tabs={tabs.map(tab => ({ tab: tab.id, title: tab.title, url: tab.url, icon: tab.icon, active: tab.id === active }))} onSwitch={id => native.activate(id)} onClose={id => native.close(id)} onNew={() => native.create()} /></View>
+        {bot && data.browser?.control?.[bot.id] === 'person' ? <ReturnCard compact bot={bot} onReturn={() => onControl('bot')} /> : null}
         <IconButton icon="shrink" label="Voltar ao MyBots" onPress={onClose} size={32} />
       </View>
       <AddressRow win enabled url={current?.url} back={current?.back} forward={current?.forward} onBack={() => native.nav(active, 'back')} onForward={() => native.nav(active, 'forward')} onReload={() => native.nav(active, 'reload')} onOpen={url => native.go(active, url)} placeholder="Digite um endereço ou uma busca" />
@@ -181,7 +182,7 @@ function NativeFull({ bot, data, onClose, onSend }) {
 
 export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSend, color }) {
   const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
-  if (native) return <NativeFull bot={bot} data={data} onClose={onClose} onSend={onSend} />;
+  if (native) return <NativeFull bot={bot} data={data} onClose={onClose} onSend={onSend} onControl={onControl} />;
   const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
   return <View style={s.full}>
     <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} keepView />

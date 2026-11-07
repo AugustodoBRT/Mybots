@@ -11,7 +11,7 @@ import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
 import PhoneBrowserLive from '../components/PhoneBrowserLive';
-import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard } from '../BotBrowserPanel';
+import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard, ReturnCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { QueuePanel } from '../components/QueuePanel';
@@ -156,6 +156,7 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {bot.isChief ? <DelegationCards onRoom={onTeamRoom} /> : null}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
+      {desktop && assumed ? <ReturnCard bot={bot} onReturn={() => onBrowserControl('bot')} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { openBrowser(); onBrowserControl('person').catch(() => {}); }} /> : null}
       {browserCall && (data.phone?.controller?.botId === bot.id || data.phone?.help?.[bot.id] || data.phone?.control === 'person') ? <PhoneLiveCard bot={bot} phone={data.phone} call={browserCall} onStop={onPhoneStop} onControl={onPhoneControl} /> : null}
       {/* the steps of the bot's browser belong to the browser: they show only while it is open */}

@@ -601,10 +601,13 @@ function AppMain() {
         await writeLocalStore(saved); setLocalCache(saved);
         await refreshPhone(saved);
         if (saved.supervisorMigrated) {
-          await supervisor.current.call('bots.merge', { bots: saved.bots });
+          // The phone's saved copy is only a cache of what the supervisor already has: if it cannot be merged, the app still
+          // opens with the supervisor's data and the reason stays in the details.
+          await supervisor.current.call('bots.merge', { bots: saved.bots })
+            .catch(error => setTermuxLog({ operation: 'merge', startedAt: new Date().toISOString(), nativeMessage: 'Cópia salva no celular não foi juntada: ' + (error?.message || String(error)) }));
           await loadSupervisorState();
         }
-      } catch (error) { setLoadError(error.message); }
+      } catch (error) { setLoadError(error.message); setTermuxLog(old => old || { operation: 'open', startedAt: new Date().toISOString(), nativeMessage: (error?.message || String(error)) + (error?.stack ? '\n' + String(error.stack).slice(0, 1500) : '') }); }
       finally { setConnectionBusy(false); }
       return;
     }
@@ -872,7 +875,7 @@ function AppMain() {
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data && setup ? <SetupScreen onScanned={pairPc} onTermux={enableTermux} busy={setupBusy} error={setupError} />
-      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
+      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{openLogs ? <Pressable accessibilityRole="button" onPress={openLogs} style={styles.changeModeButton}><Text style={styles.changeModeText}>Ver detalhes do erro</Text></Pressable> : null}{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : desktop ? <DesktopShell fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
           filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}

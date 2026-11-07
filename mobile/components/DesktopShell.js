@@ -11,7 +11,7 @@ import { RoutinesSheet, NegotiationsSheet } from './Lists';
 import FaceArt from '../FaceArt';
 import { DesktopReveal } from './DesktopReveal';
 import { SideHeader, SideMenu, SideFrame, BrowserCards, BrowserFull } from './DesktopSide';
-import BotBrowserPanel from '../BotBrowserPanel';
+import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
 import { browserMode } from '../local';
 
 const s = themed(() => ({
@@ -290,9 +290,11 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
         {side.active === 'settings' ? profilePanel
           : side.active === 'file' ? filePanel
           : side.active === 'today' ? <TodayPanel data={data} onOpen={id => onOpen(id)} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} />
-          : side.active === 'browser' ? (native ? <BrowserCards onOpen={() => setFull(true)} /> : !bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
+          : side.active === 'browser' ? (native ? <>{bot && data.browser?.control?.[bot.id] === 'person' ? <View style={{ padding: 12 }}><ReturnCard bot={bot} onReturn={() => onBrowserControl(bot.id, 'bot')} /></View> : null}
+            <BrowserCards onOpen={() => setFull(true)} /></> : !bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
             : browserMode(bot) === 'claude' ? <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={who => onBrowserControl(bot.id, who)} onClose={() => closeKind('browser')} side onFile={onFile} />
-            : <BrowserCards key={bot.id} bot={bot} call={call} onOpen={() => setFull(true)} />)
+            : <>{data.browser?.control?.[bot.id] === 'person' ? <View style={{ padding: 12 }}><ReturnCard bot={bot} onReturn={() => onBrowserControl(bot.id, 'bot')} /></View> : null}
+              <BrowserCards key={bot.id} bot={bot} call={call} onOpen={() => setFull(true)} /></>)
           : <SideMenu onTeam={() => { setSide(old => ({ ...old, open: false })); onTeam(); }} bot={bot} waiting={waiting} onPick={kind => { if (kind === 'settings') { onProfile(bot); openKind('settings'); } else openKind(kind); }} />}
       </SideFrame>
     </DesktopReveal>

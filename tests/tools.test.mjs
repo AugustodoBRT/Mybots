@@ -208,6 +208,21 @@ test('new session: the IA session is forgotten, the conversation and memories st
   assert.match(short, /sessão nova.*memory_read/s); assert.doesNotMatch(short, /Nova sessão da IA iniciada/, 'the line is not part of what the person said');
 });
 
+test('a conversation with a new-session line still backs up, restores and merges (the phone opened with "mensagem inválida")', async t => {
+  const f = await setup(t);
+  f.db.newSession(f.bot.id, 'Nova sessão da IA, iniciada sozinha para economizar contexto.');
+  const snapshot = f.db.snapshot();
+  const { validateBackup } = await import('../mobile/local.js');
+  assert.doesNotThrow(() => validateBackup(snapshot));
+  const bot = snapshot.bots.find(item => item.id === f.bot.id);
+  assert.ok(bot.messages.some(message => message.role === 'system'));
+  // What the phone app does on every start: merge its saved copy into the supervisor (with no task running).
+  f.db.run("UPDATE tasks SET state='done'");
+  f.db.merge([bot]);
+  assert.ok(f.db.page({ botId: f.bot.id, limit: 20 }).messages.some(message => message.role === 'system'));
+  assert.throws(() => validateBackup({ ...snapshot, bots: [{ ...bot, messages: [{ ...bot.messages[0], role: 'robot' }] }] }), /mensagem inválida/);
+});
+
 test('context estimate: tokens of the last turn over its calls, and the answers since the session began', async t => {
   const f = await setup(t);
   assert.deepEqual(f.db.contextLoad(f.bot.id), { estimate: 0, turns: 0 });

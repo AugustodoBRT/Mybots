@@ -33,7 +33,7 @@ test('backup validation preserves identifiers and refuses corrupt or duplicate r
   assert.deepEqual(validateBackup(JSON.parse(JSON.stringify(original))), original);
   assert.throws(() => validateBackup({ schema: 2, bots: [] }), /backup válido/);
   assert.throws(() => validateBackup({ ...original, bots: [bot(), bot()] }), /bot inválido/);
-  assert.throws(() => validateBackup({ ...original, bots: [{ ...bot(), messages: [{ ...bot().messages[0], role: 'system' }] }] }), /mensagem inválida/);
+  assert.throws(() => validateBackup({ ...original, bots: [{ ...bot(), messages: [{ ...bot().messages[0], role: 'robot' }] }] }), /mensagem inválida/);
 });
 
 test('backup validation accepts skills that are folders of the computer', () => {

@@ -167,7 +167,7 @@ export function validateBackup(value) {
     bots.add(bot.id);
     const messages = new Set();
     for (const message of bot.messages) {
-      if (!validId(message.id) || messages.has(message.id) || !['user', 'assistant'].includes(message.role) || typeof message.text !== 'string' || message.text.length > 500000 || !validDate(message.createdAt) || (message.requestId !== undefined && !validId(message.requestId)) || !['pending', 'complete', 'error'].includes(message.status)) throw new Error('O backup contém uma mensagem inválida.');
+      if (!validId(message.id) || messages.has(message.id) || !['user', 'assistant', 'system'].includes(message.role) || typeof message.text !== 'string' || message.text.length > 500000 || !validDate(message.createdAt) || (message.requestId !== undefined && !validId(message.requestId)) || !['pending', 'complete', 'error'].includes(message.status)) throw new Error('O backup contém uma mensagem inválida.');
       messages.add(message.id);
     }
   }

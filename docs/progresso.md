@@ -1808,3 +1808,10 @@ Fases 5 e 6 de `docs/PLANO-BOT-CHEFE.md` (falta a 7: poda automática; a 8, Obsi
 - **Desempenho**: o grafo é desenhado uma vez numa camada e arrastar/zoom só movem essa camada (composição na GPU); redesenha só a cada meio passo de zoom. Medido no Chrome headless: 300 notas a 60 qps no arrastar e 59 no zoom; 1000 notas (500 desenhadas) a 60 e 55 qps; celular 390 px a 60 qps.
 - **Testes**: 502 na suíte (501 passam, 1 opcional pulado); novos casos de resolução de links, propriedades, leitura e grafo.
 - **Não testado em celular real**: a camada do grafo no Android (`renderToHardwareTextureAndroid`), a pinça e o segurar.
+
+## 0.73.2 (versionCode 153): celular volta a abrir e o PC devolve o navegador
+
+- **Celular parado com "O backup contém uma mensagem inválida"**: defeito da v148. O `/clear` e a renovação automática da sessão gravam na conversa uma linha com papel `system` ("Nova sessão da IA…"), mas o validador de backup e de sincronização só aceitava `user` e `assistant`. Ao abrir, o app junta a cópia salva no celular com o supervisor (`bots.merge`), a validação recusava e o app parava na tela de erro. Agora a linha `system` é aceita (`mobile/local.js` e `lib/store.mjs`); a junção dessa cópia, se ainda falhar por outro motivo, não impede mais o app de abrir; e a tela "Não consegui conectar" ganhou **Ver detalhes do erro** (antes ela não tinha como ver os registros).
+- **PC sem botão "Devolver ao bot"**: na janela do computador o navegador é o Chromium de verdade, sem a barra de Assumir/Devolver do celular; depois de "Toque para resolver" não havia onde devolver. Novo cartão "Você está com o navegador de …" com **Devolver ao bot** na conversa, na barra lateral do navegador e no topo do navegador em tela cheia.
+- **Testes**: 503 na suíte (502 passam, 1 opcional pulado); novo teste com uma conversa que tem a linha de sessão nova (backup, validação e junção), que falhava antes da correção. Conferido no Chrome headless: o botão aparece na conversa do PC e devolve o navegador.
+- **Não testado em celular real e no Electron real**: a abertura do app no celular com os dados reais e o botão sobre o navegador em tela cheia do Electron.

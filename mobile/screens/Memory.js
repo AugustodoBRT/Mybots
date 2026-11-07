@@ -117,6 +117,7 @@ function NoteList({ bots, hues, call, version, onOpen, filters, pages, setPages 
       Object.entries(folders).map(([id, name]) => {
         const items = result.notes.filter(note => note.kind === id);
         return items.length ? <View key={id}><Text style={[s.folder, { color: L.muted }]}>{name.toUpperCase()} · {items.length}</Text>
+          {id === 'arquivo' ? <Text style={[s.meta, { color: L.faint }]}>Entregas com mais de 30 dias vêm para cá sozinhas, inteiras, com um resumo por mês.</Text> : null}
           {items.map(note => <NoteRow key={note.path} note={note} hue={hues.get(note.botId)} onOpen={onOpen} />)}</View> : null;
       })}
     {!loading && !error && result?.more ? query.trim() ? <Text style={[s.meta, { color: L.muted }]}>Mostrando os 100 primeiros resultados. Refine sua busca.</Text> :

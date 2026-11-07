@@ -118,7 +118,7 @@ O grafo é um mapa por cima da lista, não a ferramenta principal. O Chefe não 
 | 4 | Tela inicial do Chefe, faixa de status, tela "Equipe" (celular e PC) | Abrir o app cai no Chefe; abrir a conversa de qualquer bot e sala continua possível |
 | 5 | Visualizador de memória: lista, leitura com backlinks, busca, editar/apagar (seção 7b, itens 1 a 4) | A pessoa acha uma nota, corrige e vê quem aponta para ela |
 | 6 | Grafo de bolinhas (seção 7b, item 5) | Tocar numa bolinha abre a nota; órfãs aparecem destacadas; roda fluido com 300 notas |
-| 7 | `shared_archive` e poda automática | Entregas antigas vão para `arquivo/` sem perder dados; índice não cresce sem limite |
+| 7 | `shared_archive` e poda automática (feito em 07/11/2026, v154: entregas com mais de 30 dias, mantendo as 30 mais recentes; resumo por mês em `arquivo/resumos/`; índice limpo e limitado a 4000 caracteres para o Chefe) | Entregas antigas vão para `arquivo/` sem perder dados; índice não cresce sem limite |
 | 8 | Opcional: exportar para pasta `.md` (Obsidian) e/ou sincronizar com repositório privado | Grafo abre no Obsidian; sincronização sem segredos |
 
 ## 9. Riscos e como tratar

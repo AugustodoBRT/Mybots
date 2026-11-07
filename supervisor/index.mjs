@@ -1,4 +1,4 @@
-import { notesRpc } from './notes.mjs';
+import { notesRpc, pruneNotes } from './notes.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync, rmSync } from 'node:fs';
@@ -46,7 +46,7 @@ import { create as createFile } from './creator.mjs';
 const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
-  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch } = {}) {
+  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000 } = {}) {
   process.umask(0o077);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = join(directory, 'supervisor.lock');
@@ -59,7 +59,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, rooms, nodes, link, negotiations;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, rooms, nodes, link, negotiations;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -664,6 +664,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'skill.remove': return skills.remove(params.id);
         case 'notes.list': case 'notes.read': case 'notes.search': case 'notes.graph':
         case 'notes.write': case 'notes.archive': case 'notes.remove': return notesRpc(db, method, params);
+        case 'notes.prune': return pruneNotes(db, { now: clock ? Number(clock()) : Date.now() });
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
           if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');
@@ -1031,7 +1032,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
     api = { db, queue, tools, routines, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(itemTimer); email.stop(); routines.stop(); link.close();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(itemTimer); clearInterval(pruneTimer); email.stop(); routines.stop(); link.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
@@ -1044,9 +1045,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     } };
     queue.schedule(); routines.start(); link.start();
     items.tick().catch(() => {}); itemTimer = setInterval(() => items.tick().catch(() => {}), routineTickMs || 30000);
+    // With a computer paired, only the computer tidies the memory, so both devices never move the same notes at once.
+    const prune = () => { if (kind === 'computer' || !peer()?.known) try { pruneNotes(db, { now: clock ? Number(clock()) : Date.now() }); } catch {} };
+    prune(); if (pruneMs) pruneTimer = setInterval(prune, pruneMs);
     return api;
   } catch (error) {
-    clearInterval(timer); clearInterval(pingTimer); email?.stop(); routines?.stop(); link?.close();
+    clearInterval(timer); clearInterval(pingTimer); clearInterval(pruneTimer); email?.stop(); routines?.stop(); link?.close();
     for (const socket of [...(sockets?.clients || []), ...(frameSockets?.clients || [])]) socket.terminate();
     server?.close(); db?.close();
     try { unlinkSync(lock); } catch {}

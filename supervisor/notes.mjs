@@ -60,6 +60,9 @@ export function linkResolver(rows) {
   for (const row of rows) { add(slug(row.title), row); add(slug(row.path.split('/').at(-1).slice(0, -3)), row); }
   return name => {
     const path = linkPath(name);
+    // A delivery linked by its path keeps working after it moves to arquivo/.
+    const moved = path?.startsWith('entregas/') && 'arquivo/' + path.slice(9);
+    if (moved && !byPath.has(path) && byPath.has(moved)) return moved;
     if (!path || byPath.has(path) || FOLDER.test(name)) return path;
     return byName.get(slug(name.replace(/\.md$/, '')))?.path || path;
   };
@@ -105,7 +108,8 @@ export function noteTool(db, bot, tool, args) {
   }
   if (tool === 'shared.note_read') {
     if (args.list) return { notes: db.all('SELECT path,title,bot_id,updated_at FROM notes WHERE instr(path,?)=1 ORDER BY updated_at DESC,path LIMIT 100', args.prefix) };
-    const note = read(args.path);
+    const note = read(args.path), moved = !note && args.path.startsWith('entregas/') && read('arquivo/' + args.path.slice(9));
+    if (moved) return { ...moved, movedFrom: args.path, message: 'Esta entrega já foi para o arquivo.' };
     if (!note) throw new Error('Nota não encontrada.');
     return note;
   }
@@ -123,6 +127,8 @@ export function noteTool(db, bot, tool, args) {
       if (!previous) throw new Error('Entrega não encontrada.');
       return archive(db, previous, args.summary, at);
     }
+    if (args.path === 'chefe/index.md' && args.text.length > PRUNE.indexLimit)
+      throw new Error(`Mantenha o índice com até ${PRUNE.indexLimit} caracteres: deixe links para projetos, pessoas e decisões e leve os detalhes para outras notas.`);
     if (previous) {
       if (!args.overwrite) throw new Error('A nota já existe. Use overwrite: true para guardar a versão anterior e substituir.');
       const history = keepHistory(db, previous, at);
@@ -142,7 +148,8 @@ const fields = {
   'notes.graph': ['kind', 'botId', 'since', 'limit'],
   'notes.write': ['path', 'text', 'create'],
   'notes.archive': ['path', 'summary'],
-  'notes.remove': ['path', 'confirm']
+  'notes.remove': ['path', 'confirm'],
+  'notes.prune': []
 };
 export const noteMethods = Object.keys(fields);
 export const GRAPH_LIMIT = 500;
@@ -287,6 +294,7 @@ export function notesRpc(db, method, params = {}) {
     const records = db.all("SELECT n.*,json_extract(b.body,'$.name') AS botName FROM notes n LEFT JOIN bots b ON b.id=n.bot_id");
     return readNotes(records, method, params);
   }
+  if (method === 'notes.prune') return pruneNotes(db);
   const { path, text, create, summary } = params;
   return db.transaction(() => {
     const previous = db.get('SELECT * FROM notes WHERE path=?', path);
@@ -320,5 +328,101 @@ export function notesRpc(db, method, params = {}) {
     db.record(action, detail + ': ' + path, previous?.bot_id || null);
     db.notify('activity.new', {});
     return result;
+  });
+}
+
+// Automatic pruning: old deliveries move to arquivo/ (body intact), each month gets a generated summary in arquivo/resumos/,
+// and chefe/index.md drops the list lines that only pointed at what moved, so neither the index nor what the Chief reads grows forever.
+export const PRUNE = { days: 30, keep: 30, months: 6, indexLimit: 4000 };
+const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const monthName = month => `${MONTHS[Number(month.slice(5, 7)) - 1]} de ${month.slice(0, 4)}`;
+const DELIVERY = /^arquivo\/(\d{4}-\d\d)-(\d\d)-\d{4}-[^/]+\.md$/;
+const label = text => String(text).replace(/[\[\]|#\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+const firstLine = body => {
+  const line = lead(body).split('\n').map(text => text.replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, '$2').replace(/^[\s#>*+-]+|\[[ x]\]\s*/gi, '').trim()).find(Boolean) || '';
+  return line.length > 90 ? line.slice(0, 89).trimEnd() + '…' : line;
+};
+
+// Rebuilds the summaries of one month from the archived deliveries themselves, so running it twice (or on both devices) gives the same text.
+function writeSummaries(db, month, at) {
+  const rows = db.all("SELECT n.path,n.title,n.body,json_extract(b.body,'$.name') AS botName FROM notes n LEFT JOIN bots b ON b.id=n.bot_id WHERE n.kind='arquivo' AND instr(n.path,?)=1 ORDER BY n.path", `arquivo/${month}-`)
+    .filter(row => DELIVERY.test(row.path));
+  const heading = part => `Entregas de ${monthName(month)}${part > 1 ? ` (parte ${part})` : ''}`;
+  const pathOf = part => `arquivo/resumos/${month}${part > 1 ? '-parte-' + part : ''}.md`;
+  const intro = 'Resumo automático das entregas que foram para o arquivo. Cada link abre a entrega completa.\n\n';
+  const parts = [[]];
+  let size = 0;
+  for (const row of rows) {
+    const day = row.path.match(DELIVERY)[2], who = label(row.botName || 'Sem bot'), text = firstLine(row.body);
+    let line = `- ${day}/${month.slice(5, 7)} · ${who} · [[${row.path.slice(0, -3)}|${label(row.title) || 'Entrega'}]]${text ? ' — ' + text : ''}`;
+    try { checkBody(line); } catch { line = line.split(' — ')[0]; }
+    if (size + line.length > 7200) { parts.push([]); size = 0; }
+    parts.at(-1).push(line); size += line.length + 1;
+  }
+  parts.forEach((lines, i) => {
+    const part = i + 1, path = pathOf(part), next = part < parts.length ? `\n\nContinua em [[${pathOf(part + 1).slice(0, -3)}|${heading(part + 1)}]].` : '';
+    const body = `# ${heading(part)}\n\n${intro}${lines.join('\n')}${next}`, title = heading(part);
+    const old = db.get('SELECT body,title FROM notes WHERE path=?', path);
+    if (!old) saveNote(db, { path, bot_id: null, kind: 'arquivo', title, body, created_at: at, updated_at: at });
+    else if (old.body !== body || old.title !== title) { checkBody(body); db.run('UPDATE notes SET body=?,title=?,updated_at=? WHERE path=?', body, title, at, path); db.notify('notes.changed', { path }); }
+  });
+  for (let part = parts.length + 1; db.get('SELECT 1 FROM notes WHERE path=?', pathOf(part)); part++) {
+    db.run('DELETE FROM notes WHERE path=?', pathOf(part)); db.notify('notes.changed', { path: pathOf(part) });
+  }
+  return pathOf(1);
+}
+
+// The index keeps what the Chief wrote, minus list lines whose every [[link]] went to the archive, plus an "Arquivo" section
+// with the latest months' summaries. The previous version stays in arquivo/historico/, like any other edit.
+function tidyIndex(body, gone, resolve, months) {
+  const lines = body.split('\n'), kept = [];
+  for (const line of lines) {
+    const targets = /^\s*(?:[-*+]|\d+[.)])\s/.test(line) ? linkNames(line).map(resolve) : [];
+    if (targets.length && targets.every(path => gone.has(path))) continue;
+    kept.push(line);
+  }
+  const start = kept.findIndex(line => /^##\s+Arquivo\s*$/i.test(line.trim()));
+  let section = [];
+  if (start >= 0) {
+    let end = kept.findIndex((line, i) => i > start && /^#{1,2}\s/.test(line));
+    if (end < 0) end = kept.length;
+    section = kept.splice(start, end - start).slice(1);
+  }
+  const known = new Set([...section.join('\n').matchAll(/arquivo\/resumos\/(\d{4}-\d\d)\b/g)].map(match => match[1]));
+  for (const month of months) known.add(month);
+  const other = section.filter(line => line.trim() && !/arquivo\/resumos\/\d{4}-\d\d/.test(line));
+  const recent = [...known].sort().reverse().slice(0, PRUNE.months).map(month => `- [[arquivo/resumos/${month}|Entregas de ${monthName(month)}]]`);
+  while (kept.length && !kept.at(-1).trim()) kept.pop();
+  return [...kept, '', '## Arquivo', '', ...other, ...recent].join('\n') + '\n';
+}
+
+export function pruneNotes(db, { now = Date.now() } = {}) {
+  const at = new Date(now).toISOString(), cutoff = new Date(now - PRUNE.days * 86400000).toISOString();
+  return db.transaction(() => {
+    const rows = db.all('SELECT * FROM notes');
+    const deliveries = rows.filter(row => row.kind === 'entrega').map(row => ({ ...row, when: new Date(row.updated_at).toISOString() }))
+      .sort((a, b) => b.when.localeCompare(a.when) || (a.path > b.path) - (a.path < b.path));
+    const old = deliveries.slice(PRUNE.keep).filter(row => row.when < cutoff);
+    if (!old.length) return { archived: 0, months: [] };
+    const resolve = linkResolver(rows), gone = new Set(), months = new Set();
+    for (const row of old) {
+      const { path } = archive(db, row, '', at);
+      gone.add(row.path);
+      const month = path.match(DELIVERY)?.[1];
+      if (month) months.add(month);
+    }
+    const summaries = [...months].sort().map(month => writeSummaries(db, month, at));
+    const index = db.get("SELECT * FROM notes WHERE path='chefe/index.md'");
+    if (index) {
+      const body = tidyIndex(index.body, gone, resolve, months);
+      if (body !== index.body && body.length <= 8000) {
+        keepHistory(db, index, at);
+        db.run('UPDATE notes SET body=?,updated_at=? WHERE path=?', body, at, index.path);
+        db.notify('notes.changed', { path: index.path });
+      }
+    }
+    db.record('notes_pruned', `Memória arrumada: ${old.length === 1 ? '1 entrega antiga foi' : old.length + ' entregas antigas foram'} para o arquivo, com um resumo por mês.`, null);
+    db.notify('activity.new', {});
+    return { archived: old.length, months: [...months].sort(), summaries };
   });
 }

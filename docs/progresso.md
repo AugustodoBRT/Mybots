@@ -1877,3 +1877,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Bots em 3D por padrão** (PC e web app do iPhone): o corpo 3D do Escritório passa a ser o rosto de todos os bots no app todo. O interruptor em Ajustes → Bots continua, para voltar ao rosto plano (a escolha antiga de quem já tinha desligado é respeitada).
 - **Android**: o 3D ainda não existe no aplicativo do Android (o rosto lá é desenhado por uma view nativa); ficou como estava.
 - **Testes**: 517 na suíte (516 passam, 1 opcional pulado). Visto no Chrome headless (build web): Chefe sem a barra da esquerda, rosto 3D com o grafo em volta, e a Equipe sem o Chefe. Não visto: o envio da primeira mensagem com IA de verdade e o celular real.
+
+## 0.77.1 (versionCode 162): bots em 3D mais nítidos
+
+- **Avatar 3D refeito para ficar bonito em tamanho pequeno** (`mobile/office/avatar.js`): desenhado em dobro do tamanho mostrado e reduzido com suavização (bordas sem serrilhado), numa tela com pelo menos o dobro dos pixels (nítido também em monitores comuns, antes ficava em baixa resolução), mais grãos e menores, corpo mais cheio, sem a sombra do chão que virava um quadrado escuro, e enquadramento que não corta mais orelhas e chifres.
+- **Tela inicial do Chefe**: rosto maior, sem o fundo em bloco.
+- **Visto** no Chrome headless (PC): Chefe com o rosto inteiro e nítido, e a lista da Equipe. Não visto no iPhone nem em monitor de alta densidade; no Android o 3D continua não existindo.

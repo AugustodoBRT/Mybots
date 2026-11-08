@@ -91,7 +91,7 @@ void main(){
 
 // bucketColor, with the bucket steps smoothed: hsl(hue, 54%, 34 + depth·36 + light·15) and alpha .86; dust is hsl(hue, 76%, 72%) at .6.
 const fragmentShader = `
-uniform float uHue, uDim, uWarm;
+uniform float uHue, uDim, uWarm, uAlpha;
 varying float vDepth; varying float vLight; varying float vDust; varying float vShade; varying float vSocket;
 vec3 hsl(float h, float s, float l){ vec3 k = mod(vec3(0., 8., 4.) + h / 30., 12.); float a = s * min(l, 1. - l); return l - a * max(vec3(-1.), min(min(k - 3., 9. - k), vec3(1.))); }
 void main(){
@@ -101,7 +101,7 @@ void main(){
   vec3 col = vDust > .5 ? hsl(uHue, .76, .72) : hsl(uHue, .54, l) * vShade;
   col = mix(col, vec3(1., .74, .42), uWarm * .14);
   col = mix(col, hsl(uHue, .35, .05), vSocket);
-  float alpha = vDust > .5 ? .35 : .32;
+  float alpha = vDust > .5 ? .35 : uAlpha;
   // The app's colors are sRGB; the renderer works in linear light.
   col = pow(col, vec3(2.2));
   gl_FragColor = vec4(col, alpha * (1. - smoothstep(.16, .25, d) * .5));
@@ -132,7 +132,7 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
   const color = new T.Color().setHSL(spec.hue / 360, 0.62, 0.66);
   const shared = { uTime: { value: 0 }, uFlow: { value: 0.010 }, uEnergy: { value: 1 }, uScaleXYZ: { value: new T.Vector3(spec.sx, spec.sy, spec.sz) }, uPixel: { value: 2 } };
   const u = { ...shared, uShake: { value: 0 }, uTanE: { value: 0.62 }, uHoleA: { value: Array.from({ length: MAX_HOLES }, () => new T.Vector4()) }, uHoleB: { value: Array.from({ length: MAX_HOLES }, () => new T.Vector4()) }, uHoles: { value: 0 },
-    uLightW: { value: new T.Vector3(-7, 14, 9).normalize() }, uHue: { value: spec.hue }, uDim: { value: 0 }, uWarm: { value: 0 } };
+    uLightW: { value: new T.Vector3(-7, 14, 9).normalize() }, uHue: { value: spec.hue }, uDim: { value: 0 }, uWarm: { value: 0 }, uAlpha: { value: 0.32 } };
   const material = new T.ShaderMaterial({ uniforms: u, vertexShader, fragmentShader, transparent: true, depthWrite: false }); material.toneMapped = false;
   const glowU = { ...shared, uColor: { value: color.clone() }, uGlow: { value: 0.012 } };
   const glowMat = new T.ShaderMaterial({ uniforms: glowU, vertexShader: glowVertex, fragmentShader: glowFragment, transparent: true, depthWrite: false, blending: T.AdditiveBlending }); glowMat.toneMapped = false;
@@ -202,5 +202,5 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
     return cy;
   }
   function dispose() { for (const o of [group, shadow, light, trail]) scene.remove(o); shellGeo.dispose(); shellMat.dispose(); eyeGeo.dispose(); ink.dispose(); g.dispose(); material.dispose(); glowMat.dispose(); trailGeo.dispose(); trailMat.dispose(); shadow.geometry.dispose(); shadow.material.dispose(); }
-  return { spec, update, dispose, height: spec.sy * base * 2, color };
+  return { spec, update, dispose, height: spec.sy * base * 2, color, hideShadow: () => { shadow.visible = false; shadow.material.opacity = 0; }, grainAlpha: value => { u.uAlpha.value = value; } };
 }

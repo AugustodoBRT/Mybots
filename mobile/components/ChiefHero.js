@@ -26,8 +26,8 @@ export function ChiefHero({ bot, state, bots, call, onHistory }) {
   return <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
     {model?.nodes.length ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.55 }}>
       <GraphCanvas model={model} positions={positions} colorOf={colorOf} onOpen={() => {}} fitKey={fitKey} store={store} compact transparent /></View> : null}
-    <View pointerEvents="none" style={{ width: 220, height: 220, borderRadius: 110, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Avatar bot={bot} size={170} state={state} animated />
+    <View pointerEvents="none" style={{ width: 270, height: 270, borderRadius: 135, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Avatar bot={bot} size={240} state={state} tile={false} animated />
     </View>
     {onHistory ? <Pressable accessibilityRole="button" onPress={onHistory} style={{ position: 'absolute', bottom: 8 }}>
       <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Ver conversa anterior</Text></Pressable> : null}

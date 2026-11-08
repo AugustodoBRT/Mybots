@@ -4,7 +4,9 @@
 import * as T from './vendor/three.module.js';
 import { createBot } from './bot.js';
 
-const MAX = 512, live = new Set();
+// Drawn at twice the size it is shown and scaled down (smooth edges, fine grains), on a canvas at least 2x the CSS size
+// so it is sharp on ordinary screens too.
+const MAX = 1024, SHOWN = 512, SS = 2, live = new Set();
 let renderer = null, raf = 0, last = 0;
 
 function gl() {
@@ -25,18 +27,19 @@ function loop(now) {
 
 /** Draws `bot` into `canvas` (CSS size × size). Returns { set({ mood, animated }), dispose() }. */
 export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = false, index = 0 }) {
-  const dpr = Math.min(2, globalThis.devicePixelRatio || 1), px = Math.min(MAX, Math.round(size * dpr));
+  const dpr = Math.max(2, Math.min(3, globalThis.devicePixelRatio || 1)), px = Math.min(SHOWN, Math.round(size * dpr)), rp = Math.min(MAX, px * SS);
   canvas.width = px; canvas.height = px;
   const ctx = canvas.getContext('2d'), scene = new T.Scene();
   scene.add(new T.HemisphereLight('#d1e4ff', '#84735d', 1.6));
   const key = new T.DirectionalLight('#ffe7cc', 2.4); key.position.set(-8, 16, 10); scene.add(key);
-  const visual = createBot(bot, scene, { particles: px >= 300 ? 6000 : px >= 160 ? 4500 : 3000, index });
+  const visual = createBot(bot, scene, { particles: px >= 300 ? 11000 : px >= 160 ? 8000 : 5000, index });
+  visual.grainAlpha(0.55); visual.hideShadow();
   // The room's camera height (~32° down), so the face opens the same way; seen from the front instead of the corner.
-  const tall = visual.height, half = tall * 0.6, camera = new T.OrthographicCamera(-half, half, half, -half, -50, 50);
-  camera.position.set(0, tall * 0.5 + 12.2, 19.8); camera.lookAt(0, tall * 0.48, 0); camera.updateProjectionMatrix();
+  const tall = visual.height, half = tall * 0.74, camera = new T.OrthographicCamera(-half, half, half, -half, -50, 50);
+  camera.position.set(0, tall * 0.5 + 12.2, 19.8); camera.lookAt(0, tall * 0.56, 0); camera.updateProjectionMatrix();
   // Point size follows the pixels per world unit, a bit coarser than in the room so the grains (and ears, horns, hair
   // made only of grains) still read at avatar size.
-  const pixel = Math.max(1.6, px / (2 * half) * 0.05);
+  const pixel = Math.max(1.6, rp / (2 * half) * 0.032);
   const state = { mood, animated, t: index * 0.7 };
   const draw = t => {
     state.t = t ?? state.t;
@@ -45,8 +48,8 @@ export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = fal
     if (!state.animated) { for (let i = 0; i < 40; i++) visual.update(view, state.t + i * 0.05, pixel); state.t += 2; }
     else visual.update(view, state.t, pixel);
     const r = gl();
-    r.setViewport(0, 0, px, px); r.setScissor(0, 0, px, px); r.clear(); r.render(scene, camera);
-    ctx.clearRect(0, 0, px, px); ctx.drawImage(r.domElement, 0, MAX - px, px, px, 0, 0, px, px);
+    r.setViewport(0, 0, rp, rp); r.setScissor(0, 0, rp, rp); r.clear(); r.render(scene, camera);
+    ctx.clearRect(0, 0, px, px); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(r.domElement, 0, MAX - rp, rp, rp, 0, 0, px, px);
   };
   const run = () => { if (state.animated) { live.add(api); if (!raf) raf = requestAnimationFrame(loop); } else { live.delete(api); draw(); } };
   const api = {

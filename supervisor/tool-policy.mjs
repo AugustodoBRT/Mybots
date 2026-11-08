@@ -139,7 +139,7 @@ export function validateProfile(data) {
 }
 export function toolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Argumentos inválidos.');
-  const fields = { 'delivery.write': ['topic','text'], 'shared.index_read': [], 'shared.note_read': ['path','list','prefix'],
+  const fields = { 'delivery.write': ['topic','text','project'], 'shared.index_read': [], 'shared.note_read': ['path','list','prefix'],
     'shared.note_write': ['path','text','overwrite'], 'shared.archive': ['path','summary'], 'memory.read': ['key'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
     'task.update_item': ['id','title','details','course','due','source','done'], 'notify.user': ['title','body'],
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
@@ -163,7 +163,7 @@ export function toolArguments(tool, args) {
     if (typeof args[name] !== 'string' || !args[name].trim() || args[name].length > max || /\u0000/.test(args[name])) throw new Error('Preencha os argumentos da ferramenta dentro dos limites.');
     return args[name].trim();
   };
-  if (tool === 'delivery.write') return { topic: checkBody(text('topic', 80)), text: checkBody(text('text', 4000)) };
+  if (tool === 'delivery.write') { const project = text('project', 80, true); return { topic: checkBody(text('topic', 80)), text: checkBody(text('text', 4000)), ...(project ? { project: checkBody(project) } : {}) }; }
   if (tool === 'shared.index_read') return {};
   if (tool.startsWith('shared.')) {
     for (const key of ['list', 'overwrite']) if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error('Use true ou false em ' + key + '.');

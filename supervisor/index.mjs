@@ -1,4 +1,4 @@
-import { notesRpc, pruneNotes } from './notes.mjs';
+import { notesRpc, pruneNotes, linkProjects } from './notes.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, chmodSync, unlinkSync, readdirSync, statSync, rmSync } from 'node:fs';
@@ -1046,7 +1046,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     queue.schedule(); routines.start(); link.start();
     items.tick().catch(() => {}); itemTimer = setInterval(() => items.tick().catch(() => {}), routineTickMs || 30000);
     // With a computer paired, only the computer tidies the memory, so both devices never move the same notes at once.
-    const prune = () => { if (kind === 'computer' || !peer()?.known) try { pruneNotes(db, { now: clock ? Number(clock()) : Date.now() }); } catch {} };
+    const prune = () => { if (kind === 'computer' || !peer()?.known) { const now = clock ? Number(clock()) : Date.now(); try { pruneNotes(db, { now }); } catch {} try { linkProjects(db, { now }); } catch {} } };
     prune(); if (pruneMs) pruneTimer = setInterval(prune, pruneMs);
     return api;
   } catch (error) {

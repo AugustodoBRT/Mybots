@@ -49,6 +49,17 @@ export function links(body) {
   return [...new Set(linkNames(body).map(linkPath).filter(Boolean))];
 }
 
+// Other names of a note, in Obsidian's front matter: "aliases: [A, B]" or one "  - A" per line.
+export function aliasesOf(body) {
+  const front = /^---\n([\s\S]*?)\n---[ \t]*(?:\n|$)/.exec(String(body))?.[1];
+  if (!front) return [];
+  const lines = front.split('\n'), start = lines.findIndex(line => /^aliases\s*:/i.test(line));
+  if (start < 0) return [];
+  const inline = lines[start].replace(/^aliases\s*:\s*/i, '').trim();
+  const names = inline ? inline.replace(/^\[|\]$/g, '').split(',') : lines.slice(start + 1).filter(line => /^\s+-\s/.test(line)).map(line => line.replace(/^\s+-\s*/, ''));
+  return names.map(name => name.trim().replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+}
+
 // Resolves link names against existing notes, like Obsidian: the exact path first, then a note whose title or file name
 // matches ignoring case, accents and punctuation (chefe/ before entregas/ before arquivo/, newest first).
 export function linkResolver(rows) {
@@ -57,7 +68,7 @@ export function linkResolver(rows) {
     const old = key && byName.get(key);
     if (key && (!old || rank[row.kind] < rank[old.kind])) byName.set(key, row);
   };
-  for (const row of rows) { add(slug(row.title), row); add(slug(row.path.split('/').at(-1).slice(0, -3)), row); }
+  for (const row of rows) { add(slug(row.title), row); add(slug(row.path.split('/').at(-1).slice(0, -3)), row); for (const alias of aliasesOf(row.body)) add(slug(alias), row); }
   return name => {
     const path = linkPath(name);
     // A delivery linked by its path keeps working after it moves to arquivo/.
@@ -118,9 +129,15 @@ export function noteTool(db, bot, tool, args) {
     if (tool === 'delivery.write') {
       const minute = at.slice(0, 10) + '-' + at.slice(11, 16).replace(':', '');
       const path = available(db, 'entregas/' + minute + '-' + (slug(bot.name) || 'bot') + '-' + (slug(args.topic) || 'entrega'));
-      const body = `Bot: ${bot.name}\nData: ${at}\nAssunto: ${args.topic}\n\n${args.text}`;
+      const project = args.project ? attachProject(db, bot, args.project, at) : null;
+      const body = `Bot: ${bot.name}\nData: ${at}\nAssunto: ${args.topic}\n${project ? `Projeto: [[${project.path.slice(0, -3)}|${label(project.title)}]]\n` : ''}\n${args.text}`;
       saveNote(db, { path, bot_id: bot.id, kind: 'entrega', title: args.topic, body, created_at: at, updated_at: at });
-      return { path };
+      // Every project the delivery links to (the one given or a [[link]] in the text) lists it.
+      const resolve = linkResolver(db.all('SELECT path,title,kind,body FROM notes'));
+      for (const target of new Set(linkNames(body).map(resolve))) if (target?.startsWith(PROJECTS)) refreshProject(db, target, at);
+      const known = db.all('SELECT title FROM notes WHERE instr(path,?)=1 AND bot_id=? ORDER BY updated_at DESC LIMIT 20', PROJECTS, bot.id).map(row => row.title);
+      return { path, ...(project ? { project: project.title, projectPath: project.path } : {}),
+        ...(known.length ? { message: (project ? `Entrega ligada ao projeto "${project.title}". ` : 'Entrega sem projeto. ') + `Projetos deste bot: ${known.join('; ')}. Use sempre o mesmo nome em project.` } : {}) };
     }
     const previous = read(args.path);
     if (tool === 'shared.archive') {
@@ -424,5 +441,122 @@ export function pruneNotes(db, { now = Date.now() } = {}) {
     db.record('notes_pruned', `Memória arrumada: ${old.length === 1 ? '1 entrega antiga foi' : old.length + ' entregas antigas foram'} para o arquivo, com um resumo por mês.`, null);
     db.notify('activity.new', {});
     return { archived: old.length, months: [...months].sort(), summaries };
+  });
+}
+
+// Projects: the note each delivery hangs from (chefe/projetos/<nome>.md). The MyBots creates it when a delivery names it and keeps
+// its "## Entregas" list; what the Chief or the person write above the list stays. Other spellings of the name become aliases.
+export const PROJECTS = 'chefe/projetos/';
+const ENTRIES = '## Entregas', LISTED = 60;
+// The name without case, accents, spacing or a leading "Projeto".
+const projectKey = name => slug(String(name)).replace(/^(?:projeto|project)-/, '').replace(/-/g, '');
+// Two names of one bot are the same project when one starts the other ("Engajamento Commit" / "Engajamento CommitJR") or they
+// share most of their start ("Engajamento CommitJR" / "Engajamento Commit Júnior").
+function sameProject(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const shorter = Math.min(a.length, b.length);
+  let common = 0;
+  while (common < shorter && a[common] === b[common]) common++;
+  return shorter >= 12 && common >= Math.max(12, Math.ceil(shorter * 0.7));
+}
+const projectNames = row => [row.title, ...aliasesOf(row.body)];
+
+function findProject(db, botId, name) {
+  const key = projectKey(name), rows = db.all('SELECT * FROM notes WHERE instr(path,?)=1 ORDER BY created_at, path', PROJECTS);
+  return rows.find(row => projectNames(row).some(other => projectKey(other) === key)) ||
+    rows.find(row => row.bot_id === botId && projectNames(row).some(other => sameProject(projectKey(other), key))) || null;
+}
+
+function withAliases(body, aliases) {
+  const rest = String(body).replace(/^---\n[\s\S]*?\n---[ \t]*(?:\n|$)/, '');
+  return aliases.length ? `---\naliases:\n${aliases.map(alias => `  - ${label(alias)}`).join('\n')}\n---\n${rest}` : rest;
+}
+
+function attachProject(db, bot, name, at, extra = []) {
+  const title = label(name).slice(0, 80);
+  if (!projectKey(title)) return null;
+  const found = findProject(db, bot.id, title);
+  if (found) {
+    const names = projectNames(found), missing = [title, ...extra].filter(other => label(other) && !names.some(known => slug(known) === slug(other)));
+    if (missing.length) {
+      const body = withAliases(found.body, [...aliasesOf(found.body), ...missing.map(label)]);
+      checkBody(body); db.run('UPDATE notes SET body=? WHERE path=?', body, found.path); db.notify('notes.changed', { path: found.path });
+    }
+    return found;
+  }
+  const path = available(db, PROJECTS + (slug(title) || 'projeto').slice(0, 80));
+  const body = withAliases(`# ${title}\n\nProjeto ${bot.name ? `de ${label(bot.name)}` : 'da equipe'}. O MyBots mantém a lista de entregas abaixo; escreva acima dela o que vale para o projeto todo.\n\n${ENTRIES}\n`, extra.filter(other => slug(other) !== slug(title)).map(label));
+  saveNote(db, { path, bot_id: bot.id || null, kind: 'chefe', title, body, created_at: at, updated_at: at });
+  return db.get('SELECT * FROM notes WHERE path=?', path);
+}
+
+// Rewrites only the "## Entregas" section, from the deliveries that link to the project (newest first). No history copy:
+// the list is generated, like the monthly summaries.
+function refreshProject(db, path, at, rows = db.all("SELECT n.path,n.title,n.kind,n.body,n.created_at,json_extract(b.body,'$.name') AS botName FROM notes n LEFT JOIN bots b ON b.id=n.bot_id")) {
+  const project = rows.find(row => row.path === path) || db.get('SELECT * FROM notes WHERE path=?', path);
+  if (!project) return;
+  const resolve = linkResolver(rows);
+  const items = rows.filter(row => (row.kind === 'entrega' || DELIVERY.test(row.path)) && linkNames(row.body).some(name => resolve(name) === path))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || (a.path > b.path) - (a.path < b.path));
+  const line = row => { const day = new Date(row.created_at).toISOString(); return `- ${day.slice(8, 10)}/${day.slice(5, 7)} · ${label(row.botName || 'Sem bot')} · [[${row.path.slice(0, -3)}|${label(row.title) || 'Entrega'}]]`; };
+  const list = items.slice(0, LISTED).map(line);
+  if (items.length > LISTED) list.push(`- … e mais ${items.length - LISTED} entregas mais antigas (veja as ligações desta nota).`);
+  const lines = project.body.split('\n'), start = lines.findIndex(text => text.trim() === ENTRIES);
+  const before = start < 0 ? lines : lines.slice(0, start);
+  let end = start < 0 ? -1 : lines.findIndex((text, i) => i > start && /^#{1,2}\s/.test(text));
+  const after = end < 0 ? [] : ['', ...lines.slice(end)];
+  while (before.length && !before.at(-1).trim()) before.pop();
+  let body = [...before, '', ENTRIES, '', ...(list.length ? list : ['Nenhuma entrega ainda.']), ...after].join('\n') + '\n';
+  while (body.length > 8000 && list.length > 1) { list.splice(-2, 1); body = [...before, '', ENTRIES, '', ...list, ...after].join('\n') + '\n'; }
+  if (body === project.body) return;
+  checkBody(body); db.run('UPDATE notes SET body=?,updated_at=? WHERE path=?', body, at, path); db.notify('notes.changed', { path });
+}
+
+// The deliveries already written: names linked without a note become projects when one bot used them (or close spellings) in
+// PROJECT_MIN deliveries or more, and close spellings of an existing project of that bot become its aliases. Runs again harmlessly.
+export const PROJECT_MIN = 3;
+// The project a delivery names: the link after "Projeto:", else its first link (the instructions asked for the project, then
+// the decision), never one written as a decision.
+function projectLink(body) {
+  const text = lead(String(body));
+  const named = /projeto\s*:\s*\[\[([^\[\]\r\n]+)\]\]/i.exec(text)?.[1];
+  const first = /\[\[([^\[\]\r\n]+)\]\]/.exec(text);
+  const decision = first && /decis[aã]o\s*:\s*$/i.test(text.slice(Math.max(0, first.index - 12), first.index));
+  const name = (named || (!decision && first?.[1]) || '').split('|')[0].split('#')[0].trim();
+  return name && !/^decis[aã]o\b/i.test(name) ? [name] : [];
+}
+export function linkProjects(db, { now = Date.now() } = {}) {
+  const at = new Date(now).toISOString();
+  return db.transaction(() => {
+    const rows = db.all('SELECT * FROM notes'), byPath = new Set(rows.map(row => row.path)), resolve = linkResolver(rows);
+    const groups = new Map(); // bot -> [{ key, names: Map(name -> count), deliveries: Set }]
+    let aliased = 0, created = 0;
+    for (const row of rows) {
+      if (!row.bot_id || !(row.kind === 'entrega' || DELIVERY.test(row.path))) continue;
+      for (const name of projectLink(row.body)) {
+        const target = resolve(name);
+        if (!target || byPath.has(target) || FOLDER.test(name) || !projectKey(name)) continue;
+        const key = projectKey(name), list = groups.get(row.bot_id) || [];
+        groups.set(row.bot_id, list);
+        let group = list.find(item => sameProject(item.key, key));
+        if (!group) { group = { key, names: new Map(), deliveries: new Set() }; list.push(group); }
+        group.names.set(name, (group.names.get(name) || 0) + 1); group.deliveries.add(row.path);
+      }
+    }
+    for (const [botId, list] of groups) {
+      const bot = { id: botId, name: db.bot?.(botId)?.name || '' };
+      for (const group of list) {
+        const names = [...group.names].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+        const existing = names.map(name => findProject(db, botId, name)).find(Boolean);
+        if (!existing && group.deliveries.size < PROJECT_MIN) continue;
+        if (existing) aliased++; else created++;
+        attachProject(db, bot, existing ? existing.title : names[0], at, names);
+      }
+    }
+    const all = db.all("SELECT n.path,n.title,n.kind,n.body,n.created_at,json_extract(b.body,'$.name') AS botName FROM notes n LEFT JOIN bots b ON b.id=n.bot_id");
+    for (const row of all) if (row.path.startsWith(PROJECTS)) refreshProject(db, row.path, at, all);
+    if (created) { db.record('projects_linked', `Memória arrumada: ${created === 1 ? '1 projeto ganhou' : created + ' projetos ganharam'} nota própria, ligando as entregas que já falavam dele.`, null); db.notify('activity.new', {}); }
+    return { created, aliased };
   });
 }

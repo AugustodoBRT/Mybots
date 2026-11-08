@@ -1859,3 +1859,11 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Banco**: esquema 17, com a coluna `usage.context` (tamanho da última chamada de cada resposta).
 - **Testes**: 513 na suíte (512 passam, 1 opcional pulado); novos casos no `tests/tools.test.mjs` (medida, passagem de turno com sucesso e com falha) e o novo `tests/context-size.test.mjs` (leitura do registro do Codex). A migração foi testada numa cópia do banco real do PC.
 - **Não testado com IA de verdade**: a qualidade do resumo escrito por cada modelo.
+
+## 0.76.0 (versionCode 160): nota de projeto no grafo da memória
+
+- **A bolinha central deixa de ficar "Nota ainda não criada"**: os bots eram instruídos a pôr nas entregas um link `[[projeto]]`, mas só o Chefe pode criar notas em `chefe/`, então a nota do projeto nunca existia. Além disso, o mesmo bot escrevia o nome de jeitos diferentes. O Engajamento CommitJR, por exemplo, usou 4 nomes em 9 entregas.
+- **Entrega com projeto**: `delivery_write` aceita `project`. O MyBots cria `chefe/projetos/<nome>.md` (com o bot responsável e o espaço para o Chefe escrever o que vale para o projeto todo) e mantém nela a seção "## Entregas", com as entregas mais recentes primeiro. A entrega ganha a linha "Projeto: [[…]]", e a resposta da ferramenta mostra ao bot os projetos que ele já tem, para ele repetir o mesmo nome.
+- **Nomes parecidos viram apelidos**: outro jeito de escrever o mesmo projeto do mesmo bot ("Engajamento Commit Júnior", "Engajamento Commit", "Projeto Engajamento CommitJR") vai para os `aliases` da nota, no front matter, como no Obsidian. Os links com esses nomes passam a abrir a mesma nota, sem reescrever as entregas. Projetos de bots diferentes só se juntam quando o nome é igual.
+- **Entregas que já existiam**: na abertura do app e a cada 6 horas, junto com a poda, o primeiro link de cada entrega (ou o que vem depois de "Projeto:") que não tem nota e aparece em 3 ou mais entregas do mesmo bot vira nota de projeto. Links de decisão continuam como links. Na cópia do banco do PC, isso criou "Engajamento CommitJR" (8 entregas ligadas, 3 apelidos) e "Cobrança de atividades do SIGAA" (Maniaco). Rodar de novo não muda nada.
+- **Testes**: 517 na suíte (516 passam, 1 opcional pulado); novo `tests/notes-projects.test.mjs`.

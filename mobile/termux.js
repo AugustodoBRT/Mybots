@@ -108,6 +108,11 @@ export const BotFrameView = frameView;
 let mimoView;
 try { mimoView = native ? requireNativeViewManager('TermuxBridge', 'MimoView') : null; } catch {}
 export const MimoView = mimoView;
+// 3D bots on the phone (see Avatar3d.kt). An APK from before this existed has no such function: the flat face stays.
+export const avatar3dAvailable = () => { try { return typeof native?.avatar3dAvailable === 'function' && Boolean(native.avatar3dAvailable()) && typeof native.avatar3dRender === 'function'; } catch { return false; } };
+export const avatar3dRender = json => native.avatar3dRender(json);
+export const prefGet = key => { try { return typeof native?.prefGet === 'function' ? native.prefGet(key) : null; } catch { return null; } };
+export const prefSet = (key, value) => { try { if (typeof native?.prefSet === 'function') native.prefSet(key, value); } catch {} };
 export const browserInfo = () => native.browserInfo();
 export const browserAction = (botId, action) => native.browserAction(botId, action);
 export const fileStage = (id, name, chunk, append) => native.fileStage(id, name, chunk, append);

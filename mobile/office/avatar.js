@@ -26,8 +26,8 @@ function loop(now) {
 }
 
 /** Draws `bot` into `canvas` (CSS size × size). Returns { set({ mood, animated }), dispose() }. */
-export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = false, index = 0 }) {
-  const dpr = Math.max(2, Math.min(3, globalThis.devicePixelRatio || 1)), px = Math.min(SHOWN, Math.round(size * dpr)), rp = Math.min(MAX, px * SS);
+export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = false, index = 0, manual = false, dpr: forced }) {
+  const dpr = forced || Math.max(2, Math.min(3, globalThis.devicePixelRatio || 1)), px = Math.min(SHOWN, Math.round(size * dpr)), rp = Math.min(MAX, px * SS);
   canvas.width = px; canvas.height = px;
   const ctx = canvas.getContext('2d'), scene = new T.Scene();
   scene.add(new T.HemisphereLight('#d1e4ff', '#84735d', 1.6));
@@ -51,7 +51,8 @@ export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = fal
     r.setViewport(0, 0, rp, rp); r.setScissor(0, 0, rp, rp); r.clear(); r.render(scene, camera);
     ctx.clearRect(0, 0, px, px); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(r.domElement, 0, MAX - rp, rp, rp, 0, 0, px, px);
   };
-  const run = () => { if (state.animated) { live.add(api); if (!raf) raf = requestAnimationFrame(loop); } else { live.delete(api); draw(); } };
+  // `manual`: the caller draws each frame itself (the Android app asks for pictures), so no loop of its own.
+  const run = () => { if (manual) return; if (state.animated) { live.add(api); if (!raf) raf = requestAnimationFrame(loop); } else { live.delete(api); draw(); } };
   const api = {
     draw,
     set({ mood: nextMood = state.mood, animated: nextAnimated = state.animated }) {

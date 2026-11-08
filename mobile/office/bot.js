@@ -156,6 +156,7 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
   if (spec.eyes === 3) { const eye = new T.Mesh(eyeGeo, ink); eye.position.set(0, -spec.eyeY * spec.sy + 0.32, 0.02); face.add(eye); eyes.push(eye); }
   const mouth = new T.Mesh(eyeGeo, ink); mouth.position.set(0, -0.34 * spec.sy, 0.025); face.add(mouth);
   // Soft contact shadow and a little light of its own color on what is around it.
+  let noShadow = false;
   const shadow = new T.Mesh(new T.CircleGeometry(0.62, 28), new T.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.4, depthWrite: false }));
   shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
   const light = new T.PointLight(color, 1.4, 2.6, 2); scene.add(light);
@@ -193,7 +194,7 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
     body.scale.set(base / Math.sqrt(sq), base * sq, base / Math.sqrt(sq)); body.position.y = view.lying ? 0 : spec.sy * base * sq * 1.02;
     group.position.set(view.pos[0], view.pos[1] + (view.jump || 0) + (view.lying ? 0.36 : 0), view.pos[2]);
     group.visible = view.visible !== false;
-    shadow.position.set(view.pos[0], (view.floor ?? view.pos[1]) + 0.02, view.pos[2]); shadow.scale.setScalar(1 - Math.min(0.6, (view.jump || 0) * 0.4)); shadow.material.opacity = view.flying ? 0 : 0.42 - (view.jump || 0) * 0.25; shadow.visible = group.visible;
+    shadow.position.set(view.pos[0], (view.floor ?? view.pos[1]) + 0.02, view.pos[2]); shadow.scale.setScalar(1 - Math.min(0.6, (view.jump || 0) * 0.4)); shadow.material.opacity = view.flying ? 0 : 0.42 - (view.jump || 0) * 0.25; shadow.visible = group.visible && !noShadow;
     const cy = group.position.y + (view.lying ? 0 : spec.sy * base);
     light.position.set(group.position.x, cy, group.position.z); light.color.copy(glowU.uColor.value); light.intensity = view.lying ? 0.12 : 0.35; light.visible = group.visible;
     // Drop trail grains while in the air or flying; age all of them.
@@ -203,5 +204,5 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
     return cy;
   }
   function dispose() { for (const o of [group, shadow, light, trail]) scene.remove(o); shellGeo.dispose(); shellMat.dispose(); eyeGeo.dispose(); ink.dispose(); g.dispose(); material.dispose(); glowMat.dispose(); trailGeo.dispose(); trailMat.dispose(); shadow.geometry.dispose(); shadow.material.dispose(); }
-  return { spec, update, dispose, height: spec.sy * base * 2, color, hideShadow: () => { shadow.visible = false; shadow.material.opacity = 0; }, grainAlpha: value => { u.uAlpha.value = value; } };
+  return { spec, update, dispose, height: spec.sy * base * 2, color, hideShadow: () => { noShadow = true; shadow.visible = false; }, grainAlpha: value => { u.uAlpha.value = value; } };
 }

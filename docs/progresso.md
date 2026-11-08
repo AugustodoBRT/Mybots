@@ -1955,3 +1955,12 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **A sessão aberta passa a sincronizar** entre os MyBots do PC e do celular (`chat.session.*` entra nos ajustes sincronizados; as sessões da IA continuam de cada aparelho).
 - **O nome de uma sessão não usa mais as mensagens automáticas** ("Retorno automático da equipe", rotinas): vem da primeira fala sua.
 - **Não visto no celular real**: só no PC. Se o celular usa o MyBots do PC, ele vê o mesmo estado; se tem um próprio, depende da sincronização ter chegado.
+
+## 0.82.0 (versionCode 174): bots em 3D no Android e o web app do iPhone publicado
+
+- **Android**: o mesmo corpo 3D do PC (three.js) passa a ser o rosto dos bots em todo o app, ligado por padrão, com o interruptor em Ajustes → Bots (a escolha fica guardada no aparelho). Como funciona: um único WebView escondido (`Avatar3d.kt`, página `assets/avatar3d.html`) desenha cada bot e devolve uma imagem WebP; as telas mostram a imagem (`mobile/FaceArt3D.js`), então uma lista longa custa um WebView, não um por bot. Os bots parados são desenhados uma vez e guardados; só 3 se mexem por vez (cerca de 9 quadros por segundo), os outros ficam parados. Enquanto a imagem não chega, aparece o rosto de antes. APK sem o WebView ou antigo continua com o rosto de antes.
+- **A página 3D** é gerada por `scripts/build-avatar3d.mjs` (esbuild; o arquivo gerado fica no Git, então o APK compila sem rede). Rode de novo só se o código 3D do bot mudar.
+- **Sombra em bloco**: o "esconder a sombra" do avatar nunca tinha funcionado (o bot a ligava de volta a cada quadro). Agora some de verdade, no PC, no iPhone e no Android.
+- **Web app do iPhone**: publicado (`scripts/publish-pwa.sh`, HTTP 200) com tudo das versões 0.75 a 0.82, incluindo o 3D (que já era do web).
+- **Visto no emulador Android (API 36, x86_64, GPU por software)**: lista de bots e de salas em 3D, cada um com a sua cor e forma, sem erro. Não medido em celular real (consumo de memória do WebView, bateria, fluidez dos 3 que se mexem) e não visto: o Chefe com o grafo e a conversa vazia no celular.
+- **Correção na mesma entrega**: a sincronização da sessão aberta (0.81.1) tinha uma condição SQL sem parênteses que, numa atualização de banco de dados, tentava registrar duas vezes as mesmas linhas e derrubava o MyBots na abertura. Só acontece ao atualizar um banco de versão antiga do registro de mudanças; um banco já atualizado não passa por isso. O teste de atualização pegou.

@@ -51,7 +51,8 @@ function FaceArt({ bot, state = 'idle', size = 54, animated = false, mood: force
   const mood = forced || (on && live ? live : moodFor(state)), light = currentTheme();
   const count = particleCount(size, true), solid = useFaces3d();
   return <View accessible accessibilityLabel={`${bot?.name || 'Bot'}${NAMES[mood] ? `, ${NAMES[mood]}` : ''}`} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-    {MimoView ? <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />
+    {MimoView ? (solid ? <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />} />
+      : <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />)
       : Platform.OS === 'web' ? solid ? <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<WebFace spec={spec} mood={mood} size={size} light={light} on={on} />} />
         : <WebFace spec={spec} mood={mood} size={size} light={light} on={on} /> : null}
   </View>;

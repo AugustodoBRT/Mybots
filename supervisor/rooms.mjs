@@ -73,7 +73,7 @@ export class Rooms {
    * A bot writes in a room by itself (not as an answer to a turn). The members it names with @ get a turn, one
    * round after the turn it is in (or the first, from a private chat), so a chain keeps counting its rounds.
    */
-  post(roomId, bot, text, selectionFor, taskId) {
+  post(roomId, bot, text, selectionFor, taskId, collect = null) {
     const room = this.db.requireRoom(roomId);
     if (!room.botIds.includes(bot.id)) throw new Error('Você não está nesta sala.');
     const clean = typeof text === 'string' ? text.trim() : '';
@@ -87,7 +87,7 @@ export class Rooms {
       const targets = called.filter(target => !waiting.has(target.id));
       if (active.length + targets.length > ROOM_QUEUE_LIMIT && targets.length) throw new Error('Os bots desta sala ainda têm muitas respostas na fila. Espere um pouco.');
       this.db.appendRoomMessage(room.id, message);
-      for (const target of targets) this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target));
+      for (const target of targets) { const id = randomUUID(); this.turn(room.id, target, message.id, round + 1, randomUUID(), selectionFor(target), id); collect?.push({ task: id, bot: target.name, kind: 'room' }); }
     });
     this.changed('task.progress'); this.schedule();
     return { posted: true, called: called.map(item => item.name), ...(!called.length ? { note: 'Ninguém foi chamado: para chamar um bot escreva @Nome dele no texto.' } : {}) };

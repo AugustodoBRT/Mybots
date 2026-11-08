@@ -552,7 +552,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // "/clear": the IA forgets its long session of this conversation; the conversation, memories and pending items stay (see Database.newSession).
         case 'bot.newSession': {
           const bot = db.requireBot(params.botId);
-          if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
+          if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) {
+            // Opening the app while the bot is busy still starts a new session of the conversation (the line that separates it); the IA's own session continues.
+            if (!params.opened) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
+            db.sessionNote('Nova sessão iniciada ao abrir o app. O bot estava ocupado, então a sessão da IA continua; a conversa, as memórias e as pendências também.', { botId: bot.id });
+            broadcast('bot.updated', { botId: bot.id }); return { ok: true, kept: true };
+          }
           db.newSession(bot.id, params.opened ? 'Nova sessão iniciada ao abrir o app. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.' : 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
           broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
           return { ok: true };
@@ -812,7 +817,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       if (change?.event === 'message.draft') { broadcast('message.draft', change); return; }
       broadcast(change?.event || 'task.progress', change || {}); if (!change || !('step' in change)) broadcast('activity.new');
       // A bot that named another member (@) in a room hands it the next turn.
-      if (change?.event === 'task.done') rooms.answered(change.taskId, roomSelection);
+      if (change?.event === 'task.done') { rooms.answered(change.taskId, roomSelection); try { tools.team?.settled(change.taskId); } catch {} }
       if (change?.event === 'task.done' && (db.bot(db.task(change.taskId)?.bot_id)?.provider || 'codex') === 'codex' && connections.codex?.loggedIn) refreshLimits();
     });
     let api;

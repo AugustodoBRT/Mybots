@@ -10,13 +10,13 @@ import { ImageBubble } from './ImageBubble';
 import { isPicture } from '../attachment-images';
 
 export function MessageView({ message, bot, models, onRetry, busy, onFile, fileBusy, group = false }) {
-  const routine = message.origin === 'routine';
+  const routine = message.origin === 'routine' || message.origin === 'team';
   const user = message.role === 'user' && !routine;
   const [expanded, setExpanded] = useState(false);
   const time = new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   if (routine) return <View style={styles.routineRow}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Rotina ${message.routineTitle}`} onPress={() => setExpanded(value => !value)} style={styles.routineChip}>
-      <View style={styles.routineChipHead}><Icon name="bolt" size={14} color={C.sky} /><Text style={styles.routineChipText} numberOfLines={1}>Rotina · {message.routineTitle} · {time}</Text><Icon name={expanded ? 'back' : 'down'} size={14} color={C.faint} /></View>
+      <View style={styles.routineChipHead}><Icon name="bolt" size={14} color={C.sky} /><Text style={styles.routineChipText} numberOfLines={1}>{message.origin === 'team' ? '' : 'Rotina · '}{message.routineTitle} · {time}</Text><Icon name={expanded ? 'back' : 'down'} size={14} color={C.faint} /></View>
       {expanded && <Text selectable style={styles.routineDetail}>{message.text}</Text>}
     </Pressable>
     {message.status === 'error' && <Text style={styles.messageErrorText}>{message.error || 'A rotina não foi concluída.'}</Text>}

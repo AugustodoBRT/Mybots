@@ -57,3 +57,35 @@ test('team_ask: the chief writes to bots in private, no room, and reads only the
     assert.throws(() => tools.team.answer({ botId: chief.id }, { task: normal.id }, chief), /Não encontrei/);
   } finally { await queue.close(); }
 });
+
+test('the Chefe is woken when the bots it called finish, and reports back to the person on its own', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'mybots-follow-'));
+  const db = new Database(dir), tools = new Tools(db);
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  const chief = db.create({ name: 'Lua', isChief: true }, selection);
+  const workers = ['Sol', 'Mar'].map(name => db.create({ name }, selection));
+  const prompts = [];
+  const execute = async (bot, prompt, options) => {
+    const bridgeId = randomUUID(); tools.context(options.tools.token, bridgeId, true);
+    const call = (name, args = {}) => tools.callMcp(options.tools.token, { name, args, bridgeId, callId: randomUUID() });
+    if (!bot.isChief) return { text: `${bot.name} terminou.` };
+    prompts.push(prompt);
+    if (prompt.includes('[Retorno automático da equipe]')) return { text: 'Resumo final: tudo pronto.' };
+    for (const name of ['Sol', 'Mar']) await call('team_ask', { bot: name, text: 'Confira isso.' });
+    return { text: 'Chamei Sol e Mar, volto com o resultado.' };
+  };
+  const queue = new Queue(db, execute, tools);
+  const rooms = new Rooms(db, { schedule: () => queue.schedule() });
+  queue.rooms = rooms; tools.team = new Team(db, { rooms, schedule: () => queue.schedule() });
+  queue.on('changed', change => { if (change?.event === 'task.done') tools.team.settled(change.taskId); });
+  db.enqueue(chief.id, randomUUID(), 'Verifique uma coisa.', selection);
+  try {
+    queue.schedule();
+    for (let n = 0; n < 200 && db.latest(chief.id, 'assistant')?.text !== 'Resumo final: tudo pronto.'; n++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(db.latest(chief.id, 'assistant').text, 'Resumo final: tudo pronto.');
+    const follow = prompts.find(item => item.includes('[Retorno automático da equipe]'));
+    assert.match(follow, /Sol: Sol terminou\./); assert.match(follow, /Mar: Mar terminou\./);
+    assert.equal(db.latest(chief.id, 'user').origin, 'team');
+    assert.equal(prompts.filter(item => item.includes('[Retorno automático da equipe]')).length, 1);
+  } finally { await queue.close(); }
+});

@@ -1928,3 +1928,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 
 - **O campo de mensagem ficava travado ("Aguarde a resposta…") enquanto o bot trabalhava** na janela do PC e no web app do iPhone. A fila de mensagens (o bot lê na sequência, com "Corrigir rumo" e "Pausar") só valia quando o Termux existia no aparelho. Agora vale sempre que o app usa o MyBots novo (celular, PC e iPhone); só o modo antigo do computador responde uma mensagem de cada vez (`mobile/screens/Chat.js`).
 - **Visto** no PC com os dados reais: com o Chefe trabalhando, escrevi uma segunda mensagem, ela entrou na fila e apareceu o painel "Fila · 1 esperando". Não visto no iPhone.
+
+## 0.80.3 (versionCode 170): mais bots trabalhando juntos no PC e tela preta ao abrir o navegador
+
+- **Só 2 trabalhando e o resto "na fila"**: o computador rodava no máximo 4 turnos ao mesmo tempo (e o celular, 3), contando também rotinas e salas, então com 5 bots pedindo ao mesmo tempo sobravam alguns na fila. O limite do computador agora vem da máquina: cerca de 1,5 GB de memória por turno, nunca mais que os núcleos nem que 10 (no PC do dono, 9). Pode ser fixado com `MYBOTS_PC_PARALLEL=N` no launcher. O celular continua com 3, pela memória do Termux (`supervisor/queue.mjs`).
+- **Tela preta ao abrir o navegador de um bot**: suspeita principal, não confirmada. O rosto que flutua sobre o navegador é uma janela transparente do Electron empilhada sobre as abas, e desde o 3D por padrão (0.75/0.77) ela passou a abrir um contexto WebGL ali dentro. Agora esse rosto é sempre o plano (`mobile/faces3d.js`). O `electron.log` não mostra queda do processo gráfico, só ~1400 avisos `StackChildLayerRelativeTo` do empilhamento das views. Se a tela preta continuar, o próximo passo é desligar "Bots em 3D" em Ajustes → Bots para isolar.
+- **Não testado**: a tela preta (só acontece na GPU e no Hyprland do dono, não reproduzi). O teste novo cobre só o cálculo do limite.

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import os from 'node:os';
 import runner from '../lib/codex-runner.cjs';
 import claudeRunner from '../lib/claude-runner.cjs';
 import agyRunner from '../lib/agy-runner.cjs';
@@ -65,7 +66,13 @@ const why = load => `cerca de ${load.estimate > CONTEXT_LIMIT ? `${Math.round(lo
 
 // How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
 // from talking to the others. Small on the phone, whose Termux has little memory.
-export const LANE_LIMITS = { phone: 3, pc: 4 };
+// The computer runs as many as it comfortably holds (about 1.5 GB of memory per turn, never more than its cores or 10);
+// MYBOTS_PC_PARALLEL sets it by hand.
+export const pcParallel = (memory = os.totalmem(), cores = os.cpus().length, env = process.env.MYBOTS_PC_PARALLEL) => {
+  const set = Number(env); if (Number.isInteger(set) && set >= 1 && set <= 32) return set;
+  return Math.max(4, Math.min(10, cores, Math.floor(memory / 2 ** 30 / 1.5)));
+};
+export const LANE_LIMITS = { phone: 3, pc: pcParallel() };
 
 /**
  * Different bots answer at the same time, up to the lane's limit; one bot answers one turn at a time (its private chat

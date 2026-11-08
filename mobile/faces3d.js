@@ -4,7 +4,10 @@ import { Platform } from 'react-native';
 // The computer's window (and the iPhone web app) shows every bot as the Escritório's 3D body by default, with a switch for
 // the flat particle face. Kept on this device only; the Android app draws faces natively and has no 3D yet.
 const KEY = 'mybots.faces3d';
-export const FACES_3D_AVAILABLE = Platform.OS === 'web';
+// The bot's face floating over its browser (?overlay=1) is a transparent Electron view stacked on the page tabs: drawing WebGL there
+// blacked the whole window on some Linux GPUs, so it always uses the flat face.
+const OVERLAY = Platform.OS === 'web' && /[?&]overlay=1\b/.test(globalThis.location?.search || '');
+export const FACES_3D_AVAILABLE = Platform.OS === 'web' && !OVERLAY;
 // 3D is the default; only an explicit "off" saved on this device brings the flat face back.
 let on = FACES_3D_AVAILABLE;
 try { if (FACES_3D_AVAILABLE) on = globalThis.localStorage?.getItem(KEY) !== '0'; } catch {}

@@ -89,3 +89,12 @@ test('the Chefe is woken when the bots it called finish, and reports back to the
     assert.equal(prompts.filter(item => item.includes('[Retorno automático da equipe]')).length, 1);
   } finally { await queue.close(); }
 });
+
+test('quantos turnos rodam juntos no computador: pela memória e pelos núcleos, de 4 a 10, ou o valor escolhido', async () => {
+  const { pcParallel } = await import('../supervisor/queue.mjs');
+  assert.equal(pcParallel(8 * 2 ** 30, 4, undefined), 4);
+  assert.equal(pcParallel(14 * 2 ** 30, 16, undefined), 9);
+  assert.equal(pcParallel(64 * 2 ** 30, 32, undefined), 10);
+  assert.equal(pcParallel(2 ** 30, 2, '6'), 6);
+  assert.equal(pcParallel(14 * 2 ** 30, 16, 'abc'), 9);
+});

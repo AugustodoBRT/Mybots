@@ -45,6 +45,8 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     refreshPast(n => n + 1);
   }, [bot.id, bot.isChief, bot.messages, bot.messageCount]);
   const sessions = useMemo(() => bot.isChief ? sessionsOf(bot.messages) : [], [bot.isChief, bot.messages]);
+  // The newest session (the one being used on the other device too), offered on the empty start when it was used in the last day.
+  const latestSession = useMemo(() => { const item = sessions[0]; return item && Date.now() - Date.parse(item.last) < 24 * 3600 * 1000 ? item : null; }, [sessions]);
   // The open session is the one of the newest message written or picked in this visit; until then the screen is the empty start.
   const current = useMemo(() => {
     if (!bot.isChief || !past) return null;
@@ -207,7 +209,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
         </View>
       </View>}
       </View>} />
-    {showHero ? <ChiefHero bot={bot} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} /> : null}
+    {showHero ? <ChiefHero bot={bot} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} resume={latestSession?.title} onResume={latestSession ? () => onResume?.(latestSession.id) : null} /> : null}
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}
@@ -245,7 +247,7 @@ function SessionList({ sessions, current, more, onEarlier, onPick, onClose }) {
     <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
       {sessions.length ? sessions.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => onPick(item.id)} style={({ pressed }) => [{ paddingVertical: 12, borderBottomWidth: 1, borderColor: C.line, gap: 2 }, pressed && { opacity: 0.7 }]}>
         <Text style={{ color: C.text, fontFamily: F.s, fontSize: 15 }} numberOfLines={2}>{item.title}</Text>
-        <Text style={{ color: item.id === current ? C.accent : C.muted, fontFamily: F.m, fontSize: 12.5 }}>{item.id === current ? 'Aberta · ' : ''}{new Date(item.last).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {item.count} {item.count === 1 ? 'mensagem' : 'mensagens'}</Text></Pressable>)
+        <Text style={{ color: item.id === current || item.id === sessions[0]?.id ? C.accent : C.muted, fontFamily: F.m, fontSize: 12.5 }}>{item.id === current ? 'Aberta · ' : item.id === sessions[0]?.id ? 'Atual · ' : ''}{new Date(item.last).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {item.count} {item.count === 1 ? 'mensagem' : 'mensagens'}</Text></Pressable>)
         : <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 14, paddingTop: 12 }}>Nenhuma sessão carregada ainda.</Text>}
       {more ? <EarlierButton onPress={onEarlier} /> : null}
     </ScrollView>

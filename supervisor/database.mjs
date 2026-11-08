@@ -52,7 +52,7 @@ export const SYNCED = {
   pending_items: { key: 'id', at: 'created_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
-  metadata: { key: 'key', where: "key IN ('person.name','person.theme','person.chief','google.accounts','time_zone')" }
+  metadata: { key: 'key', where: "key IN ('person.name','person.theme','person.chief','google.accounts','time_zone') OR key LIKE 'chat.session.%'" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
 export const SCHEMA = 17;

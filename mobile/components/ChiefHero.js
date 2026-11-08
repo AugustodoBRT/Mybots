@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Avatar } from './shared';
 import { useStore } from '../state/useStore';
-import { C, F } from '../theme';
+import { C, F, Icon } from '../theme';
 import { graphModel } from '../state/graph-layout';
 import { GraphCanvas, useLayout } from '../screens/MemoryGraph';
 import { botHues, look } from '../screens/memory-look';
@@ -14,7 +14,7 @@ const store = { positions: {}, view: null };
 // The Chefe's empty conversation: his face in the middle and the memory map growing around him like an aura. It is the real
 // map (move a note, hover to light up its links); the view is fixed so nothing can slide behind him, and notes cannot enter his disc.
 // It goes away as soon as the first message of this visit is sent.
-export function ChiefHero({ bot, state, call, onSessions }) {
+export function ChiefHero({ bot, state, call, onSessions, resume, onResume }) {
   // The conversation screen only knows its own bot, so the colours need the whole team from the store.
   const bots = useStore(({ data }) => data?.bots);
   const [data, setData] = useState(null), [fit, setFit] = useState(null);
@@ -39,7 +39,11 @@ export function ChiefHero({ bot, state, call, onSessions }) {
     <View pointerEvents="none" style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, alignItems: 'center', justifyContent: 'center' }, at || { left: '50%', top: '50%', marginLeft: -disc / 2, marginTop: -disc / 2 }]}>
       <Avatar bot={bot} size={Math.round(disc * 0.95)} state={state} tile={false} animated />
     </View>
-    {onSessions ? <Pressable accessibilityRole="button" onPress={onSessions} style={{ position: 'absolute', bottom: 8, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12 }}>
-      <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Ver sessões</Text></Pressable> : null}
+    <View style={{ position: 'absolute', bottom: 8, left: 16, right: 16, alignItems: 'center', gap: 4 }}>
+      {resume && onResume ? <Pressable accessibilityRole="button" accessibilityLabel={`Continuar a sessão ${resume}`} onPress={onResume} style={({ pressed }) => [{ maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 18, borderWidth: 1, borderColor: C.accent + '66', backgroundColor: C.accent + '14', paddingVertical: 8, paddingHorizontal: 14 }, pressed && { opacity: 0.7 }]}>
+        <Icon name="right" size={14} color={C.accent} /><Text numberOfLines={1} style={{ flexShrink: 1, color: C.accent, fontFamily: F.b, fontSize: 13.5 }}>Continuar: {resume}</Text></Pressable> : null}
+      {onSessions ? <Pressable accessibilityRole="button" onPress={onSessions} style={{ paddingVertical: 6, paddingHorizontal: 12 }}>
+        <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Ver sessões</Text></Pressable> : null}
+    </View>
   </View>;
 }

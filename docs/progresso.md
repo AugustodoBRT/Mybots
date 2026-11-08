@@ -1948,3 +1948,10 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **A conversa de antes das sessões** é uma só, a "base", com o nome tirado da primeira mensagem carregada. Ela também pode ser retomada. A lista mostra só as sessões das mensagens já carregadas; "Ver mensagens anteriores" carrega mais.
 - **Uma sessão nova da IA só lê as mensagens da sessão aberta**, não as das outras.
 - **Testes**: `tests/chief-sessions.test.mjs` (agrupamento, retomada com a sessão da IA de volta, nome uma vez e prompt sem as mensagens de outra sessão). Visto no PC com cópia dos dados reais: abrir o app e escrever cria sessão nova; escolher a antiga e escrever continua nela, sem sessão nova. Não testado com IA de verdade: o nome gerado, e se a CLI retoma de fato uma sessão da IA antiga (depende de ela ainda guardar a conversa).
+
+## 0.81.1 (versionCode 173): a sessão atual do PC aparece no celular
+
+- **Continuar a sessão em uso no outro aparelho**: na tela vazia do Chefe aparece "Continuar: <nome da sessão>" para a sessão mais recente (usada nas últimas 24 horas, no PC ou no celular), e na lista de sessões ela vem marcada "Atual". Um toque a abre com as mensagens e a memória da IA dela (no celular que tem o MyBots próprio, sem a sessão da IA do PC, a IA começa lendo as mensagens daquela sessão). Antes, a abertura do app sempre começava vazia e a conversa que estava ativa no PC só aparecia depois de uma mensagem nova (`mobile/screens/Chat.js`, `mobile/components/ChiefHero.js`).
+- **A sessão aberta passa a sincronizar** entre os MyBots do PC e do celular (`chat.session.*` entra nos ajustes sincronizados; as sessões da IA continuam de cada aparelho).
+- **O nome de uma sessão não usa mais as mensagens automáticas** ("Retorno automático da equipe", rotinas): vem da primeira fala sua.
+- **Não visto no celular real**: só no PC. Se o celular usa o MyBots do PC, ele vê o mesmo estado; se tem um próprio, depende da sincronização ter chegado.

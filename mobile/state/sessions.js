@@ -25,7 +25,7 @@ export function sessionsOf(messages) {
   for (const group of groups.values()) {
     const real = group.messages.filter(item => item.role !== 'system');
     if (!real.length) continue;
-    const first = real.find(item => item.role === 'user' && (item.text || '').trim());
+    const first = real.find(item => item.role === 'user' && !item.origin && (item.text || '').trim());
     out.push({ id: group.id, title: group.title || short(first?.text), at: real[0].createdAt, last: real[real.length - 1].createdAt, count: real.length, messages: group.messages });
   }
   return out.sort((a, b) => b.last.localeCompare(a.last));

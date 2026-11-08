@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Avatar } from './shared';
+import { useStore } from '../state/useStore';
 import { C, F } from '../theme';
 import { graphModel } from '../state/graph-layout';
 import { GraphCanvas, useLayout } from '../screens/MemoryGraph';
@@ -13,7 +14,9 @@ const store = { positions: {}, view: null };
 // The Chefe's empty conversation: his face in the middle and the memory map growing around him like an aura. It is the real
 // map (move a note, hover to light up its links); the view is fixed so nothing can slide behind him, and notes cannot enter his disc.
 // It goes away as soon as the first message of this visit is sent.
-export function ChiefHero({ bot, state, bots, call, onSessions }) {
+export function ChiefHero({ bot, state, call, onSessions }) {
+  // The conversation screen only knows its own bot, so the colours need the whole team from the store.
+  const bots = useStore(({ data }) => data?.bots);
   const [data, setData] = useState(null), [fit, setFit] = useState(null);
   useEffect(() => {
     let live = true;

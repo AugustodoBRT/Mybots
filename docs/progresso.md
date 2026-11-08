@@ -1904,3 +1904,10 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **No chat do bot** a mensagem aparece como sua, com o seu nome (o que está em Ajustes) no lugar de "Você" na linha da hora. Para o bot, porém, o texto chega marcado como "mensagem enviada pelo Chefe da equipe em nome de <nome>; a pessoa não a digitou", e ela não vale como a sua confirmação para apagar, enviar a terceiros, comprar ou publicar.
 - **Instruções do Chefe** (`PROMPT_VERSION` 10, as conversas abrem sessão nova uma vez): para um resumo, ler antes as entregas e `team_status`, que não acordam ninguém; faltando algo, `team_ask` aos responsáveis; se o bot já está numa sala com líder, falar com o líder; só abrir sala quando os bots precisarem conversar entre si.
 - **Testes**: novo `tests/team-ask.test.mjs` (privado, sem sala, só as respostas, só o Chefe); contagem de ferramentas do catálogo de 52 para 54. Não testado com IA de verdade.
+
+## 0.79.1 (versionCode 166): sessão que não some, cores do grafo do Chefe e avisos no PC
+
+- **A conversa com o Chefe não some mais ao trocar de tela**: o que existia quando o app abriu é lembrado durante toda a visita (antes ficava preso à tela, e ao voltar a conversa nova sumia e o grafo reaparecia). Só uma abertura nova do app começa do zero.
+- **Cores do grafo do Chefe**: a tela de conversa só conhecia o próprio bot, então todas as outras notas ficavam cinzas. Agora lê a equipe toda e usa as mesmas cores do mapa da memória (conferido com uma cópia dos dados reais do PC).
+- **Avisos no PC**: a janela do computador mostra uma notificação do sistema quando um bot responde e você não está olhando aquela conversa (outra conversa ou página aberta, ou janela em segundo plano). Clicar abre a conversa. Uma por conversa a cada 4 segundos, e a resposta de um bot ao Chefe (mensagem direta) não avisa (`mobile/desktop-notify.js`).
+- **Não testado**: a notificação em si (o Chrome sem tela não mostra avisos do sistema) e no Windows/Mac.

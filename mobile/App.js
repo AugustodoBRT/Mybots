@@ -33,6 +33,7 @@ import { RoomScreen } from './screens/Room';
 import { ChatScreen } from './screens/Chat';
 import { C, Icon, setTheme, resolveTheme } from './theme';
 import { destination } from './state/chief-home';
+import { notifyReply } from './desktop-notify';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
@@ -112,7 +113,7 @@ function AppMain() {
   const chiefId = data?.bots?.find(item => item.isChief && !item.deletedAt)?.id;
   const setSelected = id => navigate(old => id ? { kind: 'bot', id } : old.kind === 'bot' ? { kind: 'home' } : old);
   const setRoomId = id => navigate(old => id ? { kind: 'room', id } : old.kind === 'room' ? { kind: 'home' } : old);
-  const desktopDrafts = useRef(new Map()); const visitStarted = useRef(false);
+  const desktopDrafts = useRef(new Map()); const visitStarted = useRef(false); const noticeOpen = useRef({}); const viewingKey = useRef(null);
   const [conversationDrafts, setConversationDrafts] = useState({});
   const draftField = (key, field, fallback) => ({
     value: conversationDrafts[key]?.[field] ?? fallback,
@@ -306,6 +307,7 @@ function AppMain() {
       }
       // Frames of a bot's Chrome on the computer go straight to its open panel, without reloading the state.
       // The reply as it is written goes straight to the store, without reloading anything.
+      if (desktop && event === 'message.added') notifyReply(data, { snapshot: appStore.getSnapshot(), openKey: viewingKey.current, open: target => (target.room ? noticeOpen.current.room?.(target.room) : noticeOpen.current.bot?.(target.bot)) });
       if (event === 'notes.changed') { setNotesVersion(version => version + 1); return; }
       if (event === 'message.draft') { appStore.draft(data); return; }
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
@@ -832,6 +834,7 @@ function AppMain() {
     if (selected) desktopDrafts.current.set(selected, draft);
     setRoomId(id); setSelected(null);
   };
+  noticeOpen.current = { bot: id => { setDeskPage(null); openDesktopBot(id); }, room: id => { setDeskPage(null); openDesktopRoom(id); } }; viewingKey.current = roomId || selected;
   // Desktop, PWA and paired phones use the same supervisor RPC. The old token-based HTTP API has no chief role.
   const canCreateChief = mode === 'phone' && !chiefId;
   const startChief = () => setCreateVisible('chief');

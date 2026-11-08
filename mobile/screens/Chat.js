@@ -23,6 +23,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 // stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
+const launchPast = new Map();
 function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
@@ -32,12 +33,17 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
   const openFile = useLiveCallback(onFile);
   // Opening the app lands on an empty conversation with the Chefe: every visit is a new session, like a new chat. What was said
   // before stays in the sessions list ("Ver sessões"), and the first message sent now starts the new one.
-  const [past, setPast] = useState(undefined); const [sessionsOpen, setSessionsOpen] = useState(false); const [viewing, setViewing] = useState(null);
+  // What existed when this visit began is remembered for the whole visit (not per screen), so leaving the Chefe's screen and coming back
+  // does not hide the conversation started since, nor bring the old one back.
+  const [sessionsOpen, setSessionsOpen] = useState(false); const [viewing, setViewing] = useState(null); const [, refreshPast] = useState(0);
+  const past = launchPast.get(bot.id);
   useEffect(() => {
-    if (!bot.isChief || past) return;
-    if (bot.messages.length) setPast({ ids: new Set(bot.messages.map(item => item.id)), until: bot.messages.reduce((max, item) => item.createdAt > max ? item.createdAt : max, '') });
-    else if (!bot.messageCount) setPast({ ids: new Set(), until: '' });
-  }, [bot.isChief, bot.messages, bot.messageCount]);
+    if (!bot.isChief || launchPast.has(bot.id)) return;
+    if (bot.messages.length) launchPast.set(bot.id, { ids: new Set(bot.messages.map(item => item.id)), until: bot.messages.reduce((max, item) => item.createdAt > max ? item.createdAt : max, '') });
+    else if (!bot.messageCount) launchPast.set(bot.id, { ids: new Set(), until: '' });
+    else return;
+    refreshPast(n => n + 1);
+  }, [bot.id, bot.isChief, bot.messages, bot.messageCount]);
   const sessions = useMemo(() => bot.isChief ? sessionsOf(bot.messages) : [], [bot.isChief, bot.messages]);
   const opened = bot.isChief ? sessions.find(item => item.id === viewing) : null;
   const hidden = bot.isChief && !opened;
@@ -196,7 +202,7 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
         </View>
       </View>}
       </View>} />
-    {showHero ? <ChiefHero bot={bot} bots={data.bots || []} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} /> : null}
+    {showHero ? <ChiefHero bot={bot} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} /> : null}
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}

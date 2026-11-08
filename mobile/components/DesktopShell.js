@@ -191,11 +191,11 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const current = selected ? { kind: 'bot', id: selected } : roomId ? { kind: 'room', id: roomId } : null;
   // One tab per conversation opened.
   useEffect(() => {
-    if (!current) return;
+    if (!current || (current.kind === 'bot' && bots.find(item => item.id === current.id)?.isChief)) return;
     setTabs(old => (old.some(tab => tab.kind === current.kind && tab.id === current.id) ? old : [...old, current].slice(-8)));
   }, [selected, roomId]);
   const go = target => (target ? (target.kind === 'room' ? onRoom(target.id) : onOpen(target.id)) : onHome?.());
-  const closeTab = tab => { if (tabs.length === 1 && bot?.isChief && tab.id === bot.id) { onHome(); return; } const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
+  const closeTab = tab => { const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
   useEffect(() => { if (profileOpen) openKind('settings'); else dropKind('settings', true); }, [profileOpen]);
   useEffect(() => { if (fileOpen) openKind('file'); else dropKind('file', true); }, [fileOpen, fileKey]);
   useEffect(() => desktopBus.on('browser-open', () => openKind('browser')), []);
@@ -222,7 +222,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const divider = useMemo(() => { let start = 264; return PanResponder.create({ onStartShouldSetPanResponder: () => true, onPanResponderGrant: () => { start = listWidthRef.current; },
     onPanResponderMove: (_, gesture) => setListWidth(Math.max(220, Math.min(360, start + gesture.dx))) }); }, []);
   const listWidthRef = useRef(264); listWidthRef.current = listWidth;
-  const bot = selected ? bots.find(item => item.id === selected) : null; const room = roomId ? roomList.find(item => item.id === roomId) : null;
+  const bot = selected ? bots.find(item => item.id === selected) : null; const chiefHome = Boolean(bot?.isChief); const room = roomId ? roomList.find(item => item.id === roomId) : null;
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
   const windowsOf = provider => data.usage?.limits?.[provider]?.windows || [];
@@ -246,7 +246,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
     </View>
     {page ? <View style={{ flex: 1, minWidth: 0 }}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
       : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View> : <>
-    <View style={[s.list, { display: fileOpen && width < 900 ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
+    <View style={[s.list, { display: chiefHome || (fileOpen && width < 900) ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
         <View style={s.listHead}><Text style={s.listTitle}>Conversas</Text><View style={{ flexDirection: 'row', gap: 6 }}><IconButton icon="plus" label="Novo bot (Ctrl+N)" onPress={onCreate} size={34} tint={C.accent} /></View></View>
         <Pressable accessibilityRole="search" accessibilityLabel="Buscar bot ou sala (Ctrl+K)" onPress={() => setPalette(true)} style={s.find}><Icon name="search" size={15} color={C.faint} /><Text style={s.findText} numberOfLines={1}>Buscar bot ou sala</Text><Text style={s.key}>Ctrl+K</Text></Pressable></>}
@@ -260,19 +260,19 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
               line={working.length ? `${working.map(entry => entry.name).join(', ')} respondendo` : latest ? `${who || 'Bot'}: ${plain(latest.text)}` : members.map(entry => entry.name).join(', ')} tone={working.length ? C.accent : null} />; }) : null}
         </> : null}
         {compact ? null : <View style={s.section}><Text style={s.sectionText}>Bots</Text></View>}
-        {bots.map(item => { const line = botLine(item, data); return <Row key={item.id} compact={compact} selected={item.id === selected} label={`Conversar com ${item.name}`} onPress={() => onOpen(item.id)}
+        {bots.filter(item => !item.isChief).map(item => { const line = botLine(item, data); return <Row key={item.id} compact={compact} selected={item.id === selected} label={`Conversar com ${item.name}`} onPress={() => onOpen(item.id)}
           onMenu={event => setMenu({ x: event.clientX || 0, y: event.clientY || 0, bot: item })} face={<Avatar bot={item} size={32} state={line.state} animated={line.state !== 'idle'} />}
           title={item.isChief ? item.name + ' · Chefe' : item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
-        {!bots.length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
+        {!bots.filter(item => !item.isChief).length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
       </ScrollView>
       {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 10, fontFamily: F.s, letterSpacing: 0.2 }}>CAPACIDADE DISPONÍVEL</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
       {compact ? null : <Pressable accessibilityRole="button" onPress={onConnection} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: C.line }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint }, phoneOnline && { backgroundColor: C.good }]} /><Text style={s.line}>{data.source === 'local' ? (!phoneOnline ? 'Iniciando o MyBots do computador…' : data.sync ? (data.sync.state === 'syncing' ? 'Sincronizando com o celular…' : data.sync.online ? 'Sincronizado com o celular' : 'Celular fora de alcance · só neste computador') : 'Só neste computador') : phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>}
     </View>
-    {compact ? null : <View accessibilityRole="adjustable" accessibilityLabel="Arrastar para mudar a largura da lista" style={s.divider} {...divider.panHandlers} />}
+    {compact || chiefHome ? null : <View accessibilityRole="adjustable" accessibilityLabel="Arrastar para mudar a largura da lista" style={s.divider} {...divider.panHandlers} />}
     <View style={[s.main, fileOpen && width < 760 && { display: 'none' }]}>
       {current ? <View style={s.tabs}>
-        <IconButton icon="sidebar" label={collapsed ? "Expandir conversas" : "Recolher conversas"} onPress={() => setCollapsed(value => !value)} size={28} />
+        {chiefHome ? null : <IconButton icon="sidebar" label={collapsed ? "Expandir conversas" : "Recolher conversas"} onPress={() => setCollapsed(value => !value)} size={28} />}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 2, alignItems: 'center', paddingHorizontal: 6 }}>
           {tabs.map(tab => { const on = current.kind === tab.kind && current.id === tab.id; return <Pressable key={tab.kind + tab.id} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => go(tab)} style={({ hovered }) => [s.tab, hovered && s.rowHover, on && s.tabOn]}>
             {faceOf(tab)}<Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{nameOf(tab)}</Text>

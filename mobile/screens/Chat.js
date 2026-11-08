@@ -1,4 +1,5 @@
 import { ChiefStatus, DelegationCards } from '../components/ChiefTeam';
+import { ChiefHero } from '../components/ChiefHero';
 import { useKeyboardPad } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
@@ -28,7 +29,17 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
   const [held, setHeld] = useState(null);
   const hold = useLiveCallback(message => setHeld(message));
   const openFile = useLiveCallback(onFile);
-  const messages = useMemo(() => [...bot.messages].reverse(), [bot.messages]);
+  // Opening the app lands on an empty conversation with the Chefe: what was said before this visit stays out of sight
+  // (one tap brings it back), and the conversation starts over from the first message sent now.
+  const [past, setPast] = useState(undefined); const [history, setHistory] = useState(false);
+  useEffect(() => {
+    if (!bot.isChief || past) return;
+    if (bot.messages.length) setPast({ ids: new Set(bot.messages.map(item => item.id)), until: bot.messages.reduce((max, item) => item.createdAt > max ? item.createdAt : max, '') });
+    else if (!bot.messageCount) setPast({ ids: new Set(), until: '' });
+  }, [bot.isChief, bot.messages, bot.messageCount]);
+  const hidden = bot.isChief && !history;
+  const messages = useMemo(() => [...bot.messages].filter(item => !hidden || (past && !past.ids.has(item.id) && item.createdAt >= past.until)).reverse(), [bot.messages, hidden, past]);
+  const showHero = bot.isChief && !messages.length && !history;
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -141,13 +152,14 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
+    {showHero ? <ChiefHero bot={bot} bots={data.bots || []} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onHistory={bot.messageCount ? () => setHistory(true) : null} /> : null}
     <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
-      onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
-      ListFooterComponent={more ? <EarlierButton onPress={onEarlier} /> : null}
+      onEndReached={more && !hidden ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
+      ListFooterComponent={more && !hidden ? <EarlierButton onPress={onEarlier} /> : null}
       ListEmptyComponent={<View>
-      {!bot.messageCount && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
+      {!bot.messageCount && !bot.isChief && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
         {['Oi! Vamos nos conhecer?', 'O que você consegue fazer por mim?'].map(text => <Pressable key={text} accessibilityRole="button" disabled={busy} onPress={() => onSend(text)} style={({ pressed }) => [styles.greetingButton, pressed && styles.pressed]}><Text style={styles.greetingText}>{text}</Text><Icon name="send" size={15} color={C.accent} /></Pressable>)}
       </View>}

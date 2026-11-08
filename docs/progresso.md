@@ -1867,3 +1867,13 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Nomes parecidos viram apelidos**: outro jeito de escrever o mesmo projeto do mesmo bot ("Engajamento Commit Júnior", "Engajamento Commit", "Projeto Engajamento CommitJR") vai para os `aliases` da nota, no front matter, como no Obsidian. Os links com esses nomes passam a abrir a mesma nota, sem reescrever as entregas. Projetos de bots diferentes só se juntam quando o nome é igual.
 - **Entregas que já existiam**: na abertura do app e a cada 6 horas, junto com a poda, o primeiro link de cada entrega (ou o que vem depois de "Projeto:") que não tem nota e aparece em 3 ou mais entregas do mesmo bot vira nota de projeto. Links de decisão continuam como links. Na cópia do banco do PC, isso criou "Engajamento CommitJR" (8 entregas ligadas, 3 apelidos) e "Cobrança de atividades do SIGAA" (Maniaco). Rodar de novo não muda nada.
 - **Testes**: 517 na suíte (516 passam, 1 opcional pulado); novo `tests/notes-projects.test.mjs`.
+
+## 0.77.0 (versionCode 161): o Chefe como tela inicial limpa e bots em 3D por padrão
+
+- **Abrir o app é abrir uma conversa vazia com o Chefe**: o que foi dito antes desta visita fica fora da vista (um toque em "Ver conversa anterior" traz de volta); a conversa começa de novo na primeira mensagem enviada agora. A sessão da IA e o histórico não mudam, é só o que aparece.
+- **Rosto do Chefe no meio, com o grafo da memória em volta**: enquanto nada foi enviado, a tela mostra o rosto grande e, ao redor, o mesmo grafo estilo Obsidian das memórias (só para olhar, sem arrastar). Ao enviar a primeira mensagem, tudo some e vira uma conversa normal (`mobile/components/ChiefHero.js`).
+- **Início só com o Chefe**: no PC, a barra da esquerda com os outros bots não aparece na tela do Chefe (nem a aba dele). Ela continua nas conversas dos outros bots e na Equipe.
+- **O Chefe não entra na Equipe**: some da lista da Equipe, da barra lateral e da lista inicial do celular. Ele comanda as salas e equipes, não faz parte delas.
+- **Bots em 3D por padrão** (PC e web app do iPhone): o corpo 3D do Escritório passa a ser o rosto de todos os bots no app todo. O interruptor em Ajustes → Bots continua, para voltar ao rosto plano (a escolha antiga de quem já tinha desligado é respeitada).
+- **Android**: o 3D ainda não existe no aplicativo do Android (o rosto lá é desenhado por uma view nativa); ficou como estava.
+- **Testes**: 517 na suíte (516 passam, 1 opcional pulado). Visto no Chrome headless (build web): Chefe sem a barra da esquerda, rosto 3D com o grafo em volta, e a Equipe sem o Chefe. Não visto: o envio da primeira mensagem com IA de verdade e o celular real.

@@ -108,7 +108,7 @@ function RoundButton({ label, name, onPress, L }) {
  * label layers are memoized on positions and highlight, so moving the view does not re-render them.
  */
 export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey = 0, initialView = null, initialFocus = null, store = cache,
-  display = DEFAULTS, compact = false, current = null, drag = null, children }) {
+  display = DEFAULTS, compact = false, current = null, drag = null, transparent = false, children }) {
   const L = look();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState(() => initialView || store.view);
@@ -294,7 +294,7 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     { translateX: v.x + frameBox.x * v.k - layerW / 2 * (1 - shrink) }, { translateY: v.y + frameBox.y * v.k - layerH / 2 * (1 - shrink) }, { scale: shrink }] };
   const plate = useRef(null);
   useEffect(() => { const element = plate.current; if (Platform.OS === 'web' && element?.style) element.style.willChange = 'transform'; }, []);
-  return <View style={[s.fill, { backgroundColor: L.bg }]}>
+  return <View style={[s.fill, !transparent && { backgroundColor: L.bg }]}>
     <View ref={surface} {...responder.panHandlers} style={[s.fill, { overflow: 'hidden' }]} accessible accessibilityRole="image"
       accessibilityLabel={`Grafo da memória com ${model.nodes.length} notas e ${model.edges.length} ligações. A lista mostra as mesmas notas para leitores de tela.`}
       onLayout={e => { const { width: w, height: h } = e.nativeEvent.layout; box.current = { width: w, height: h }; setSize({ width: w, height: h }); }}>

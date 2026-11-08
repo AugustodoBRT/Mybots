@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-// Test switch: the computer's window (and the iPhone web app) can show every bot as the Escritório's 3D body instead of
+// The computer's window (and the iPhone web app) shows every bot as the Escritório's 3D body by default, with a switch for
 // the flat particle face. Kept on this device only; the Android app draws faces natively and has no 3D yet.
 const KEY = 'mybots.faces3d';
 export const FACES_3D_AVAILABLE = Platform.OS === 'web';
-let on = false;
-try { on = FACES_3D_AVAILABLE && globalThis.localStorage?.getItem(KEY) === '1'; } catch {}
+// 3D is the default; only an explicit "off" saved on this device brings the flat face back.
+let on = FACES_3D_AVAILABLE;
+try { if (FACES_3D_AVAILABLE) on = globalThis.localStorage?.getItem(KEY) !== '0'; } catch {}
 const listeners = new Set();
 export function faces3d() { return on; }
 export function setFaces3d(value) {

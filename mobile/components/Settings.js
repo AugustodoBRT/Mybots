@@ -71,8 +71,8 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     if (key === 'ai') return <AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} />;
     if (key === 'bots') return <>
       {FACES_3D_AVAILABLE ? <View style={[s.botRow, { gap: 12 }]}>
-        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Bots em 3D (teste)</Text>
-          <Text style={s.rowSummary}>Mostra em todo o app os bots do Escritório 3D, com volume, luz e brilho. Vale só neste aparelho.</Text></View>
+        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Bots em 3D</Text>
+          <Text style={s.rowSummary}>Mostra em todo o app os bots do Escritório 3D, com volume, luz e brilho. Desligue para voltar ao rosto plano. Vale só neste aparelho.</Text></View>
         <Switch accessibilityLabel="Bots em 3D" value={solid} onValueChange={setFaces3d} />
       </View> : null}
       {bots.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`Perfil de ${bot.name}`} onPress={() => { onClose(); a.openProfile(bot); }} style={({ pressed }) => [s.botRow, pressed && { opacity: 0.7 }]}>

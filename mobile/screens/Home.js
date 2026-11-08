@@ -90,7 +90,7 @@ function RoomRow({ room, bots, data, onPress }) {
 
 function HomeView({ onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
-  const bots = [...(data?.bots || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
   const waiting = (data?.approvals || []).length;
@@ -134,7 +134,7 @@ function HomeView({ onMemory, team, onHome, onCreateChief, data, error, onRetry,
       {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
       {data?.modelsError ? <Notice text={data.modelsError} onRetry={onConnection} /> : null}
       {update?.info?.available && !update.dismissed ? <UpdateCard update={update} onInstall={onUpdate} onDismiss={onUpdateDismiss} /> : null}
-      {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
+      {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={(data?.bots || []).find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {phone && (data?.rooms?.length || bots.length >= 2) ? <>
         <View style={s.heading}><Text style={s.headingText}>Salas</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Nova sala" disabled={bots.length < 2} onPress={onNewRoom} style={({ pressed }) => [s.headingAction, bots.length < 2 && { opacity: 0.4 }, pressed && { opacity: 0.6 }]}><Icon name="plus" size={16} color={C.accent} stroke={2.2} /><Text style={s.headingActionText}>Nova</Text></Pressable></View>

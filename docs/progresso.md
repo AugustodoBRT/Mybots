@@ -1918,3 +1918,8 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Instruções do Chefe** (`PROMPT_VERSION` 11): ser um bot vivo, como a própria pessoa conferindo: avisar na hora ("Chamei X e Y, volto com o resultado"), conferir o que voltou (comparar com o pedido, desconfiar do incompleto, perguntar de novo) e responder sem esperar cobrança.
 - **Sessão nova ao abrir o app, mesmo com o Chefe ocupado**: se ele estava trabalhando (por exemplo com um vigia numa sala), o pedido de sessão nova falhava e tudo continuava na mesma sessão. Agora a linha que separa a sessão entra sempre; só a sessão da IA continua quando ele está ocupado.
 - **Testes**: novo caso em `tests/team-ask.test.mjs` (o Chefe é acordado e reporta sozinho, uma vez). Não testado com IA de verdade.
+
+## 0.80.1 (versionCode 168): os cartões de delegação não ficam mais presos no fim da conversa
+
+- **"O Chefe chamou X" e "X respondeu"** apareciam sempre no fim da conversa do Chefe, mesmo depois de você mandar outra mensagem ou reabrir o app. Agora só aparecem enquanto são mais novos que a última mensagem da conversa: quando você escreve ou o Chefe responde, saem (`mobile/components/ChiefTeam.js`).
+- **Testes**: store e renderização da conversa sem mudança de resultado. Não visto na tela com delegação de verdade.

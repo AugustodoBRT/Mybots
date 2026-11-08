@@ -28,8 +28,10 @@ export function ChiefStatus({ onTeam }) {
   </View> : null;
 }
 
-export function DelegationCards({ onRoom }) {
-  const cards = useStore(delegationCards);
+// Only what happened after the last message of the conversation: once the person writes or the Chefe answers, the cards go away.
+export function DelegationCards({ onRoom, since = '' }) {
+  const all = useStore(delegationCards);
+  const cards = all.filter(card => card.at > since);
   return cards.length ? <View style={{ gap: 6 }}>{cards.map(card => <Pressable key={card.id} accessibilityRole="button" onPress={() => onRoom(card.roomId)} style={s.card}>
     <Icon name="bots" size={18} color={C.accent} /><View style={{ flex: 1 }}><Text style={s.status}>{card.label}</Text><Text style={s.room}>{card.room}</Text></View><Icon name="right" size={15} color={C.muted} />
   </Pressable>)}</View> : null;

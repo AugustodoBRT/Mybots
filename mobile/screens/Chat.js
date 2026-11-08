@@ -176,7 +176,7 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
       </View>}
       renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : <Actionable message={item} onHold={hold}><Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} /></Actionable>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
-      {bot.isChief ? <DelegationCards onRoom={onTeamRoom} /> : null}
+      {bot.isChief ? <DelegationCards onRoom={onTeamRoom} since={messages[0]?.createdAt || past?.until || ''} /> : null}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {desktop && assumed ? <ReturnCard bot={bot} onReturn={() => onBrowserControl('bot')} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { openBrowser(); onBrowserControl('person').catch(() => {}); }} /> : null}

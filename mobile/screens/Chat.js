@@ -1,5 +1,6 @@
 import { ChiefStatus, DelegationCards } from '../components/ChiefTeam';
 import { ChiefHero } from '../components/ChiefHero';
+import { sessionsOf, openedLine } from '../state/sessions';
 import { useKeyboardPad } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
@@ -10,7 +11,7 @@ import { termuxAvailable, pickFile } from '../termux';
 import { desktop, pwa, desktopBus, readingColumn } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
-import { C, Icon } from '../theme';
+import { C, F, Icon } from '../theme';
 import PhoneBrowserLive from '../components/PhoneBrowserLive';
 import BotBrowserPanel, { BrowserHelpCard, BrowserTimeline, PhoneLiveCard, ReturnCard } from '../BotBrowserPanel';
 import { Message } from '../components/Message';
@@ -29,17 +30,19 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
   const [held, setHeld] = useState(null);
   const hold = useLiveCallback(message => setHeld(message));
   const openFile = useLiveCallback(onFile);
-  // Opening the app lands on an empty conversation with the Chefe: what was said before this visit stays out of sight
-  // (one tap brings it back), and the conversation starts over from the first message sent now.
-  const [past, setPast] = useState(undefined); const [history, setHistory] = useState(false);
+  // Opening the app lands on an empty conversation with the Chefe: every visit is a new session, like a new chat. What was said
+  // before stays in the sessions list ("Ver sessões"), and the first message sent now starts the new one.
+  const [past, setPast] = useState(undefined); const [sessionsOpen, setSessionsOpen] = useState(false); const [viewing, setViewing] = useState(null);
   useEffect(() => {
     if (!bot.isChief || past) return;
     if (bot.messages.length) setPast({ ids: new Set(bot.messages.map(item => item.id)), until: bot.messages.reduce((max, item) => item.createdAt > max ? item.createdAt : max, '') });
     else if (!bot.messageCount) setPast({ ids: new Set(), until: '' });
   }, [bot.isChief, bot.messages, bot.messageCount]);
-  const hidden = bot.isChief && !history;
-  const messages = useMemo(() => [...bot.messages].filter(item => !hidden || (past && !past.ids.has(item.id) && item.createdAt >= past.until)).reverse(), [bot.messages, hidden, past]);
-  const showHero = bot.isChief && !messages.length && !history;
+  const sessions = useMemo(() => bot.isChief ? sessionsOf(bot.messages) : [], [bot.isChief, bot.messages]);
+  const opened = bot.isChief ? sessions.find(item => item.id === viewing) : null;
+  const hidden = bot.isChief && !opened;
+  const messages = useMemo(() => (opened ? [...opened.messages] : [...bot.messages].filter(item => (!hidden || (past && !past.ids.has(item.id) && item.createdAt >= past.until)) && !openedLine(item))).reverse(), [bot.messages, hidden, past, opened]);
+  const showHero = bot.isChief && !opened && !sessionsOpen && !messages.length && !(data.approvals || []).some(item => item.botId === bot.id);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -152,12 +155,13 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
-    {showHero ? <ChiefHero bot={bot} bots={data.bots || []} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onHistory={bot.messageCount ? () => setHistory(true) : null} /> : null}
+    {sessionsOpen ? <SessionList sessions={sessions} more={more} onEarlier={onEarlier} onPick={id => { setViewing(id); setSessionsOpen(false); }} onClose={() => setSessionsOpen(false)} /> : null}
+    {opened ? <Pressable accessibilityRole="button" onPress={() => setViewing(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 9, borderBottomWidth: 1, borderColor: C.line }}><Icon name="back" size={16} color={C.accent} /><Text style={{ color: C.text2, fontFamily: F.m, fontSize: 13, flex: 1 }} numberOfLines={1}>Sessão antiga: {opened.title}</Text><Text style={{ color: C.accent, fontFamily: F.b, fontSize: 13 }}>Nova conversa</Text></Pressable> : null}
     <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
-      onEndReached={more && !hidden ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
-      ListFooterComponent={more && !hidden ? <EarlierButton onPress={onEarlier} /> : null}
+      onEndReached={more && !hidden && !opened ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
+      ListFooterComponent={more && !hidden && !opened ? <EarlierButton onPress={onEarlier} /> : null}
       ListEmptyComponent={<View>
       {!bot.messageCount && !bot.isChief && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
@@ -192,6 +196,7 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
         </View>
       </View>}
       </View>} />
+    {showHero ? <ChiefHero bot={bot} bots={data.bots || []} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} /> : null}
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}
@@ -220,3 +225,18 @@ export function ChatScreen(props) {
 }
 
 const messageKey = message => message.id;
+
+// "Ver sessões": every visit with the Chefe, newest first, each named by what the person said first.
+function SessionList({ sessions, more, onEarlier, onPick, onClose }) {
+  return <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: C.bg, zIndex: 5 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <IconButton icon="back" label="Voltar" onPress={onClose} size={38} /><Text style={{ color: C.text, fontFamily: F.x, fontSize: 18, flex: 1 }}>Sessões</Text></View>
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      {sessions.length ? sessions.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => onPick(item.id)} style={({ pressed }) => [{ paddingVertical: 12, borderBottomWidth: 1, borderColor: C.line, gap: 2 }, pressed && { opacity: 0.7 }]}>
+        <Text style={{ color: C.text, fontFamily: F.s, fontSize: 15 }} numberOfLines={2}>{item.title}</Text>
+        <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>{new Date(item.at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {item.count} {item.count === 1 ? 'mensagem' : 'mensagens'}</Text></Pressable>)
+        : <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 14, paddingTop: 12 }}>Nenhuma sessão carregada ainda.</Text>}
+      {more ? <EarlierButton onPress={onEarlier} /> : null}
+    </ScrollView>
+  </View>;
+}

@@ -31,7 +31,7 @@ export function useLayout(model, store, forces, onFirst) {
   useEffect(() => {
     if (!model) return;
     const known = model.nodes.some(node => store.positions[node.id]);
-    const options = forces ? { gravity: forces.center, charge: -forces.repel, linkStrength: forces.link, linkDistance: forces.distance } : {};
+    const options = forces ? { gravity: forces.center, charge: -forces.repel, linkStrength: forces.link, linkDistance: forces.distance, ...(forces.hole ? { hole: forces.hole } : {}) } : {};
     if (heat.current) { options.alpha = heat.current; heat.current = null; }
     const layout = createLayout({ nodes: model.nodes, edges: model.edges, previous: known ? store.positions : null, options });
     const began = clock();
@@ -108,7 +108,7 @@ function RoundButton({ label, name, onPress, L }) {
  * label layers are memoized on positions and highlight, so moving the view does not re-render them.
  */
 export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey = 0, initialView = null, initialFocus = null, store = cache,
-  display = DEFAULTS, compact = false, current = null, drag = null, transparent = false, children }) {
+  display = DEFAULTS, compact = false, current = null, drag = null, transparent = false, lockView = false, onFit = null, children }) {
   const L = look();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState(() => initialView || store.view);
@@ -120,7 +120,8 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     return model.nodes.filter(node => at.has(node.id)).map(node => ({ node, id: node.id, x: at.get(node.id).x, y: at.get(node.id).y, r: node.r * 0.72 * display.nodeSize }));
   }, [model, positions, display.nodeSize]);
   const placedRef = useRef(placed); placedRef.current = placed;
-  const commit = next => {
+  const commit = (next, force) => {
+    if (lockView && !force) return;
     viewRef.current = next;
     if (!frame.current) frame.current = raf(() => { frame.current = 0; setView(viewRef.current); store.view = viewRef.current; });
   };
@@ -129,7 +130,7 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     if (!width || !placedRef.current.length) return;
     // Room for the titles under the dots at the edges, too.
     const { k, x, y } = fitBox(placedRef.current, width, height, { padding: Math.min(compact ? 70 : 90, width * 0.12, height * 0.12), maxScale: compact ? 1.2 : 1.25 });
-    commit({ k: clamp(k), x, y });
+    commit({ k: clamp(k), x, y }, true); onFit?.({ k: clamp(k), x, y });
   };
   const zoomAt = (px, py, factor) => {
     const v = viewRef.current || { k: 1, x: 0, y: 0 }, k = clamp(v.k * factor), wx = (px - v.x) / v.k, wy = (py - v.y) / v.k;
@@ -149,7 +150,7 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     hold(id) { setFocus(id); },
     drag
   };
-  useEffect(() => { if (!userMoved.current || !viewRef.current) fit(); }, [fitKey, size.width, size.height]);
+  useEffect(() => { if (lockView || !userMoved.current || !viewRef.current) fit(); }, [fitKey, size.width, size.height]);
   useEffect(() => () => cancelRaf(frame.current), []);
 
   const responder = useMemo(() => {
@@ -301,12 +302,12 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
       <View ref={plate} pointerEvents="none" renderToHardwareTextureAndroid shouldRasterizeIOS style={[s.plate, layer]}>{drawing}</View>
     </View>
     {children}
-    {!compact ? <View style={s.zoom}>
+    {!compact && !lockView ? <View style={s.zoom}>
       <RoundButton L={L} label="+" name="Aproximar" onPress={() => zoomAt(width / 2, height / 2, 1.35)} />
       <RoundButton L={L} label="−" name="Afastar" onPress={() => zoomAt(width / 2, height / 2, 1 / 1.35)} />
       <RoundButton L={L} label="⤢" name="Enquadrar tudo" onPress={() => { userMoved.current = false; fit(); }} />
     </View> : null}
-    {held && !hover && !compact ? <View style={[s.held, { backgroundColor: L.panel, borderColor: L.panelBorder }]}>
+    {held && !hover && !compact && !lockView ? <View style={[s.held, { backgroundColor: L.panel, borderColor: L.panelBorder }]}>
       <Text style={[s.heldTitle, { color: L.text }]} numberOfLines={1}>{held.title}</Text>
       <Text style={[s.small, { color: L.muted }]}>{held.ghost ? 'Nota ainda não criada' : `${held.degree} ${held.degree === 1 ? 'ligação' : 'ligações'}${held.orphan ? ' · órfã' : ''}`}</Text>
       {!held.ghost ? <Pressable accessibilityRole="button" accessibilityLabel={'Abrir ' + held.title} onPress={() => onOpen(held.path)}>

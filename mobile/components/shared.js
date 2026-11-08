@@ -1,6 +1,6 @@
 import { useStore } from '../state/useStore';
 import { selectHome, selectBots, selectShareTargets } from '../state/store';
-import { C, Icon, HUES, hueOf } from '../theme';
+import { C, F, Icon, HUES, hueOf } from '../theme';
 import { stillOf } from '../../lib/mimo.mjs';
 import BotAvatar from '../BotAvatar';
 import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
@@ -886,10 +886,24 @@ export function useDictation({ phone, call, setValue, onError }) {
   return { voice, available, start, stop, cancel, label };
 }
 
+// The chat's slash commands, offered as soon as a "/" is typed (and narrowed as the name is written), like in Claude.
+const COMMANDS = [{ name: '/clear', hint: 'Começar uma sessão nova. A conversa fica guardada.', aliases: ['/limpar', '/nova'] }];
+const fold = text => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export const commandsFor = text => {
+  if (!/^\/[\p{L}]*$/u.test(text)) return [];
+  const typed = fold(text);
+  return COMMANDS.filter(item => [item.name, ...item.aliases].some(name => name.startsWith(typed)));
+};
 export function Composer({ value, setValue, onSend, canSend, placeholder, editable = true, inputRef, onAttach, attachDisabled, phone, call, onError, accessibilityLabel }) {
   const dictation = useDictation({ phone, call, setValue, onError });
   const { voice } = dictation;
+  const commands = voice ? [] : commandsFor(value || '');
+  const complete = commands.length && !commands.some(item => [item.name, ...item.aliases].includes((value || '').toLowerCase()));
   return <View dataSet={desktop ? { desktopComposer: "true" } : undefined} style={[styles.composerBox, voice && styles.composerListening]}>
+    {commands.length ? <View accessibilityRole="menu" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', marginBottom: 6, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 4, zIndex: 20 }}>
+      {commands.map(item => <Pressable key={item.name} accessibilityRole="menuitem" onPress={() => setValue(item.name)} style={({ pressed, hovered }) => [{ flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8 }, (pressed || hovered) && { backgroundColor: C.accent + '16' }]}>
+        <Text style={{ color: C.accent, fontFamily: F.b, fontSize: 14 }}>{item.name}</Text><Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13, flexShrink: 1 }}>{item.hint}</Text></Pressable>)}
+    </View> : null}
     {voice ? <View style={styles.voiceLive}>
       <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
       <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>
@@ -897,7 +911,7 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
     : <TextInput ref={inputRef} accessibilityLabel={accessibilityLabel} value={value} onChangeText={setValue} editable={editable}
       placeholder={placeholder} placeholderTextColor={C.faint} multiline maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.accent}
       // On the computer, Enter sends and Shift+Enter breaks the line.
-      onKeyPress={desktop ? event => { if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />}
+      onKeyPress={desktop ? event => { if ((event.nativeEvent.key === 'Enter' || event.nativeEvent.key === 'Tab') && !event.nativeEvent.shiftKey && complete) { event.preventDefault(); setValue(commands[0].name); } else if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />}
     <View style={styles.composerRow}>
       {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" disabled={voice.busy} onPress={dictation.cancel} style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}><Icon name="close" size={20} color={C.text2} /></Pressable>
         : onAttach ? <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={attachDisabled} onPress={onAttach} style={({ pressed }) => [styles.composerTool, attachDisabled && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable> : null}

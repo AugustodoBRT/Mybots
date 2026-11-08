@@ -6,30 +6,37 @@ import { graphModel } from '../state/graph-layout';
 import { GraphCanvas, useLayout } from '../screens/MemoryGraph';
 import { botHues, look } from '../screens/memory-look';
 
-const FORCES = { center: 0.08, repel: 420, link: 1, distance: 120 };
+// The same forces as the memory map's defaults, plus a keep-out disc where the Chefe stands.
+const FORCES = { center: 0.06, repel: 360, link: 1, distance: 110 };
 const store = { positions: {}, view: null };
 
-// The Chefe's empty conversation: his face in the middle, the memory graph around it, only to look at.
+// The Chefe's empty conversation: his face in the middle and the memory map growing around him like an aura. It is the real
+// map (move a note, hover to light up its links); the view is fixed so nothing can slide behind him, and notes cannot enter his disc.
 // It goes away as soon as the first message of this visit is sent.
-export function ChiefHero({ bot, state, bots, call, onHistory }) {
-  const [data, setData] = useState(null);
+export function ChiefHero({ bot, state, bots, call, onSessions }) {
+  const [data, setData] = useState(null), [fit, setFit] = useState(null);
   useEffect(() => {
     let live = true;
     Promise.resolve(call?.('notes.graph', {})).then(value => { if (live && value?.nodes) setData(value); }).catch(() => {});
     return () => { live = false; };
   }, [call]);
-  const model = useMemo(() => data && graphModel(data, { ghosts: false, orphans: true }), [data]);
-  const { positions, fitKey, drag } = useLayout(model, store, FORCES);
+  const model = useMemo(() => data && graphModel(data, { ghosts: true, orphans: true }), [data]);
+  const hole = useMemo(() => 10 * Math.sqrt(model?.nodes.length || 0) + 30, [model]);
+  const forces = useMemo(() => ({ ...FORCES, hole }), [hole]);
+  const { positions, fitKey, drag } = useLayout(model, store, forces);
   const L = look();
   const hues = useMemo(() => botHues(bots || []), [bots, L]);
   const colorOf = useMemo(() => node => node.botId ? hues.get(node.botId) || L.node : L.node, [hues, L]);
-  return <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-    {model?.nodes.length ? <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.55 }}>
-      <GraphCanvas model={model} positions={positions} colorOf={colorOf} onOpen={() => {}} fitKey={fitKey} store={store} compact transparent /></View> : null}
-    <View pointerEvents="none" style={{ width: 270, height: 270, borderRadius: 135, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
-      <Avatar bot={bot} size={240} state={state} tile={false} animated />
+  const live = model?.nodes.length && fit;
+  // The face is as big as the disc it keeps clear, wherever the map puts its centre on screen.
+  const disc = live ? Math.min(380, Math.max(140, 2 * hole * fit.k)) : 240;
+  const at = live ? { left: fit.x - disc / 2, top: fit.y - disc / 2 } : null;
+  return <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+    {model?.nodes.length ? <GraphCanvas model={model} positions={positions} colorOf={colorOf} onOpen={() => {}} fitKey={fitKey} store={store} transparent lockView drag={drag} onFit={setFit} /> : null}
+    <View pointerEvents="none" style={[{ position: 'absolute', width: disc, height: disc, borderRadius: disc / 2, alignItems: 'center', justifyContent: 'center' }, at || { left: '50%', top: '50%', marginLeft: -disc / 2, marginTop: -disc / 2 }]}>
+      <Avatar bot={bot} size={Math.round(disc * 0.9)} state={state} tile={false} animated />
     </View>
-    {onHistory ? <Pressable accessibilityRole="button" onPress={onHistory} style={{ position: 'absolute', bottom: 8 }}>
-      <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Ver conversa anterior</Text></Pressable> : null}
+    {onSessions ? <Pressable accessibilityRole="button" onPress={onSessions} style={{ position: 'absolute', bottom: 8, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12 }}>
+      <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Ver sessões</Text></Pressable> : null}
   </View>;
 }

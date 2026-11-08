@@ -148,6 +148,10 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
   } else {
     for (let i = 0; i < n; i++) { const [sx, sy] = seeded(ids[i], spread); xs[i] = sx; ys[i] = sy; }
   }
+  // A keep-out disc at the centre (the Chefe's face on his home screen): nothing rests inside it, and new notes begin on its edge.
+  const hole = o.hole || 0;
+  const outside = (x, y) => { const d = Math.hypot(x, y) || 1e-6; return d < hole ? [x / d * hole, y / d * hole] : [x, y]; };
+  if (hole) for (let i = 0; i < n; i++) if (!placed[i]) { const [x, y] = seeded(ids[i], 1); const d = Math.hypot(x, y) || 1; xs[i] = x / d * hole * 1.02; ys[i] = y / d * hole * 1.02; }
   const fresh = n ? (n - known) / n : 0;
   const state = {
     ids, index, links, xs, ys, vx, vy, n, ticks: 0, energy: Infinity, done: n === 0,
@@ -233,6 +237,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
       const held = pinned.get(i);
       if (held || (moving && !moving[i])) { if (held) { xs[i] = held[0]; ys[i] = held[1]; } vx[i] = vy[i] = 0; continue; }
       xs[i] += vx[i]; ys[i] += vy[i];
+      if (hole) [xs[i], ys[i]] = outside(xs[i], ys[i]);
       const v2 = vx[i] * vx[i] + vy[i] * vy[i];
       energy += v2; free++; if (v2 > fastest) fastest = v2;
     }
@@ -262,6 +267,7 @@ export function createLayout({ nodes, edges, previous = null, options = {} }) {
   function pin(id, x, y) {
     const i = index.get(id);
     if (i === undefined || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    if (hole) [x, y] = outside(x, y);
     pinned.set(i, [x, y]); xs[i] = x; ys[i] = y; vx[i] = vy[i] = 0;
     return true;
   }

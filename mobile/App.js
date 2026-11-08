@@ -112,7 +112,7 @@ function AppMain() {
   const chiefId = data?.bots?.find(item => item.isChief && !item.deletedAt)?.id;
   const setSelected = id => navigate(old => id ? { kind: 'bot', id } : old.kind === 'bot' ? { kind: 'home' } : old);
   const setRoomId = id => navigate(old => id ? { kind: 'room', id } : old.kind === 'room' ? { kind: 'home' } : old);
-  const desktopDrafts = useRef(new Map());
+  const desktopDrafts = useRef(new Map()); const visitStarted = useRef(false);
   const [conversationDrafts, setConversationDrafts] = useState({});
   const draftField = (key, field, fallback) => ({
     value: conversationDrafts[key]?.[field] ?? fallback,
@@ -536,9 +536,14 @@ function AppMain() {
     const clearSentDraft = () => { desktopDrafts.current.delete(bot.id); if (selectedBotRef.current === bot.id) setDraft(''); };
     // "/clear" (or /limpar, /nova): not a message for the bot but a new IA session for this conversation, like in a terminal chat.
     if (CLEAR.test(text.trim()) && !files.length && mode !== 'computer') {
-      setSending(true);
+      setSending(true); if (bot.isChief) visitStarted.current = true;
       try { await supervisor.current.call('bot.newSession', { botId: bot.id }); clearSentDraft(); await loadSupervisorState(); return true; }
       catch (error) { setLoadError(error.message); return false; } finally { setSending(false); }
+    }
+    // Every visit with the Chefe is a new session: the first message sent after opening the app starts it.
+    if (bot.isChief && !visitStarted.current && mode !== 'computer') {
+      visitStarted.current = true;
+      if (bot.messageCount) await supervisor.current.call('bot.newSession', { botId: bot.id, opened: true }).catch(() => { visitStarted.current = false; });
     }
     setSending(true);
     if (mode === 'computer') {

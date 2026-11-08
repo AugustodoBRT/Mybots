@@ -553,7 +553,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'bot.newSession': {
           const bot = db.requireBot(params.botId);
           if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
-          db.newSession(bot.id, 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
+          db.newSession(bot.id, params.opened ? 'Nova sessão iniciada ao abrir o app. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.' : 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
           broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
           return { ok: true };
         }

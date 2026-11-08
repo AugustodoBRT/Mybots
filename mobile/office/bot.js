@@ -180,10 +180,11 @@ export function createBot(bot, scene, { particles = 6000, index = 0 } = {}) {
     const [, eyeWidth, eyeHeight] = EYE_STYLES[spec.eyeStyle];
     eyes.forEach((eye, i) => { const third = i === 2, size = spec.eyes === 1 ? 1.3 : 1; eye.scale.set((third ? 0.075 : eyeWidth * 0.75 * size) * c.ew, Math.max(0.018, (third ? 0.10 : eyeHeight * 0.75 * size) * c.eo * blink), 0.045); });
     mouth.visible = spec.mouth !== 'nenhuma' || c.mo > 0.1; mouth.scale.set(0.11 + c.mo * 0.07, 0.026 + c.mo * 0.08, 0.035);
-    shellMat.color.setHSL((c.hm > 0 ? c.hue : spec.hue) / 360, 0.46, view.lying ? 0.38 : 0.59);
+    // A mood with its own color (waiting, error) pulls the hue toward it by how active the mood is; calm moods keep the bot's own hue.
+    const hue = (spec.hue + (((c.hue - spec.hue + 540) % 360) - 180) * Math.min(1, Math.max(0, c.hm)) + 360) % 360;
+    shellMat.color.setHSL(hue / 360, 0.46, view.lying ? 0.38 : 0.59);
     const holes = holesFor(spec, c, blink); u.uHoles.value = holes.length;
     holes.forEach(([x, y, w, h, angle, curve, amount], i) => { u.uHoleA.value[i].set(x, y, w, h); u.uHoleB.value[i].set(Math.cos(angle), Math.sin(angle), curve, amount); });
-    const hue = c.hm > 0 ? c.hue : spec.hue;
     u.uHue.value = hue; u.uDim.value = c.dim; u.uShake.value = c.shake; u.uWarm.value = view.warm ? 1 : 0;
     shared.uTime.value = t; shared.uEnergy.value = 0.65 + 0.6 * c.en; shared.uPixel.value = pixel * 1.05;
     glowU.uColor.value.setHSL(hue / 360, 0.7, 0.62); glowU.uGlow.value = view.lying ? 0.006 : view.mood === 'concluido' ? 0.02 : 0.012;

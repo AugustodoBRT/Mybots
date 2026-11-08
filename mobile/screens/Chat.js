@@ -88,7 +88,9 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
   const phoneView = Boolean(desktop) && !browsing && (browserOpen || assumed);
   const showBrowser = browsing && (browserOpen || assumed), side = !desktop && (showBrowser || phoneView) && width >= 820;
   // While the bot works, new messages still go out and wait their turn (phone mode).
-  const typing = phone ? sending || saving : busy;
+  // The supervisor queues what is written while the bot works (phone, computer window and iPhone web app alike); only the old
+  // token-based computer mode answers one message at a time.
+  const typing = mode === 'phone' ? sending || saving : busy;
   const canSend = !typing && (draft.trim() || files.length) && selection?.model;
   const addWebFiles = async list => {
     setComposerError('');

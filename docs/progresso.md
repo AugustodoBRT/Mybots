@@ -1923,3 +1923,8 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 
 - **"O Chefe chamou X" e "X respondeu"** apareciam sempre no fim da conversa do Chefe, mesmo depois de você mandar outra mensagem ou reabrir o app. Agora só aparecem enquanto são mais novos que a última mensagem da conversa: quando você escreve ou o Chefe responde, saem (`mobile/components/ChiefTeam.js`).
 - **Testes**: store e renderização da conversa sem mudança de resultado. Não visto na tela com delegação de verdade.
+
+## 0.80.2 (versionCode 169): escrever enquanto o bot pensa, também no PC
+
+- **O campo de mensagem ficava travado ("Aguarde a resposta…") enquanto o bot trabalhava** na janela do PC e no web app do iPhone. A fila de mensagens (o bot lê na sequência, com "Corrigir rumo" e "Pausar") só valia quando o Termux existia no aparelho. Agora vale sempre que o app usa o MyBots novo (celular, PC e iPhone); só o modo antigo do computador responde uma mensagem de cada vez (`mobile/screens/Chat.js`).
+- **Visto** no PC com os dados reais: com o Chefe trabalhando, escrevi uma segunda mensagem, ela entrou na fila e apareceu o painel "Fila · 1 esperando". Não visto no iPhone.

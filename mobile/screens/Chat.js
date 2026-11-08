@@ -24,7 +24,7 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
 const launchPast = new Map();
-function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
@@ -35,20 +35,24 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
   // before stays in the sessions list ("Ver sessões"), and the first message sent now starts the new one.
   // What existed when this visit began is remembered for the whole visit (not per screen), so leaving the Chefe's screen and coming back
   // does not hide the conversation started since, nor bring the old one back.
-  const [sessionsOpen, setSessionsOpen] = useState(false); const [viewing, setViewing] = useState(null); const [, refreshPast] = useState(0);
+  const [sessionsOpen, setSessionsOpen] = useState(false); const [, refreshPast] = useState(0);
   const past = launchPast.get(bot.id);
   useEffect(() => {
     if (!bot.isChief || launchPast.has(bot.id)) return;
-    if (bot.messages.length) launchPast.set(bot.id, { ids: new Set(bot.messages.map(item => item.id)), until: bot.messages.reduce((max, item) => item.createdAt > max ? item.createdAt : max, '') });
-    else if (!bot.messageCount) launchPast.set(bot.id, { ids: new Set(), until: '' });
+    if (bot.messages.length) launchPast.set(bot.id, { ids: new Set(bot.messages.map(item => item.id)) });
+    else if (!bot.messageCount) launchPast.set(bot.id, { ids: new Set() });
     else return;
     refreshPast(n => n + 1);
   }, [bot.id, bot.isChief, bot.messages, bot.messageCount]);
   const sessions = useMemo(() => bot.isChief ? sessionsOf(bot.messages) : [], [bot.isChief, bot.messages]);
-  const opened = bot.isChief ? sessions.find(item => item.id === viewing) : null;
-  const hidden = bot.isChief && !opened;
-  const messages = useMemo(() => (opened ? [...opened.messages] : [...bot.messages].filter(item => (!hidden || (past && !past.ids.has(item.id) && item.createdAt >= past.until)) && !openedLine(item))).reverse(), [bot.messages, hidden, past, opened]);
-  const showHero = bot.isChief && !opened && !sessionsOpen && !messages.length && !(data.approvals || []).some(item => item.botId === bot.id);
+  // The open session is the one of the newest message written or picked in this visit; until then the screen is the empty start.
+  const current = useMemo(() => {
+    if (!bot.isChief || !past) return null;
+    const fresh = [...bot.messages].reverse().find(item => !past.ids.has(item.id));
+    return fresh ? sessions.find(item => item.id === (fresh.session || 'base')) || null : null;
+  }, [bot.isChief, bot.messages, past, sessions]);
+  const messages = useMemo(() => (bot.isChief ? [...(current?.messages || [])].filter(item => !openedLine(item)) : [...bot.messages]).reverse(), [bot.isChief, bot.messages, current]);
+  const showHero = bot.isChief && !sessionsOpen && !messages.length && !(data.approvals || []).some(item => item.botId === bot.id);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -163,13 +167,12 @@ function ChatView({ onMemory, onTeam, onTeamRoom, interactive = true, savedFiles
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
     <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
     <View style={styles.messagesWrap}>
-    {sessionsOpen ? <SessionList sessions={sessions} more={more} onEarlier={onEarlier} onPick={id => { setViewing(id); setSessionsOpen(false); }} onClose={() => setSessionsOpen(false)} /> : null}
-    {opened ? <Pressable accessibilityRole="button" onPress={() => setViewing(null)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 9, borderBottomWidth: 1, borderColor: C.line }}><Icon name="back" size={16} color={C.accent} /><Text style={{ color: C.text2, fontFamily: F.m, fontSize: 13, flex: 1 }} numberOfLines={1}>Sessão antiga: {opened.title}</Text><Text style={{ color: C.accent, fontFamily: F.b, fontSize: 13 }}>Nova conversa</Text></Pressable> : null}
+    {sessionsOpen ? <SessionList sessions={sessions} current={current?.id} more={more} onEarlier={onEarlier} onPick={id => { setSessionsOpen(false); if (id !== current?.id) onResume?.(id); }} onClose={() => setSessionsOpen(false)} /> : null}
     <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
       {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
-      onEndReached={more && !hidden && !opened ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
-      ListFooterComponent={more && !hidden && !opened ? <EarlierButton onPress={onEarlier} /> : null}
+      onEndReached={more && !bot.isChief ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
+      ListFooterComponent={more && !bot.isChief ? <EarlierButton onPress={onEarlier} /> : null}
       ListEmptyComponent={<View>
       {!bot.messageCount && !bot.isChief && <View style={styles.chatEmpty}><Avatar bot={bot} size={96} state={asleep ? 'sleeping' : 'idle'} /><Text style={styles.chatEmptyTitle}>Diga oi para {bot.name}.</Text>
         <Text style={styles.chatEmptyText}>Conte o que você precisa. Em Perfil você vê e muda o que este bot pode fazer.</Text>
@@ -235,14 +238,14 @@ export function ChatScreen(props) {
 const messageKey = message => message.id;
 
 // "Ver sessões": every visit with the Chefe, newest first, each named by what the person said first.
-function SessionList({ sessions, more, onEarlier, onPick, onClose }) {
+function SessionList({ sessions, current, more, onEarlier, onPick, onClose }) {
   return <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: C.bg, zIndex: 5 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
       <IconButton icon="back" label="Voltar" onPress={onClose} size={38} /><Text style={{ color: C.text, fontFamily: F.x, fontSize: 18, flex: 1 }}>Sessões</Text></View>
     <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
       {sessions.length ? sessions.map(item => <Pressable key={item.id} accessibilityRole="button" onPress={() => onPick(item.id)} style={({ pressed }) => [{ paddingVertical: 12, borderBottomWidth: 1, borderColor: C.line, gap: 2 }, pressed && { opacity: 0.7 }]}>
         <Text style={{ color: C.text, fontFamily: F.s, fontSize: 15 }} numberOfLines={2}>{item.title}</Text>
-        <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>{new Date(item.at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {item.count} {item.count === 1 ? 'mensagem' : 'mensagens'}</Text></Pressable>)
+        <Text style={{ color: item.id === current ? C.accent : C.muted, fontFamily: F.m, fontSize: 12.5 }}>{item.id === current ? 'Aberta · ' : ''}{new Date(item.last).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · {item.count} {item.count === 1 ? 'mensagem' : 'mensagens'}</Text></Pressable>)
         : <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 14, paddingTop: 12 }}>Nenhuma sessão carregada ainda.</Text>}
       {more ? <EarlierButton onPress={onEarlier} /> : null}
     </ScrollView>

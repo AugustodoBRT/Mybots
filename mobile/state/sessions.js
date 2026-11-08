@@ -1,28 +1,32 @@
-// A conversation with the Chefe is split in sessions: each time the app is opened and the first message is sent, or the
-// person writes /clear, a system line says a new session began. The session's name comes from what the person said first.
-const GAP = 6 * 3600 * 1000;
-const START = /^Nova sessão (iniciada ao abrir o app|da IA iniciada a pedido)/;
-export const OPENED_LINE = 'Nova sessão iniciada ao abrir o app. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.';
-export const startsSession = message => message?.role === 'system' && START.test(message.text || '');
-export const openedLine = message => message?.role === 'system' && /^Nova sessão iniciada ao abrir o app/.test(message.text || '');
+// A conversation with the Chefe is split in sessions, like chats in Claude: every message carries the session it belongs to
+// (the supervisor stamps it), a new one begins when the app is opened and something is said, or with /clear, and picking an old
+// one continues it. What came before sessions existed is one session called "base". The name is a short title the IA wrote after
+// the first answer (kept in the line that opened the session); until then, the start of the first thing the person said.
+const HIDDEN = /^(Nova sessão iniciada ao abrir o app|Sessão retomada)/;
+/** The lines that only mark a session (opened by the app, picked again): not shown in the chat. */
+export const openedLine = message => message?.role === 'system' && HIDDEN.test(message.text || '');
 
-const title = messages => {
-  const first = messages.find(item => item.role === 'user' && (item.text || '').trim());
-  const text = (first?.text || '').replace(/\s+/g, ' ').trim();
-  return text ? (text.length > 56 ? text.slice(0, 55).trimEnd() + '…' : text) : 'Conversa sem título';
+const short = text => {
+  const one = (text || '').replace(/\s+/g, ' ').trim();
+  return one ? (one.length > 56 ? one.slice(0, 55).trimEnd() + '…' : one) : 'Conversa sem título';
 };
 
-/** Newest first. `messages` oldest first, as the chat holds them. */
+/** Newest activity first. `messages` oldest first, as the chat holds them. Each has { id, title, at, last, count, messages }. */
 export function sessionsOf(messages) {
-  const out = []; let current = [];
-  const close = () => { const real = current.filter(item => item.role !== 'system'); if (real.length) out.push({ id: real[0].id, title: title(real), at: real[0].createdAt, count: real.length, messages: current }); current = []; };
-  // Conversations from before the sessions began have no dividing line: a pause of six hours or more splits them.
-  let before = NaN;
+  const groups = new Map();
   for (const message of messages) {
-    const at = Date.parse(message.createdAt);
-    if (startsSession(message) || (Number.isFinite(before) && Number.isFinite(at) && at - before > GAP)) close();
-    current.push(message); if (Number.isFinite(at)) before = at;
+    const id = message.session || 'base';
+    let group = groups.get(id);
+    if (!group) groups.set(id, group = { id, title: '', messages: [] });
+    group.messages.push(message);
+    if (message.title && !group.title) group.title = String(message.title);
   }
-  close();
-  return out.reverse();
+  const out = [];
+  for (const group of groups.values()) {
+    const real = group.messages.filter(item => item.role !== 'system');
+    if (!real.length) continue;
+    const first = real.find(item => item.role === 'user' && (item.text || '').trim());
+    out.push({ id: group.id, title: group.title || short(first?.text), at: real[0].createdAt, last: real[real.length - 1].createdAt, count: real.length, messages: group.messages });
+  }
+  return out.sort((a, b) => b.last.localeCompare(a.last));
 }

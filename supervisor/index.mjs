@@ -554,15 +554,26 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const bot = db.requireBot(params.botId);
           // Opening the app twice with nothing said in between is still the same session.
           if (params.opened) { const last = db.page({ botId: bot.id, limit: 1 }).messages.at(-1); if (!last || (last.role === 'system' && /^Nova sessão iniciada ao abrir o app/.test(last.text || ''))) return { ok: true, kept: true }; }
-          if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) {
-            // Opening the app while the bot is busy still starts a new session of the conversation (the line that separates it); the IA's own session continues.
-            if (!params.opened) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
-            db.sessionNote('Nova sessão iniciada ao abrir o app. O bot estava ocupado, então a sessão da IA continua; a conversa, as memórias e as pendências também.', { botId: bot.id });
-            broadcast('bot.updated', { botId: bot.id }); return { ok: true, kept: true };
-          }
-          db.newSession(bot.id, params.opened ? 'Nova sessão iniciada ao abrir o app. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.' : 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.');
+          const busy = db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state));
+          if (busy && !params.opened) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');
+          const why = params.opened ? 'Nova sessão iniciada ao abrir o app. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.' : 'Nova sessão da IA iniciada a pedido da pessoa. A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova.';
+          if (bot.isChief) {
+            // The Chefe's chats are separate sessions. Busy while opening the app: the chat divides, and the IA's own session continues in the new one.
+            if (busy) db.transaction(() => { db.archiveAi(bot.id); db.setChatSession(bot.id, randomUUID()); db.sessionNote('Nova sessão iniciada ao abrir o app. O bot estava ocupado, então a sessão da IA continua; a conversa, as memórias e as pendências também.', { botId: bot.id }); });
+            else db.startSession(bot.id, why);
+          } else if (busy) { db.sessionNote('Nova sessão iniciada ao abrir o app. O bot estava ocupado, então a sessão da IA continua; a conversa, as memórias e as pendências também.', { botId: bot.id }); }
+          else db.newSession(bot.id, why);
           broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
           return { ok: true };
+        }
+        // Picking an old chat of the Chefe: it is the open one again, with the IA's memory of it.
+        case 'bot.resumeSession': {
+          const bot = db.requireBot(params.botId);
+          if (!bot.isChief || (params.sessionId !== 'base' && !uuid(params.sessionId))) throw new Error('Sessão inválida.');
+          if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) throw new Error('Espere o bot terminar o que está fazendo para trocar de sessão.');
+          const changed = db.resumeSession(bot.id, params.sessionId);
+          broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
+          return { ok: true, changed };
         }
         case 'room.newSession': {
           const room = db.requireRoom(params.roomId);

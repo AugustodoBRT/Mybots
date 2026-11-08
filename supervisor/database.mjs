@@ -536,6 +536,9 @@ export class Database {
   latest(botId, role) { const row = this.get("SELECT body FROM messages WHERE bot_id=? AND json_extract(body,'$.role')=? ORDER BY rowid DESC LIMIT 1", botId, role); return row ? parse(row) : null; }
   /** A new message at the end of a bot's chat: one insert, whatever the size of the conversation. */
   appendMessage(botId, message) {
+    // The Chefe's conversation is split in sessions: every message carries the one it belongs to (none before sessions began).
+    const session = message.session === undefined ? this.chatSession(botId) : null;
+    if (session) message = { ...message, session };
     this.run('INSERT INTO messages(id,bot_id,body) VALUES(?,?,?)', message.id, botId, JSON.stringify(message));
     this.notify('message.added', { botId, message });
     return message;
@@ -691,6 +694,46 @@ export class Database {
     this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', sinceKey(botId, roomId), now());
     this.run('DELETE FROM metadata WHERE key=?', handoffKey(botId, roomId));
     this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'session.compact.' + (roomId ? roomId + '.' : '') + botId, '1');
+  }
+  // Sessions of the Chefe's conversation (what the person sees as separate chats, like in Claude). Each keeps the IA's own session id, so
+  // picking an old one continues it with everything the IA remembers of it. `null` is the conversation from before sessions began ("base").
+  chatSession(botId) { return this.get('SELECT value FROM metadata WHERE key=?', 'chat.session.' + botId)?.value || null; }
+  setChatSession(botId, id) { if (id) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'chat.session.' + botId, id); else this.run('DELETE FROM metadata WHERE key=?', 'chat.session.' + botId); }
+  archiveAi(botId) { const ai = this.bot(botId)?.codexSessionId; if (ai) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'chat.ai.' + botId + '.' + (this.chatSession(botId) || 'base'), ai); }
+  /** A new chat: the IA session of the one that was open is kept for later, and the next answer starts a fresh one. */
+  startSession(botId, why) {
+    this.requireBot(botId);
+    return this.transaction(() => {
+      this.archiveAi(botId);
+      const id = randomUUID(); this.setChatSession(botId, id);
+      this.forgetSession(botId);
+      this.record('session_reset', why, botId);
+      this.sessionNote(why, { botId });
+      return id;
+    });
+  }
+  /** Picking an old chat: it becomes the open one and the IA session it had comes back (a fresh one when that is gone). */
+  resumeSession(botId, wanted) {
+    this.requireBot(botId);
+    const target = wanted === 'base' ? null : wanted;
+    if (target && !this.get("SELECT 1 FROM messages WHERE bot_id=? AND json_extract(body,'$.session')=? LIMIT 1", botId, target)) throw new Error('Sessão não encontrada.');
+    // Already the open one (the app was just reopened): only the marker that brings it back on screen.
+    if ((this.chatSession(botId) || null) === target) { this.sessionNote('Sessão retomada. A conversa continua de onde parou.', { botId }); return false; }
+    return this.transaction(() => {
+      this.archiveAi(botId);
+      this.setChatSession(botId, target);
+      this.forgetSession(botId);
+      const ai = this.get('SELECT value FROM metadata WHERE key=?', 'chat.ai.' + botId + '.' + (target || 'base'))?.value;
+      if (ai) { this.putBot({ ...this.requireBot(botId), codexSessionId: ai }); this.run('DELETE FROM metadata WHERE key=?', 'session.compact.' + botId); }
+      this.record('session_reset', 'Sessão retomada.', botId);
+      this.sessionNote('Sessão retomada. A conversa continua de onde parou.', { botId });
+      return true;
+    });
+  }
+  sessionTitle(botId, id, title) {
+    const row = this.get("SELECT id FROM messages WHERE bot_id=? AND json_extract(body,'$.session')=? AND json_extract(body,'$.role')='system' AND json_extract(body,'$.text') LIKE 'Nova sessão%' ORDER BY rowid LIMIT 1", botId, id);
+    if (row) this.updateMessage(row.id, { title });
+    return Boolean(row);
   }
   /** The line "Nova sessão…" in the conversation (a system message: shown, never sent to the IA as something the person said). */
   sessionNote(text, { botId = null, roomId = null }) {

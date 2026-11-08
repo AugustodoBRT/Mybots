@@ -196,8 +196,22 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   }, [selected, roomId]);
   const go = target => (target ? (target.kind === 'room' ? onRoom(target.id) : onOpen(target.id)) : onHome?.());
   const closeTab = tab => { const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
-  useEffect(() => { if (profileOpen) openKind('settings'); else dropKind('settings', true); }, [profileOpen]);
-  useEffect(() => { if (fileOpen) openKind('file'); else dropKind('file', true); }, [fileOpen, fileKey]);
+  const keepBar = useRef(false);
+  useEffect(() => { if (profileOpen) openKind('settings'); else dropKind('settings', !keepBar.current); }, [profileOpen]);
+  // The bar belongs to the conversation it was opened for: going to another bot or room brings back its start screen
+  // (the agent's settings and the open file were the other one's), and on pages without a conversation the bar is not shown.
+  const currentKey = current ? current.kind + current.id : '';
+  const lastKey = useRef(currentKey);
+  useEffect(() => {
+    if (lastKey.current === currentKey) return;
+    lastKey.current = currentKey;
+    keepBar.current = true; setTimeout(() => { keepBar.current = false; }, 400);
+    if (profileOpen) onProfileClose?.();
+    if (fileOpen) onFileClose?.();
+    setFull(false);
+    setSide(old => ({ ...old, tabs: old.tabs.filter(kind => kind !== 'settings' && kind !== 'file'), active: null }));
+  }, [currentKey]);
+  useEffect(() => { if (fileOpen) openKind('file'); else dropKind('file', !keepBar.current); }, [fileOpen, fileKey]);
   useEffect(() => desktopBus.on('browser-open', () => openKind('browser')), []);
   const browserTab = side.open && side.tabs.includes('browser') && side.active === 'browser';
   useEffect(() => { if (selected) desktopBus.emit('browser-state', { botId: selected, open: browserTab }); }, [browserTab, selected]);
@@ -284,7 +298,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       <View style={{ flex: 1 }}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
-    <DesktopReveal open={side.open} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>
+    <DesktopReveal open={side.open && Boolean(current) && !team && (!page || (page === 'office' && side.active === 'file'))} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>
       <SideFrame>
         <SideHeader tabs={side.tabs} active={side.active} onPick={kind => setSide(old => ({ ...old, active: kind }))} onClose={closeKind} onNew={() => setSide(old => ({ ...old, active: null }))} wide={wide} onWide={() => setWide(value => !value)} onHide={() => setSide(old => ({ ...old, open: false }))} badge={waiting} />
         {side.active === 'settings' ? profilePanel

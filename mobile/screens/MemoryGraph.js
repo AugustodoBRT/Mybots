@@ -108,7 +108,7 @@ function RoundButton({ label, name, onPress, L }) {
  * label layers are memoized on positions and highlight, so moving the view does not re-render them.
  */
 export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey = 0, initialView = null, initialFocus = null, store = cache,
-  display = DEFAULTS, compact = false, current = null, drag = null, transparent = false, lockView = false, onFit = null, children }) {
+  display = DEFAULTS, compact = false, current = null, drag = null, transparent = false, lockView = false, onFit = null, soloLabel = false, children }) {
   const L = look();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [view, setView] = useState(() => initialView || store.view);
@@ -260,14 +260,15 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
   }, [placed, model, active]);
   const labels = useMemo(() => {
     const boost = 2 ** display.text, shown = tier * boost >= (compact ? FADE.compact : FADE.full);
-    const ids = shown ? labelIds(model, tier * boost, active) : new Set();
-    const keep = new Set([active, current, ...(near || [])].filter(Boolean));
+    const ids = shown && !soloLabel ? labelIds(model, tier * boost, active) : new Set();
+    // soloLabel: only the title of the note under the pointer, not its neighbours'.
+    const keep = new Set((soloLabel ? [active] : [active, current, ...(near || [])]).filter(Boolean));
     for (const id of keep) ids.add(id);
     const base = compact ? 11 : 12;
     return placed.filter(p => ids.has(p.id)).map(({ node, id, x, y, r }) => ({ id, x, y, r, text: short(node.title || id), strong: id === active || id === current,
       // The small local map keeps its titles at a fixed size on screen; the big one scales them with the zoom.
       opacity: lit(id) ? 1 : 0.2, size: compact ? 10.5 / tier : keep.has(id) ? Math.max(base, 11.5 / tier) : base }));
-  }, [placed, model, tier, active, matches, display.text, current, compact]);
+  }, [placed, model, tier, active, matches, display.text, current, compact, soloLabel]);
   const v = view || { k: 1, x: 0, y: 0 };
   const dim = near || matches ? 0.15 : 0.9;
   const width = box.current?.width || size.width, height = box.current?.height || size.height;

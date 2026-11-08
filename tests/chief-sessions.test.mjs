@@ -27,3 +27,12 @@ test('grafo com disco livre: nenhuma nota fica dentro dele, nem as arrastadas', 
   assert.ok(Math.hypot(pinned.x, pinned.y) >= 99.9);
   for (const { x, y } of layout.nodes()) assert.ok(Math.hypot(x, y) >= 99.9);
 });
+
+test('sessões antigas sem linha de divisão: uma pausa de seis horas separa', () => {
+  const at = hours => new Date(Date.UTC(2026, 10, 7, 9) + hours * 3600000).toISOString();
+  const list = sessionsOf([
+    { id: '1', role: 'user', text: 'primeira', createdAt: at(0) }, { id: '2', role: 'assistant', text: 'r', createdAt: at(0.1) },
+    { id: '3', role: 'user', text: 'depois de dormir', createdAt: at(22) }, { id: '4', role: 'assistant', text: 'r', createdAt: at(22.2) }, { id: '5', role: 'user', text: 'mais', createdAt: at(23) }
+  ]);
+  assert.deepEqual(list.map(item => [item.title, item.count]), [['depois de dormir', 3], ['primeira', 2]]);
+});

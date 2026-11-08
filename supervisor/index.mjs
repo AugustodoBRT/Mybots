@@ -552,6 +552,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // "/clear": the IA forgets its long session of this conversation; the conversation, memories and pending items stay (see Database.newSession).
         case 'bot.newSession': {
           const bot = db.requireBot(params.botId);
+          // Opening the app twice with nothing said in between is still the same session.
+          if (params.opened) { const last = db.page({ botId: bot.id, limit: 1 }).messages.at(-1); if (!last || (last.role === 'system' && /^Nova sessão iniciada ao abrir o app/.test(last.text || ''))) return { ok: true, kept: true }; }
           if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) {
             // Opening the app while the bot is busy still starts a new session of the conversation (the line that separates it); the IA's own session continues.
             if (!params.opened) throw new Error('Espere o bot terminar o que está fazendo, ou pare a tarefa, para começar uma sessão nova.');

@@ -545,7 +545,7 @@ function AppMain() {
     // Every visit with the Chefe is a new session: the first message sent after opening the app starts it.
     if (bot.isChief && !visitStarted.current && mode !== 'computer') {
       visitStarted.current = true;
-      if (bot.messageCount) await supervisor.current.call('bot.newSession', { botId: bot.id, opened: true }).catch(() => { visitStarted.current = false; });
+      await supervisor.current.call('bot.newSession', { botId: bot.id, opened: true }).catch(() => { visitStarted.current = false; });
     }
     setSending(true);
     if (mode === 'computer') {

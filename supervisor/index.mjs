@@ -144,7 +144,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     };
     tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device, approvalNotice }); queue.tools = tools;
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
-    tools.team = new Team(db, { rooms, changed: broadcast, selectionFor: bot => selectionFor(catalog(), bot),
+    tools.team = new Team(db, { rooms, changed: broadcast, schedule: () => queue.schedule(), selectionFor: bot => selectionFor(catalog(), bot),
       createBot: (data, selection) => { const bot = db.create(data, selection); tools.setAccountApps(bot.id, []); return bot; } });
     // The computer: turns of its bots wait while it is off and start as soon as it connects.
     nodes = new Nodes(db, { changed: (event, data) => { if (data?.node && !nodes.computer()) queue.lost('pc'); else queue.schedule(); broadcast(event, data); broadcast('activity.new'); } }); queue.nodes = nodes;

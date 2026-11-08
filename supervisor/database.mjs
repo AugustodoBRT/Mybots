@@ -956,7 +956,7 @@ export class Database {
       const turn = this.roomTurn(id);
       if (turn) this.roomReply(turn, bot, state, reply, error, files, usage);
       if (!turn) this.updateMessage(task.message_id, { status: state === 'done' ? 'complete' : 'error', error: error || undefined });
-      if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(reply.fallback ? { fallback: true } : {}), ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
+      if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(reply.fallback ? { fallback: true } : {}), ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), ...(this.message(task.message_id)?.via === 'chief' ? { replyTo: task.message_id } : {}), createdAt: now() });
       else if (!turn && files.attachments) this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
       if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now() });
       if (usage) this.addUsage(bot, id, reply, usage);

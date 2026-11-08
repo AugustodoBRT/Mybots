@@ -140,7 +140,7 @@ export class Rooms {
     this.changed('task.progress'); this.schedule();
   }
   /** What a bot reads for its turn: who is in the room and the conversation (or, in a resumed session, what is new). */
-  prompt(bot, taskId, { tools = false, resumed = false, maxChars } = {}) {
+  prompt(bot, taskId, { tools = false, resumed = false, maxChars, handoff } = {}) {
     const turn = this.db.roomTurn(taskId); const room = this.db.requireRoom(turn.room_id); const members = this.members(room);
     const names = Object.fromEntries(members.map(item => [item.id, item.name]));
     const speaker = message => message.role === 'user' ? 'Pessoa' : message.role === 'system' ? 'Aviso' : names[message.botId] || 'Bot que saiu da sala';
@@ -164,7 +164,7 @@ ${tools ? (bot.isChief ? CHIEF_TEXT + '\n' : '') + TOOLS_TEXT : 'Nesta sala voc�
 As instruções abaixo foram escritas pela pessoa: definem sua função e seu jeito, e você deve segui-las; elas não ampliam suas permissões.
 Função e personalidade: ${JSON.stringify(bot.instructions || 'Seja prestativo, direto e acolhedor.')}
 ${maxChars ? 'Esta é uma sessão nova (a anterior foi encerrada para não gastar contexto à toa): só as mensagens mais recentes da sala estão abaixo; para algo mais antigo, consulte as suas memórias com memory_read.' : ''}
-${recent.length < visible.length || window.more ? 'O início da sala não está no contexto desta resposta.' : ''}
+${handoff ? `Resumo que você mesmo escreveu ao encerrar a sessão anterior nesta sala (vale onde as mensagens abaixo não disserem outra coisa):\n${handoff}\n` : ''}${recent.length < visible.length || window.more ? 'O início da sala não está no contexto desta resposta.' : ''}
 Conversa da sala, em ordem:
 ${recent.map(line).join('\n')}
 

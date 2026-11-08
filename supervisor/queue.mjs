@@ -44,8 +44,24 @@ const PROMPT_WINDOW = 400;
 // rereading all of it at every tool call. MYBOTS_CONTEXT_LIMIT / MYBOTS_CONTEXT_TURNS change the limits, MYBOTS_CONTEXT_AUTO=0 turns it off.
 export const CONTEXT_LIMIT = Number(process.env.MYBOTS_CONTEXT_LIMIT) || 150000;
 export const CONTEXT_TURNS = Number(process.env.MYBOTS_CONTEXT_TURNS) || 80;
-// What a fresh session replays after one of these resets: little (the bot has its memory and pending items for the rest).
-const COMPACT_CHARS = 24000;
+// What a fresh session replays after one of these resets: little (the bot has its memory and pending items for the rest),
+// and less when the bot left a summary of the session it closed.
+const COMPACT_CHARS = 24000, HANDOFF_TAIL = 12000;
+// The handoff: right after a reply that left the session too big, the bot (in that same session, still cached) writes what
+// the new one must know; the next turn starts a new session with it and the latest messages, so nobody waits for it.
+const HANDOFF_MS = 3 * 60000;
+export const HANDOFF_PROMPT = `[Passagem de turno, pedido do aplicativo MyBots, não da pessoa]
+Esta sessão ficou grande e será trocada por uma nova, que não vai ver esta conversa. Não use ferramentas e não responda à pessoa.
+Escreva só o resumo que você mesmo vai ler no lugar desta conversa, com até 3500 caracteres, nestas seções:
+## O que a pessoa quer
+Objetivos, preferências e combinados que continuam valendo.
+## O que já foi feito
+Entregas, decisões, arquivos, caminhos e links, com os nomes exatos.
+## O que está em aberto
+O que falta, o que você prometeu, perguntas sem resposta e o próximo passo.
+Sem cumprimentos nem comentários: só o que está na conversa, com nomes, números e caminhos exatos.`;
+const tooBig = load => load.estimate > CONTEXT_LIMIT || load.turns > CONTEXT_TURNS;
+const why = load => `cerca de ${load.estimate > CONTEXT_LIMIT ? `${Math.round(load.estimate / 1000)} mil tokens por chamada` : `${load.turns} respostas na anterior`}`;
 
 // How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
 // from talking to the others. Small on the phone, whose Termux has little memory.
@@ -140,25 +156,27 @@ export class Queue extends EventEmitter {
         }
         // Too big a session is replaced before this turn (not while it is running, never for a routine's one-off), with the latest messages only.
         if (process.env.MYBOTS_CONTEXT_AUTO !== '0' && (turn ? this.db.roomSession(turn.room_id, task.bot_id) : this.db.requireBot(task.bot_id).codexSessionId)) {
-          const load = this.db.contextLoad(task.bot_id);
-          if (load.estimate > CONTEXT_LIMIT || load.turns > CONTEXT_TURNS) this.db.newSession(task.bot_id, `Nova sessão da IA, iniciada sozinha para economizar contexto (${load.estimate > CONTEXT_LIMIT ? `cerca de ${Math.round(load.estimate / 1000)} mil tokens por chamada` : `${load.turns} respostas na anterior`}). A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova. Para recomeçar quando quiser, escreva /clear.`, { roomId: turn?.room_id || null });
+          const load = this.db.contextLoad(task.bot_id, turn?.room_id || null);
+          if (tooBig(load)) this.db.newSession(task.bot_id, `Nova sessão da IA, iniciada sozinha para economizar contexto (${why(load)}). A conversa, as memórias e as pendências continuam; só as mensagens mais recentes vão para a sessão nova. Para recomeçar quando quiser, escreva /clear.`, { roomId: turn?.room_id || null });
         }
         const compactKey = 'session.compact.' + (turn ? turn.room_id + '.' : '') + task.bot_id;
-        const compact = this.db.get('SELECT 1 FROM metadata WHERE key=?', compactKey) ? COMPACT_CHARS : undefined;
+        const handoff = this.db.get('SELECT 1 FROM metadata WHERE key=?', compactKey) ? this.db.handoff(task.bot_id, turn?.room_id || null) : null;
+        const compact = handoff ? HANDOFF_TAIL : this.db.get('SELECT 1 FROM metadata WHERE key=?', compactKey) ? COMPACT_CHARS : undefined;
         const owner = this.db.requireBot(task.bot_id);
         const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;
         // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
         const connectors = false, connectorDeny = [];
-        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId), maxChars: compact }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools), maxChars: compact });
+        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId), maxChars: compact, handoff }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools), maxChars: compact, handoff });
         // The reply as it is being written: the owner of the draft is the room (with the bot) or the private chat.
         const draftOf = text => { this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), text }); };
         // One try of the turn with `runBot`: the bot itself, or its reserve model when the subscription limit ended.
         // The pictures of the person's message go straight to a Codex bot that runs here on the phone (a bot on the computer, or Claude, reads them with attachment_read).
         const pictures = next.lane === 'phone' && this.tools?.attachments ? (this.db.message(task.message_id)?.attachments || []).filter(file => /^image\/(png|jpe?g|webp|gif)$/i.test(file.mime || '') && file.size <= 10 * 1024 * 1024).slice(0, 4).map(file => this.tools.attachments.path(file.id)) : [];
-        const attempt = (runBot, runPrompt, spare) => execute(runBot, (this.tools ? browserAccountGuidance(runBot) + '\n\n' : '') + runPrompt, {
-          signal: controller.signal,
-          ...((!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
-          onDelta: text => { if (!controller.signal.aborted) draftOf(text); },
+        // `quiet` (the handoff): nothing it writes reaches the conversation, and the session stays the same.
+        const attempt = (runBot, runPrompt, spare, quiet = null) => execute(runBot, (this.tools ? browserAccountGuidance(runBot) + '\n\n' : '') + runPrompt, {
+          signal: quiet?.signal || controller.signal,
+          ...(!quiet && (!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
+          onDelta: quiet ? undefined : text => { if (!controller.signal.aborted) draftOf(text); },
           workspace: capability?.workspace,
           tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
@@ -167,10 +185,10 @@ export class Queue extends EventEmitter {
             termux: next.lane === 'phone' && this.tools.policy(runBot.id, 'termux') === 'allow' && (runBot.provider === 'claude' || !this.tools.freeAsk('termux')),
             phone: this.tools.policy(runBot.id, 'phone') === 'allow' } : undefined,
           // The reserve model's session is never kept: the bot's own CLI could not resume it.
-          onSession: async id => { if (spare) return; if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); this.db.run('DELETE FROM metadata WHERE key=?', compactKey); },
+          onSession: async id => { if (spare || quiet) return; if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); this.db.run('DELETE FROM metadata WHERE key=?', compactKey); if (handoff) this.db.setHandoff(bot.id, turn?.room_id || null, null); },
           // What the bot says along the way becomes a message now; what it is doing shows under "Pensando".
           onProgress: ({ say, step } = {}) => {
-            if (controller.signal.aborted) return;
+            if (controller.signal.aborted || quiet) return;
             // A step is only an event: the conversation is not written for it.
             if (typeof say === 'string' && say.trim()) { this.db.progressMessage(task.id, say); this.steps.delete(task.id); draftOf(''); }
             else if (typeof step === 'string' && step.trim()) this.steps.set(task.id, step.trim().slice(0, 160));
@@ -178,7 +196,7 @@ export class Queue extends EventEmitter {
             this.emit('changed', { event: 'task.progress', taskId: task.id, botId: task.bot_id, step: this.steps.get(task.id) || null });
           },
           // Only a local process can be found again (and stopped) after a crash.
-          onProcess: pid => { if (next.lane === 'phone') this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
+          onProcess: pid => { if (next.lane === 'phone' && !quiet) this.db.run('UPDATE tasks SET worker_pid=?,worker_start=?,updated_at=? WHERE id=?', pid, processIdentity(pid), now(), task.id); }
         });
         let reply;
         try {
@@ -207,7 +225,8 @@ export class Queue extends EventEmitter {
           this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', owner.id); this.db.putBot({ ...this.db.requireBot(owner.id), codexSessionId: undefined });
         }
         if (controller.signal.aborted) this.db.finish(task.id, STOPPED[controller.signal.reason] ? 'failed' : 'cancelled', null, STOPPED[controller.signal.reason] || (controller.signal.reason === 'steer' ? STEERED : 'Pedido cancelado.'));
-        else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.tools?.adoptImages(task.bot_id, task.id, reply.images); const { images, ...rest } = reply; this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] }); }
+        else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.tools?.adoptImages(task.bot_id, task.id, reply.images); const { images, ...rest } = reply; this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] });
+          if (!reply.fallback) await this.handOff(task, turn, attempt, controller.signal); }
       } catch (error) {
         if (error.codexSessionId) { const turn = this.db.roomTurn(task.id); if (turn) this.db.setRoomSession(turn.room_id, task.bot_id, error.codexSessionId); else this.db.session(task.bot_id, error.codexSessionId); }
         const stopped = controller.signal.aborted && STOPPED[controller.signal.reason];
@@ -224,6 +243,28 @@ export class Queue extends EventEmitter {
     // Other bots, or the other lane, may have work too.
     this.schedule();
     await current.done;
+  }
+  /**
+   * After a reply that left the IA session too big: the bot writes the handoff in that session, and the next turn begins a new
+   * one with it. A handoff that fails leaves the session as it is; the next turn then starts a new one with the latest messages.
+   */
+  async handOff(task, turn, attempt, stop) {
+    if (process.env.MYBOTS_CONTEXT_AUTO === '0') return;
+    const roomId = turn?.room_id || null, owner = this.db.bot(task.bot_id);
+    const session = owner && (roomId ? this.db.roomSession(roomId, owner.id) : owner.codexSessionId);
+    if (!session) return;
+    const load = this.db.contextLoad(owner.id, roomId);
+    if (!tooBig(load)) return;
+    let reply;
+    try { reply = await attempt({ ...owner, codexSessionId: session }, HANDOFF_PROMPT, false, { signal: AbortSignal.any([stop, AbortSignal.timeout(HANDOFF_MS)]) }); }
+    catch { return; }
+    if (stop.aborted) return;
+    // The handoff's tokens count for the bot, but not as the size of the session that comes next.
+    try { this.db.addUsage(owner, task.id, reply); } catch {}
+    const text = String(reply?.text || '').trim();
+    if (text.length < 80) return;
+    this.db.newSession(owner.id, `Nova sessão da IA, iniciada sozinha para economizar contexto (${why(load)}). Antes de trocar, o bot resumiu a conversa para a sessão nova; as memórias e as pendências continuam. Para recomeçar do zero quando quiser, escreva /clear.`, { roomId });
+    this.db.setHandoff(owner.id, roomId, text);
   }
   /** The reserve model of a bot, when it is another provider's (the limit is the subscription's) and still valid. */
   reserve(bot) {

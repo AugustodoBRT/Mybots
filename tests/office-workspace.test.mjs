@@ -47,7 +47,7 @@ test('escritório: conversa, rascunhos, envio, arquivo e sala sem desmontar a ce
   app.db.appendMessage(bots[0].id, { id: crypto.randomUUID(), role: 'assistant', createdAt: new Date().toISOString(), text: '[Auto-revisão](revisao.md), [Vídeo](previa.webm) e [Projeto](projeto.zip)', status: 'complete', attachments: [previewDoc, previewImage, previewZip, previewVideo] });
   await app.rpc('person.update', { name: 'Augusto' });
 // Spend over the last week: a few replies per day for the first two bots, none for the third.
-const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-sol') => { const at = new Date(Date.now() - daysAgo * 86400000).toISOString(); app.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', crypto.randomUUID(), botId, null, 'codex', model, input, cached, output, at); };
+const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-sol') => { const at = new Date(Date.now() - daysAgo * 86400000).toISOString(); app.db.run('INSERT INTO usage(id,bot_id,task_id,provider,model,input,cached,output,created_at) VALUES(?,?,?,?,?,?,?,?,?)', crypto.randomUUID(), botId, null, 'codex', model, input, cached, output, at); };
   for (let d = 0; d < 7; d++) { addUsage(app, bots[0].id, d, 1e6 * (d + 1), 8e5 * (d + 1), 1e5 * (d % 3 + 1)); addUsage(app, bots[1].id, d, 4e5, 1e5, 2e4); }
   const web = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://x').pathname); let file = normalize(join(ui, path === '/' ? 'index.html' : path));

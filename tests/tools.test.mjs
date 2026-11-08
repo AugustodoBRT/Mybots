@@ -223,16 +223,67 @@ test('a conversation with a new-session line still backs up, restores and merges
   assert.throws(() => validateBackup({ ...snapshot, bots: [{ ...bot, messages: [{ ...bot.messages[0], role: 'robot' }] }] }), /mensagem inválida/);
 });
 
-test('context estimate: tokens of the last turn over its calls, and the answers since the session began', async t => {
+const addUsage = (db, botId, taskId, input, cached, context = null) => db.run('INSERT INTO usage(id,bot_id,task_id,provider,model,input,cached,output,created_at,context) VALUES(?,?,?,?,?,?,?,?,?,?)', randomUUID(), botId, taskId, 'codex', 'm', input, cached, 5000, new Date().toISOString(), context);
+
+test('context: the size of the last model call when the IA says it, else the prompt tokens over the calls (cache counted once)', async t => {
   const f = await setup(t);
   assert.deepEqual(f.db.contextLoad(f.bot.id), { estimate: 0, turns: 0 });
-  // A turn of 5 model calls (4 tools) that counted 1,000,000 tokens: about 200,000 per call, 260,000 with the growth.
+  // An older reply: 1,000,000 prompt tokens (900,000 of them cached, already inside the input) over 5 calls (4 tools).
   for (let index = 0; index < 4; index++) f.db.record('tool_done', 'Navegador: ler página: concluído.', f.bot.id, f.task.id);
-  f.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), f.bot.id, f.task.id, 'codex', 'm', 100000, 900000, 5000, new Date().toISOString());
-  const load = f.db.contextLoad(f.bot.id);
-  assert.equal(load.estimate, 260000); assert.equal(load.turns, 1);
+  addUsage(f.db, f.bot.id, f.task.id, 1000000, 900000);
+  assert.deepEqual(f.db.contextLoad(f.bot.id), { estimate: 200000, turns: 1 });
+  // A reply that says how big its last call was: that number, whatever the totals were.
+  addUsage(f.db, f.bot.id, f.task.id, 7700000, 7400000, 61000);
+  assert.deepEqual(f.db.contextLoad(f.bot.id), { estimate: 61000, turns: 2 });
   f.db.newSession(f.bot.id, 'x');
   assert.equal(f.db.contextLoad(f.bot.id).turns, 0, 'the count starts again with the new session');
+});
+
+test('the usage of a reply keeps its last call: the IA number, or its input over the calls it reported', async t => {
+  const f = await setup(t);
+  const row = () => f.db.get('SELECT context FROM usage ORDER BY rowid DESC LIMIT 1').context;
+  f.db.addUsage(f.bot, f.task.id, { usage: { input: 300000, cached: 250000, output: 10, context: 45000 } });
+  assert.equal(row(), 45000);
+  f.db.addUsage(f.bot, f.task.id, { usage: { input: 300000, cached: 250000, output: 10, calls: 12 } });
+  assert.equal(row(), 25000);
+  f.db.addUsage(f.bot, f.task.id, { usage: { input: 300000, cached: 0, output: 10 } });
+  assert.equal(row(), null);
+});
+
+test('a reply that left the session too big: the bot writes a handoff in it, and the next turn starts a new one with it', async t => {
+  const { HANDOFF_PROMPT } = await import('../supervisor/queue.mjs');
+  const { SupervisorClient } = await import('../mobile/supervisor-client.js');
+  const { default: WS } = await import('../supervisor/node_modules/ws/wrapper.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-handoff-')); const seen = []; let fail = false;
+  const summary = '## O que a pessoa quer\nUm site de receitas em /home/eu/receitas.\n## O que já foi feito\nindex.html pronto.\n## O que está em aberto\nFaltam as fotos.';
+  const app = await createSupervisor({ directory, port: 0, codex, execute: async (bot, prompt, options) => {
+    const handoff = prompt.includes(HANDOFF_PROMPT); seen.push({ session: bot.codexSessionId, prompt, handoff, quiet: !options.onDelta });
+    if (handoff && fail) throw new Error('limite');
+    options.onProgress?.({ say: handoff ? 'não deveria aparecer' : 'Trabalhando' });
+    return { text: handoff ? summary : 'ok', codexSessionId: bot.codexSessionId || randomUUID(), ...selection, usage: { input: 900000, cached: 850000, output: 100, context: handoff ? 1000 : 190000 } };
+  } });
+  const client = new SupervisorClient({ WebSocketClass: WS }); await client.connect({ port: app.port, token: app.token });
+  t.after(async () => { client.close(); await app.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await client.call('bot.create', { name: 'Grande', ...selection });
+  const send = async text => { const sent = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text }); await until(() => app.db.task(sent.taskId).state === 'done'); await until(() => !app.queue.running.size); };
+  const messages = () => app.db.page({ botId: bot.id, limit: 40 }).messages;
+  const notes = () => messages().filter(item => item.role === 'system' && /economizar contexto/.test(item.text)).length;
+  await send('primeira');
+  assert.equal(seen.length, 2); assert.equal(seen[0].session, undefined);
+  assert.ok(seen[1].handoff, 'the handoff ran right after the reply'); assert.ok(seen[1].quiet, 'quietly');
+  assert.ok(seen[1].session, 'in the session the reply just made');
+  assert.ok(!messages().some(item => /não deveria aparecer|Faltam as fotos/.test(item.text)), 'the summary is not a message');
+  assert.ok(messages().some(item => item.role === 'system' && /o bot resumiu a conversa/.test(item.text)));
+  await send('segunda');
+  assert.equal(seen[2].session, undefined, 'a new session'); assert.match(seen[2].prompt, /Resumo que você mesmo escreveu[\s\S]*Faltam as fotos/);
+  assert.ok(seen[3].handoff, 'still too big: another handoff'); assert.ok(seen[3].session);
+  // The handoff failed: the session stays as it is, and the next turn starts a new one without a summary.
+  fail = true; const before = notes();
+  await send('terceira');
+  assert.equal(seen[4].session, undefined); assert.ok(seen[5].handoff); assert.equal(notes(), before, 'no new session yet');
+  await send('quarta');
+  assert.equal(seen[6].session, undefined); assert.doesNotMatch(seen[6].prompt, /Resumo que você mesmo escreveu/); assert.match(seen[6].prompt, /sessão nova/);
+  assert.equal(notes(), before + 1);
 });
 
 test('a session that grew too much is replaced before the next turn, and /clear-style new session is refused while the bot works', async t => {
@@ -248,7 +299,7 @@ test('a session that grew too much is replaced before the next turn, and /clear-
   assert.equal(seen[1].session, app.db.requireBot(bot.id).codexSessionId ? seen[1].session : undefined); assert.ok(seen[1].session, 'the second turn resumes the first session');
   // The last turn looked huge: the next one starts a new session, short prompt, and says so in the chat.
   const lastTask = app.db.all('SELECT id FROM tasks WHERE bot_id=? ORDER BY created_at DESC, rowid DESC', bot.id)[0].id;
-  app.db.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, lastTask, 'codex', 'test', 100000, 400000, 100, new Date().toISOString());
+  addUsage(app.db, bot.id, lastTask, 400000, 300000);
   await done('terceira');
   assert.equal(seen[2].session, undefined, 'the session was replaced'); assert.match(seen[2].prompt, /sessão nova/);
   assert.ok(app.db.page({ botId: bot.id, limit: 30 }).messages.some(item => item.role === 'system' && /iniciada sozinha para economizar contexto/.test(item.text)));

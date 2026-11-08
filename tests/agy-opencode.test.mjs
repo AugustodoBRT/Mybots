@@ -62,7 +62,7 @@ out({ event: 'result', result: { conversation_id: resume, status: 'SUCCESS', res
   const sessions = [], progress = [], drafts = [];
   const first = await agyRunner.runReply({ model: 'gemini-4-argon', reasoningEffort: 'high' }, 'oi', { binary: agy.binary, onSession: async id => sessions.push(id), onProgress: item => progress.push(item), onDelta: text => drafts.push(text) });
   assert.equal(first.text, 'Resposta nova');
-  assert.deepEqual(first.usage, { input: 100, cached: 40, output: 10 });
+  assert.deepEqual(first.usage, { input: 100, cached: 40, output: 10, calls: 2 }, 'one tool, so two model calls');
   assert.equal(first.codexSessionId, CONVERSATION); assert.deepEqual(sessions, [CONVERSATION]);
   assert.deepEqual(progress, [{ say: 'Vou listar.' }, { step: 'Rodando ls' }]);
   const second = await agyRunner.runReply({ model: 'gemini-4-argon', reasoningEffort: 'low', codexSessionId: CONVERSATION }, 'e agora?', { binary: agy.binary });
@@ -113,7 +113,7 @@ out({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop', tokens: 
   const tools = { token: 'b'.repeat(64), endpoint: 'http://127.0.0.1:9', entry: '/x/mcp/index.mjs', computer: false };
   const first = await opencodeRunner.runReply({ model: 'opencode/beam-free', reasoningEffort: 'high' }, 'oi', { binary: oc.binary, tools, onProgress: item => progress.push(item) });
   assert.equal(first.text, 'Resposta nova'); assert.equal(first.codexSessionId, SESSION);
-  assert.deepEqual(first.usage, { input: 20, cached: 4, output: 6 });
+  assert.deepEqual(first.usage, { input: 20, cached: 4, output: 6, calls: 2, context: 5 }, 'the last step is the size of the session now');
   assert.deepEqual(progress, [{ say: 'Vou listar.' }, { step: 'Rodando ls' }]);
   const second = await opencodeRunner.runReply({ model: 'opencode/beam-free', codexSessionId: SESSION }, 'e agora?', { binary: oc.binary });
   assert.equal(second.text, 'Resposta retomada');

@@ -55,7 +55,11 @@ export const SYNCED = {
   metadata: { key: 'key', where: "key IN ('person.name','person.theme','person.chief','google.accounts','time_zone')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 16;
+export const SCHEMA = 17;
+// Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
+const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
+const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
+export const HANDOFF_CHARS = 6000;
 
 export class Database {
   constructor(directory) {
@@ -208,6 +212,11 @@ export class Database {
     if (version < 16) this.transaction(() => {
       this.installSyncLog('metadata', SYNCED.metadata);
       this.db.exec('PRAGMA user_version=16;');
+    });
+    // How big the IA session's prompt was at the reply's last model call (null when the IA did not say).
+    if (version < 17) this.transaction(() => {
+      if (!this.all("SELECT name FROM pragma_table_info('usage')").some(column => column.name === 'context')) this.db.exec('ALTER TABLE usage ADD COLUMN context INTEGER;');
+      this.db.exec('PRAGMA user_version=17;');
     });
   }
   installSyncLog(table, spec) {
@@ -629,15 +638,33 @@ export class Database {
    * whole context), so the size is estimated from the last turn: its tokens divided by its calls, times 1.3 because the context grows
    * during the turn. Turns counts the answers since the session began.
    */
-  contextLoad(botId) {
-    const since = this.get('SELECT value FROM metadata WHERE key=?', 'session.since.' + botId)?.value || '';
-    // Only turns of the current session count: a new session must not inherit the size of the one it replaced.
-    const last = this.get('SELECT task_id, input, cached FROM usage WHERE bot_id=? AND created_at>? ORDER BY created_at DESC, rowid DESC LIMIT 1', botId, since);
-    const turns = this.get('SELECT count(*) AS n FROM usage WHERE bot_id=? AND created_at>?', botId, since).n;
-    if (!last) return { estimate: 0, turns };
-    const calls = 1 + (this.get("SELECT count(*) AS n FROM activity WHERE task_id=? AND kind IN ('tool_done','tool_denied')", last.task_id)?.n || 0);
-    return { estimate: Math.round(((last.input || 0) + (last.cached || 0)) / calls * 1.3), turns };
+  /** One reply's tokens, with the size of its last model call: the IA's own number, or the reply's prompt tokens over its calls. */
+  addUsage(bot, taskId, reply, usage = this.turnTokens(bot.id, reply)) {
+    if (!usage) return;
+    const raw = reply?.usage || {}, calls = Number.isFinite(raw.calls) && raw.calls >= 1 ? raw.calls : null;
+    const context = Number.isFinite(raw.context) && raw.context > 0 ? Math.round(raw.context) : calls ? Math.round(usage.input / calls) : null;
+    this.run('INSERT INTO usage(id,bot_id,task_id,provider,model,input,cached,output,created_at,context) VALUES(?,?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, taskId, reply.provider || bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now(), context == null ? null : Math.min(context, 1e9));
   }
+  /**
+   * How big the bot's IA session in this conversation (its private chat, or the room given) is now: the prompt of the last
+   * model call of its latest reply, and how many replies it has had. Every IA reports input with the cached part already in it.
+   */
+  contextLoad(botId, roomId = null) {
+    const since = this.get('SELECT value FROM metadata WHERE key=?', sinceKey(botId, roomId))?.value || '';
+    const scope = roomId ? 'task_id IN (SELECT task_id FROM room_turns WHERE room_id=?)' : 'task_id NOT IN (SELECT task_id FROM room_turns)';
+    const args = roomId ? [botId, since, roomId] : [botId, since];
+    // Only turns of the current session count: a new session must not inherit the size of the one it replaced.
+    const last = this.get(`SELECT task_id, input, context FROM usage WHERE bot_id=? AND created_at>? AND (task_id IS NULL OR ${scope}) ORDER BY created_at DESC, rowid DESC LIMIT 1`, ...args);
+    const turns = this.get(`SELECT count(*) AS n FROM usage WHERE bot_id=? AND created_at>? AND (task_id IS NULL OR ${scope})`, ...args).n;
+    if (!last) return { estimate: 0, turns };
+    if (last.context != null) return { estimate: last.context, turns };
+    // An older reply without it: its prompt tokens over the calls the MyBots saw (its own tools, plus the answer).
+    const calls = 1 + (this.get("SELECT count(*) AS n FROM activity WHERE task_id=? AND kind IN ('tool_done','tool_denied')", last.task_id)?.n || 0);
+    return { estimate: Math.round((last.input || 0) / calls), turns };
+  }
+  /** The summary the bot wrote of the session it closed, for the new one in that conversation (null once that one began). */
+  handoff(botId, roomId = null) { return this.get('SELECT value FROM metadata WHERE key=?', handoffKey(botId, roomId))?.value || null; }
+  setHandoff(botId, roomId, text) { if (text == null) return this.run('DELETE FROM metadata WHERE key=?', handoffKey(botId, roomId)); this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', handoffKey(botId, roomId), String(text).slice(0, HANDOFF_CHARS)); }
   /**
    * Forgets the IA's session of this bot in one conversation (its private chat, or the room given): the next answer starts a new one with
    * only the latest messages, and the bot finds the rest in its memory and pending items. The conversation, memories and pending items
@@ -661,7 +688,8 @@ export class Database {
   }
   forgetSession(botId, roomId = null) {
     if (roomId) this.run('DELETE FROM room_sessions WHERE room_id=? AND bot_id=?', roomId, botId); else { this.run('DELETE FROM codex_sessions WHERE bot_id=?', botId); const bot = this.bot(botId); if (bot?.codexSessionId) this.putBot({ ...bot, codexSessionId: undefined, updatedAt: now() }); }
-    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'session.since.' + botId, now());
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', sinceKey(botId, roomId), now());
+    this.run('DELETE FROM metadata WHERE key=?', handoffKey(botId, roomId));
     this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'session.compact.' + (roomId ? roomId + '.' : '') + botId, '1');
   }
   /** The line "Nova sessão…" in the conversation (a system message: shown, never sent to the IA as something the person said). */
@@ -931,7 +959,7 @@ export class Database {
       if (!turn && state === 'done') this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: reply.text, status: 'complete', model: reply.model, ...(reply.fallback ? { fallback: true } : {}), ...(typeof reply.modelId === 'string' ? { modelId: reply.modelId.slice(0, 80) } : {}), reasoningEffort: reply.reasoningEffort, ...files, ...(usage ? { usage: { input: usage.input, output: usage.output } } : {}), createdAt: now() });
       else if (!turn && files.attachments) this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
       if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now() });
-      if (usage) this.run('INSERT INTO usage VALUES(?,?,?,?,?,?,?,?,?)', randomUUID(), bot.id, id, reply.provider || bot.provider || 'codex', reply.model || null, usage.input, usage.cached, usage.output, now());
+      if (usage) this.addUsage(bot, id, reply, usage);
       if (reply?.limits && ['codex', 'claude'].includes(reply.provider || bot.provider || 'codex')) this.setLimits(reply.provider || bot.provider || 'codex', reply.limits);
       // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".
       if (state === 'done' && bot.provider === 'claude' && typeof reply.modelId === 'string' && /^[a-z]{1,20}$/.test(reply.model || '')) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'claude.model.' + reply.model, reply.modelId.slice(0, 80));

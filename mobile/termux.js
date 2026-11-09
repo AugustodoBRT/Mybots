@@ -110,7 +110,16 @@ try { mimoView = native ? requireNativeViewManager('TermuxBridge', 'MimoView') :
 export const MimoView = mimoView;
 // 3D bots on the phone (see Avatar3d.kt). An APK from before this existed has no such function: the flat face stays.
 export const avatar3dAvailable = () => { try { return typeof native?.avatar3dAvailable === 'function' && Boolean(native.avatar3dAvailable()) && typeof native.avatar3dRender === 'function'; } catch { return false; } };
-export const avatar3dRender = json => native.avatar3dRender(json);
+// While the opening screen's 3D bot plays, the bots' pictures wait: both WebViews share one renderer process on Android, and the
+// opening bot should keep the whole frame rate.
+let splashGate = Promise.resolve(), openGate = null;
+export const holdAvatars = () => { if (!openGate) splashGate = new Promise(resolve => { openGate = resolve; }); };
+export const releaseAvatars = () => { openGate?.(); openGate = null; };
+export const avatar3dRender = json => splashGate.then(() => native.avatar3dRender(json));
+// A live 3D bot drawn at the screen's frame rate (Bot3dView.kt); an APK from before it has none.
+let bot3dView = null;
+try { bot3dView = native ? requireNativeViewManager('TermuxBridge', 'Bot3dView') : null; } catch {}
+export const Bot3dView = bot3dView;
 // The opening screen's 3D bot (Splash3d.kt); an APK from before it has none and the opening screen draws its own bot.
 export const splash3dAvailable = () => { try { return avatar3dAvailable() && typeof native.splash3dShow === 'function'; } catch { return false; } };
 export const splash3dShow = (size, offset, bot) => native.splash3dShow(size, offset, String(bot?.id || 'mybots'), String(bot?.name || 'MyBots'), JSON.stringify(bot?.face || null));

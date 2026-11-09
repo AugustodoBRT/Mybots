@@ -14,7 +14,7 @@ const scene = new T.Scene();
 scene.add(new T.HemisphereLight('#d1e4ff', '#84735d', 1.6));
 const key = new T.DirectionalLight('#ffe7cc', 2.4); key.position.set(-8, 16, 10); scene.add(key);
 const params = new URLSearchParams(location.search);
-const visual = createBot({ id: params.get('id') || 'mybots', name: params.get('name') || 'MyBots', face: (() => { try { return JSON.parse(params.get('face') || 'null'); } catch { return null; } })() }, scene, { particles: 11000 });
+const visual = createBot({ id: params.get('id') || 'mybots', name: params.get('name') || 'MyBots', face: (() => { try { return JSON.parse(params.get('face') || 'null'); } catch { return null; } })() }, scene, { particles: 8000 });
 visual.grainAlpha(0.55);
 const tall = visual.height, half = tall * 1.25;
 const camera = new T.OrthographicCamera(-half, half, half, -half, -50, 50);

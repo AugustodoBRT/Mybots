@@ -1997,3 +1997,10 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - Inspiração (pesquisa): animação curta em loop enquanto carrega, fim claro, fade de 200–400 ms e nada de espera artificial (guias do Android/Expo e de UX). O mínimo caiu para 1 s; o máximo continua 90 s.
 - Sem 3D (desligado em Ajustes ou APK sem o WebView), um bot plano só anda pela tela. O toque passa pelo WebView.
 - Visto: a página 3D num Chrome sem janela (queda com rastro, aterrissagem, pulo, o "done" do último pulo). **Não visto**: no celular (a pedido, sem emulador).
+
+## 0.85.0 (versionCode 180): o bot grande do Chefe a 60 quadros e a barra de cima mais limpa
+
+- **Bot ao vivo** (`Bot3dView.kt` + `assets/live3d.html` de `mobile/office/live3d-entry.js`): o bot grande da conversa vazia do Chefe deixa de ser uma sequência de imagens pedidas ao WebView escondido (que no celular ficava longe de 60 quadros) e passa a ser desenhado direto na tela, na taxa de quadros do aparelho, com o mesmo enquadramento do avatar. A imagem parada fica embaixo até o primeiro quadro, e então sai (sem "fantasma"). O humor muda ao vivo. O toque passa por ele. Os bots pequenos continuam como imagens.
+- **Abertura mais lisa**: enquanto o bot 3D da abertura pula, as imagens dos outros bots esperam (os WebViews dividem o mesmo processo de desenho no Android); o bot da abertura ficou com 8.000 partículas.
+- **Barra de cima da conversa**: sem os três pontinhos (as configurações do bot abrem tocando no rosto dele, como já funcionava) e sem o botão de Memória (o mapa continua no Início). Ficam só o navegador do bot e, no Chefe, um botão de ícone (grade) para o Início: equipe, salas, memória e ajustes do app, no lugar do "Equipe".
+- Visto: a página ao vivo num Chrome sem janela (desenha, troca de humor, avisa o primeiro quadro). **Não visto**: no celular.

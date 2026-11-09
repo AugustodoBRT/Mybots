@@ -214,6 +214,12 @@ class TermuxBridgeModule : Module() {
       Prop("botId") { view: BotFrameView, id: String? -> view.show(id) }
       Prop("input") { view: BotFrameView, value: String? -> view.input(value) }
     }
+    // A live 3D bot (Bot3dView): the big one of the Chefe's empty conversation, drawn at the screen's frame rate.
+    View(Bot3dView::class) {
+      Events("onReady")
+      Prop("bot") { view: Bot3dView, value: String? -> view.setBot(value) }
+      Prop("mood") { view: Bot3dView, value: String? -> view.setMood(value) }
+    }
     View(MimoView::class) {
       Prop("spec") { view: MimoView, value: String? -> view.setSpec(value) }
       Prop("mood") { view: MimoView, value: String? -> view.setMood(value) }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, View } from 'react-native';
-import { avatar3dRender } from './termux';
+import { avatar3dRender, Bot3dView } from './termux';
 
 // The 3D bot on the phone: a picture asked of the hidden WebView (Avatar3d.kt) and shown as an image. Still bots are drawn once and
 // kept; the few that move are asked again about nine times a second. Until the first picture arrives, or if it never does, `fallback`
@@ -14,14 +14,20 @@ const picture = (bot, size, mood, animated, t) => avatar3dRender(JSON.stringify(
 
 export default function FaceArt3D({ bot, size, mood, animated, fallback }) {
   const key = JSON.stringify([bot?.id || bot?.name, bot?.face || null, size, mood]);
+  // The big moving bot (the Chefe's empty conversation) is drawn live at the screen's frame rate over its still picture.
+  const live = Boolean(Bot3dView) && Boolean(animated) && size >= BIG;
+  const liveBot = live ? JSON.stringify({ id: bot?.id || bot?.name || 'bot', name: bot?.name || 'Bot', face: bot?.face || null }) : null;
   // Two layers: `shown` stays on screen while `next` decodes on top of it and only takes over once it has loaded. Swapping one
   // image for another directly leaves a blank frame in between on Android, which was the blinking of the moving bot.
   const [shown, setShown] = useState(() => still.get(key) || null);
   const [next, setNext] = useState(null);
   const slot = useRef(false); const gate = useRef(null);
+  // Once the live bot has drawn its first frame, the still picture underneath goes (it would show through, a ghost of the moving bot).
+  const [liveReady, setLiveReady] = useState(false);
+  useEffect(() => { if (!live) setLiveReady(false); }, [live]);
   useEffect(() => {
     let alive = true; let timer = 0; let failures = 0;
-    const big = size >= BIG; const wantMove = Boolean(animated) && (big ? movingBig < 1 : moving < MOVING);
+    const big = size >= BIG; const wantMove = Boolean(animated) && !live && (big ? movingBig < 1 : moving < MOVING);
     const cached = wantMove ? null : still.get(key);
     if (cached) { setNext(cached); }
     if (wantMove) { if (big) movingBig += 1; else moving += 1; slot.current = big ? 'big' : 'small'; }
@@ -37,11 +43,12 @@ export default function FaceArt3D({ bot, size, mood, animated, fallback }) {
     }).catch(again);
     if (wantMove || !cached) ask(performance.now() / 1000);
     return () => { alive = false; clearTimeout(timer); if (slot.current) { if (slot.current === 'big') movingBig -= 1; else moving -= 1; slot.current = false; } };
-  }, [key, Boolean(animated)]);
-  if (!shown && !next) return fallback;
+  }, [key, Boolean(animated), live]);
+  if (!shown && !next && !live) return fallback;
   const box = { width: size, height: size };
   return <View style={box}>
-    {shown ? <Image source={{ uri: shown }} style={[box, { position: 'absolute' }]} fadeDuration={0} /> : fallback}
-    {next && next !== shown ? <Image key={next.length + ':' + next.slice(-24)} source={{ uri: next }} style={[box, { position: 'absolute' }]} fadeDuration={0} onLoad={() => { setShown(next); const done = gate.current; gate.current = null; done?.(); }} onError={() => setNext(null)} /> : null}
+    {shown ? <Image source={{ uri: shown }} style={[box, { position: 'absolute', opacity: liveReady ? 0 : 1 }]} fadeDuration={0} /> : liveReady ? null : fallback}
+    {next && next !== shown && !liveReady ? <Image key={next.length + ':' + next.slice(-24)} source={{ uri: next }} style={[box, { position: 'absolute' }]} fadeDuration={0} onLoad={() => { setShown(next); const done = gate.current; gate.current = null; done?.(); }} onError={() => setNext(null)} /> : null}
+    {live ? <Bot3dView pointerEvents="none" bot={liveBot} mood={mood} onReady={() => setTimeout(() => setLiveReady(true), 240)} style={[box, { position: 'absolute' }]} /> : null}
   </View>;
 }

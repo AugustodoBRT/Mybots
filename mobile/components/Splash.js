@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, View, Text, useWindowDimensions, PixelRatio, Platform } from 'react-native';
-import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide } from '../termux';
+import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide, holdAvatars, releaseAvatars } from '../termux';
 import { faces3d } from '../faces3d';
 import { C, F } from '../theme';
 
@@ -51,7 +51,7 @@ export function Splash({ ready, note = '', bot = null }) {
   const box = Math.round(Math.min(width * 0.86, height * 0.5, 420));
   const botRef = useRef(bot); botRef.current = bot;
   // A moment for the saved copy of the team to arrive, so the bot is the person's Chefe when there is one.
-  useEffect(() => { if (!solid) return undefined; const timer = setTimeout(() => { try { splash3dShow(Math.round(box * PixelRatio.get()), 0, botRef.current); } catch {} }, 150); return () => clearTimeout(timer); }, []);
+  useEffect(() => { if (!solid) return undefined; holdAvatars(); const safety = setTimeout(releaseAvatars, 20000); const timer = setTimeout(() => { try { splash3dShow(Math.round(box * PixelRatio.get()), 0, botRef.current); } catch {} }, 150); return () => { clearTimeout(timer); clearTimeout(safety); releaseAvatars(); }; }, []);
   const [gone, setGone] = useState(false), [line, setLine] = useState(0), [minDone, setMinDone] = useState(false), [late, setLate] = useState(false);
   const opacity = useRef(new Animated.Value(1)).current, text = useRef(new Animated.Value(1)).current, logo = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -66,7 +66,7 @@ export function Splash({ ready, note = '', bot = null }) {
   const open = (ready && minDone) || late;
   useEffect(() => {
     if (!open) return;
-    const fade = () => { if (solid) try { splash3dHide(FADE_MS); } catch {} Animated.timing(opacity, { toValue: 0, duration: FADE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => setGone(true)); };
+    const fade = () => { if (solid) { try { splash3dHide(FADE_MS); } catch {} setTimeout(releaseAvatars, FADE_MS); } Animated.timing(opacity, { toValue: 0, duration: FADE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => setGone(true)); };
     // The 3D bot lands its last jump first; the flat one just fades.
     if (solid) Promise.resolve().then(splash3dFinish).catch(() => {}).then(fade); else fade();
   }, [open]);

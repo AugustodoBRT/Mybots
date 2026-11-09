@@ -9,12 +9,12 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// Two pages: the hidden one that draws the bots' pictures, and the opening screen's (splash3d-entry.js).
+// The pages: the hidden one that draws the bots' pictures, the opening screen's (splash3d-entry.js) and the live bot's (live3d-entry.js).
 const assets = join(root, 'mobile/modules/termux-bridge/android/src/main/assets');
 const dir = mkdtempSync(join(tmpdir(), 'avatar3d-'));
 try {
   const bin = process.argv[2] || 'esbuild';
-  for (const [entry, name] of [['avatar3d-entry.js', 'avatar3d.html'], ['splash3d-entry.js', 'splash3d.html']]) {
+  for (const [entry, name] of [['avatar3d-entry.js', 'avatar3d.html'], ['splash3d-entry.js', 'splash3d.html'], ['live3d-entry.js', 'live3d.html']]) {
     execFileSync(bin, [join(root, 'mobile/office', entry), '--bundle', '--format=iife', '--minify', '--target=chrome90', `--outfile=${join(dir, 'a.js')}`], { stdio: 'inherit' });
     const js = readFileSync(join(dir, 'a.js'), 'utf8').replaceAll('</script', '<\\/script');
     writeFileSync(join(assets, name), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:transparent;overflow:hidden"><script>${js}</script>`);

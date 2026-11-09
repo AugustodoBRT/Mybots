@@ -157,10 +157,10 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
           : <Pressable accessibilityRole="button" accessibilityLabel="Alterar modelo e raciocínio" onPress={() => setShowModels(value => !value)} style={styles.modelToggle}>
             <Text style={styles.chatSubtitle} numberOfLines={1}>{asleep ? `Offline · ${seenText(data.presence[bot.id], true)}` : `${bot.home === 'any' && data.presence?.[bot.id]?.where === 'pc' ? 'No computador · ' : ''}${findModel(data.models || [], selection)?.displayName || 'Escolha o modelo'} · ${EFFORT_NAMES[selection?.reasoningEffort] || 'Padrão'}`}</Text><Icon name="down" size={13} color={C.muted} /></Pressable>}
       </View>
-      {bot.isChief && onMemory ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={40} /> : null}
-      {bot.isChief ? <Pressable accessibilityRole="button" onPress={onTeam} style={[styles.modelToggle, { alignSelf: 'center', minHeight: 40, gap: 5 }]}><Icon name="bots" size={18} color={C.accent} /><Text style={styles.chatSubtitle}>Equipe</Text></Pressable> : null}
+      {/* The bot's own settings open by touching its face; the memory map is on the start page. Only two buttons stay: its browser and
+          the start page (the team, rooms, memory and the app's settings). */}
       {browsing && !desktop ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
-      {desktop ? null : <IconButton icon="more" label="Perfil e permissões" onPress={onProfile} size={40} />}
+      {bot.isChief ? <IconButton icon="apps" label="Início: equipe, salas, memória e ajustes" onPress={onTeam} size={40} /> : null}
     </View>
     {bot.isChief ? <ChiefStatus onTeam={onTeam} /> : null}
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}

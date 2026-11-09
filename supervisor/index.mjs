@@ -250,7 +250,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // computer for the ones that live there; "onde estiver" runs on the phone, or on the computer while it cannot see the phone.
     const peer = () => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='sync.peer'")?.value || 'null'); } catch { return null; } };
     const owns = botId => { const other = peer(); if (!other?.known) return true; const home = db.bot(botId)?.home || 'phone'; return kind === 'computer' ? home === 'pc' || (home === 'any' && !other.online) : home !== 'pc'; };
-    routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines;
+    routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines; routines.rooms = rooms;
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
     const runSkill = async ({ id: routineId, title, skill, input = {}, notify: notice = true }, bot, manual = false) => {

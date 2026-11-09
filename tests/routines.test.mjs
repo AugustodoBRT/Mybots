@@ -159,3 +159,25 @@ test('the phone wakes the supervisor for a due routine and learns when to wake i
   assert.equal(interruptions[0].kind, 'supervisor_restarted'); assert.match(interruptions[0].detail, /reiniciou o supervisor/);
   assert.equal((await fetch(`http://127.0.0.1:${f.app.port}/device/wake`, { method: 'POST', headers: { Authorization: 'Bearer ' + f.app.token }, body: '{' })).status, 400);
 });
+
+test('a routine of a room runs as a turn of that room: the result is a message of the room, the private chat stays empty and nobody else is called', async t => {
+  const f = await setup(t, { execute: async (bot, prompt) => ({ text: 'Resultado da rotina na sala.', ...selection }) });
+  const other = f.app.db.create({ name: 'Outro', autonomy: 'local' }, selection);
+  const outsider = f.app.db.create({ name: 'Fora', autonomy: 'local' }, selection);
+  const room = await f.app.rpc('room.create', { name: 'Estudos', botIds: [f.bot.id, other.id] });
+  const run = f.runAs(f.bot.id); t.after(run.close);
+  await assert.rejects(f.runAs(outsider.id).call('routine.create', { title: 'X', instructions: 'Y', room: 'Estudos', trigger: { type: 'interval', everyMinutes: 60 } }), /Sala não encontrada/);
+  const routine = await run.call('routine.create', { title: 'Resumo', instructions: 'Resuma o dia.', room: 'estudos', trigger: { type: 'interval', everyMinutes: 60 } });
+  assert.equal(routine.roomId, room.id); assert.match(routine.label, /na sala “Estudos”/);
+  f.app.db.finish(run.task.id, 'cancelled', null, 'fim');
+  const before = f.app.db.messages(f.bot.id).length;
+  await f.app.rpc('routine.run', { id: routine.id });
+  await until(() => f.app.db.roomMessages(room.id).some(item => item.role === 'assistant'));
+  const messages = f.app.db.roomMessages(room.id);
+  assert.deepEqual(messages.map(item => item.role), ['system', 'assistant']);
+  assert.match(messages[0].text, /Rotina “Resumo”/); assert.equal(messages[1].text, 'Resultado da rotina na sala.'); assert.equal(messages[1].botId, f.bot.id);
+  assert.equal(f.app.db.messages(f.bot.id).length, before);
+  await until(() => f.notices.length === 1); assert.match(f.notices[0].body, /Resultado da rotina na sala/);
+  // The other member was not called.
+  assert.equal(f.app.db.tasks().filter(task => task.bot_id === other.id).length, 0);
+});

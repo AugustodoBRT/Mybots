@@ -1971,3 +1971,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Bot 3D piscando**: a imagem nova agora carrega por cima da antiga e só a substitui quando está pronta (antes havia um quadro em branco entre as duas). A próxima imagem é pedida assim que a anterior aparece, sem a pausa fixa de 110 ms.
 - **Bot 3D "a 3 quadros por segundo"**: o WebView único desenha tudo em fila (cerca de 30 imagens por segundo no emulador, para todos), então 3 bots pequenos se mexendo davam ~10 cada. Agora só 2 pequenos se mexem e o rosto grande (o do Chefe) tem lugar garantido, desenhado a 80% do tamanho e mostrado maior. Se uma imagem falhar, tenta de novo.
 - **Visto no emulador (x86_64, GPU por software)**: lista de bots em 3D sem erro, ~33 ms por quadro com bots pequenos. **Não visto**: a tela do Chefe (o emulador não tem Chefe, o supervisor não sobe) nem a fluidez no celular real.
+
+## 0.83.0 (versionCode 176): rotinas que rodam dentro de uma sala
+
+- **Nova opção `room` em `routine_create`** (nome ou id de uma sala em que o bot está). A rotina passa a rodar como uma vez do bot **naquela sala**: aparece um aviso "Rotina “X” de Bot: …" na sala, o bot responde ali (com a sessão de IA que ele tem para a sala) e a conversa privada com você não recebe nada. Só chama outro bot se a resposta tiver @Nome. A notificação no celular continua chegando só para você. Funciona também por horário, intervalo e notificação, e no "Executar agora".
+- Se a sala for apagada ou o bot sair dela, a rotina avisa que não rodou (não cai na conversa privada). O rótulo da rotina no perfil mostra "na sala “Nome”". O cartão de aprovação mostra a sala.
+- Teste: rotina de sala cria a mensagem na sala, o chat privado fica igual, o outro membro não é chamado, um bot de fora não consegue apontar a sala. **Não visto em celular real.**

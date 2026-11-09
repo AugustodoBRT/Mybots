@@ -33,7 +33,8 @@ export class Routines {
   next(trigger) { const at = nextRun(trigger, this.clock(), this.timeZone()); return at === null ? null : new Date(at).toISOString(); }
   row(row) {
     const body = JSON.parse(row.body);
-    return { id: row.id, botId: row.bot_id, ...body, label: describeTrigger(body.trigger) + (body.skill ? ' · habilidade, sem IA' : ''), enabled: Boolean(row.enabled), nextRunAt: row.next_run_at, lastRunAt: row.last_run_at,
+    const room = body.roomId ? this.db.room(body.roomId) : null;
+    return { id: row.id, botId: row.bot_id, ...body, ...(room && !room.deletedAt ? { roomName: room.name } : {}), label: describeTrigger(body.trigger) + (body.skill ? ' · habilidade, sem IA' : '') + (body.roomId ? ` · na sala ${room && !room.deletedAt ? `“${room.name}”` : '(apagada)'}` : ''), enabled: Boolean(row.enabled), nextRunAt: row.next_run_at, lastRunAt: row.last_run_at,
       pending: Boolean(row.pending), lastResult: row.last_result, createdAt: row.created_at, runsToday: this.runsToday(row.id) };
   }
   all() { return this.db.all('SELECT * FROM routines ORDER BY created_at').map(row => this.row(row)); }
@@ -47,7 +48,8 @@ export class Routines {
   }
   runsToday(id) { return this.db.get('SELECT COUNT(*) AS count FROM routine_runs WHERE routine_id=? AND created_at >= ?', id, new Date(this.clock() - 86400000).toISOString()).count; }
   create(botId, args, origin = 'bot') {
-    const bot = this.db.requireBot(botId); const routine = routineArguments(args);
+    const bot = this.db.requireBot(botId); const { room: roomRef, ...routine } = routineArguments(args);
+    if (roomRef) routine.roomId = this.roomOf(bot, roomRef).id;
     if (this.list(botId).length >= LIMITS.perBot) throw new Error(`Cada bot pode ter até ${LIMITS.perBot} rotinas.`);
     const id = randomUUID(); const stamp = now();
     this.db.transaction(() => {
@@ -56,6 +58,13 @@ export class Routines {
       this.db.record('routine_created', `Rotina “${routine.title}” criada: ${describeTrigger(routine.trigger)}.`, bot.id);
     });
     this.changed('activity.new'); return this.get(id);
+  }
+  /** The room a routine runs in: named by its name or id, one the bot is a member of. */
+  roomOf(bot, ref) {
+    const mine = this.db.rooms().filter(room => !room.deletedAt && room.botIds.includes(bot.id));
+    const found = mine.filter(room => room.id === ref) ; const named = found.length ? found : mine.filter(room => room.name.trim().toLowerCase() === ref.toLowerCase());
+    if (named.length !== 1) throw new Error(named.length ? 'Há mais de uma sala com esse nome: use o id da sala.' : 'Sala não encontrada: a rotina só roda numa sala em que este bot está.');
+    return named[0];
   }
   /** A daily routine that runs one of the bot's skills directly (no IA): the result goes to its chat and a notice. */
   createSkill(botId, { title, time, skill, input = {} }) {
@@ -160,9 +169,16 @@ export class Routines {
     }
     const text = this.prompt(routine, events, manual);
     const requestId = randomUUID();
+    // A routine of a room runs as a turn of that room: the bot answers there, in its room session, and the reply is a message of the room.
+    const room = routine.roomId && this.rooms ? this.db.room(routine.roomId) : null;
+    if (routine.roomId && (!room || room.deletedAt || !room.botIds.includes(bot.id) || this.rooms.members(room).length < 2)) return this.skip(routine, 'a sala da rotina não existe mais ou o bot saiu dela.', schedule);
     try {
       this.db.transaction(() => {
-        this.db.enqueue(bot.id, requestId, text, selection, { origin: 'routine', routineId: routine.id, routineTitle: routine.title });
+        if (room) {
+          const message = { id: randomUUID(), role: 'system', text: `Rotina “${routine.title}” de ${bot.name}${manual ? ' (agora)' : ''}: ${clip(routine.instructions.replace(/\s+/g, ' '), 300)}`, routineTitle: routine.title, routineTask: text, status: 'complete', createdAt: now() };
+          this.db.appendRoomMessage(room.id, message);
+          this.rooms.turn(room.id, bot, message.id, 0, randomUUID(), selection, requestId);
+        } else this.db.enqueue(bot.id, requestId, text, selection, { origin: 'routine', routineId: routine.id, routineTitle: routine.title });
         this.db.run('INSERT INTO routine_runs(id,routine_id,task_id,created_at) VALUES(?,?,?,?)', randomUUID(), routine.id, requestId, now());
         this.db.run('UPDATE routines SET last_run_at=?,next_run_at=?,pending=0,last_event_at=?,last_result=?,skipped_at=NULL WHERE id=?', now(),
           schedule && !manual ? this.next(routine.trigger) : routine.nextRunAt, cursor ?? now(), 'Executando…', routine.id);
@@ -189,7 +205,9 @@ export class Routines {
     const row = this.db.get('SELECT * FROM routines WHERE id=?', run.routine_id);
     if (!row) return;
     const routine = this.row(row); const bot = this.db.bot(task.bot_id);
-    const reply = task.state === 'done' ? this.db.latest(bot.id, 'assistant')?.text || '' : '';
+    const turn = this.db.roomTurn(taskId);
+    const inRoom = turn && this.db.page({ roomId: turn.room_id, limit: 100 }).messages.reverse().find(item => item.role === 'assistant' && item.botId === bot.id && item.replyTo === turn.message_id && !item.progress);
+    const reply = task.state === 'done' ? (turn ? inRoom?.text : this.db.latest(bot.id, 'assistant')?.text) || '' : '';
     const result = task.state === 'done' ? clip(reply.replace(/\s+/g, ' '), 200) : task.error || 'A execução não terminou.';
     this.db.run('UPDATE routines SET last_result=? WHERE id=?', result, routine.id);
     this.changed('activity.new');

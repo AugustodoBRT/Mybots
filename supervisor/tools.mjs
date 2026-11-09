@@ -53,7 +53,7 @@ function approvalText(tool, args, app) {
   if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
   if (tool.startsWith('desktop/')) return { title: 'Controlar a tela do computador', summary: args.summary };
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
-  if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}\n${args.instructions}` };
+  if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}${args.room ? `\nNa sala: ${args.room}` : ''}\n${args.instructions}` };
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
   if (tool === 'browser/submit') return { title: args.action === 'drag' ? 'Arrastar um item no navegador' : APPROVAL_TITLES[tool], summary: [args.action === 'drag' && `De (${args.x}, ${args.y}) para (${args.toX}, ${args.toY})`, args.label && `Alvo: ${args.label}`, args.text !== undefined && args.text && `Texto: ${args.text}`, args.page && `Página: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'browser/login') return { title: APPROVAL_TITLES[tool], summary: [args.page && `Site: ${args.page}`, 'O MyBots preenche a senha que você salvou; o bot não vê a senha.'].filter(Boolean).join('\n') };

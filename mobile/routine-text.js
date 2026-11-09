@@ -78,5 +78,7 @@ export function routineArguments(args) {
     if (typeof args[name] !== 'string' || !args[name].trim() || args[name].length > max || /\u0000/.test(args[name])) throw new Error('Preencha título (até 80) e instruções (até 2.000 caracteres).');
     return args[name].trim();
   };
-  return { title: text('title', 80), instructions: text('instructions', 2000), trigger: routineTrigger(args.trigger) };
+  const room = args.room === undefined || args.room === null || args.room === '' ? null : args.room;
+  if (room !== null && (typeof room !== 'string' || room.length > 80 || /\u0000/.test(room))) throw new Error('A sala da rotina é o nome ou o id de uma sala em que este bot está.');
+  return { title: text('title', 80), instructions: text('instructions', 2000), trigger: routineTrigger(args.trigger), ...(room ? { room: room.trim() } : {}) };
 }

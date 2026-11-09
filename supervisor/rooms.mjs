@@ -149,7 +149,7 @@ export class Rooms {
     const visible = window.messages.filter(message => message.status === 'complete');
     const trigger = this.db.message(turn.message_id) || {};
     const line = message => `${speaker(message)}: ${message.text}${message.attachments?.length ? ` [Anexos${message.role === 'user' ? ' (leia com attachment_read)' : ''}: ${message.attachments.map(item => `${item.name} (id ${item.id})`).join('; ')}]` : ''}`;
-    const task = trigger.role === 'user' || (!trigger.role && turn.message_id === turn.origin_id) ? `Responda à mensagem da pessoa: "${trigger.text?.slice(0, 300) || ''}"` : `${speaker(trigger)} chamou você: responda ao que ele pediu.`;
+    const task = trigger.routineTask ? `${trigger.routineTask}\nEscreva o resultado aqui na sala, curto, para a pessoa. Só chame outro bot com @Nome se precisar mesmo dele.` : trigger.role === 'user' || (!trigger.role && turn.message_id === turn.origin_id) ? `Responda à mensagem da pessoa: "${trigger.text?.slice(0, 300) || ''}"` : `${speaker(trigger)} chamou você: responda ao que ele pediu.`;
     if (resumed) {
       const last = visible.map(message => message.botId === bot.id && message.role === 'assistant').lastIndexOf(true);
       return `[Sala ${JSON.stringify(room.name)} · novas mensagens]\n${visible.slice(last + 1).map(line).join('\n')}\n\nAgora é a sua vez (${bot.name}). ${task}`;

@@ -114,8 +114,17 @@ function archive(db, previous, summary, at) {
 export function noteTool(db, bot, tool, args) {
   const read = path => db.get('SELECT * FROM notes WHERE path=?', path);
   if (tool === 'shared.index_read') {
-    const note = read('chefe/index.md');
-    return note || { path: 'chefe/index.md', body: '', message: 'O índice ainda não foi criado.' };
+    // What the Chefe wrote, plus a part the app keeps up to date by itself: projects, the latest deliveries of each bot and the notes.
+    const note = read('chefe/index.md'), names = new Map(db.all("SELECT id, json_extract(body,'$.name') AS name FROM bots").map(row => [row.id, row.name]));
+    const projects = db.all('SELECT path,title,updated_at FROM notes WHERE instr(path,?)=1 ORDER BY updated_at DESC LIMIT 30', PROJECTS);
+    const deliveries = db.all("SELECT path,title,bot_id,created_at FROM notes WHERE kind='entrega' ORDER BY created_at DESC LIMIT 20");
+    const others = db.all("SELECT path,title FROM notes WHERE kind='chefe' AND path<>'chefe/index.md' AND instr(path,?)<>1 ORDER BY updated_at DESC LIMIT 30", PROJECTS);
+    const day = at => String(at || '').slice(0, 10);
+    const auto = [projects.length ? '## Projetos\n' + projects.map(item => `- [[${item.path.slice(0, -3)}|${item.title}]] · atualizado ${day(item.updated_at)}`).join('\n') : '',
+      deliveries.length ? '## Entregas recentes\n' + deliveries.map(item => `- ${day(item.created_at)} · ${names.get(item.bot_id) || 'bot'} · [[${item.path.slice(0, -3)}|${item.title}]]`).join('\n') : '',
+      others.length ? '## Outras notas\n' + others.map(item => `- [[${item.path.slice(0, -3)}|${item.title}]]`).join('\n') : ''].filter(Boolean).join('\n\n');
+    return { ...(note || { path: 'chefe/index.md', body: '' }), auto: auto || 'Ainda não há projetos, entregas nem notas.', untrusted: true,
+      message: (note ? '' : 'Você ainda não escreveu o índice; ') + 'a parte "auto" é gerada sozinha pelo MyBots a cada leitura (projetos, entregas recentes, notas): não a copie para o índice.' };
   }
   if (tool === 'shared.note_read') {
     if (args.list) return { notes: db.all('SELECT path,title,bot_id,updated_at FROM notes WHERE instr(path,?)=1 ORDER BY updated_at DESC,path LIMIT 100', args.prefix) };
@@ -176,7 +185,7 @@ const dateString = value => typeof value === 'string' && value.length <= 30 &&
 function validate(method, p) {
   const allowed = fields[method];
   if (!allowed || !p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some(k => !allowed.includes(k))) throw new Error('Parâmetros de notas inválidos.');
-  if (allowed.includes('path') && !validPath(p.path)) throw new Error('Caminho de nota inválido.');
+  if (allowed.includes('path') && !validPath(p.path)) throw new Error('Caminho de nota inválido. A regra: começa com chefe/ (suas notas, ex.: chefe/pessoas/ana.md ou chefe/projetos/vagas.md), entregas/ ou arquivo/ (essas duas vêm de delivery_write e shared_archive); termina em .md; só letras sem acento, números, - _ . e / (sem espaço); até 120 caracteres.');
   if ('prefix' in p && !(typeof p.prefix === 'string' && p.prefix.length <= 120 &&
     !p.prefix.includes('..') && /^(?:chefe|entregas|arquivo)\/(?:[\w-][\w.-]*\/)*[\w.-]*$/.test(p.prefix))) throw new Error('Prefixo de pasta inválido.');
   if ('kind' in p && !Object.values(kinds).includes(p.kind)) throw new Error('Tipo de nota inválido.');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
 import { offline, Avatar, IconButton, greeting, Notice, UpdateCard, ApprovalCard, RoomFaces, PrimaryButton, latestOf, latestInRoom, plain, seenText, shortTime, Dots } from '../components/shared';
+import { DecisionCard } from '../components/Message';
 import { Drawer } from '../components/Drawer';
 import { CommandBar } from '../components/CommandBar';
 import { RoutinesSheet, NegotiationsSheet } from '../components/Lists';
@@ -88,12 +89,12 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ onWeekly, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
-  const waiting = (data?.approvals || []).length;
+  const waiting = (data?.approvals || []).length + (data?.decisions || []).length;
   const openItems = (data?.pendingItems || []).filter(item => item.state === 'open').length;
   const routines = (data?.routines || []).filter(item => item.enabled).length;
   const open = (data?.negotiations || []).filter(item => item.status === 'active' || item.status === 'awaiting_you');
@@ -129,11 +130,23 @@ function HomeView({ onMemory, team, onHome, onCreateChief, data, error, onRetry,
         <Text style={s.today}>{summary ? <Text style={s.todayLink}>{summary}</Text> : `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}. Tudo em dia.`}</Text></Pressable>
         : <Text style={s.today}>Seu pequeno time pessoal começa aqui.</Text>}
       {bots.length && ahead.length ? <View style={{ marginTop: -14, marginBottom: 20, gap: 2 }}>{ahead.map(line => <Text key={line} style={s.facts} numberOfLines={1}>{line}</Text>)}</View> : null}
+      {onWeekly && phone && (data?.bots || []).some(bot => bot.isChief && !bot.deletedAt) && !(data?.routines || []).some(item => item.origin === 'weekly') ? <Pressable accessibilityRole="button" onPress={onWeekly} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
+        <Icon name="calendar" size={18} color={C.accent} /><View style={{ flex: 1 }}><Text style={{ color: C.text, fontFamily: F.b, fontSize: 15 }}>Ativar o resumo semanal</Text>
+          <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Todo domingo às 18h o Chefe resume o que cada bot fez, o que está pendente e o que precisa de você.</Text></View><Icon name="right" size={15} color={C.muted} /></Pressable> : null}
       {onCreateChief ? <PrimaryButton icon="plus" title="Crie o seu Chefe" onPress={onCreateChief} disabled={!data.models?.length} /> : null}
       {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
       {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
       {data?.modelsError ? <Notice text={data.modelsError} onRetry={onConnection} /> : null}
       {update?.info?.available && !update.dismissed ? <UpdateCard update={update} onInstall={onUpdate} onDismiss={onUpdateDismiss} /> : null}
+      {/* Everything waiting for the person, in one place: decisions the bots asked (tap an option or write) and approvals. */}
+      {(data?.decisions || []).length ? <View style={{ gap: 10, marginBottom: 14 }}>
+        <Text style={s.headingText}>Esperando você</Text>
+        {data.decisions.map(item => <View key={item.id} style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }}>
+          <Text style={{ color: C.muted, fontFamily: F.b, fontSize: 12.5 }}>{item.bot || 'Bot'} pergunta</Text>
+          <Text style={{ color: C.text, fontFamily: F.s, fontSize: 15.5, marginTop: 4 }}>{item.question}</Text>
+          <DecisionCard decision={item} />
+        </View>)}
+      </View> : null}
       {(data?.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={(data?.bots || []).find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
       {phone && (data?.rooms?.length || bots.length >= 2) ? <>
         <View style={s.heading}><Text style={s.headingText}>Salas</Text>

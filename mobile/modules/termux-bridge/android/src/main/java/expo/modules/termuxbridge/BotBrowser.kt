@@ -318,7 +318,7 @@ internal object BotBrowser {
       }
       // The timeline's picture of this moment, small.
       "thumb" -> maskedScreenshot(context, botId, false, 480f, 60)
-      "read" -> js(context, botId, READ_JS).also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
+      "read" -> js(context, botId, "JSON.stringify(($READ_PAGE)($args))").also { result -> onMain { tabs[botId]?.dialog }?.let { result.put("dialog", it) } }
       "inspect" -> if (args.has("action")) js(context, botId, "JSON.stringify(($POINT_JS)($args))") else js(context, botId, "($INSPECT_JS)($id)")
       // Back, forward and reload from the window of the computer (the person holds the browser there).
       "nav" -> { onMain { action(context, botId, args.getString("action")) }; page(context, botId) }
@@ -721,7 +721,7 @@ internal object BotBrowser {
   }""".trimIndent()
 
   // The scripts below run inside the page. Elements get a stable data-mybots-id until the page changes.
-  private val READ_PAGE = """function readPage({ query = '', limit = 5 } = {}) {
+  private val READ_PAGE = """function readPage({ query = '', limit = 5, main = false, maxChars = 20000 } = {}) {
   const elements = [], texts = [];
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const normalize = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -732,6 +732,7 @@ internal object BotBrowser {
     const win = doc.defaultView;
     for (const el of doc.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[onclick],[contenteditable=true],summary')) {
       if (elements.length >= 300) break;
+      if (main && el.closest('nav,header,footer,aside,[role=navigation],[role=banner],[role=contentinfo]')) continue;
       const r = el.getBoundingClientRect(), style = win.getComputedStyle(el);
       const visible = r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
       if (!visible && el.type !== 'file') continue;
@@ -748,8 +749,8 @@ internal object BotBrowser {
       }
       elements.push(item);
     }
-    const copy = doc.body?.cloneNode(true);
-    copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]').forEach(el => el.remove());
+    const copy = (main && doc.querySelector('main,[role=main],article') || doc.body)?.cloneNode(true);
+    copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]' + (main ? ',nav,header,footer,aside,[role=navigation],[role=banner],[role=contentinfo]' : '')).forEach(el => el.remove());
     // Separate block text before concatenating it, including consecutive card numbers.
     copy?.querySelectorAll('p,div,li,section,article,header,footer,main,aside,nav,table,tr,td,th,ul,ol,h1,h2,h3,h4,h5,h6,br').forEach(el => { el.prepend('\n'); el.append('\n'); });
     texts.push((copy?.textContent || '').replace(/[^\S\n]+/g, ' ').replace(/\n+/g, '\n'));
@@ -761,7 +762,7 @@ internal object BotBrowser {
     }
   };
   visit(document);
-  return { text: texts.join('\n').slice(0, 20000), elements: query ? elements.filter(el => el.score > 0).sort((a, b) => b.score - a.score).slice(0, limit) : elements, scroll: { y: scrollY, height: document.documentElement.scrollHeight } };
+  return { text: texts.join('\n').slice(0, Math.max(500, Math.min(20000, maxChars))), elements: query ? elements.filter(el => el.score > 0).sort((a, b) => b.score - a.score).slice(0, limit) : elements, scroll: { y: scrollY, height: document.documentElement.scrollHeight } };
 }""".trimIndent()
   private val READ_JS = "JSON.stringify(($READ_PAGE)({}))"
   private val POINT_JS = """function inspectPoint(args) {

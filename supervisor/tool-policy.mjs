@@ -9,6 +9,9 @@ export const TOOL_DEFINITIONS = [
   { name: 'team.routines', label: 'Ver rotinas da equipe', description: 'O Chefe vê as rotinas de cada bot com o resultado das últimas execuções.', readOnly: true },
   { name: 'team.routine_update', label: 'Alterar rotinas da equipe', description: 'O Chefe propõe criar, pausar, retomar, apagar ou mudar o horário da rotina de outro bot; a pessoa aprova antes.' },
   { name: 'team.usage', label: 'Ver o gasto da equipe', description: 'O Chefe vê (só leitura) o uso e o custo estimado de cada bot e de cada rotina.', readOnly: true },
+  { name: 'profile.read', label: 'Ler a ficha da pessoa', description: 'Lê a ficha única com os dados e preferências da pessoa (sem senhas), a mesma para todos os bots.', readOnly: true, defaultAllowed: true },
+  { name: 'profile.write', label: 'Alterar a ficha da pessoa', description: 'O Chefe propõe mudar a ficha da pessoa; ela aprova antes.' },
+  { name: 'team.overlap', label: 'Ver papéis parecidos', description: 'Mostra ao Chefe os bots com funções parecidas, para unir ou aposentar.', readOnly: true },
   { name: 'table.list', label: 'Ver tabelas compartilhadas', description: 'Lista as tabelas que todos os bots leem e escrevem.', readOnly: true, defaultAllowed: true },
   { name: 'table.read', label: 'Ler tabela compartilhada', description: 'Lê linhas de uma tabela compartilhada, com filtro.', readOnly: true, defaultAllowed: true },
   { name: 'table.add', label: 'Gravar em tabela compartilhada', description: 'Acrescenta uma linha, conferindo duplicata antes.', defaultAllowed: true },
@@ -151,15 +154,16 @@ export function validateProfile(data) {
 export function toolArguments(tool, args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Argumentos inválidos.');
   const fields = { 'delivery.write': ['topic','text','project'], 'shared.index_read': [], 'shared.note_read': ['path','list','prefix'],
-    'shared.note_write': ['path','text','overwrite'], 'shared.archive': ['path','summary'], 'memory.read': ['key'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
+    'shared.note_write': ['path','text','overwrite'], 'shared.archive': ['path','summary'], 'memory.read': ['key','query','list'], 'memory.write': ['key','text'], 'memory.delete': ['key'], 'task.create_item': ['title','details','course','due','source'], 'task.list_items': ['state','limit'],
     'task.update_item': ['id','title','details','course','due','source','done'], 'notify.user': ['title','body'],
     'email.search': ['query','from','subject','since','limit'], 'email.read': ['uid'],
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger','room'], 'routine.update': ['id','enabled','delete'],
-    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': ['main','max_chars'], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.update_bot': ['bot','name','instructions','reason'], 'team.routines': ['bot'], 'team.routine_update': ['bot','id','action','title','instructions','trigger','room','reason'], 'team.usage': [],
+    'profile.read': [], 'profile.write': ['text','reason'], 'team.overlap': [],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
     'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
@@ -178,7 +182,7 @@ export function toolArguments(tool, args) {
     return args[name].trim();
   };
   // Checked in full by the code that runs them (shared-data.mjs, routines, the team): here only the size.
-  if (/^(table|user)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage'].includes(tool)) {
+  if (/^(table|user|profile)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap'].includes(tool)) {
     if (JSON.stringify(args).length > 12000) throw new Error('Argumentos grandes demais.');
     return args;
   }
@@ -193,7 +197,7 @@ export function toolArguments(tool, args) {
       return { list: true, prefix };
     }
     const { path } = args;
-    if (args.prefix !== undefined || !validPath(path)) throw new Error('Caminho de nota inválido.');
+    if (args.prefix !== undefined || !validPath(path)) throw new Error('Caminho de nota inválido. A regra: começa com chefe/ (suas notas, ex.: chefe/pessoas/ana.md ou chefe/projetos/vagas.md), entregas/ ou arquivo/ (essas duas vêm de delivery_write e shared_archive); termina em .md; só letras sem acento, números, - _ . e / (sem espaço); até 120 caracteres.');
     if (tool === 'shared.note_read') return { path };
     if (tool === 'shared.archive' && path.startsWith('entregas/')) return { path, summary: checkBody(text('summary', 4000, true)) };
     if (tool === 'shared.note_write' && path.startsWith('chefe/')) {
@@ -202,7 +206,10 @@ export function toolArguments(tool, args) {
     }
     throw new Error('Caminho não permitido para esta ferramenta.');
   }
-  if (tool === 'memory.read') return { key: text('key', 80, true) };
+  if (tool === 'memory.read') {
+    if (args.list !== undefined && typeof args.list !== 'boolean') throw new Error('Use list true para ver só as chaves.');
+    return { key: text('key', 80, true), query: text('query', 200, true), list: args.list === true };
+  }
   if (tool === 'memory.write') return { key: text('key', 80), text: text('text', 4000) };
   if (tool === 'memory.delete') return { key: text('key', 80) };
   // A deadline is a date, or a date and time on the phone's clock; a date alone is never turned into 23:59.
@@ -308,7 +315,13 @@ export function toolArguments(tool, args) {
   }
   // The proposal itself is checked by skillProposal (supervisor/skills.mjs) when it runs.
   if (tool === 'skill.propose') { if (JSON.stringify(args).length > 260000) throw new Error('Proposta grande demais.'); return args; }
-  if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.read' || tool === 'browser.login') return {};
+  if (tool === 'browser.read') {
+    // main: only the page's main content (no menus, header, footer); max_chars: a shorter text (500 to 20.000).
+    if (args.main !== undefined && typeof args.main !== 'boolean') throw new Error('Use main true para ler só o conteúdo principal.');
+    if (args.max_chars !== undefined && (!Number.isInteger(args.max_chars) || args.max_chars < 500 || args.max_chars > 20000)) throw new Error('max_chars vai de 500 a 20000.');
+    return { ...(args.main ? { main: true } : {}), ...(args.max_chars ? { maxChars: args.max_chars } : {}) };
+  }
+  if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.login') return {};
   if (tool === 'browser.act') {
     if (!['click','double_click','right_click','hover','scroll','key','drag'].includes(args.action)) throw new Error('Ação inválida no navegador.');
     const result = { action: args.action };

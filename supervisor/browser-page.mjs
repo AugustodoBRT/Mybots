@@ -1,5 +1,5 @@
 // These functions also run in Android's WebView; keep them self-contained.
-export function readPage({ query = '', limit = 5 } = {}) {
+export function readPage({ query = '', limit = 5, main = false, maxChars = 20000 } = {}) {
   const elements = [], texts = [];
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const normalize = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -10,6 +10,7 @@ export function readPage({ query = '', limit = 5 } = {}) {
     const win = doc.defaultView;
     for (const el of doc.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[onclick],[contenteditable=true],summary')) {
       if (elements.length >= 300) break;
+      if (main && el.closest('nav,header,footer,aside,[role=navigation],[role=banner],[role=contentinfo]')) continue;
       const r = el.getBoundingClientRect(), style = win.getComputedStyle(el);
       const visible = r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
       if (!visible && el.type !== 'file') continue;
@@ -26,8 +27,8 @@ export function readPage({ query = '', limit = 5 } = {}) {
       }
       elements.push(item);
     }
-    const copy = doc.body?.cloneNode(true);
-    copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]').forEach(el => el.remove());
+    const copy = (main && doc.querySelector('main,[role=main],article') || doc.body)?.cloneNode(true);
+    copy?.querySelectorAll('input,textarea,script,style,noscript,[data-mybots-marks]' + (main ? ',nav,header,footer,aside,[role=navigation],[role=banner],[role=contentinfo]' : '')).forEach(el => el.remove());
     // Separate block text before concatenating it, including consecutive card numbers.
     copy?.querySelectorAll('p,div,li,section,article,header,footer,main,aside,nav,table,tr,td,th,ul,ol,h1,h2,h3,h4,h5,h6,br').forEach(el => { el.prepend('\n'); el.append('\n'); });
     texts.push((copy?.textContent || '').replace(/[^\S\n]+/g, ' ').replace(/\n+/g, '\n'));
@@ -39,7 +40,7 @@ export function readPage({ query = '', limit = 5 } = {}) {
     }
   };
   visit(document);
-  return { text: texts.join('\n').slice(0, 20000), elements: query ? elements.filter(el => el.score > 0).sort((a, b) => b.score - a.score).slice(0, limit) : elements, scroll: { y: scrollY, height: document.documentElement.scrollHeight } };
+  return { text: texts.join('\n').slice(0, Math.max(500, Math.min(20000, maxChars))), elements: query ? elements.filter(el => el.score > 0).sort((a, b) => b.score - a.score).slice(0, limit) : elements, scroll: { y: scrollY, height: document.documentElement.scrollHeight } };
 }
 
 export function inspectPoint(args) {

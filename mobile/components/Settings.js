@@ -15,6 +15,70 @@ import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
 import { FACES_3D_AVAILABLE, setFaces3d, useFaces3d } from '../faces3d';
 
+/** The person's profile: one text with their data and preferences that every bot reads (profile_read), instead of a copy in each bot. */
+function PersonProfile({ value, onSave }) {
+  const [text, setText] = useState(value), [state, setState] = useState('');
+  useEffect(() => { setText(value); }, [value]);
+  const save = async () => {
+    if (text.trim() === value.trim()) return;
+    setState('Salvando…');
+    try { await onSave(text); setState('Salvo.'); setTimeout(() => setState(''), 2000); } catch (error) { setState(error.message); }
+  };
+  return <View style={styles.modeOption}>
+    <Text style={styles.optionLabel}>Sua ficha</Text>
+    <Text style={styles.optionDetail}>Seus dados e preferências que todos os bots leem (curso, cidade, áreas de interesse, horários, jeito de falar). Sem senhas, chaves ou cartões. O Chefe também pode propor mudanças, que você aprova.</Text>
+    <TextInput accessibilityLabel="Sua ficha" style={[styles.formInput, { minHeight: 110, textAlignVertical: 'top' }]} multiline maxLength={4000} placeholder={'Ex.: Estudo Sistemas de Informação na UFPE (5º período).\nMoro no Recife. Procuro estágio em dados ou TI, presencial ou híbrido.\nPrefiro respostas curtas.'}
+      placeholderTextColor={C.faint} value={text} onChangeText={setText} onBlur={save} selectionColor={C.accent} />
+    {state ? <Text style={[styles.optionDetail, { color: /Salv/.test(state) ? C.muted : C.amber }]}>{state}</Text> : null}
+  </View>;
+}
+
+/**
+ * Fine controls the Chefe asked for: who reads and writes each shared table (by default every bot), and a monthly spending limit per bot
+ * (estimated cost; at the limit its routines stop and the conversation goes on; a notice comes at 80% and 100%).
+ */
+function ControlsPage({ call, reload, bots, budgets, usage }) {
+  const [tables, setTables] = useState(null), [note, setNote] = useState(''), [open, setOpen] = useState(null);
+  const load = () => call('tables.list', {}).then(value => setTables(value.tables)).catch(error => setNote(error.message));
+  useEffect(() => { load(); }, []);
+  const MODES = [['rw', 'Lê e escreve'], ['r', 'Só lê'], ['none', 'Sem acesso']];
+  const modeOf = (access, id) => access.write === null || access.write.includes(id) ? 'rw' : access.read === null || access.read.includes(id) ? 'r' : 'none';
+  const setMode = async (table, id, mode) => {
+    const all = bots.map(bot => bot.id), current = Object.fromEntries(all.map(bot => [bot, modeOf(table.access, bot)])); current[id] = mode;
+    const write = all.filter(bot => current[bot] === 'rw'), read = all.filter(bot => current[bot] !== 'none');
+    try { await call('table.access', { table: table.name, read: read.length === all.length ? null : read, write: write.length === all.length ? null : write }); await load(); } catch (error) { setNote(error.message); }
+  };
+  const [limits, setLimits] = useState({});
+  useEffect(() => { setLimits(Object.fromEntries(bots.map(bot => [bot.id, budgets[bot.id] ? String(budgets[bot.id]) : '']))); }, [bots.length, JSON.stringify(budgets)]);
+  const saveLimit = async id => {
+    const text = (limits[id] || '').replace(',', '.').trim(), value = text ? Number(text) : null;
+    if (text && !(value > 0)) { setNote('Use um valor em dólares, por exemplo 5 ou 12.50.'); return; }
+    if ((budgets[id] || null) === value) return;
+    try { await call('budget.set', { botId: id, usd: value }); await reload(); setNote(''); } catch (error) { setNote(error.message); }
+  };
+  return <>
+    <Text style={styles.optionLabel}>Tabelas compartilhadas</Text>
+    <Text style={styles.optionDetail}>Os bots criam tabelas para guardar dados que mais de um usa (candidaturas, atividades, gastos). Por padrão todos leem e escrevem; aqui você escolhe por bot.</Text>
+    {tables === null ? <Text style={s.empty}>Carregando…</Text> : !tables.length ? <Text style={s.empty}>Nenhuma tabela ainda.</Text> : tables.map(table => <View key={table.name} style={styles.modeOption}>
+      <Pressable accessibilityRole="button" onPress={() => setOpen(open === table.name ? null : table.name)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Icon name="list" size={17} color={C.accent} /><View style={{ flex: 1 }}><Text style={styles.optionLabel}>{table.name}</Text>
+          <Text style={styles.optionDetail}>{table.rows} {table.rows === 1 ? 'linha' : 'linhas'} · {table.columns.slice(0, 5).join(', ')}{table.access.read === null && table.access.write === null ? ' · todos os bots' : ' · acesso escolhido'}</Text></View>
+        <Icon name={open === table.name ? 'down' : 'right'} size={15} color={C.muted} /></Pressable>
+      {open === table.name ? bots.map(bot => <View key={bot.id} style={{ marginTop: 10 }}><Text style={[styles.optionDetail, { color: C.text }]}>{bot.name}</Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>{MODES.map(([mode, label]) => { const on = modeOf(table.access, bot.id) === mode; return <Pressable key={mode} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => setMode(table, bot.id, mode)}
+          style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: on ? C.accent : C.line2, backgroundColor: on ? C.accent + '22' : 'transparent' }}><Text style={{ color: on ? C.accent : C.muted, fontFamily: F.m, fontSize: 13 }}>{label}</Text></Pressable>; })}</View></View>) : null}
+    </View>)}
+    <Text style={[styles.optionLabel, { marginTop: 18 }]}>Limite de gasto por mês</Text>
+    <Text style={styles.optionDetail}>Em dólares, pelo custo estimado (o mesmo da tela de uso). No limite, as rotinas do bot param até o mês virar; a conversa continua. Você é avisado aos 80% e aos 100%. Em branco: sem limite.</Text>
+    {bots.map(bot => { const spent = usage?.bots?.[bot.id]?.cost?.month || 0; return <View key={bot.id} style={[styles.modeOption, styles.rowOption]}>
+      <View style={{ flex: 1 }}><Text style={styles.optionLabel}>{bot.name}</Text><Text style={styles.optionDetail}>Este mês: US$ {spent.toFixed(2)}{budgets[bot.id] ? ` de ${budgets[bot.id].toFixed(2)}` : ''}</Text></View>
+      <TextInput accessibilityLabel={`Limite de ${bot.name} em dólares`} keyboardType="decimal-pad" placeholder="sem limite" placeholderTextColor={C.faint} value={limits[bot.id] || ''} onChangeText={value => setLimits(old => ({ ...old, [bot.id]: value }))}
+        onBlur={() => saveLimit(bot.id)} onSubmitEditing={() => saveLimit(bot.id)} style={[styles.formInput, { width: 110, textAlign: 'right' }]} selectionColor={C.accent} />
+    </View>; })}
+    {note ? <Text style={[styles.optionDetail, { color: C.amber }]}>{note}</Text> : null}
+  </>;
+}
+
 /** "3 contas em 2 IAs", or the invitation when there is only the main login of each. */
 function aiSummary(aiAccounts) {
   const extra = new Set(); let count = 0;
@@ -51,6 +115,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
     ...(phone ? [{ key: 'ai', icon: 'user', title: 'Contas de IA', summary: aiSummary(data?.aiAccounts), keywords: ['claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', '3d', 'aparência', 'rosto', ...bots.map(bot => bot.name)] },
+    { key: 'controls', icon: 'list', title: 'Tabelas e limites', summary: 'Quem lê e escreve cada tabela compartilhada, e o limite de gasto de cada bot', keywords: ['tabela', 'tabelas', 'dados', 'permissão', 'limite', 'gasto', 'custo', 'orçamento', 'dinheiro'] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
     // Termux is optional: a guide for the whole process, and the switch to a supervisor of the phone's own.
@@ -64,6 +129,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const body = key => {
     if (key === 'account') return <>
       {phone ? <PersonName name={data?.person?.name} onSave={async name => { await a.call('person.update', { name }); await a.reload(); }} /> : null}
+      {phone ? <PersonProfile value={data?.person?.profile || ''} onSave={async profile => { await a.call('person.update', { profile }); await a.reload(); }} /> : null}
       {phone ? <ThemeChoice value={data?.person?.theme || 'dark'} onSave={async theme => { await a.call('person.update', { theme }); await a.reload(); }} /> : null}
       <GoogleAccounts accounts={data?.googleAccounts || []} bots={bots} busy={a.busy}
         onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}
@@ -88,6 +154,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       : remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, ative o Termux em Ajustes → Termux (avançado).</Text></View>
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
     if (key === 'computer' && remote) return <><RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />{computers ? <PcUpdate call={a.call} /> : null}</>;
+    if (key === 'controls') return <ControlsPage call={a.call} reload={a.reload} bots={bots} budgets={data?.budgets || {}} usage={data?.usage} />;
     if (key === 'termux') return <>
       <TermuxGuide onEnable={remote ? a.enableTermux : null} busy={a.setupBusy} enabled={!remote} />
       {!remote && a.pcLink ? <PrimaryButton icon="laptop" tone="ghost" title="Voltar a usar só o computador" onPress={a.useComputerOnly} style={{ marginTop: 12 }} /> : null}

@@ -110,3 +110,67 @@ test('the Chefe proposes changing a bot and its routines; the person approves; o
   const usage = await f.runAs(f.chief.id).call('team.usage', {});
   assert.ok(Array.isArray(usage.bots) && Array.isArray(usage.routines));
 });
+
+test('phase 1: tool calls wait their turn, memory search, clear note errors, chained routines, failure notices, profile and overlap', async t => {
+  const f = await setup(t);
+  const run = f.runAs(f.vagas.id);
+  // Two calls at once: both run, one after the other.
+  const [one, two] = await Promise.all([run.call('memory.write', { key: 'curso', text: 'Sistemas de Informação na UFPE' }), run.call('memory.write', { key: 'cidade', text: 'Recife' })]);
+  assert.equal(one.saved && two.saved, true);
+  assert.deepEqual((await run.call('memory.read', { list: true })).keys.map(item => item.key).sort(), ['cidade', 'curso']);
+  assert.equal((await run.call('memory.read', { query: 'ufpé' })).memories[0].key, 'curso');
+  const noter = f.runAs(f.chief.id);
+  await assert.rejects(noter.call('shared.note_write', { path: 'notas/x.md', text: 'x' }), /começa com chefe\//);
+  f.app.db.finish(noter.task.id, 'cancelled', null, 'fim');
+  // Profile: read by any bot, changed by the Chefe after approval; secrets refused.
+  await f.app.rpc('person.update', { profile: 'Estuda SI na UFPE. Prefere respostas curtas.' });
+  assert.match((await run.call('profile.read')).profile, /UFPE/);
+  await assert.rejects(f.app.rpc('person.update', { profile: 'senha: 123' }), /senhas/);
+  const chief = f.runAs(f.chief.id);
+  const writing = chief.call('profile.write', { text: 'Estuda SI na UFPE, 5º período.', reason: 'Período novo.' });
+  await until(() => f.app.state().approvals.length === 1);
+  const approval = f.app.state().approvals[0]; assert.match(approval.summary, /Depois:\nEstuda SI na UFPE, 5º período\./);
+  await f.app.rpc('approval.respond', { approvalId: approval.id, approved: true, actionHash: approval.actionHash });
+  await writing; assert.equal(f.app.db.person().profile, 'Estuda SI na UFPE, 5º período.');
+  // Overlap: two bots with similar roles.
+  f.app.db.create({ name: 'Estágios', instructions: 'Procura estágios de tecnologia e vagas de dados no Recife para a pessoa.', autonomy: 'local' }, selection);
+  f.app.db.create({ name: 'Empregos', instructions: 'Procura vagas de dados e estágios de tecnologia no Recife.', autonomy: 'local' }, selection);
+  assert.ok((await chief.call('team.overlap')).pairs.some(item => item.bots.includes('Estágios') && item.bots.includes('Empregos')));
+  // Chained routine: B runs when A ends well, with A's answer; a failure notifies the person.
+  f.app.db.finish(run.task.id, 'cancelled', null, 'fim'); f.app.db.finish(chief.task.id, 'cancelled', null, 'fim');
+  const a = f.app.routines.create(f.vagas.id, { title: 'Buscar', instructions: 'Busque vagas.', trigger: { type: 'interval', everyMinutes: 60 } });
+  const b = f.app.routines.create(f.chief.id, { title: 'Acompanhar', instructions: 'Resuma o dia.', trigger: { type: 'after', routine: a.id } });
+  assert.match(b.label, /Depois de “Buscar \(Vagas\)”/);
+  await f.app.rpc('routine.run', { id: a.id });
+  await until(() => f.prompts.some(item => item.bot === 'Chefe' && /depois de “Buscar” de Vagas.*Feito por Vagas\./s.test(item.prompt)));
+});
+
+test('phase 2: open decisions are in the state for the waiting panel, and one tap creates the Chefe weekly summary once', async t => {
+  const f = await setup(t);
+  await f.runAs(f.vagas.id).call('user.decide', { question: 'Qual?', options: ['A', 'B'] });
+  assert.deepEqual(f.app.state().decisions.map(item => [item.bot, item.question]), [['Vagas', 'Qual?']]);
+  const weekly = await f.app.rpc('chief.weekly', {});
+  assert.equal(weekly.label, 'dom às 18:00'); assert.equal(weekly.botId, f.chief.id);
+  assert.equal((await f.app.rpc('chief.weekly', {})).id, weekly.id);
+});
+
+test('phase 3: the person chooses who reads and writes a table, and a monthly limit stops a bot routines (not its conversation)', async t => {
+  const f = await setup(t);
+  const vagas = f.runAs(f.vagas.id), chief = f.runAs(f.chief.id);
+  await chief.call('table.add', { table: 'gastos', row: { item: 'Livro', valor: 50 } });
+  await f.app.rpc('table.access', { table: 'gastos', read: [f.chief.id], write: [f.chief.id] });
+  assert.deepEqual((await vagas.call('table.list')).tables, []);
+  await assert.rejects(vagas.call('table.read', { table: 'gastos' }), /não liberou ler/);
+  await f.app.rpc('table.access', { table: 'gastos', read: [f.chief.id, f.vagas.id], write: [f.chief.id] });
+  assert.equal((await vagas.call('table.read', { table: 'gastos' })).total, 1);
+  await assert.rejects(vagas.call('table.add', { table: 'gastos', row: { item: 'x' } }), /não liberou escrever/);
+  assert.equal((await f.app.rpc('tables.list', {})).tables[0].access.write[0], f.chief.id);
+  // Budget: with a limit already reached, the routine is skipped and the person is told.
+  f.app.db.finish(vagas.task.id, 'cancelled', null, 'fim'); f.app.db.finish(chief.task.id, 'cancelled', null, 'fim');
+  await f.app.rpc('budget.set', { botId: f.vagas.id, usd: 0.5 });
+  f.app.db.run("INSERT INTO usage(id,bot_id,task_id,provider,model,input,cached,output,created_at) VALUES(?,?,?,?,?,?,?,?,?)", randomUUID(), f.vagas.id, null, 'claude', 'claude-opus-5-5', 100000, 0, 100000, new Date().toISOString());
+  assert.equal(f.app.state().budgets[f.vagas.id] > 0, true);
+  const routine = f.app.routines.create(f.vagas.id, { title: 'Buscar', instructions: 'Busque.', trigger: { type: 'interval', everyMinutes: 60 } });
+  await assert.rejects(f.app.rpc('routine.run', { id: routine.id }), /limite de gasto/);
+  await until(() => f.notices.some(item => /não rodou: Buscar/.test(item.title)));
+});

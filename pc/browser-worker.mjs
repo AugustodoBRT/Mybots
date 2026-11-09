@@ -701,7 +701,7 @@ export class BrowserSession {
       return this.withDownload(await this.info(), await this.awaitDownload(before));
     }
     if (op === 'read' || op === 'find') {
-      const content = await this.pageData(readPage, op === 'find' ? args : {});
+      const content = await this.pageData(readPage, op === 'find' ? args : { main: Boolean(args?.main), maxChars: args?.maxChars || 20000 });
       this.elementFrames = new Map();
       for (const frame of this.page.frames()) {
         if (frame.url() !== 'about:blank' && frame !== this.page.mainFrame() && new URL(frame.url()).origin !== new URL(this.page.url()).origin) continue;

@@ -256,6 +256,22 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     tools.tables = new Tables(db, { changed: () => broadcast('activity.new') });
     decisions = new Decisions(db, { notify: tools.notify, clock, changed: () => broadcast('activity.new'),
       reply: (botId, text, origin) => { try { const bot = db.requireBot(botId); const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot), { origin: 'decision', ...origin }); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } catch (error) { db.record('decision_reply_failed', error.message, botId); } } });
+    // Monthly spending limit per bot: routines stop at the limit (conversation goes on), and the person is told at 80% and 100%, once a month.
+    const monthCost = botId => db.usage().bots[botId]?.cost?.month || 0;
+    routines.overBudget = botId => { const limit = db.budgets()[botId]; return limit && monthCost(botId) >= limit ? `limite de gasto do mês atingido (US$ ${limit.toFixed(2)}); aumente ou tire o limite em Ajustes → Tabelas e limites.` : null; };
+    queue.on('changed', change => {
+      if (change?.event !== 'task.done') return;
+      try {
+        const task = db.task(change.taskId), limit = task && db.budgets()[task.bot_id]; if (!limit) return;
+        const spent = monthCost(task.bot_id), level = spent >= limit ? 100 : spent >= limit * 0.8 ? 80 : 0; if (!level) return;
+        const key = 'budget.warned.' + task.bot_id, mark = new Date().toISOString().slice(0, 7) + ':' + level;
+        if ((db.get('SELECT value FROM metadata WHERE key=?', key)?.value || '') >= mark) return;
+        db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, mark);
+        const bot = db.bot(task.bot_id);
+        Promise.resolve(tools.notify({ title: `${bot?.name || 'Um bot'} ${level === 100 ? 'chegou ao' : 'está perto do'} limite de gasto`.slice(0, 80), body: `Gasto estimado do mês: US$ ${spent.toFixed(2)} de US$ ${limit.toFixed(2)}.${level === 100 ? ' As rotinas dele param até o mês virar ou você mudar o limite; a conversa continua.' : ''}` }, { id: 'mybots-budget-' + task.bot_id, botId: task.bot_id })).catch(() => {});
+        db.record('budget_warning', `${bot?.name || 'Bot'}: ${level}% do limite de gasto do mês.`, task.bot_id);
+      } catch {}
+    });
     tools.decisions = decisions; decisionTimer = setInterval(() => { try { decisions.tick(); } catch {} }, 60000); decisionTimer.unref?.();
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
@@ -432,6 +448,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         botNotices: { lastPoll: lastPoll ? new Date(lastPoll).toISOString() : null }, browser: browser.status(), phone: phone.status(), apps: apps.status(), routines: routines.all().filter(item => kept.has(item.botId)), timeZone: routines.timeZone(),
         pendingItems: db.all('SELECT * FROM pending_items ORDER BY created_at DESC').map(row => items.row(row)).filter(row => kept.has(row.botId)),
         negotiations: negotiations.list(),
+        budgets: db.budgets(),
+        decisions: decisions ? decisions.open().map(({ id, botId, bot, question, options, deadline }) => ({ id, botId, bot, question, options, deadline })) : [],
         approvals: [...db.all("SELECT * FROM approvals WHERE state='pending'").map(row => ({ id: row.id, taskId: row.task_id, actionHash: row.action_hash, ...JSON.parse(row.body) })), ...negotiations.cards()],
         // Only the tasks still going (the app shows them and their step); the history comes by tasks.list.
         tasks: publicTasks(db.activeTasks()), activity: db.all('SELECT * FROM activity ORDER BY id DESC LIMIT 50'),
@@ -484,6 +502,19 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (!nodes.computer?.()) throw new Error('O computador não está conectado.');
           return link.pcUpdate(params.op);
         }
+        // The Chefe's weekly summary, on Sundays at 18:00: one tap in the app creates the routine (or answers the one that exists).
+        case 'chief.weekly': {
+          const chief = db.bots().find(item => item.isChief && !item.deletedAt);
+          if (!chief) throw new Error('Crie o seu Chefe primeiro.');
+          const existing = routines.list(chief.id).find(item => item.origin === 'weekly');
+          if (existing) return existing;
+          const made = routines.create(chief.id, { title: 'Resumo semanal', trigger: { type: 'daily', time: '18:00', days: [0] },
+            instructions: 'Faça o resumo da semana da equipe para a pessoa: o que cada bot fez (entregas, team_status, team_routines com o resultado das execuções), o que está pendente (pendências e prazos), o que precisa da decisão dela (user_decisions abertas; se faltar decidir algo importante, pergunte com user_decide) e quanto a equipe gastou (team_usage), com sugestões se algum bot gasta demais para o que entrega. Seja curto: no máximo 5 itens por parte.' }, 'weekly');
+          broadcast('activity.new'); return made;
+        }
+        case 'budget.set': { const budgets = db.setBudget(params.botId, params.usd ?? null); broadcast('activity.new'); return budgets; }
+        case 'table.access': return tools.tables.setAccess(params.table, { read: params.read ?? null, write: params.write ?? null });
+        case 'tables.list': return tools.tables.list();
         case 'decision.answer': return decisions.answer(params.id, { option: params.option, text: params.text });
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }

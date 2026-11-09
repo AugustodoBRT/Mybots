@@ -10,8 +10,13 @@ export function validTimeZone(value) {
 
 export function routineTrigger(trigger) {
   if (!trigger || typeof trigger !== 'object' || Array.isArray(trigger)) throw new Error('Informe o gatilho da rotina.');
-  const keys = { interval: ['type', 'everyMinutes'], daily: ['type', 'time', 'days'], notification: ['type', 'app', 'query'] }[trigger.type];
-  if (!keys || Object.keys(trigger).some(key => !keys.includes(key))) throw new Error('Use um gatilho interval, daily ou notification.');
+  const keys = { interval: ['type', 'everyMinutes'], daily: ['type', 'time', 'days'], notification: ['type', 'app', 'query'], after: ['type', 'routine', 'title'] }[trigger.type];
+  if (!keys || Object.keys(trigger).some(key => !keys.includes(key))) throw new Error('Use um gatilho interval, daily, notification ou after.');
+  // Chained: runs when another routine (of any bot) ends well. `title` is filled in by the supervisor, for the label.
+  if (trigger.type === 'after') {
+    if (typeof trigger.routine !== 'string' || !/^[0-9a-f-]{36}$/i.test(trigger.routine)) throw new Error('Em after, routine é o id da rotina que vem antes (veja em routine_list ou team_routines).');
+    return { type: 'after', routine: trigger.routine.toLowerCase(), ...(typeof trigger.title === 'string' && trigger.title.length <= 120 ? { title: trigger.title } : {}) };
+  }
   if (trigger.type === 'interval') {
     if (!Number.isInteger(trigger.everyMinutes) || trigger.everyMinutes < MIN_INTERVAL || trigger.everyMinutes > 10080) throw new Error(`O intervalo precisa ficar entre ${MIN_INTERVAL} minutos e 7 dias.`);
     return { type: 'interval', everyMinutes: trigger.everyMinutes };
@@ -35,6 +40,7 @@ export function routineTrigger(trigger) {
 export function describeTrigger(trigger) {
   if (trigger.type === 'interval') return trigger.everyMinutes % 60 ? `A cada ${trigger.everyMinutes} min` : `A cada ${trigger.everyMinutes / 60} h`;
   if (trigger.type === 'daily') return `${trigger.days.length === 7 ? 'Todo dia' : trigger.days.map(day => DAY_NAMES[day]).join(', ')} às ${trigger.time}`;
+  if (trigger.type === 'after') return trigger.title ? `Depois de “${trigger.title}”` : 'Depois de outra rotina';
   return `Quando chegar notificação${trigger.app ? ` do ${trigger.app}` : ''}${trigger.query ? ` com “${trigger.query}”` : ''}`;
 }
 

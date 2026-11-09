@@ -52,7 +52,7 @@ function approvalText(tool, args, app) {
   if (tool === 'browser/mine/write') return { title: 'Agir no Meu Chrome', summary: args.summary };
   if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
   if (tool.startsWith('desktop/')) return { title: 'Controlar a tela do computador', summary: args.summary };
-  if (tool === 'team.update_bot' || tool === 'team.routine_update') return { title: args.title, summary: args.summary };
+  if (tool === 'team.update_bot' || tool === 'team.routine_update' || tool === 'profile.write') return { title: args.title, summary: args.summary };
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
   if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}${args.room ? `\nNa sala: ${args.room}` : ''}\n${args.instructions}` };
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
@@ -82,7 +82,7 @@ export function notifyUser({ title, body }, { id, botId }) {
 const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 'smsSearch', 'sms.send': 'smsSend', 'contacts.search': 'contactsSearch',
   'calls.search': 'callLog', 'location.get': 'location', 'device.status': 'status' };
 
-const chiefOnly = tool => tool.startsWith('shared.') || ['team.status', 'team.update_bot', 'team.routines', 'team.routine_update', 'team.usage'].includes(tool);
+const chiefOnly = tool => tool.startsWith('shared.') || ['team.status', 'team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap', 'profile.write'].includes(tool);
 export class Tools {
   constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null, approvalNotice = null } = {}) {
     this.approvalNotice = approvalNotice;
@@ -263,9 +263,10 @@ export class Tools {
     const hash = createHash('sha256').update(JSON.stringify({ botId: run.botId, taskId: run.taskId, tool, args: normalized })).digest('hex');
     const previous = run.calls.get(callId);
     if (previous) { if (previous.hash !== hash) throw new Error('Esta chamada já foi usada com outros argumentos.'); return previous.promise; }
-    if (run.calls.size >= 100 || run.busy) throw new Error('Aguarde a ferramenta atual ou inicie outra mensagem.');
-    run.busy = true;
-    const promise = (app ? this.performApp(run, tool, app, normalized, hash) : PHONE_TOOLS.includes(tool) ? this.performPhone(run, tool, normalized, hash) : DESKTOP_TOOLS.includes(tool) ? this.performDesktop(run, tool, normalized, hash) : TEAM_TOOLS.includes(tool) ? this.performTeam(run, tool, normalized) : BROWSER_TOOLS.includes(tool) ? this.performBrowser(run, tool, normalized, hash) : this.perform(run, tool, normalized, hash)).finally(() => { run.busy = false; });
+    if (run.calls.size >= 100) throw new Error('Esta resposta já usou 100 ferramentas: termine e continue na próxima mensagem.');
+    // Calls made at the same time wait their turn (one after the other) instead of being refused.
+    const start = () => (app ? this.performApp(run, tool, app, normalized, hash) : PHONE_TOOLS.includes(tool) ? this.performPhone(run, tool, normalized, hash) : DESKTOP_TOOLS.includes(tool) ? this.performDesktop(run, tool, normalized, hash) : TEAM_TOOLS.includes(tool) ? this.performTeam(run, tool, normalized) : BROWSER_TOOLS.includes(tool) ? this.performBrowser(run, tool, normalized, hash) : this.perform(run, tool, normalized, hash));
+    const promise = (run.chain || Promise.resolve()).then(start); run.chain = promise.catch(() => {});
     run.calls.set(callId, { hash, promise }); return promise;
   }
   async perform(run, tool, args, hash) {
@@ -298,8 +299,8 @@ export class Tools {
       if (tool === 'team.status') result = this.db.teamStatus();
       else if (tool.startsWith('table.')) {
         if (!this.tables) throw new Error('As tabelas compartilhadas não estão disponíveis.');
-        result = tool === 'table.list' ? this.tables.list() : tool === 'table.read' ? this.tables.read(args) : tool === 'table.add' ? this.tables.add(run.botId, args)
-          : tool === 'table.update' ? this.tables.update(run.botId, args) : this.tables.remove(args);
+        result = tool === 'table.list' ? this.tables.list(run.botId) : tool === 'table.read' ? this.tables.read(args, run.botId) : tool === 'table.add' ? this.tables.add(run.botId, args)
+          : tool === 'table.update' ? this.tables.update(run.botId, args) : this.tables.remove(args, run.botId);
         if (tool !== 'table.list' && tool !== 'table.read') this.db.record('table_changed', `${label}: ${String(args.table).slice(0, 40)}.`, run.botId, run.taskId);
       } else if (tool === 'user.decide') {
         if (!this.decisions) throw new Error('As decisões não estão disponíveis.');
@@ -312,9 +313,29 @@ export class Tools {
         result = this.decisions.history(target, args);
       } else if (tool === 'team.routines') result = this.teamRoutines(args);
       else if (tool === 'team.usage') result = this.teamUsage();
+      else if (tool === 'team.overlap') result = this.teamOverlap();
+      else if (tool === 'profile.read') { const profile = this.db.person().profile || ''; result = { name: this.db.person().name || null, profile, untrusted: true, ...(profile ? {} : { message: 'A ficha ainda está vazia. A pessoa preenche em Ajustes, ou o Chefe propõe com profile_write.' }) }; }
+      else if (tool === 'profile.write') {
+        const text = typeof args.text === 'string' ? args.text : '', reason = typeof args.reason === 'string' ? args.reason.trim().slice(0, 400) : '';
+        if (!reason) throw new Error('Diga em reason por que a ficha muda: a pessoa lê antes de aprovar.');
+        if (text.length > 4000) throw new Error('A ficha tem até 4.000 caracteres.');
+        if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(text)) throw new Error('A ficha é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
+        const card = { title: `${bot.name} quer atualizar a sua ficha`, summary: `Antes:\n${(this.db.person().profile || '(vazia)').slice(0, 700)}\n\nDepois:\n${text.slice(0, 700) || '(vazia)'}\n\nPor quê: ${reason}` };
+        if (!(await this.ask(run, tool, card, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. A ficha não mudou.');
+        this.requireGrant(run, tool); this.db.setPerson({ profile: text });
+        this.db.record('profile_changed', `${bot.name} atualizou a ficha da pessoa.`, bot.id, run.taskId); this.changed('activity.new');
+        result = { saved: true };
+      }
       else if (tool === 'team.update_bot' || tool === 'team.routine_update') result = await this.teamChange(run, bot, tool, args, hash);
       else if (tool === 'delivery.write' || tool.startsWith('shared.')) result = noteTool(this.db, bot, tool, args);
-      else if (tool === 'memory.read') result = { memories: this.db.all('SELECT body,updated_at FROM memory WHERE bot_id=? ORDER BY updated_at DESC', run.botId).map(row => ({ ...JSON.parse(row.body), updatedAt: row.updated_at })).filter(item => !args.key || item.key === args.key).slice(0, 100) };
+      else if (tool === 'memory.read') {
+        // By exact key, by text anywhere in the key or the memory (no accents, no case), or just the list of keys.
+        const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const all = this.db.all('SELECT body,updated_at FROM memory WHERE bot_id=? ORDER BY updated_at DESC', run.botId).map(row => ({ ...JSON.parse(row.body), updatedAt: row.updated_at }));
+        const found = all.filter(item => (!args.key || item.key === args.key) && (!args.query || fold(item.key + ' ' + item.text).includes(fold(args.query))));
+        result = args.list ? { keys: found.map(item => ({ key: item.key, updatedAt: item.updatedAt })).slice(0, 500), total: found.length }
+          : { memories: found.slice(0, 100), total: found.length, ...(!found.length && (args.key || args.query) ? { message: 'Nada encontrado. Veja todas as chaves com list true, ou busque por outra palavra em query.' } : {}) };
+      }
       else if (tool === 'memory.delete') {
         const id = run.botId + ':' + args.key;
         const had = Boolean(this.db.get('SELECT 1 FROM memory WHERE id=? AND bot_id=?', id, run.botId));
@@ -401,9 +422,9 @@ export class Tools {
     const hash = createHash('sha256').update(JSON.stringify({ name: body.tool_name, input: body.tool_input })).digest('hex');
     const id = 'chrome:' + body.tool_use_id; const previous = run.calls.get(id);
     if (previous) throw new Error('Esta chamada do Chrome já foi decidida. Inicie uma nova chamada.');
-    if (run.calls.size >= 100 || run.busy) throw new Error('Aguarde a ferramenta atual ou inicie outra mensagem.');
-    run.busy = true;
-    const promise = this.chromePermission(run, body.tool_name, body.tool_input).then(result => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: result.behavior, permissionDecisionReason: result.message || 'Autorizado pelo MyBots no celular.' } })).finally(() => { run.busy = false; });
+    if (run.calls.size >= 100) throw new Error('Esta resposta já usou 100 ferramentas: termine e continue na próxima mensagem.');
+    const promise = (run.chain || Promise.resolve()).then(() => this.chromePermission(run, body.tool_name, body.tool_input)).then(result => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: result.behavior, permissionDecisionReason: result.message || 'Autorizado pelo MyBots no celular.' } }));
+    run.chain = promise.catch(() => {});
     run.calls.set(id, { hash, promise }); return promise;
   }
   async chromePermission(run, name, input) {
@@ -798,7 +819,22 @@ export class Tools {
     const routines = this.db.all(`SELECT r.routine_id AS id, COUNT(DISTINCT r.task_id) AS runs, SUM(u.input) AS input, SUM(u.output) AS output FROM routine_runs r LEFT JOIN usage u ON u.task_id=r.task_id
       WHERE r.created_at>=? GROUP BY r.routine_id`, since).map(row => { const routine = this.db.get('SELECT bot_id, body FROM routines WHERE id=?', row.id); return routine && { routine: JSON.parse(routine.body).title, bot: names[routine.bot_id] || null, runs30d: row.runs, tokens30d: (row.input || 0) + (row.output || 0) }; }).filter(Boolean)
       .sort((a, b) => b.tokens30d - a.tokens30d);
+    const budgets = this.db.budgets();
+    for (const item of bots) { const id = Object.keys(names).find(key => names[key] === item.bot); if (id && budgets[id]) item.monthlyLimitUsd = budgets[id]; }
     return { bots, routines, note: 'Custo em dólares, estimado pelo preço público de cada modelo; numa assinatura (ChatGPT, Claude) o que conta são os limites de uso.' };
+  }
+  /** Pairs of bots whose roles look alike (shared words of their names and instructions), for the Chefe to merge or retire. */
+  teamOverlap() {
+    const STOP = new Set('a o e de da do das dos em para por com que um uma os as no na nos nas se ao ou sua seu suas seus voce você ele ela isso esta este bot bots pessoa sempre quando como mais muito ser ter fazer'.split(' '));
+    const words = text => new Set(String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 3 && !STOP.has(word)));
+    const bots = this.db.bots().filter(item => !item.deletedAt && !item.isChief).map(item => ({ name: item.name, words: words(item.name + ' ' + item.instructions) }));
+    const pairs = [];
+    for (let i = 0; i < bots.length; i++) for (let j = i + 1; j < bots.length; j++) {
+      const a = bots[i], b = bots[j], shared = [...a.words].filter(word => b.words.has(word)), union = new Set([...a.words, ...b.words]).size;
+      const score = union ? shared.length / union : 0;
+      if (score >= 0.2 && shared.length >= 3) pairs.push({ bots: [a.name, b.name], similarity: Math.round(score * 100) / 100, sharedWords: shared.slice(0, 12) });
+    }
+    return { pairs: pairs.sort((x, y) => y.similarity - x.similarity).slice(0, 20), note: 'Parecido pelas palavras do nome e das instruções: confira as funções (team_bots) antes de propor unir ou aposentar.' };
   }
   /** The Chefe changes another bot or its routines: the person sees exactly what changes and approves, every time. */
   async teamChange(run, chief, tool, args, hash) {

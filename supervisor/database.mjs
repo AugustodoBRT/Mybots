@@ -55,10 +55,10 @@ export const SYNCED = {
   decisions: { key: 'id', at: 'updated_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
-  metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','google.accounts','time_zone') OR key LIKE 'chat.session.%')" }
+  metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 18;
+export const SCHEMA = 20;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -229,6 +229,16 @@ export class Database {
         CREATE INDEX IF NOT EXISTS decisions_bot ON decisions(bot_id, state);`);
       this.installSyncLog('shared_rows', SYNCED.shared_rows); this.installSyncLog('decisions', SYNCED.decisions);
       this.db.exec('PRAGMA user_version=18;');
+    });
+    // The person's profile (person.profile) joins the synced settings.
+    if (version < 19) this.transaction(() => {
+      this.installSyncLog('metadata', SYNCED.metadata);
+      this.db.exec('PRAGMA user_version=19;');
+    });
+    // Spending limits per bot (budget.<id>) and who reads and writes each shared table (table.access.<name>) join the synced settings.
+    if (version < 20) this.transaction(() => {
+      this.installSyncLog('metadata', SYNCED.metadata);
+      this.db.exec('PRAGMA user_version=20;');
     });
   }
   installSyncLog(table, spec) {
@@ -457,11 +467,28 @@ export class Database {
     this.transaction(() => { this.putBot(bot); this.run('DELETE FROM codex_sessions WHERE bot_id=?', id); this.run('DELETE FROM room_sessions WHERE bot_id=?', id); this.record('grant_changed', `Controle do celular: ${on ? 'ligado' : 'desligado'}.`, id); });
     return bot;
   }
+  /** Monthly spending limits per bot, in dollars (estimated cost, like the usage screen). */
+  budgets() { return Object.fromEntries(this.all("SELECT key, value FROM metadata WHERE key LIKE 'budget.%' AND key NOT LIKE 'budget.warned.%'").map(row => [row.key.slice(7), Number(row.value)])); }
+  setBudget(botId, usd) {
+    this.requireBot(botId);
+    if (usd === null || usd === undefined || usd === '') { this.run('DELETE FROM metadata WHERE key=?', 'budget.' + botId); return this.budgets(); }
+    if (typeof usd !== 'number' || !Number.isFinite(usd) || usd <= 0 || usd > 100000) throw new Error('O limite é um valor em dólares maior que zero.');
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'budget.' + botId, String(Math.round(usd * 100) / 100));
+    return this.budgets();
+  }
   person() {
     const theme = this.get("SELECT value FROM metadata WHERE key='person.theme'")?.value;
-    return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '', ...(theme ? { theme } : {}) };
+    const profile = this.get("SELECT value FROM metadata WHERE key='person.profile'")?.value;
+    return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '', ...(theme ? { theme } : {}), ...(profile ? { profile } : {}) };
   }
-  setPerson({ name, theme } = {}) {
+  setPerson({ name, theme, profile } = {}) {
+    // The person's profile: data and preferences every bot reads (never passwords, keys or cards).
+    if (profile !== undefined) {
+      if (typeof profile !== 'string' || profile.length > 4000 || /\u0000/.test(profile)) throw new Error('A ficha tem até 4.000 caracteres.');
+      if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(profile)) throw new Error('A ficha é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
+      if (profile.trim()) this.run("INSERT INTO metadata VALUES('person.profile',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", profile.trim());
+      else this.run("DELETE FROM metadata WHERE key='person.profile'");
+    }
     if (name !== undefined) {
       if (typeof name !== 'string' || name.length > 40 || /[\u0000-\u001f]/.test(name)) throw new Error('Use um nome de até 40 letras.');
       const clean = name.trim().replace(/\s+/g, ' ');

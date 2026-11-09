@@ -13,7 +13,7 @@ import { isPicture } from '../attachment-images';
 export const decisionHandler = { current: null };
 
 /** A bot's question with options to tap and, always last, "Escrever minha resposta"; after the answer, what was chosen stays marked. */
-function DecisionCard({ decision }) {
+export function DecisionCard({ decision }) {
   const [writing, setWriting] = useState(false), [text, setText] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const done = decision.answer !== undefined && decision.answer !== null, closed = done || decision.expired;
   const send = async answer => {

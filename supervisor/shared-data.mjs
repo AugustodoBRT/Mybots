@@ -34,14 +34,29 @@ function cleanRow(row, partial = false) {
 /** Tables with rows and columns that every bot reads and writes (candidaturas enviadas, atividades entregues, gastos do mês...). */
 export class Tables {
   constructor(db, { changed = () => {} } = {}) { Object.assign(this, { db, changed }); }
+  /** Who reads and who writes a table: lists of bot ids, or null for every bot (the default). Set by the person in the app. */
+  access(table) { try { const saved = JSON.parse(this.db.get('SELECT value FROM metadata WHERE key=?', 'table.access.' + table)?.value || 'null'); return { read: saved?.read ?? null, write: saved?.write ?? null }; } catch { return { read: null, write: null }; } }
+  setAccess(table, { read = null, write = null } = {}) {
+    const name = tableName(table), ids = new Set(this.db.bots().map(bot => bot.id));
+    for (const list of [read, write]) if (list !== null && (!Array.isArray(list) || list.length > 100 || list.some(id => !ids.has(id)))) throw new Error('Escolha bots que existem.');
+    if (read === null && write === null) this.db.run('DELETE FROM metadata WHERE key=?', 'table.access.' + name);
+    else this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'table.access.' + name, JSON.stringify({ read, write }));
+    this.changed(); return { table: name, ...this.access(name) };
+  }
+  can(botId, table, how) {
+    const rule = this.access(table), list = how === 'write' ? rule.write : rule.read;
+    // Writing a table one cannot read makes no sense: a writer also reads.
+    return botId == null || list === null || list.includes(botId) || (how === 'read' && rule.write !== null && rule.write.includes(botId));
+  }
+  need(botId, table, how) { if (!this.can(botId, table, how)) throw new Error(`A pessoa não liberou ${how === 'write' ? 'escrever na' : 'ler a'} tabela ${table} para você (Ajustes → Tabelas e limites).`); }
   rows(table) { return this.db.all('SELECT * FROM shared_rows WHERE tbl=? ORDER BY created_at,id', table).map(row => ({ id: row.id, ...JSON.parse(row.body), _by: row.bot_id ? this.db.bot(row.bot_id)?.name || null : null, _at: row.updated_at })); }
-  list() {
-    const names = this.db.all('SELECT tbl, COUNT(*) AS count, MAX(updated_at) AS updated FROM shared_rows GROUP BY tbl ORDER BY tbl');
-    return { tables: names.map(item => { const sample = this.db.get('SELECT body FROM shared_rows WHERE tbl=? ORDER BY updated_at DESC LIMIT 1', item.tbl); return { name: item.tbl, rows: item.count, updatedAt: item.updated, columns: sample ? Object.keys(JSON.parse(sample.body)) : [] }; }),
+  list(botId = null) {
+    const names = this.db.all('SELECT tbl, COUNT(*) AS count, MAX(updated_at) AS updated FROM shared_rows GROUP BY tbl ORDER BY tbl').filter(item => this.can(botId, item.tbl, 'read'));
+    return { tables: names.map(item => { const sample = this.db.get('SELECT body FROM shared_rows WHERE tbl=? ORDER BY updated_at DESC LIMIT 1', item.tbl); return { name: item.tbl, rows: item.count, updatedAt: item.updated, columns: sample ? Object.keys(JSON.parse(sample.body)) : [], ...(botId ? { canWrite: this.can(botId, item.tbl, 'write') } : { access: this.access(item.tbl) }) }; }),
       note: 'Uma tabela nasce na primeira linha gravada com table_add.' };
   }
-  read({ table, where, query, limit }) {
-    const name = tableName(table); let rows = this.rows(name);
+  read({ table, where, query, limit }, botId = null) {
+    const name = tableName(table); this.need(botId, name, 'read'); let rows = this.rows(name);
     if (where !== undefined) {
       if (!where || typeof where !== 'object' || Array.isArray(where)) throw new Error('where é um objeto {coluna: valor}.');
       rows = rows.filter(row => Object.entries(where).every(([key, value]) => same(row[key], value)));
@@ -53,7 +68,7 @@ export class Tables {
   }
   /** Adds a row; with `unique`, a row whose columns all match an existing one is not added and the existing one is returned. */
   add(botId, { table, row, unique }) {
-    const name = tableName(table), clean = cleanRow(row);
+    const name = tableName(table), clean = cleanRow(row); this.need(botId, name, 'write');
     const keys = unique === undefined ? [] : Array.isArray(unique) && unique.length <= 10 && unique.every(key => typeof key === 'string' && key in clean) ? unique : null;
     if (!keys) throw new Error('unique é a lista das colunas que não podem repetir (todas presentes na linha), por exemplo ["empresa","vaga"].');
     const existing = this.rows(name);
@@ -72,13 +87,14 @@ export class Tables {
     return found;
   }
   update(botId, { table, id, row }) {
+    this.need(botId, tableName(table), 'write');
     const found = this.row(table, id), merged = { ...JSON.parse(found.body), ...cleanRow(row, true) };
     for (const [key, value] of Object.entries(row || {})) if (value === null) delete merged[key];
     cleanRow(merged);
     this.db.run('UPDATE shared_rows SET body=?,bot_id=?,updated_at=? WHERE id=?', JSON.stringify(merged), botId, now(), found.id);
     this.changed(); return { updated: true, id: found.id, row: merged };
   }
-  remove({ table, id }) { const found = this.row(table, id); this.db.run('DELETE FROM shared_rows WHERE id=?', found.id); this.changed(); return { deleted: true, id: found.id }; }
+  remove({ table, id }, botId = null) { this.need(botId, tableName(table), 'write'); const found = this.row(table, id); this.db.run('DELETE FROM shared_rows WHERE id=?', found.id); this.changed(); return { deleted: true, id: found.id }; }
 }
 
 export const DECISION_LIMITS = { options: 6, open: 20, question: 400, option: 100 };

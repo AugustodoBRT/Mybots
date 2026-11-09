@@ -2017,3 +2017,16 @@ O chefin escreveu um documento ("Melhorias sugeridas para o MyBots") com o que a
 
 - O Chefe e os bots foram avisados das ferramentas novas nas instruções base (`PROMPT_VERSION` 12: sessões novas uma vez, com o histórico).
 - Testes novos em `tests/shared-data.test.mjs`. **Não visto no celular real**: o cartão de decisão e os cartões de aprovação das mudanças do Chefe.
+
+## 0.87.0 (versionCode 182): o resto das melhorias do Chefe (plano em docs/plano-melhorias-chefe.md)
+
+- **Ferramentas**: chamadas ao mesmo tempo esperam a vez (acabou o "Aguarde a ferramenta atual"); erro de caminho de nota explica a regra com exemplos; `memory_read` busca por texto (`query`, sem acento) e lista as chaves (`list`); `browser_read` com `main` (só o conteúdo principal, sem menus, cabeçalho e rodapé) e `max_chars` (no celular e no PC).
+- **Rotinas**: execução com erro ou que deixou de rodar avisa a pessoa por notificação, e o resultado fica como "Falhou: …" para o Chefe; gatilho novo `after` encadeia rotinas (de qualquer bot): roda quando a anterior termina bem e recebe o que ela respondeu.
+- **Ficha única da pessoa** (Ajustes → Conta → Sua ficha, sincronizada): lida por todos os bots (`profile_read`), mudada pelo Chefe com aprovação (`profile_write`); recusa senhas e chaves.
+- **Índice automático**: `shared_index_read` traz uma parte gerada a cada leitura (projetos, entregas recentes por bot, outras notas).
+- **Papéis parecidos**: `team_overlap` aponta pares de bots com funções parecidas.
+- **Painel "Esperando você"** no Início: todas as decisões abertas (tocar na opção ou escrever) junto das aprovações; o ponto do menu conta as decisões.
+- **Resumo semanal**: cartão no Início cria a rotina do Chefe (domingo, 18h) com o que cada bot fez, pendências, decisões e gasto.
+- **Modelos de bot**: Busca, Estudo, Acompanhamento e Finanças, além de Faculdade e Google; usam a ficha, as tabelas e as decisões.
+- **Tabelas e limites** (Ajustes): por tabela, cada bot lê e escreve, só lê ou não acessa; limite de gasto do mês por bot (dólares, custo estimado): aviso aos 80% e 100%, e no limite as rotinas param (a conversa continua). Sincronizado.
+- `PROMPT_VERSION` 13. Testes em `tests/shared-data.test.mjs`. **Não visto no celular real.**

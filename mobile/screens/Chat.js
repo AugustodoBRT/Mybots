@@ -56,7 +56,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     return fresh ? sessions.find(item => item.id === (fresh.session || 'base')) || null : null;
   }, [bot.isChief, bot.messages, past, sessions]);
   const messages = useMemo(() => (bot.isChief ? [...(current?.messages || [])].filter(item => !openedLine(item)) : [...bot.messages]).reverse(), [bot.isChief, bot.messages, current]);
-  const showHero = bot.isChief && !sessionsOpen && !messages.length && !(data.approvals || []).some(item => item.botId === bot.id);
+  const showHero = bot.isChief && !sessionsOpen && !messages.length && !sending && !saving && !data.active?.includes(bot.id) && !(data.approvals || []).some(item => item.botId === bot.id);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);

@@ -7,6 +7,7 @@ import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowD
 import { styles } from './styles';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { Splash } from './components/Splash';
 import { SearchSheet } from './components/Search';
 import { SettingsSheet } from './components/Settings';
 import { NewBot } from './components/NewBot';
@@ -964,5 +965,6 @@ function AppMain() {
     {data && !share?.botId ? <ShareSheet share={share} bots={data.bots || []} phone={mode === 'phone'} onPick={pickShare} onClose={() => setShare(null)} /> : null}
     <ModeSheet visible={modeVisible} mode={mode} onClose={() => setModeVisible(false)} onSelect={changeMode} />
     <TermuxLogModal visible={logsVisible} log={termuxLog} copied={logsCopied} onClose={() => setLogsVisible(false)} onCopy={copyLogs} />
+    {desktop ? null : <Splash ready={!initialLoading && !String(data?.connection?.message || '').startsWith('Preparando')} note={String(data?.connection?.message || '').startsWith('Preparando') ? data.connection.message : ''} />}
   </View>;
 }

@@ -1984,3 +1984,9 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - Caminho: app → supervisor (`pc.update`, métodos `state|check|install`) → link com o nó do PC (`pc_update`) → servidor de controle da janela Electron (`/update/state|check|install`, as mesmas funções de `updates.js`). Funciona com o celular com Termux e com o celular que usa só o supervisor do PC. Se a janela do MyBots não estiver aberta no PC, o app avisa.
 - Teste do caminho todo até o nó do PC (sem janela aberta: responde o aviso; método inválido é recusado). **Não visto de verdade**: a ponta dentro do Electron (precisa do PC com a janela aberta e uma versão nova no feed) e o botão no celular real. Na primeira vez, o PC precisa já estar nesta versão (0.83.1) para ter o endpoint: atualize-o uma vez pelo botão da janela.
 - Rotina em sala (0.83.0) e fluidez do bot 3D (0.82.1) já são do código do celular: rodam no supervisor/app do próprio celular.
+
+## 0.84.0 (versionCode 178): tela de abertura com bots andando e transição suave
+
+- **Tela de abertura** (`mobile/components/Splash.js`): uma ruazinha com 6 bots coloridos andando, pulando, piscando, carregando uma caixa e pensando, com o "mybots" e frases que se alternam. Cobre o app até ele estar pronto (dados carregados e, na primeira abertura depois de atualizar, o núcleo do Termux preparado; nesse caso mostra o que o núcleo está fazendo no lugar das frases) e some com um fade de 0,65 s, por pelo menos 1,6 s para não piscar e no máximo 90 s. Não aparece na janela do PC. Animações nativas (sem custo de JS).
+- **Tela vazia do Chefe**: o mapa com o rosto, "Continuar" e "Ver sessões" não aparecem mais por cima do cartão "Pensando" quando o Chefe já está trabalhando.
+- **Não visto**: a tela no celular real nem no emulador (a pedido, sem emulador); só checado que compila.

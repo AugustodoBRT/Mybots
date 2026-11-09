@@ -1990,3 +1990,10 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Tela de abertura** (`mobile/components/Splash.js`): uma ruazinha com 6 bots coloridos andando, pulando, piscando, carregando uma caixa e pensando, com o "mybots" e frases que se alternam. Cobre o app até ele estar pronto (dados carregados e, na primeira abertura depois de atualizar, o núcleo do Termux preparado; nesse caso mostra o que o núcleo está fazendo no lugar das frases) e some com um fade de 0,65 s, por pelo menos 1,6 s para não piscar e no máximo 90 s. Não aparece na janela do PC. Animações nativas (sem custo de JS).
 - **Tela vazia do Chefe**: o mapa com o rosto, "Continuar" e "Ver sessões" não aparecem mais por cima do cartão "Pensando" quando o Chefe já está trabalhando.
 - **Não visto**: a tela no celular real nem no emulador (a pedido, sem emulador); só checado que compila.
+
+## 0.84.1 (versionCode 179): tela de abertura com um bot 3D
+
+- **Um bot 3D só** (o seu Chefe, quando o app já tem a cópia salva do time; senão o bot do MyBots), o mesmo corpo de partículas do resto do app, num WebView visível e transparente no meio da tela (`Splash3d.kt`, página `assets/splash3d.html` gerada de `mobile/office/splash3d-entry.js` por `scripts/build-avatar3d.mjs`), desenhado na taxa de quadros da tela. Ele cai do alto deixando um rastro e aterrissa amassado; enquanto o app carrega, pula em loop (agachada de preparação, pulo esticado, aterrissagem amassada) olhando em volta e girando no ar a cada três pulos; quando tudo carrega, termina o pulo em curso, dá um último pulo girando com a cara de "concluído", e a tela some num fade de 0,38 s.
+- Inspiração (pesquisa): animação curta em loop enquanto carrega, fim claro, fade de 200–400 ms e nada de espera artificial (guias do Android/Expo e de UX). O mínimo caiu para 1 s; o máximo continua 90 s.
+- Sem 3D (desligado em Ajustes ou APK sem o WebView), um bot plano só anda pela tela. O toque passa pelo WebView.
+- Visto: a página 3D num Chrome sem janela (queda com rastro, aterrissagem, pulo, o "done" do último pulo). **Não visto**: no celular (a pedido, sem emulador).

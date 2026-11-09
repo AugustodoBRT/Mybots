@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, View, Text, useWindowDimensions } from 'react-native';
+import { Animated, Easing, View, Text, useWindowDimensions, PixelRatio, Platform } from 'react-native';
+import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide } from '../termux';
+import { faces3d } from '../faces3d';
 import { C, F } from '../theme';
 
-// The opening screen: a little street of bots walking, carrying things and thinking while the app wakes up (the first start after an
-// update can take a while: the core is prepared in Termux). It covers the app until it is ready and then fades away, so the person
-// never sees the half-loaded screens underneath.
+// The opening screen, covering the app until it is ready (the first start after an update can take a while: the core is prepared in
+// Termux), so the person never sees the half-loaded screens underneath. On Android with 3D bots, one 3D bot (Splash3d.kt) drops in and
+// hops while it loads, gives a last spinning jump when the app is ready, and everything fades out. Without 3D, one flat bot walks.
 const COLORS = ['#A78BFA', '#FB923C', '#4ADE80', '#60A5FA', '#F472B6', '#22D3EE'];
 const LINES = ['Acordando seu time…', 'Arrumando a mesa dos bots…', 'Reunindo as memórias…', 'Quase lá…'];
-const MIN_MS = 1600, MAX_MS = 90000, FADE_MS = 650;
+const MIN_MS = 1000, MAX_MS = 90000, FADE_MS = 380;
 
 function Walker({ color, lane, width, seconds, delay, carry, think }) {
   const x = useRef(new Animated.Value(0)).current, face = useRef(new Animated.Value(1)).current, step = useRef(new Animated.Value(0)).current, blink = useRef(new Animated.Value(1)).current;
@@ -43,8 +45,13 @@ function Walker({ color, lane, width, seconds, delay, carry, think }) {
 }
 
 /** `ready`: the app is ready to be seen. `note`: what the core is doing now, when it says so (shown instead of the rotating lines). */
-export function Splash({ ready, note = '' }) {
-  const { width } = useWindowDimensions();
+export function Splash({ ready, note = '', bot = null }) {
+  const { width, height } = useWindowDimensions();
+  const [solid] = useState(() => Platform.OS === 'android' && faces3d() && splash3dAvailable());
+  const box = Math.round(Math.min(width * 0.86, height * 0.5, 420));
+  const botRef = useRef(bot); botRef.current = bot;
+  // A moment for the saved copy of the team to arrive, so the bot is the person's Chefe when there is one.
+  useEffect(() => { if (!solid) return undefined; const timer = setTimeout(() => { try { splash3dShow(Math.round(box * PixelRatio.get()), 0, botRef.current); } catch {} }, 150); return () => clearTimeout(timer); }, []);
   const [gone, setGone] = useState(false), [line, setLine] = useState(0), [minDone, setMinDone] = useState(false), [late, setLate] = useState(false);
   const opacity = useRef(new Animated.Value(1)).current, text = useRef(new Animated.Value(1)).current, logo = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -57,14 +64,19 @@ export function Splash({ ready, note = '' }) {
     return () => clearInterval(timer);
   }, []);
   const open = (ready && minDone) || late;
-  useEffect(() => { if (open) Animated.timing(opacity, { toValue: 0, duration: FADE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => setGone(true)); }, [open]);
-  const lanes = useMemo(() => [0, 1, 2, 3, 4, 5].map(i => ({ color: COLORS[i], lane: 120 + i * 62, seconds: 5.5 + (i * 7 % 5) * 0.9, delay: i * 420, carry: i === 1 || i === 4, think: i === 3 })), []);
+  useEffect(() => {
+    if (!open) return;
+    const fade = () => { if (solid) try { splash3dHide(FADE_MS); } catch {} Animated.timing(opacity, { toValue: 0, duration: FADE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => setGone(true)); };
+    // The 3D bot lands its last jump first; the flat one just fades.
+    if (solid) Promise.resolve().then(splash3dFinish).catch(() => {}).then(fade); else fade();
+  }, [open]);
+  const lanes = useMemo(() => [{ color: COLORS[0], lane: Math.max(120, height * 0.42 - 60), seconds: 4.2, delay: 0, carry: false, think: false }], [height]);
   if (gone) return null;
   return <Animated.View pointerEvents={open ? 'none' : 'auto'} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 1000, backgroundColor: C.bg, opacity }}>
     <Animated.View style={{ alignItems: 'center', marginTop: 70, opacity: logo, transform: [{ translateY: logo.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
       <Text style={{ color: C.text, fontFamily: F.x, fontSize: 34, letterSpacing: -1 }}>mybots</Text>
     </Animated.View>
-    <View style={{ flex: 1 }}>{lanes.map((item, index) => <View key={index} style={{ position: 'absolute', left: 0, right: 0, top: 0 }}>
+    <View style={{ flex: 1 }}>{solid ? null : lanes.map((item, index) => <View key={index} style={{ position: 'absolute', left: 0, right: 0, top: 0 }}>
       <View style={{ position: 'absolute', left: 24, right: 24, top: item.lane + 46, height: 2, borderRadius: 1, backgroundColor: C.line, opacity: 0.7 }} />
       <Walker {...item} width={width} /></View>)}</View>
     <View style={{ position: 'absolute', left: 24, right: 24, bottom: 90, alignItems: 'center', gap: 6 }}>

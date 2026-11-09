@@ -111,6 +111,11 @@ export const MimoView = mimoView;
 // 3D bots on the phone (see Avatar3d.kt). An APK from before this existed has no such function: the flat face stays.
 export const avatar3dAvailable = () => { try { return typeof native?.avatar3dAvailable === 'function' && Boolean(native.avatar3dAvailable()) && typeof native.avatar3dRender === 'function'; } catch { return false; } };
 export const avatar3dRender = json => native.avatar3dRender(json);
+// The opening screen's 3D bot (Splash3d.kt); an APK from before it has none and the opening screen draws its own bot.
+export const splash3dAvailable = () => { try { return avatar3dAvailable() && typeof native.splash3dShow === 'function'; } catch { return false; } };
+export const splash3dShow = (size, offset, bot) => native.splash3dShow(size, offset, String(bot?.id || 'mybots'), String(bot?.name || 'MyBots'), JSON.stringify(bot?.face || null));
+export const splash3dFinish = () => native.splash3dFinish();
+export const splash3dHide = ms => native.splash3dHide(ms);
 export const prefGet = key => { try { return typeof native?.prefGet === 'function' ? native.prefGet(key) : null; } catch { return null; } };
 export const prefSet = (key, value) => { try { if (typeof native?.prefSet === 'function') native.prefSet(key, value); } catch {} };
 export const browserInfo = () => native.browserInfo();

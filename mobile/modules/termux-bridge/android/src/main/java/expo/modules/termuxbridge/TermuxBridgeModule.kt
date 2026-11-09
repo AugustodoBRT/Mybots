@@ -226,6 +226,10 @@ class TermuxBridgeModule : Module() {
     // 3D bots (Avatar3d): one picture of a bot at a size and moment, as a data URL; and a few settings that survive restarts.
     AsyncFunction("avatar3dRender") { json: String, promise: Promise -> Avatar3d.render(appContext.currentActivity, json) { promise.resolve(it) } }
     Function("avatar3dAvailable") { appContext.reactContext?.let { Avatar3d.available(it) } ?: false }
+    // The opening screen's 3D bot (Splash3d): shown over the app's own opening screen, its last jump, then faded out.
+    Function("splash3dShow") { size: Int, offset: Int, id: String, name: String, face: String -> Splash3d.show(appContext.currentActivity, size, offset, id, name, face) }
+    AsyncFunction("splash3dFinish") { promise: Promise -> Splash3d.finish { promise.resolve(true) } }
+    Function("splash3dHide") { ms: Int -> Splash3d.hide(ms.toLong()) }
     Function("prefGet") { key: String -> appContext.reactContext?.getSharedPreferences("mybots_prefs", Context.MODE_PRIVATE)?.getString(key, null) }
     Function("prefSet") { key: String, value: String -> appContext.reactContext?.getSharedPreferences("mybots_prefs", Context.MODE_PRIVATE)?.edit()?.putString(key, value)?.apply() }
     Function("browserInput") { botId: String, value: String -> BotFrameView.send(botId, value) }

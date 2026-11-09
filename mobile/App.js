@@ -965,6 +965,6 @@ function AppMain() {
     {data && !share?.botId ? <ShareSheet share={share} bots={data.bots || []} phone={mode === 'phone'} onPick={pickShare} onClose={() => setShare(null)} /> : null}
     <ModeSheet visible={modeVisible} mode={mode} onClose={() => setModeVisible(false)} onSelect={changeMode} />
     <TermuxLogModal visible={logsVisible} log={termuxLog} copied={logsCopied} onClose={() => setLogsVisible(false)} onCopy={copyLogs} />
-    {desktop ? null : <Splash ready={!initialLoading && !String(data?.connection?.message || '').startsWith('Preparando')} note={String(data?.connection?.message || '').startsWith('Preparando') ? data.connection.message : ''} />}
+    {desktop ? null : <Splash bot={data?.bots?.find(item => item.isChief && !item.deletedAt) || null} ready={!initialLoading && !String(data?.connection?.message || '').startsWith('Preparando')} note={String(data?.connection?.message || '').startsWith('Preparando') ? data.connection.message : ''} />}
   </View>;
 }

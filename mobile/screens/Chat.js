@@ -24,6 +24,8 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file });
 
 const launchPast = new Map();
+// When this visit began: the team's replies from before it are not news on the empty start.
+const visitStart = new Date().toISOString();
 function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
@@ -183,7 +185,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
       </View>}
       renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : <Actionable message={item} onHold={hold}><Message message={item} bot={bot} models={data.models || []} busy={busy} onRetry={retryMessage} onFile={openFile} fileBusy={fileBusy} /></Actionable>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
-      {bot.isChief ? <DelegationCards onRoom={onTeamRoom} since={messages[0]?.createdAt || past?.until || ''} /> : null}
+      {bot.isChief && !showHero ? <DelegationCards onRoom={onTeamRoom} since={messages[0]?.createdAt || visitStart} /> : null}
       {phone && passwordAsk?.botId === bot.id ? <PasswordOfferCard offer={passwordAsk} bot={bot} onAnswer={onPasswordAnswer} /> : null}
       {desktop && assumed ? <ReturnCard bot={bot} onReturn={() => onBrowserControl('bot')} /> : null}
       {browsing && help && !assumed ? <BrowserHelpCard bot={bot} help={help} onPc={pcBrowser} onOpen={() => { openBrowser(); onBrowserControl('person').catch(() => {}); }} /> : null}

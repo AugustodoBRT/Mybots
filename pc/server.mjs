@@ -26,6 +26,7 @@ import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
 import { createDictation } from './dictation.mjs';
+import { electronInfo, electronCall } from './electron-link.mjs';
 import { createDiscovery } from './discovery.mjs';
 import { createLocal } from './local.mjs';
 import { hostRelay, roomFor } from '../supervisor/relay.mjs';
@@ -396,6 +397,17 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (message.type === 'ai_accounts' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: await manage(message, { accounts, refresh }) }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
+      // The phone's "Atualizar o computador": the window of this computer looks for, or installs, its new version.
+      if (message.type === 'pc_update' && typeof message.rid === 'string') {
+        try {
+          const info = electronInfo(directory);
+          if (!info) throw new Error('A janela do MyBots não está aberta no computador: abra o app lá para atualizar.');
+          const path = { state: '/update/state', check: '/update/check', install: '/update/install' }[message.op];
+          if (!path) throw new Error('Pedido inválido.');
+          send({ type: 'pc_result', rid: message.rid, result: await electronCall(info, path) });
+        } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
       if (message.type === 'agent_skills' && typeof message.rid === 'string') {

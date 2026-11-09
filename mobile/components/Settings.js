@@ -9,6 +9,7 @@ import { GoogleAccounts } from './GoogleAccounts';
 import { AiAccounts } from './AiAccounts';
 import { RemotePanel, TermuxGuide } from './Setup';
 import { DesktopUpdate } from './DesktopUpdate';
+import { PcUpdate } from './PcUpdate';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
@@ -86,15 +87,18 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>
       : remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, ative o Termux em Ajustes → Termux (avançado).</Text></View>
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
-    if (key === 'computer' && remote) return <RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />;
+    if (key === 'computer' && remote) return <><RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />{computers ? <PcUpdate call={a.call} /> : null}</>;
     if (key === 'termux') return <>
       <TermuxGuide onEnable={remote ? a.enableTermux : null} busy={a.setupBusy} enabled={!remote} />
       {!remote && a.pcLink ? <PrimaryButton icon="laptop" tone="ghost" title="Voltar a usar só o computador" onPress={a.useComputerOnly} style={{ marginTop: 12 }} /> : null}
     </>;
-    if (key === 'computer') return <ComputerPanel computer={data?.computer} nodes={data?.nodes} sync={data?.sync}
-      onPair={async link => { const result = await a.call('computer.pair', { link }); await a.reload(); return result; }}
-      onForget={async () => { await a.call('computer.forget', {}); await a.reload(); }}
-      onRetry={async () => { await a.call('computer.retry', {}); await a.reload(); }} />;
+    if (key === 'computer') return <>
+      <ComputerPanel computer={data?.computer} nodes={data?.nodes} sync={data?.sync}
+        onPair={async link => { const result = await a.call('computer.pair', { link }); await a.reload(); return result; }}
+        onForget={async () => { await a.call('computer.forget', {}); await a.reload(); }}
+        onRetry={async () => { await a.call('computer.retry', {}); await a.reload(); }} />
+      {computers ? <PcUpdate call={a.call} /> : null}
+    </>;
     if (key === 'secrets') return <>
       <Pressable accessibilityRole="button" onPress={() => setPage('passwords')} style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
         <Icon name="key" size={22} color={C.muted} /><View style={{ flex: 1 }}><Text style={s.rowTitle}>Senhas guardadas</Text><Text style={s.rowSummary}>{passwords ? passwordSummary(passwords, bots) : 'Abrir a lista'}</Text></View><Icon name="right" size={16} color={C.faint} /></Pressable>

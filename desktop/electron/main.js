@@ -191,7 +191,7 @@ if (first) app.whenReady().then(async () => {
   window.on('resize', placeOverlay);
   tabs = createTabs({ window, downloads, above: () => (overlayState ? overlay : null), notify: state => { if (!window.isDestroyed() && !ui.webContents.isDestroyed()) ui.webContents.send('tabs:state', state); } });
   const token = randomBytes(32).toString('hex');
-  control = await controlServer({ tabs, token });
+  control = await controlServer({ tabs, token, updates: () => updates });
   // The DevToolsActivePort file appears a moment after the app is ready.
   for (let n = 0; n < 80 && !existsSync(join(app.getPath('userData'), 'DevToolsActivePort')); n++) await new Promise(resolve => setTimeout(resolve, 100));
   advertise({ port: control.port, token });

@@ -473,6 +473,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (op === 'list') return { accounts: nodes.computer?.()?.accounts || null };
           return link.aiAccounts(op, { provider: params.provider, id: params.id, label: params.label });
         }
+        case 'pc.update': {
+          if (!['state', 'check', 'install'].includes(params.op)) throw new Error('Pedido inválido.');
+          if (!nodes.computer?.()) throw new Error('O computador não está conectado.');
+          return link.pcUpdate(params.op);
+        }
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'google.accounts.add': { const accounts = db.addGoogleAccount(params.account); broadcast('connection.changed'); return accounts; }

@@ -97,7 +97,7 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
 }
 
 /** The local server the node's browser worker uses to open and close tabs (token in the node's private folder). */
-function controlServer({ tabs, token }) {
+function controlServer({ tabs, token, updates = () => null }) {
   const server = createServer((request, response) => {
     const reply = (code, body) => response.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
     if (request.headers.authorization !== `Bearer ${token}` || request.headers.origin) { reply(403, { error: 'Acesso negado.' }); return; }
@@ -109,6 +109,11 @@ function controlServer({ tabs, token }) {
         else if (path === '/tab/create') { const url = typeof input.url === 'string' && /^https?:/i.test(input.url) ? input.url : 'about:blank'; reply(200, tabs.create(url, { owner: typeof input.owner === 'string' ? input.owner : null, activate: input.activate !== false })); }
         else if (path === '/tab/close') { const id = tabs.markerOf(input.marker); reply(200, { closed: id != null && tabs.close(id) }); }
         else if (path === '/tab/activate') { const id = tabs.markerOf(input.marker); reply(200, { ok: id != null && tabs.activate(id) }); }
+        // The phone asks the computer to update (through the node): look, and install, exactly like the window's own button.
+        else if (path === '/update/state' || path === '/update/check' || path === '/update/install') {
+          const up = updates(); if (!up) { reply(200, { phase: 'none', unavailable: true }); return; }
+          Promise.resolve(path === '/update/check' ? up.check() : path === '/update/install' ? up.install() : null).then(() => reply(200, up.state()), error => reply(500, { error: error.message }));
+        }
         else reply(404, { error: 'Não existe.' });
       } catch (error) { reply(400, { error: error.message }); }
     });

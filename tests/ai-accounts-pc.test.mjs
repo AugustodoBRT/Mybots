@@ -50,3 +50,22 @@ test('the app adds, sees and removes an IA account on the computer, through the 
   assert.equal(existsSync(accounts.dir('codex', 'casa')), false);
   await until(async () => (await client.call('state.get')).aiAccounts.computer.accounts.codex.length === 1);
 });
+
+test('the app asks the computer to update itself, through the computer\'s node; without its window open the answer says so', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-acc-pc-'));
+  const hub = createRelay({ port: 0, host: '127.0.0.1' }); const url = `ws://127.0.0.1:${await hub.listen()}`;
+  // What the node reports: the IA's own login plus the extra accounts the registry holds (never logged in here).
+  const status = async () => ({ connections: { codex: { available: true, loggedIn: true, message: '' } }, models: [model],
+    accounts: { codex: [{ id: 'default', label: 'Conta principal', loggedIn: true, default: true }, ...accounts.list('codex').map(item => ({ id: item.id, label: item.label, loggedIn: false }))] } });
+  const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], discoveryPort: 0, relay: { url }, execute: async () => ({ text: 'ok', ...selection }), status,
+    desktop: { indicate: async () => async () => {}, command: async () => ({}) }, browser: { command: async () => ({}), configure() {}, close: async () => {} }, local: { port: 0, env: { PATH: '/nonexistent' } }, log: () => {} });
+  await node.local().ready();
+  const phone = { id: 'tel-' + randomUUID().slice(0, 8), name: 'Meu celular' }; let client;
+  t.after(async () => { client?.close(); await node.close(); await hub.close(); await rm(directory, { recursive: true, force: true }); });
+  const { target } = await pairWithComputer(WebSocket, node.pairing().link, phone);
+  client = new SupervisorClient({ WebSocketClass: remoteSocketClass(WebSocket, () => ({ target, phone })) });
+  await until(async () => { try { await client.connect({ port: 0, token: 'canal' }); return true; } catch { return false; } });
+  await until(async () => (await client.call('state.get')).nodes?.some(node => node.online));
+  await assert.rejects(client.call('pc.update', { op: 'check' }), /janela do MyBots não está aberta/);
+  await assert.rejects(client.call('pc.update', { op: 'apagar' }), /Pedido inválido/);
+});

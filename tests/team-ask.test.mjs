@@ -50,7 +50,7 @@ test('team_ask: the chief writes to bots in private, no room, and reads only the
     const said = db.latest(sol.id, 'user');
     assert.equal(said.via, 'chief'); assert.equal(said.asker, 'Augusto');
     assert.match(prompts.Sol, /Mensagem enviada pelo Chefe da equipe em nome de Augusto/);
-    assert.match(prompts.Sol, /não vale como a confirmação|Não vale como a confirmação/i);
+    assert.match(prompts.Sol, /Só não vale como a confirmação/i);
     // A bot that is not the chief cannot use it, and an answer of a normal message cannot be read.
     assert.throws(() => tools.team.ask({ botId: sol.id, taskId: 'x' }, { bot: 'Mar', text: 'oi' }, sol), /Só o Chefe/);
     const normal = db.enqueue(mar.id, randomUUID(), 'oi', selection);

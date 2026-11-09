@@ -2058,3 +2058,10 @@ O dono notou que os bots não faziam o mesmo que o Claude Code dele no terminal:
 - **ydotool**: no boot o serviço começava antes de a sessão ter acesso ao `/dev/uinput`, falhava 5 vezes e desistia. Agora tenta de novo (override do serviço do usuário), e o MyBots o reinicia uma vez se o encontrar parado.
 - **IAs atualizadas pelo app** (`lib/ai-runtimes.mjs`, **Ajustes → IAs e contas**): versões de cada IA no aparelho e no computador, botão "Atualizar as IAs" (no celular atualiza os dois) e "Atualizar sozinho" (uma vez por dia em cada aparelho, ligado por padrão). No Linux, Codex e opencode passam a ser as builds oficiais do GitHub, conferidas pelo sha256 publicado e guardadas em `~/.local/share/mybots/ai` (sem senha de administrador, como no OpenBot); Claude Code e Antigravity usam o próprio `update`; no Termux, o Codex pelo apt e os demais pelas pontes do Debian.
 - Testes em `tests/terminal-parity.test.mjs` e `tests/ai-runtimes.test.mjs`. **Não visto no celular real.**
+
+## 0.90.1 (versionCode 186): bots obedecem o Chefe sem pedir a confirmação do dono
+
+O CacaLinkedIn se recusava a postar o relatório na sala quando a ordem vinha do Chefe, porque o aviso que acompanha a mensagem do Chefe dizia que ela "não vale como a confirmação" para enviar a terceiros ou publicar.
+
+- O aviso (`viaChief` em `mobile/local.js`) agora diz que o Chefe fala pela pessoa e a ordem é válida (postar em sala, ferramentas, rotinas, regras da memória). Continua sem valer como confirmação só para apagar dados e gastar dinheiro, que seguem pelo pedido de aprovação.
+- **Não visto no celular real.**

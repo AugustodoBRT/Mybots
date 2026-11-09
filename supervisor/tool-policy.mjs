@@ -5,6 +5,17 @@ import { EYE_STYLES, MOUTHS, TOPS, LIMITS } from '../lib/mimo.mjs';
 import { validPath, checkBody } from './notes.mjs';
 export const TOOL_DEFINITIONS = [
   { name: 'team.status', label: 'Consultar estado da equipe', description: 'Mostra ao Chefe as pendências, rotinas e última atividade dos bots.', readOnly: true },
+  { name: 'team.update_bot', label: 'Alterar outro bot', description: 'O Chefe propõe mudar o nome, a função ou as instruções de um bot; a pessoa aprova antes.' },
+  { name: 'team.routines', label: 'Ver rotinas da equipe', description: 'O Chefe vê as rotinas de cada bot com o resultado das últimas execuções.', readOnly: true },
+  { name: 'team.routine_update', label: 'Alterar rotinas da equipe', description: 'O Chefe propõe criar, pausar, retomar, apagar ou mudar o horário da rotina de outro bot; a pessoa aprova antes.' },
+  { name: 'team.usage', label: 'Ver o gasto da equipe', description: 'O Chefe vê (só leitura) o uso e o custo estimado de cada bot e de cada rotina.', readOnly: true },
+  { name: 'table.list', label: 'Ver tabelas compartilhadas', description: 'Lista as tabelas que todos os bots leem e escrevem.', readOnly: true, defaultAllowed: true },
+  { name: 'table.read', label: 'Ler tabela compartilhada', description: 'Lê linhas de uma tabela compartilhada, com filtro.', readOnly: true, defaultAllowed: true },
+  { name: 'table.add', label: 'Gravar em tabela compartilhada', description: 'Acrescenta uma linha, conferindo duplicata antes.', defaultAllowed: true },
+  { name: 'table.update', label: 'Alterar linha de tabela', description: 'Muda colunas de uma linha de uma tabela compartilhada.', defaultAllowed: true },
+  { name: 'table.delete', label: 'Apagar linha de tabela', description: 'Apaga uma linha de uma tabela compartilhada.', defaultAllowed: true },
+  { name: 'user.decide', label: 'Pedir uma decisão', description: 'Pergunta algo à pessoa com opções para tocar (e sempre "Escrever minha resposta"); a resposta volta como mensagem.', defaultAllowed: true },
+  { name: 'user.decisions', label: 'Ver decisões', description: 'Consulta o que a pessoa já decidiu e o que está esperando resposta.', readOnly: true, defaultAllowed: true },
   { name: 'delivery.write', label: 'Registrar entrega', description: 'Cria uma entrega datada deste bot.', defaultAllowed: true },
   { name: 'shared.index_read', label: 'Ler índice compartilhado', description: 'Consulta o índice das notas do Chefe.', readOnly: true },
   { name: 'shared.note_read', label: 'Consultar notas', description: 'Lê uma nota ou lista os títulos das notas compartilhadas.', readOnly: true },
@@ -148,6 +159,9 @@ export function toolArguments(tool, args) {
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger','room'], 'routine.update': ['id','enabled','delete'],
     'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': [], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
+    'team.update_bot': ['bot','name','instructions','reason'], 'team.routines': ['bot'], 'team.routine_update': ['bot','id','action','title','instructions','trigger','room','reason'], 'team.usage': [],
+    'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
+    'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
@@ -163,6 +177,11 @@ export function toolArguments(tool, args) {
     if (typeof args[name] !== 'string' || !args[name].trim() || args[name].length > max || /\u0000/.test(args[name])) throw new Error('Preencha os argumentos da ferramenta dentro dos limites.');
     return args[name].trim();
   };
+  // Checked in full by the code that runs them (shared-data.mjs, routines, the team): here only the size.
+  if (/^(table|user)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage'].includes(tool)) {
+    if (JSON.stringify(args).length > 12000) throw new Error('Argumentos grandes demais.');
+    return args;
+  }
   if (tool === 'delivery.write') { const project = text('project', 80, true); return { topic: checkBody(text('topic', 80)), text: checkBody(text('text', 4000)), ...(project ? { project: checkBody(project) } : {}) }; }
   if (tool === 'shared.index_read') return {};
   if (tool.startsWith('shared.')) {

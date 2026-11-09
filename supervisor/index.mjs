@@ -38,6 +38,7 @@ import { Negotiations } from './negotiation.mjs';
 import { Nodes } from './nodes.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-frame.mjs';
 import { Link } from './link.mjs';
+import { Tables, Decisions } from './shared-data.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
@@ -59,7 +60,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, rooms, nodes, link, negotiations;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, rooms, nodes, link, negotiations, decisions, decisionTimer;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -251,6 +252,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const peer = () => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='sync.peer'")?.value || 'null'); } catch { return null; } };
     const owns = botId => { const other = peer(); if (!other?.known) return true; const home = db.bot(botId)?.home || 'phone'; return kind === 'computer' ? home === 'pc' || (home === 'any' && !other.online) : home !== 'pc'; };
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines; routines.rooms = rooms;
+    // Tables every bot shares, and the person's decisions: the answer goes back to the bot as a message of the person.
+    tools.tables = new Tables(db, { changed: () => broadcast('activity.new') });
+    decisions = new Decisions(db, { notify: tools.notify, clock, changed: () => broadcast('activity.new'),
+      reply: (botId, text, origin) => { try { const bot = db.requireBot(botId); const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot), { origin: 'decision', ...origin }); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } catch (error) { db.record('decision_reply_failed', error.message, botId); } } });
+    tools.decisions = decisions; decisionTimer = setInterval(() => { try { decisions.tick(); } catch {} }, 60000); decisionTimer.unref?.();
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
     const runSkill = async ({ id: routineId, title, skill, input = {}, notify: notice = true }, bot, manual = false) => {
@@ -478,6 +484,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (!nodes.computer?.()) throw new Error('O computador não está conectado.');
           return link.pcUpdate(params.op);
         }
+        case 'decision.answer': return decisions.answer(params.id, { option: params.option, text: params.text });
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }
         case 'google.accounts.add': { const accounts = db.addGoogleAccount(params.account); broadcast('connection.changed'); return accounts; }
@@ -1053,9 +1060,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     await new Promise((resolveStart, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolveStart); });
     const actualPort = server.address().port; queue.toolEndpoint = `http://127.0.0.1:${actualPort}`;
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
-    api = { db, queue, tools, routines, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
+    api = { db, queue, tools, routines, decisions: () => decisions, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(itemTimer); clearInterval(pruneTimer); email.stop(); routines.stop(); link.close();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(decisionTimer); clearInterval(itemTimer); clearInterval(pruneTimer); email.stop(); routines.stop(); link.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
@@ -1073,7 +1080,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     prune(); if (pruneMs) pruneTimer = setInterval(prune, pruneMs);
     return api;
   } catch (error) {
-    clearInterval(timer); clearInterval(pingTimer); clearInterval(pruneTimer); email?.stop(); routines?.stop(); link?.close();
+    clearInterval(timer); clearInterval(pingTimer); clearInterval(pruneTimer); clearInterval(decisionTimer); email?.stop(); routines?.stop(); link?.close();
     for (const socket of [...(sockets?.clients || []), ...(frameSockets?.clients || [])]) socket.terminate();
     server?.close(); db?.close();
     try { unlinkSync(lock); } catch {}

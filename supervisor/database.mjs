@@ -50,12 +50,15 @@ export const SYNCED = {
   // A routine's schedule fields change at every run; only its content and on/off state are shared.
   routines: { key: 'id', at: 'updated_at', updateOf: 'body, enabled, bot_id' },
   pending_items: { key: 'id', at: 'created_at' },
+  // The tables every bot reads and writes, and the person's decisions (shared-data.mjs).
+  shared_rows: { key: 'id', at: 'updated_at' },
+  decisions: { key: 'id', at: 'updated_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
   metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','google.accounts','time_zone') OR key LIKE 'chat.session.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 17;
+export const SCHEMA = 18;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -198,7 +201,7 @@ export class Database {
         CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);`);
       this.run('INSERT OR IGNORE INTO sync_state(id,device,counter,applying) VALUES(1,?,0,0)', randomUUID());
       for (const [table, spec] of Object.entries(SYNCED)) {
-        if (table !== 'notes') this.installSyncLog(table, spec);
+        if (!['notes', 'shared_rows', 'decisions'].includes(table)) this.installSyncLog(table, spec);   // these are made (and logged) by later versions
       }
       this.db.exec('PRAGMA user_version=14;');
     });
@@ -217,6 +220,15 @@ export class Database {
     if (version < 17) this.transaction(() => {
       if (!this.all("SELECT name FROM pragma_table_info('usage')").some(column => column.name === 'context')) this.db.exec('ALTER TABLE usage ADD COLUMN context INTEGER;');
       this.db.exec('PRAGMA user_version=17;');
+    });
+    // Shared tables (rows with columns that every bot reads and writes) and the person's decisions, both synced.
+    if (version < 18) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS shared_rows (id TEXT PRIMARY KEY, tbl TEXT NOT NULL, body TEXT NOT NULL, bot_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS shared_rows_tbl ON shared_rows(tbl, created_at);
+        CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, body TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS decisions_bot ON decisions(bot_id, state);`);
+      this.installSyncLog('shared_rows', SYNCED.shared_rows); this.installSyncLog('decisions', SYNCED.decisions);
+      this.db.exec('PRAGMA user_version=18;');
     });
   }
   installSyncLog(table, spec) {
@@ -519,7 +531,7 @@ export class Database {
     return { bots: bots.map(bot => {
       const openItems = this.all(`SELECT json_extract(body,'$.title') AS title,json_extract(body,'$.due') AS due,COUNT(*) OVER() AS total
         FROM pending_items WHERE bot_id=? AND state='open' ORDER BY due IS NULL,due,created_at,id LIMIT 50`, bot.id);
-      const routines = this.all(`SELECT json_extract(body,'$.title') AS title,enabled,next_run_at AS nextRunAt
+      const routines = this.all(`SELECT json_extract(body,'$.title') AS title,enabled,next_run_at AS nextRunAt,last_run_at AS lastRunAt,last_result AS lastResult
         FROM routines WHERE bot_id=? ORDER BY created_at,id`, bot.id);
       const tasks = this.all("SELECT state,COUNT(*) AS count FROM tasks WHERE bot_id=? AND state IN ('queued','running','waiting_approval') GROUP BY state", bot.id);
       const lastActivity = this.get('SELECT kind,created_at AS at FROM activity WHERE bot_id=? ORDER BY id DESC LIMIT 1', bot.id) || null;

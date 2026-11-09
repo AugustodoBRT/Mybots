@@ -2004,3 +2004,16 @@ Fase 7 de `docs/PLANO-BOT-CHEFE.md` (a 8, Obsidian/GitHub, é opcional e não fo
 - **Abertura mais lisa**: enquanto o bot 3D da abertura pula, as imagens dos outros bots esperam (os WebViews dividem o mesmo processo de desenho no Android); o bot da abertura ficou com 8.000 partículas.
 - **Barra de cima da conversa**: sem os três pontinhos (as configurações do bot abrem tocando no rosto dele, como já funcionava) e sem o botão de Memória (o mapa continua no Início). Ficam só o navegador do bot e, no Chefe, um botão de ícone (grade) para o Início: equipe, salas, memória e ajustes do app, no lugar do "Equipe".
 - Visto: a página ao vivo num Chrome sem janela (desenha, troca de humor, avisa o primeiro quadro). **Não visto**: no celular.
+
+## 0.86.0 (versionCode 181): as 5 prioridades que o Chefe pediu depois de usar o MyBots
+
+O chefin escreveu um documento ("Melhorias sugeridas para o MyBots") com o que atrapalhou no uso real. Esta versão faz as 5 prioridades dele:
+
+1. **Tabelas compartilhadas** (`supervisor/shared-data.mjs`, tabela `shared_rows`, sincronizada): linhas e colunas que todos os bots leem e escrevem (`table_list`, `table_read` com filtro por coluna e busca de texto, `table_add` com `unique` para checar duplicata antes de gravar, `table_update`, `table_delete`). Comparação sem acento e sem maiúscula. Colunas que parecem senha, chave ou cartão são recusadas. Limites: 40 tabelas, 3.000 linhas por tabela, 30 colunas, 4.000 caracteres por linha.
+2. **O Chefe edita bots e rotinas da equipe**, sempre com aprovação da pessoa: `team_update_bot` (nome e instruções; o cartão mostra o antes, o depois e o porquê) e `team_routine_update` (criar, pausar, retomar, apagar, mudar horário, inclusive rotina em sala). Recusa mudar um bot que está trabalhando.
+3. **Resultado de cada execução de rotina**: `team_routines` mostra as rotinas de cada bot com gatilho, próxima execução e as 5 últimas execuções (ok, erro ou rodando, e um resumo da resposta ou do erro). O `team_status` passou a trazer o último resultado e a última execução.
+4. **Decisão com opções** (`user_decide`, tabela `decisions`, sincronizada): o bot pergunta e o app mostra um cartão na conversa com um botão por opção e, sempre no fim, "Escrever minha resposta"; também chega uma notificação. A escolha (ou o texto) volta ao bot como uma nova mensagem ("Sua decisão foi entregue ao bot"). Prazo opcional com esperar, lembrar uma vez ou cancelar (e avisar o bot); nunca decide pela pessoa. `user_decisions` consulta o histórico (o Chefe vê o de todos).
+5. **Gasto visível ao Chefe** (`team_usage`, só leitura): uso e custo estimado por bot (hoje, semana, mês) e por rotina (30 dias).
+
+- O Chefe e os bots foram avisados das ferramentas novas nas instruções base (`PROMPT_VERSION` 12: sessões novas uma vez, com o histórico).
+- Testes novos em `tests/shared-data.test.mjs`. **Não visto no celular real**: o cartão de decisão e os cartões de aprovação das mudanças do Chefe.

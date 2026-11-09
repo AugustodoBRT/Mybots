@@ -8,6 +8,7 @@ import { styles } from './styles';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
 import { Splash } from './components/Splash';
+import { decisionHandler } from './components/Message';
 import { SearchSheet } from './components/Search';
 import { SettingsSheet } from './components/Settings';
 import { NewBot } from './components/NewBot';
@@ -175,6 +176,7 @@ function AppMain() {
   const updateChecked = useRef(0);
   const staged = useRef(new Set());
   const supervisor = useRef(null);
+  decisionHandler.current = (id, answer) => supervisor.current.call("decision.answer", { id, ...answer });
   const [notesVersion, setNotesVersion] = useState(0);
   const callNotes = useCallback((method, params) => supervisor.current.call(method, params), []);
   const phoneMode = useRef(mode); phoneMode.current = mode;

@@ -129,7 +129,7 @@ test('team_status is chief-only and projects operational fields without private 
   db.record('item_created', 'ATIVIDADE_PRIVADA', bot.id);
   const result = await mine.call(), row = result.bots.find(item => item.id === bot.id);
   assert.equal(row.openItemCount, 1); assert.equal(row.openItems[0].title, 'Comprar papel');
-  assert.deepEqual(row.routines, [{ title: 'Planejar', enabled: true, nextRunAt: null }]);
+  assert.deepEqual(row.routines, [{ title: 'Planejar', enabled: true, nextRunAt: null, lastRunAt: null, lastResult: null }]);
   assert.equal(row.lastActivity.kind, 'item_created'); assert.equal(row.activeTasks.running, 1);
   assert.doesNotMatch(JSON.stringify(result), /PRIVAD[AO]|CONCLUIDA/);
   tools.grant(chief.id, 'team.status', false);

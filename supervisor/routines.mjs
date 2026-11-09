@@ -90,6 +90,27 @@ export class Routines {
     });
     this.changed('activity.new'); return this.get(id);
   }
+  /** A new trigger for a routine (the Chefe's "mudar horário", approved by the person). */
+  reschedule(id, trigger) {
+    const routine = this.get(id); const row = this.db.get('SELECT body FROM routines WHERE id=?', id);
+    this.db.transaction(() => {
+      this.db.run('UPDATE routines SET body=?,next_run_at=?,updated_at=? WHERE id=?', JSON.stringify({ ...JSON.parse(row.body), trigger }), this.next(trigger), now(), id);
+      this.db.record('routine_updated', `Rotina “${routine.title}” agora: ${describeTrigger(trigger)}.`, routine.botId);
+    });
+    this.changed('activity.new'); return this.get(id);
+  }
+  /** The last runs of a routine: when, whether it ended well, and a short summary of what the reply said (or the error). */
+  runs(id, limit = 5) {
+    return this.db.all('SELECT r.task_id, r.created_at, t.state, t.error, t.bot_id, t.message_id FROM routine_runs r JOIN tasks t ON t.id=r.task_id WHERE r.routine_id=? ORDER BY r.created_at DESC LIMIT ?', id, limit).map(row => {
+      const turn = this.db.roomTurn(row.task_id);
+      // A room reply names the message it answers; in the private chat the reply is the bot's next message after the run's own.
+      const reply = row.state !== 'done' ? null : turn ? this.db.page({ roomId: turn.room_id, limit: 100 }).messages.reverse().find(item => item.role === 'assistant' && item.replyTo === row.message_id && !item.progress)
+        : (body => body && JSON.parse(body))(this.db.get("SELECT body FROM messages WHERE bot_id=? AND rowid>(SELECT rowid FROM messages WHERE id=?) AND json_extract(body,'$.role')='assistant' ORDER BY rowid LIMIT 1", row.bot_id, row.message_id)?.body);
+      const ok = row.state === 'done';
+      return { at: row.created_at, state: ok ? 'ok' : ['queued', 'running', 'waiting_approval'].includes(row.state) ? 'running' : 'error',
+        summary: ok ? clip(String(reply?.text || 'Concluída.').replace(/\s+/g, ' '), 300) : clip(String(row.error || (row.state === 'cancelled' ? 'Cancelada.' : 'Ainda rodando.')), 300) };
+    });
+  }
   remove(id, botId) {
     const routine = this.get(id, botId);
     this.db.transaction(() => {

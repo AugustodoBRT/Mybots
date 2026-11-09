@@ -1,22 +1,55 @@
 import { desktop } from '../desktop';
 import { sameMessage } from '../message-cache';
 import { memo, useState } from 'react';
-import { View, Pressable, Text } from 'react-native';
+import { View, Pressable, Text, TextInput } from 'react-native';
 import { styles } from '../styles';
-import { Icon, C } from '../theme';
+import { Icon, C, F } from '../theme';
 import { claudeName, findModel, EFFORT_NAMES, Avatar, tokensLabel } from './shared';
 import { FileChip, FileCard, RichText } from '../RichMessage';
 import { ImageBubble } from './ImageBubble';
 import { isPicture } from '../attachment-images';
 
+// Answers a bot's decision (user_decide); App sets it to the supervisor call, so the cards need no extra prop through the lists.
+export const decisionHandler = { current: null };
+
+/** A bot's question with options to tap and, always last, "Escrever minha resposta"; after the answer, what was chosen stays marked. */
+function DecisionCard({ decision }) {
+  const [writing, setWriting] = useState(false), [text, setText] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const done = decision.answer !== undefined && decision.answer !== null, closed = done || decision.expired;
+  const send = async answer => {
+    if (busy || closed || !decisionHandler.current) return;
+    setBusy(true); setError('');
+    try { await decisionHandler.current(decision.id, answer); setWriting(false); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const pill = (label, chosen, onPress, key) => <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: chosen, disabled: closed || busy }} disabled={closed || busy} onPress={onPress}
+    style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: chosen ? C.accent : C.line2, backgroundColor: chosen ? C.accent + '22' : C.surface2 }, pressed && { opacity: 0.7 }, closed && !chosen && { opacity: 0.45 }]}>
+    {chosen ? <Icon name="check" size={15} color={C.accent} /> : null}<Text style={{ flex: 1, color: chosen ? C.accent : C.text, fontFamily: F.s, fontSize: 14.5 }}>{label}</Text></Pressable>;
+  return <View style={{ gap: 8, marginTop: 10 }}>
+    {decision.options.map((option, index) => pill(option, done && !decision.written && decision.answer === option, () => send({ option: index + 1 }), option))}
+    {done && decision.written ? pill(decision.answer, true, null, 'written') : null}
+    {!closed ? (writing ? <View style={{ gap: 8 }}>
+      <TextInput value={text} onChangeText={setText} autoFocus multiline maxLength={4000} placeholder="Sua resposta…" placeholderTextColor={C.faint}
+        style={{ minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface2, color: C.text, fontFamily: F.m, fontSize: 14.5, paddingHorizontal: 14, paddingVertical: 10 }} />
+      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+        <Pressable accessibilityRole="button" onPress={() => setWriting(false)} style={{ paddingVertical: 8, paddingHorizontal: 12 }}><Text style={{ color: C.muted, fontFamily: F.m }}>Cancelar</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={!text.trim() || busy} onPress={() => send({ text: text.trim() })} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.accent, opacity: text.trim() && !busy ? 1 : 0.5 }}>
+          <Icon name="send" size={14} color={C.accentInk} /><Text style={{ color: C.accentInk, fontFamily: F.b }}>Enviar</Text></Pressable>
+      </View></View>
+      : pill('Escrever minha resposta', false, () => setWriting(true), 'write')) : null}
+    {decision.expired ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>Expirou sem resposta; o bot seguiu sem essa escolha.</Text> : null}
+    {decision.deadline && !closed ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>Responda até {new Date(decision.deadline).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text> : null}
+    {error ? <Text style={styles.messageErrorText}>{error}</Text> : null}
+  </View>;
+}
+
 export function MessageView({ message, bot, models, onRetry, busy, onFile, fileBusy, group = false }) {
-  const routine = message.origin === 'routine' || message.origin === 'team';
+  const routine = message.origin === 'routine' || message.origin === 'team' || message.origin === 'decision';
   const user = message.role === 'user' && !routine;
   const [expanded, setExpanded] = useState(false);
   const time = new Date(message.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   if (routine) return <View style={styles.routineRow}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Rotina ${message.routineTitle}`} onPress={() => setExpanded(value => !value)} style={styles.routineChip}>
-      <View style={styles.routineChipHead}><Icon name="bolt" size={14} color={C.sky} /><Text style={styles.routineChipText} numberOfLines={1}>{message.origin === 'team' ? '' : 'Rotina · '}{message.routineTitle} · {time}</Text><Icon name={expanded ? 'back' : 'down'} size={14} color={C.faint} /></View>
+      <View style={styles.routineChipHead}><Icon name="bolt" size={14} color={C.sky} /><Text style={styles.routineChipText} numberOfLines={1}>{message.origin === 'decision' ? 'Sua decisão foi entregue ao bot' : message.origin === 'team' ? '' : 'Rotina · '}{message.origin === 'decision' ? '' : message.routineTitle} · {time}</Text><Icon name={expanded ? 'back' : 'down'} size={14} color={C.faint} /></View>
       {expanded && <Text selectable style={styles.routineDetail}>{message.text}</Text>}
     </Pressable>
     {message.status === 'error' && <Text style={styles.messageErrorText}>{message.error || 'A rotina não foi concluída.'}</Text>}
@@ -41,7 +74,7 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
       <View style={styles.messageMeta}>{group || desktop ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
       {files}
       <RichText files={message.attachments} botId={bot.id} onFile={desktop ? onFile : undefined} id={message.id} text={message.text} textStyle={styles.messageText} />
-      {error}
+      {message.decision ? <><DecisionCard decision={message.decision} />{error}</> : error}
     </View>
   </View>;
 }

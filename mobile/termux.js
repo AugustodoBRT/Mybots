@@ -120,6 +120,10 @@ export const avatar3dRender = json => splashGate.then(() => native.avatar3dRende
 let bot3dView = null;
 try { bot3dView = native ? requireNativeViewManager('TermuxBridge', 'Bot3dView') : null; } catch {}
 export const Bot3dView = bot3dView;
+// A bot's HTML page on the canvas, isolated (HtmlCardView.kt); an APK from before it has none and the card says so.
+let htmlCardView = null;
+try { htmlCardView = native ? requireNativeViewManager('TermuxBridge', 'HtmlCardView') : null; } catch {}
+export const HtmlCardView = htmlCardView;
 // The opening screen's 3D bot (Splash3d.kt); an APK from before it has none and the opening screen draws its own bot.
 export const splash3dAvailable = () => { try { return avatar3dAvailable() && typeof native.splash3dShow === 'function'; } catch { return false; } };
 export const splash3dShow = (size, offset, bot) => native.splash3dShow(size, offset, String(bot?.id || 'mybots'), String(bot?.name || 'MyBots'), JSON.stringify(bot?.face || null));

@@ -220,6 +220,11 @@ class TermuxBridgeModule : Module() {
       Prop("bot") { view: Bot3dView, value: String? -> view.setBot(value) }
       Prop("mood") { view: Bot3dView, value: String? -> view.setMood(value) }
     }
+    // A bot's small HTML page on the canvas, isolated (HtmlCardView).
+    View(HtmlCardView::class) {
+      Prop("html") { view: HtmlCardView, value: String? -> view.setHtml(value) }
+      Prop("interactive") { view: HtmlCardView, value: Boolean? -> view.setInteractive(value) }
+    }
     View(MimoView::class) {
       Prop("spec") { view: MimoView, value: String? -> view.setSpec(value) }
       Prop("mood") { view: MimoView, value: String? -> view.setMood(value) }

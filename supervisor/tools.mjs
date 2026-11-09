@@ -1,3 +1,4 @@
+import { VIEWPORTS } from './canvas.mjs';
 import { noteTool } from './notes.mjs';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -40,7 +41,7 @@ const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'memory.dele
   'termux': 'Rodar um comando no Termux', 'phone/act': 'Mexer em outro app do celular', 'phone.open_app': 'Abrir um app no celular', 'phone.fill_code': 'Preencher um código de verificação' };
 const money = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${String(cents % 100).padStart(2, '0')}`;
 const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva', 'browser.pay': 'Navegador: pagar com a carteira',
-  'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda' };
+  'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda', 'browser.viewport': 'Navegador: mudar o tamanho da página' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 // Decisions that never take a button on a notification: money, passwords and codes, code that gets installed, the shell and
 // files leaving the phone. They open the app, where the whole card is read before deciding. A long summary does too.
@@ -297,6 +298,12 @@ export class Tools {
       this.requireGrant(run, tool);
       let result;
       if (tool === 'team.status') result = this.db.teamStatus();
+      else if (tool.startsWith('canvas.')) {
+        if (!this.canvas) throw new Error('O canvas não está disponível.');
+        result = tool === 'canvas.read' ? this.canvas.read(args, run.botId) : tool === 'canvas.add' ? this.canvas.add(run.botId, args) : tool === 'canvas.update' ? this.canvas.update(run.botId, args)
+          : tool === 'canvas.link' ? this.canvas.link(run.botId, args) : this.canvas.remove(args.id);
+        if (tool !== 'canvas.read') this.db.record('canvas_changed', `${label}${args.title ? `: ${String(args.title).slice(0, 60)}` : ''}.`, run.botId, run.taskId);
+      }
       else if (tool.startsWith('table.')) {
         if (!this.tables) throw new Error('As tabelas compartilhadas não estão disponíveis.');
         result = tool === 'table.list' ? this.tables.list(run.botId) : tool === 'table.read' ? this.tables.read(args, run.botId) : tool === 'table.add' ? this.tables.add(run.botId, args)
@@ -711,8 +718,14 @@ export class Tools {
         const shot = await command(run.botId, 'screenshot', args);
         if (typeof shot.image !== 'string' || shot.image.length > 4_000_000) throw new Error('Não consegui capturar a tela do navegador.');
         result = { mcpContent: [{ type: 'text', text: `${IMAGE_HINT}\n${BROWSER_NOTICE}\n${shot.title || ''} · ${shot.url || ''} · ${shot.width} × ${shot.height}` }, { type: 'image', data: shot.image, mimeType: 'image/jpeg' }] };
+      } else if (tool === 'browser.viewport') {
+        if (!viaPc) throw new Error('Mudar o tamanho da página só funciona no navegador do computador, e este bot está navegando no celular.');
+        const size = args.size ? VIEWPORTS[args.size] : { width: args.width, height: args.height, mobile: args.width < 900 };
+        result = { ...await command(run.botId, 'viewport', size), size: args.size || `${args.width}×${args.height}`, next: 'Use browser_read ou browser_screenshot para ver a página nesse tamanho.' };
       } else result = { untrusted: true, notice: BROWSER_NOTICE, ...await command(run.botId, tool.slice(8), args) };
       if (tool !== 'browser.ask_user') await this.browserStep(run, tool, args, result, target, command);
+      // The bot's browser card on the canvas follows it: the page it is on and the size it is testing.
+      if (tool !== 'browser.ask_user') try { const page = this.browser.pages.get(run.botId) || {}; this.canvas?.browser(run.botId, { url: result?.url || page.url || '', title: result?.title || page.title || '', viewport: tool === 'browser.viewport' ? (args.size || (args.width < 900 ? 'celular' : 'computador')) : undefined }); } catch {}
       if (result?.download && !result.download.error) {
         this.changed('browser.download', { botId: run.botId });
         // The file the bot just downloaded on the computer becomes one of its files, so it can read it or send it (before, only the person could).

@@ -424,7 +424,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
       if (message.type === 'pc_command') {
         // A bot that answers on the phone has no run here: its browser ops are checked by the supervisor, and only the bot's own Chromium is reachable.
-        const direct = !message.id && typeof message.botId === 'string' && ['shared', 'separate'].includes(message.mode) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb)$/.test(message.op);
+        const direct = !message.id && typeof message.botId === 'string' && ['shared', 'separate'].includes(message.mode) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op);
         if (direct && browserModes.get(message.botId) !== message.mode) configureBrowser({ id: message.botId, browserMode: message.mode });
         const run = direct ? { controller: new AbortController(), bot: { id: message.botId, browserMode: message.mode }, tools: { browser: true } } : runs.get(message.id);
         try {
@@ -432,7 +432,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
           const isDesktop = typeof message.op === 'string' && message.op.startsWith('desktop.');
           const mainChrome = browserMode(run.bot) === 'claude';
           const chrome = mainChrome && message.op === 'chrome.begin';
-          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
+          if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           // Only the screen and the mouse have one pilot at a time; each bot's browser is its own, so they run side by side.
           if (isDesktop) { if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.'); owner = run; }

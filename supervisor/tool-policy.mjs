@@ -17,6 +17,11 @@ export const TOOL_DEFINITIONS = [
   { name: 'table.add', label: 'Gravar em tabela compartilhada', description: 'Acrescenta uma linha, conferindo duplicata antes.', defaultAllowed: true },
   { name: 'table.update', label: 'Alterar linha de tabela', description: 'Muda colunas de uma linha de uma tabela compartilhada.', defaultAllowed: true },
   { name: 'table.delete', label: 'Apagar linha de tabela', description: 'Apaga uma linha de uma tabela compartilhada.', defaultAllowed: true },
+  { name: 'canvas.read', label: 'Ver o canvas', description: 'Vê os cartões, as ligações e as áreas do canvas da equipe.', readOnly: true, defaultAllowed: true },
+  { name: 'canvas.add', label: 'Pôr cartão no canvas', description: 'Põe no canvas uma nota, tabela, gráfico, página HTML (sem internet), imagem ou vídeo.', defaultAllowed: true },
+  { name: 'canvas.update', label: 'Mudar cartão do canvas', description: 'Muda o conteúdo, a posição, o tamanho ou a área de um cartão do canvas.', defaultAllowed: true },
+  { name: 'canvas.link', label: 'Ligar cartões', description: 'Liga dois cartões do canvas com um rótulo.', defaultAllowed: true },
+  { name: 'canvas.remove', label: 'Tirar do canvas', description: 'Tira um cartão ou uma ligação do canvas.', defaultAllowed: true },
   { name: 'user.decide', label: 'Pedir uma decisão', description: 'Pergunta algo à pessoa com opções para tocar (e sempre "Escrever minha resposta"); a resposta volta como mensagem.', defaultAllowed: true },
   { name: 'user.decisions', label: 'Ver decisões', description: 'Consulta o que a pessoa já decidiu e o que está esperando resposta.', readOnly: true, defaultAllowed: true },
   { name: 'delivery.write', label: 'Registrar entrega', description: 'Cria uma entrega datada deste bot.', defaultAllowed: true },
@@ -91,7 +96,7 @@ export const FREE_ASK_DEFAULT = FREE_ASK_OPTIONS.filter(item => item[3]).map(ite
 export function validFreeAsk(list) {
   return Array.isArray(list) && list.length <= FREE_ASK_OPTIONS.length && list.every(key => FREE_ASK_OPTIONS.some(item => item[0] === key));
 }
-export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.pay', 'browser.wait', 'browser.screenshot', 'browser.ask_user'];
+export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.pay', 'browser.wait', 'browser.screenshot', 'browser.ask_user', 'browser.viewport'];
 export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room', 'team.ask', 'team.answer'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 export const PHONE_TOOLS = ['phone.screen', 'phone.tap', 'phone.type', 'phone.scroll', 'phone.open_app', 'phone.back', 'phone.fill_code', 'phone.ask_user'];
@@ -164,6 +169,8 @@ export function toolArguments(tool, args) {
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.update_bot': ['bot','name','instructions','reason'], 'team.routines': ['bot'], 'team.routine_update': ['bot','id','action','title','instructions','trigger','room','reason'], 'team.usage': [],
     'profile.read': [], 'profile.write': ['text','reason'], 'team.overlap': [],
+    'canvas.read': ['area'], 'canvas.add': ['kind','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h','near','label'],
+    'canvas.update': ['id','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h'], 'canvas.link': ['from','to','label'], 'canvas.remove': ['id'], 'browser.viewport': ['size','width','height'],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
     'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
@@ -182,6 +189,8 @@ export function toolArguments(tool, args) {
     return args[name].trim();
   };
   // Checked in full by the code that runs them (shared-data.mjs, routines, the team): here only the size.
+  // The canvas: html up to 120.000 characters; the rest is checked by canvas.mjs.
+  if (/^canvas\./.test(tool)) { if (JSON.stringify(args).length > 160000) throw new Error('Argumentos grandes demais para o canvas.'); return args; }
   if (/^(table|user|profile)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap'].includes(tool)) {
     if (JSON.stringify(args).length > 12000) throw new Error('Argumentos grandes demais.');
     return args;
@@ -343,6 +352,10 @@ export function toolArguments(tool, args) {
       result[name] = value;
     }
     return result;
+  }
+  if (tool === 'browser.viewport') {
+    if (args.size !== undefined) { if (!['celular', 'tablet', 'computador'].includes(args.size)) throw new Error('size é celular, tablet ou computador.'); return { size: args.size }; }
+    return { width: integer('width', 280, 2560), height: integer('height', 300, 2560) };
   }
   if (tool === 'browser.tabs') {
     if (!['list','switch','new','close'].includes(args.action)) throw new Error('Ação de abas inválida.');

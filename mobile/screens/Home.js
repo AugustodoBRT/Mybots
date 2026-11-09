@@ -89,7 +89,7 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ onWeekly, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
@@ -104,6 +104,7 @@ function HomeView({ onWeekly, onMemory, team, onHome, onCreateChief, data, error
   const summary = [working ? `${working} trabalhando` : '', waiting ? `${waiting} ${waiting > 1 ? 'esperam' : 'espera'} você` : '', openItems ? `${openItems} ${openItems > 1 ? 'pendências' : 'pendência'}` : ''].filter(Boolean).join(' · ');
   const menuItems = [
     { key: 'chats', label: 'Conversas', icon: 'bots', on: true },
+    ...(onCanvas ? [{ key: 'canvas', label: 'Canvas', icon: 'canvas', onPress: onCanvas }] : []),
     ...(phone ? [{ key: 'activity', label: 'Atividade', icon: 'activity', dot: waiting > 0, onPress: onActivity }] : [{ key: 'activity', label: 'Conexão', icon: 'activity', onPress: onConnection }]),
     ...(onWallet ? [{ key: 'wallet', label: 'Carteira', icon: 'wallet', onPress: onWallet }] : []),
     ...(phone ? [{ key: 'routines', label: 'Rotinas', icon: 'bolt', count: routines || null, onPress: () => setRoutinesOpen(true) },
@@ -118,6 +119,7 @@ function HomeView({ onWeekly, onMemory, team, onHome, onCreateChief, data, error
           {waiting ? <View style={{ position: 'absolute', top: 2, right: 2, width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg }} /> : null}</View>
         {onHome && team ? <IconButton icon="back" label="Voltar ao início" onPress={onHome} size={40} /> : null}
         <View style={s.wordmark}><Text style={s.wordmarkText}>{team ? 'Equipe' : 'mybots'}</Text><View style={s.wordmarkDot} /></View>
+        {onCanvas ? <IconButton icon="canvas" label="Canvas" onPress={onCanvas} size={42} /> : null}
         {onMemory ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={42} /> : null}
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={42} />
       </View>

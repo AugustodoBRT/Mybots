@@ -685,7 +685,7 @@ export class BrowserSession {
     if (op === 'pay_clear') { this.payment = null; if (this.page) await this.fillCard({ clear: true }).catch(() => {}); return { cleared: true }; }
     await this.start();
     const { expectedTarget, ...publicInput } = input;
-    const args = ['inspect', 'login_fill', 'login_cancel', 'pay', 'pay_fill', 'pay_clear', 'upload', 'thumb'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
+    const args = ['inspect', 'login_fill', 'login_cancel', 'pay', 'pay_fill', 'pay_clear', 'upload', 'thumb', 'viewport'].includes(op) ? input : toolArguments('browser.' + op, publicInput);
     if (op === 'thumb') {
       // The timeline's picture of this moment, with password fields as dots.
       await this.maskFields();
@@ -708,6 +708,18 @@ export class BrowserSession {
         for (const id of await frame.evaluate(() => [...document.querySelectorAll('[data-mybots-id]')].map(el => Number(el.dataset.mybotsId))).catch(() => [])) this.elementFrames.set(id, frame);
       }
       return { ...await this.info(), ...content };
+    }
+    // The bot tests a page at a phone's, a tablet's or a computer's size; the person's own view ("Assumir") sets it again when they look.
+    if (op === 'viewport') {
+      const width = Math.round(Number(args.width)), height = Math.round(Number(args.height)), mobile = args.mobile === true;
+      if (!(width >= 280 && width <= 2560 && height >= 300 && height <= 2560)) throw new Error('Tamanho inválido: a largura vai de 280 a 2560 e a altura de 300 a 2560.');
+      const cdp = await this.context.newCDPSession(this.page);
+      try {
+        if (!mobile && width === 1280 && height === 800) { await cdp.send('Emulation.clearDeviceMetricsOverride'); await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false }); await this.page.setViewportSize({ width, height }); }
+        else { await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: mobile ? 3 : 1, mobile }); await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: mobile, maxTouchPoints: mobile ? 5 : 1 }); }
+      } finally { await cdp.detach().catch(() => {}); }
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      return { ...await this.info(), width, height, mobile };
     }
     if (op === 'tabs') {
       if (this.tabError) { const error = this.tabError; this.tabError = null; throw new Error(error); }
@@ -911,7 +923,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
       const result = op === 'device' ? await session.deviceView(args) || { restored: true } : op === 'view' ? await session.view(Boolean(args?.on), args) : op === 'input' ? await session.input(args) : await session.command(op, args);
       process.send?.({ id, result });
     } catch (error) {
-      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou|executáveis|pagamento|cartão|Nada foi preenchido|não permitido|max_chars vai/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
+      process.send?.({ id, error: /Até 5 abas|Aba não encontrada|depuração|recusou a conexão|Endereço|navegador do bot|link|alvo mudou|executáveis|pagamento|cartão|Nada foi preenchido|não permitido|max_chars vai|Tamanho inválido/.test(error.message) ? error.message : 'O navegador não conseguiu executar a ação. Confira a página e tente ler de novo; senhas só por browser_login.' });
     }
   };
   process.on('message', message => {

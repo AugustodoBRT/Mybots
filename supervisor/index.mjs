@@ -39,6 +39,7 @@ import { Nodes } from './nodes.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-frame.mjs';
 import { Link } from './link.mjs';
 import { Tables, Decisions } from './shared-data.mjs';
+import { Canvas } from './canvas.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
@@ -264,6 +265,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines; routines.rooms = rooms;
     // Tables every bot shares, and the person's decisions: the answer goes back to the bot as a message of the person.
     tools.tables = new Tables(db, { changed: () => broadcast('activity.new') });
+    // The team's canvas (it replaces the 3D office): the app reloads it on canvas.changed.
+    tools.canvas = new Canvas(db, { changed: () => broadcast('canvas.changed', {}), tables: tools.tables, attachments });
     decisions = new Decisions(db, { notify: tools.notify, clock, changed: () => broadcast('activity.new'),
       reply: (botId, text, origin) => { try { const bot = db.requireBot(botId); const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot), { origin: 'decision', ...origin }); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } catch (error) { db.record('decision_reply_failed', error.message, botId); } } });
     // Monthly spending limit per bot: routines stop at the limit (conversation goes on), and the person is told at 80% and 100%, once a month.
@@ -525,6 +528,12 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'budget.set': { const budgets = db.setBudget(params.botId, params.usd ?? null); broadcast('activity.new'); return budgets; }
         case 'table.access': return tools.tables.setAccess(params.table, { read: params.read ?? null, write: params.write ?? null });
         case 'tables.list': return tools.tables.list();
+        // The canvas in the app: the person looks, moves, resizes, tidies and removes; the bots fill it with their tools.
+        case 'canvas.state': return tools.canvas.state();
+        case 'canvas.move': return tools.canvas.personMove(params || {});
+        case 'canvas.remove': if (typeof params.id !== 'string') throw new Error('Cartão inválido.'); return tools.canvas.remove(params.id);
+        case 'canvas.tidy': return tools.canvas.tidy();
+        case 'canvas.browserImage': { db.requireBot(params.botId); const step = db.get('SELECT id,url,title,width,height,created_at FROM browser_steps WHERE bot_id=? AND image IS NOT NULL ORDER BY rowid DESC LIMIT 1', params.botId); if (!step) return { image: null }; return { image: db.browserStepImage(step.id)?.image || null, url: step.url, title: step.title, width: step.width, height: step.height, at: step.created_at }; }
         case 'decision.answer': return decisions.answer(params.id, { option: params.option, text: params.text });
         case 'bots.list': return state().bots;
         case 'bot.create': await refresh(); { const bot = db.create(params, selectionFor(catalog(), params)); tools.setAccountApps(bot.id, []); broadcast('activity.new'); return bot; }

@@ -40,6 +40,7 @@ const ICONS = {
   activity: [['polyline', { points: '3 12.5 7 12.5 10 5 14 19 17 12.5 21 12.5' }]],
   settings: [['path', { d: 'M4 6.5h16M4 12h16M4 17.5h16' }], ['circle', { cx: 9, cy: 6.5, r: 2.2, solid: true }], ['circle', { cx: 15.5, cy: 12, r: 2.2, solid: true }], ['circle', { cx: 7.5, cy: 17.5, r: 2.2, solid: true }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
+  minus: [['path', { d: 'M5 12h14' }]],
   menu: [['path', { d: 'M4 7h16M4 12h16M4 17h16' }]],
   sidebar: [['rect', { x: 3.5, y: 4.5, width: 17, height: 15, rx: 3 }], ['path', { d: 'M14.5 4.5v15' }]],
   wallet: [['rect', { x: 3, y: 5.5, width: 18, height: 13, rx: 2.8 }], ['path', { d: 'M3 10h18M7 14.5h3.2' }]],
@@ -75,6 +76,8 @@ const ICONS = {
   mail: [['rect', { x: 3, y: 5, width: 18, height: 14, rx: 2.5 }], ['polyline', { points: '3.5 7 12 13 20.5 7' }]],
   calendar: [['rect', { x: 4, y: 5, width: 16, height: 16, rx: 2.5 }], ['path', { d: 'M8 3v4M16 3v4M4 10h16' }]],
   bolt: [['path', { d: 'M13 3L5 14h6.2L10 21l8-11h-6.2z' }]],
+  // The canvas: three cards joined by lines.
+  canvas: [['rect', { x: 3, y: 4, width: 7, height: 6, rx: 1.6 }], ['rect', { x: 14, y: 3, width: 7, height: 6, rx: 1.6 }], ['rect', { x: 9, y: 15, width: 7, height: 6, rx: 1.6 }], ['path', { d: 'M10 7h4M7.5 10l3 5M17 9l-2.5 6' }]],
   // An isometric room: two walls and a floor.
   office: [['path', { d: 'M12 3l8 4.5v9L12 21l-8-4.5v-9z' }], ['path', { d: 'M4 7.5l8 4.5 8-4.5M12 12v9' }]],
   user: [['circle', { cx: 12, cy: 8, r: 4 }], ['path', { d: 'M4.5 20.5a7.5 7.5 0 0 1 15 0' }]],

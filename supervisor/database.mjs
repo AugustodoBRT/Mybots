@@ -53,12 +53,14 @@ export const SYNCED = {
   // The tables every bot reads and writes, and the person's decisions (shared-data.mjs).
   shared_rows: { key: 'id', at: 'updated_at' },
   decisions: { key: 'id', at: 'updated_at' },
+  // The team's canvas: cards and the links between them (canvas.mjs).
+  canvas_items: { key: 'id', at: 'updated_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
   metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 20;
+export const SCHEMA = 21;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -201,7 +203,7 @@ export class Database {
         CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);`);
       this.run('INSERT OR IGNORE INTO sync_state(id,device,counter,applying) VALUES(1,?,0,0)', randomUUID());
       for (const [table, spec] of Object.entries(SYNCED)) {
-        if (!['notes', 'shared_rows', 'decisions'].includes(table)) this.installSyncLog(table, spec);   // these are made (and logged) by later versions
+        if (!['notes', 'shared_rows', 'decisions', 'canvas_items'].includes(table)) this.installSyncLog(table, spec);   // these are made (and logged) by later versions
       }
       this.db.exec('PRAGMA user_version=14;');
     });
@@ -239,6 +241,12 @@ export class Database {
     if (version < 20) this.transaction(() => {
       this.installSyncLog('metadata', SYNCED.metadata);
       this.db.exec('PRAGMA user_version=20;');
+    });
+    // The team's canvas (it replaces the 3D office): cards the bots leave and the links between them, synced.
+    if (version < 21) this.transaction(() => {
+      this.db.exec(`CREATE TABLE IF NOT EXISTS canvas_items (id TEXT PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL, bot_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+      this.installSyncLog('canvas_items', SYNCED.canvas_items);
+      this.db.exec('PRAGMA user_version=21;');
     });
   }
   installSyncLog(table, spec) {
@@ -345,6 +353,7 @@ export class Database {
           this.run('INSERT INTO changes(tbl,key,seq,lamport,origin,at,deleted) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tbl,key) DO UPDATE SET seq=excluded.seq, lamport=excluded.lamport, origin=excluded.origin, at=excluded.at, deleted=excluded.deleted',
             change.table, change.key, counter, change.lamport, change.origin, change.at, change.deleted ? 1 : 0);
           if (change.table === 'notes') this.notify('notes.changed', { path: change.key });
+          if (change.table === 'canvas_items') result.canvas = true;
           result.applied++;
           if (change.table === 'metadata' && change.key === 'person.chief') {
             for (const id of [existing?.value, change.deleted ? null : change.data.value]) {
@@ -360,6 +369,7 @@ export class Database {
     // Open screens reload what changed.
     for (const botId of result.chats) this.notify('chat.reset', { botId });
     for (const roomId of result.rooms) this.notify('chat.reset', { roomId });
+    if (result.canvas) this.notify('canvas.changed', {});
     for (const botId of result.bots) if (!result.chats.includes(botId)) this.notify('bot.updated', { botId });
     if (result.applied) this.notify('connection.changed', {});
     return result;

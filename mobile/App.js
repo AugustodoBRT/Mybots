@@ -39,7 +39,7 @@ import { notifyReply } from './desktop-notify';
 import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
-import Office from './components/Office';
+import Canvas, { canvasEvent } from './components/Canvas';
 import { FileBadge, formatSize } from './RichMessage';
 
 const UPLOAD_PART = 3 * 1024 * 1024;
@@ -216,7 +216,7 @@ function AppMain() {
   };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (deskPage === 'memory') return false;
+      if (deskPage === 'memory' || deskPage === 'canvas') return false;
       if (!roomId && !team && (!selected || selected === chiefId)) return false;
       goHome(); return true;
     });
@@ -312,10 +312,11 @@ function AppMain() {
       // The reply as it is written goes straight to the store, without reloading anything.
       if (desktop && event === 'message.added') notifyReply(data, { snapshot: appStore.getSnapshot(), openKey: viewingKey.current, open: target => (target.room ? noticeOpen.current.room?.(target.room) : noticeOpen.current.bot?.(target.bot)) });
       if (event === 'notes.changed') { setNotesVersion(version => version + 1); return; }
+      if (event === 'canvas.changed') { canvasEvent(event, data); return; }
       if (event === 'message.draft') { appStore.draft(data); return; }
       if (event === 'browser.frame') { for (const listener of browserFrames) listener(data); return; }
       // The browser's timeline and downloads go to the open conversation's panels.
-      if (event === 'browser.step' || event === 'browser.download') { for (const listener of browserEvents) listener(event, data); return; }
+      if (event === 'browser.step' || event === 'browser.download') { canvasEvent(event, data); for (const listener of browserEvents) listener(event, data); return; }
       if (phoneMode.current === 'phone' && typeof data?.seq === 'number') {
         const result = appStore.event(event, data, openChat.current);
         if (result.duplicate) return;
@@ -563,6 +564,16 @@ function AppMain() {
       await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: await uploadWebFiles((...args) => supervisor.current.call(...args), bot.id, files) } : {}) });
       clearSentDraft(); await loadSupervisorState(); return true;
     } catch (error) { setLoadError(error.message); return false; }
+    finally { setSending(false); }
+  };
+  // The canvas's box: a message to any bot, without leaving the canvas (the reply shows above the box and in the bot's chat).
+  const canvasSend = async (botId, text) => {
+    const bot = data?.bots.find(item => item.id === botId);
+    if (!bot || !text.trim() || sending || mode === 'computer') return false;
+    if (bot.isChief && !visitStarted.current) { visitStarted.current = true; await supervisor.current.call('bot.newSession', { botId: bot.id, opened: true }).catch(() => { visitStarted.current = false; }); }
+    setSending(true);
+    try { await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim() }); await loadSupervisorState(); return true; }
+    catch (error) { setLoadError(error.message); return false; }
     finally { setSending(false); }
   };
   const cancelTask = async taskId => {
@@ -827,7 +838,7 @@ function AppMain() {
       busy: maintenanceBusy, text: maintenanceText, setText: setMaintenanceText, backupNames, setBackupNames, maintenance, saveBackup, restoreBackup, update, checkUpdate, installUpdate,
       openProfile: bot => { setProfileTab(null); setProfileId(bot.id); }, onCreate: () => setCreateVisible(true), openWallet: () => setWalletVisible(true), readDeviceInfo, copyText: copyTermuxText,
       backend, pcLink: currentLink(), pcVia: data?.via, setupBusy, setupError, pairPc, forgetPc, enableTermux, useComputerOnly };
-  // Desktop navigation keeps each bot's unsent text, including office selections.
+  // Desktop navigation keeps each bot's unsent text.
   const openDesktopBot = id => {
     if (selected) desktopDrafts.current.set(selected, draft);
     if (selected !== id) setDraft(desktopDrafts.current.get(id) || '');
@@ -841,21 +852,20 @@ function AppMain() {
   // Desktop, PWA and paired phones use the same supervisor RPC. The old token-based HTTP API has no chief role.
   const canCreateChief = mode === 'phone' && !chiefId;
   const startChief = () => setCreateVisible('chief');
-  const teamView = data && <HomeScreen onWeekly={mode === 'phone' ? () => supervisor.current.call('chief.weekly', {}).then(() => loadSupervisorState?.()).catch(error => setLoadError?.(error.message)) : null} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+  const teamView = data && <HomeScreen onCanvas={!desktop ? () => setDeskPage('canvas') : null} onWeekly={mode === 'phone' ? () => supervisor.current.call('chief.weekly', {}).then(() => loadSupervisorState?.()).catch(error => setLoadError?.(error.message)) : null} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
   // On the computer these are whole pages beside the icon bar instead of sheets.
+  const canvasPage = onClose => data ? <Canvas data={data} call={callNotes} onSend={canvasSend} sending={sending} onClose={onClose}
+    onOpenBot={id => { setDeskPage(null); desktop ? openDesktopBot(id) : navigate({ kind: 'bot', id }); }} onFile={file => file && openConversationFile?.(file)} /> : null;
+  const canvasView = !desktop && deskPage === 'canvas' && canvasPage(() => setDeskPage(null));
   const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} />;
   const deskPages = desktop ? {
     memory: memoryView,
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
     settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />,
-    office: <Office data={data} onOpen={openDesktopBot} onRoom={openDesktopRoom}
-      selectionKey={room ? `room:${room.id}` : bot ? `bot:${bot.id}` : null} selectionName={room?.name || bot?.name}
-      conversation={roomView || chatView} onRespond={respondApproval} approvalBusy={approvalBusy} onCancelTask={cancelTask}
-      taskMessages={chatsRef.current[room?.id || bot?.id]?.messages || []}
-      onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})} />
+    canvas: canvasPage(null)
   } : {};
   const profileSheet = data ? <BotProfile chiefName={data.bots.find(item => item.isChief)?.name} inline={Boolean(desktop)} initialTab={profileTab} visible={Boolean(profileId)} bot={data.bots.find(item => item.id === profileId)} models={data.models || []} defaultSelection={data.defaultSelection}
       phone={mode === 'phone'} active={data.active?.includes(profileId)} ModelSettings={ModelSettings} connections={data.connections} aiAccounts={data.aiAccounts} grants={shownProfile?.grants || []} nodes={data.nodes || []}
@@ -892,7 +902,7 @@ function AppMain() {
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView || teamView}</DesktopShell>
-      : memoryView || roomView || chatView || teamView}
+      : memoryView || canvasView || roomView || chatView || teamView}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
         <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}

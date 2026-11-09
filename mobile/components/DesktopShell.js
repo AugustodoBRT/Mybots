@@ -228,7 +228,6 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
         else if (full) setFull(false);
         else if (fileOpen) { onFileClose?.(); setSide(old => ({ ...old, open: false })); }
         else if (side.open) setSide(old => ({ ...old, open: false }));
-        else if (!globalThis.document?.querySelector('[role="dialog"][aria-modal="true"]') && page === 'office') desktopBus.emit('office-escape');
       }
     };
     globalThis.addEventListener?.('keydown', listen); return () => globalThis.removeEventListener?.('keydown', listen);
@@ -246,7 +245,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const weekLimit = provider => left(provider, 'five_hour') == null ? null : left(provider, 'week');
   const openPage = key => onPage(key);
   const hasChief = bots.some(item => item.isChief);
-  const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['memory', 'Memória', () => openPage('memory'), page === 'memory'], ['office', 'Escritório', () => openPage('office'), page === 'office'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
+  const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['memory', 'Memória', () => openPage('memory'), page === 'memory'], ['canvas', 'Canvas', () => openPage('canvas'), page === 'canvas'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
   const faceOf = tab => tab.kind === 'room' ? <Icon name="bots" size={16} color={C.muted} /> : <Avatar bot={bots.find(item => item.id === tab.id) || { name: '?' }} size={20} animated={false} />;
   return <View style={s.desk}>
@@ -298,7 +297,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       <View style={{ flex: 1 }}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
-    <DesktopReveal open={side.open && Boolean(current) && !team && (!page || (page === 'office' && side.active === 'file'))} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>
+    <DesktopReveal open={side.open && Boolean(current) && !team && (!page || (page === 'canvas' && side.active === 'file'))} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>
       <SideFrame>
         <SideHeader tabs={side.tabs} active={side.active} onPick={kind => setSide(old => ({ ...old, active: kind }))} onClose={closeKind} onNew={() => setSide(old => ({ ...old, active: null }))} wide={wide} onWide={() => setWide(value => !value)} onHide={() => setSide(old => ({ ...old, open: false }))} badge={waiting} />
         {side.active === 'settings' ? profilePanel

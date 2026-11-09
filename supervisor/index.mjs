@@ -250,7 +250,17 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // With a second device sharing the bots, only a bot's owner runs its routines: the phone for bots that live on the phone, the
     // computer for the ones that live there; "onde estiver" runs on the phone, or on the computer while it cannot see the phone.
     const peer = () => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='sync.peer'")?.value || 'null'); } catch { return null; } };
-    const owns = botId => { const other = peer(); if (!other?.known) return true; const home = db.bot(botId)?.home || 'phone'; return kind === 'computer' ? home === 'pc' || (home === 'any' && !other.online) : home !== 'pc'; };
+    // "Onde estiver" runs on the computer whenever it is on: a phone's turn runs on the computer anyway, over the phone's own
+    // connection, and a phone on mobile data (at college, on the bus) dropping it killed the turn halfway. The phone keeps those
+    // routines while it does not hear from the computer (the node tells it at every round, about once a minute), and keeps the ones
+    // started by its own notifications, which only it sees.
+    const heard = other => other?.online && (!other.seenAt || (clock ? clock() : Date.now()) - Date.parse(other.seenAt) < 3 * 60000);
+    const owns = (botId, trigger) => {
+      const other = peer(); if (!other?.known) return true; const home = db.bot(botId)?.home || 'phone';
+      if (home !== 'any') return kind === 'computer' ? home === 'pc' : home !== 'pc';
+      if (trigger === 'notification') return kind === 'computer' ? !other.online : true;
+      return kind === 'computer' ? true : !heard(other);
+    };
     routines = new Routines(db, { queue, ready, notify: tools.notify, changed: broadcast, tickMs: routineTickMs, clock, owns }); tools.routines = routines; routines.rooms = rooms;
     // Tables every bot shares, and the person's decisions: the answer goes back to the bot as a message of the person.
     tools.tables = new Tables(db, { changed: () => broadcast('activity.new') });
@@ -702,7 +712,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           const text = (value, max) => typeof value === 'string' ? value.slice(0, max) : undefined; const count = value => Number.isSafeInteger(value) && value >= 0 ? value : undefined;
           const keep = object => Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
           const save = (key, value) => db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value));
-          if (params.peer && typeof params.peer === 'object') save('sync.peer', { ...peer(), ...keep({ known: typeof params.peer.known === 'boolean' ? params.peer.known : undefined, online: typeof params.peer.online === 'boolean' ? params.peer.online : undefined, name: text(params.peer.name, 40), device: text(params.peer.device, 64) }) });
+          if (params.peer && typeof params.peer === 'object') save('sync.peer', { ...peer(), ...keep({ known: typeof params.peer.known === 'boolean' ? params.peer.known : undefined, online: typeof params.peer.online === 'boolean' ? params.peer.online : undefined, name: text(params.peer.name, 40), device: text(params.peer.device, 64), seenAt: params.peer.online === true ? new Date(clock ? clock() : Date.now()).toISOString() : undefined }) });
           if (params.info && typeof params.info === 'object') {
             const progress = params.info.progress && typeof params.info.progress === 'object' ? keep({ done: count(params.info.progress.done), total: count(params.info.progress.total) }) : undefined;
             save('sync.info', { ...syncRaw(), ...keep({ state: ['idle', 'syncing', 'waiting', 'error'].includes(params.info.state) ? params.info.state : undefined, at: text(params.info.at, 40), firstAt: text(params.info.firstAt, 40), applied: count(params.info.applied), pulled: count(params.info.pulled), pushed: count(params.info.pushed), error: params.info.error === null ? null : text(params.info.error, 200), progress: params.info.progress === null ? null : progress }) });

@@ -22,6 +22,13 @@ test('browser arguments reject invalid actions, coordinates, keys, tabs and unsa
   assert.equal(toolArguments('browser.wait', { url: '/ready' }).url, '/ready');
 });
 
+test('browser_read main and max_chars survive the computer checking the arguments again', () => {
+  const once = toolArguments('browser.read', { main: true, max_chars: 8000 });
+  assert.deepEqual(once, { main: true, maxChars: 8000 });
+  assert.deepEqual(toolArguments('browser.read', once), once);
+  assert.throws(() => toolArguments('browser.read', { maxChars: 100 }), /500 a 20000/);
+});
+
 test('Chrome: hover, scroll, drag, find, same-origin frames, marks, popup tabs and live switching', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-browser-tools-'));
   const s = new BrowserSession(directory);

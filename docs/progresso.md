@@ -2030,3 +2030,10 @@ O chefin escreveu um documento ("Melhorias sugeridas para o MyBots") com o que a
 - **Modelos de bot**: Busca, Estudo, Acompanhamento e Finanças, além de Faculdade e Google; usam a ficha, as tabelas e as decisões.
 - **Tabelas e limites** (Ajustes): por tabela, cada bot lê e escreve, só lê ou não acessa; limite de gasto do mês por bot (dólares, custo estimado): aviso aos 80% e 100%, e no limite as rotinas param (a conversa continua). Sincronizado.
 - `PROMPT_VERSION` 13. Testes em `tests/shared-data.test.mjs`. **Não visto no celular real.**
+
+## 0.88.0 (versionCode 183): navegador do PC lendo de novo e rotinas que não caem com o celular na rua
+
+Na segunda (09/11), na faculdade, o CacaLinkedIn falhou ao ler o LinkedIn e as rotinas das 11h deram "desconexão do computador".
+
+- **`browser_read` com `max_chars` quebrava no PC**: o supervisor traduz `max_chars` para `maxChars`, e o navegador do computador confere os argumentos de novo e recusava o nome traduzido. O bot só via "O navegador não conseguiu executar a ação". Agora a conferência aceita os dois nomes, e o erro de argumento chega ao bot como ele é. Conferido no LinkedIn real com o perfil dos bots.
+- **Rotinas "onde estiver" rodam no computador sempre que ele está ligado**: antes, o celular disparava e a resposta rodava no PC pela conexão do celular; com dados móveis essa conexão caía e matava a resposta (o PC então rodava de novo, em dobro). O celular só assume quando não ouve o computador há 3 minutos (o nó avisa a cada rodada de sincronização). Rotinas por notificação continuam no celular, e as encadeadas (`after`) seguem onde roda a primeira da fila.

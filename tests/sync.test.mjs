@@ -110,10 +110,17 @@ test('routines are shared but run on one device: the phone while it is on, the c
   await f.sync.now();
   const copy = f.computer.routines.all().find(item => item.id === routine.id);
   assert.ok(copy); assert.equal(copy.title, 'Diária'); assert.ok(copy.nextRunAt, 'the arriving routine gets its own schedule');
-  assert.equal(f.phone.routines.owns(mine.id), true); assert.equal(f.phone.routines.owns(theirs.id), true);
-  assert.equal(f.computer.routines.owns(mine.id), false); assert.equal(f.computer.routines.owns(theirs.id), false);
-  await f.sync.phone(false); assert.equal(f.computer.routines.owns(mine.id), true);       // the phone went away: the computer takes over
-  await f.sync.now(); assert.equal(f.computer.routines.owns(mine.id), false);             // and gives it back when the phone returns
+  // "Onde estiver": the computer runs them while it is on, so a phone on mobile data dropping its connection does not kill the turn.
+  assert.equal(f.phone.routines.owns(mine.id), false); assert.equal(f.phone.routines.owns(theirs.id), false);
+  assert.equal(f.computer.routines.owns(mine.id), true); assert.equal(f.computer.routines.owns(theirs.id), true);
+  // Notification routines stay with the phone, which is the one that sees the notifications.
+  assert.equal(f.phone.routines.owns(mine.id, 'notification'), true); assert.equal(f.computer.routines.owns(mine.id, 'notification'), false);
+  await f.sync.phone(false); assert.equal(f.computer.routines.owns(mine.id, 'notification'), true);   // the phone went away: the computer takes over
+  await f.sync.now(); assert.equal(f.computer.routines.owns(mine.id, 'notification'), false);         // and gives it back when the phone returns
+  // The phone takes the routines back when it stops hearing from the computer.
+  const peer = JSON.parse(f.phone.db.get("SELECT value FROM metadata WHERE key='sync.peer'").value);
+  f.phone.db.run("UPDATE metadata SET value=? WHERE key='sync.peer'", JSON.stringify({ ...peer, seenAt: new Date(Date.now() - 10 * 60000).toISOString() }));
+  assert.equal(f.phone.routines.owns(mine.id), true);
   // A routine running (its schedule fields change) is not an edit of the routine.
   const before = f.phone.db.get("SELECT seq FROM changes WHERE tbl='routines' AND key=?", routine.id).seq;
   f.phone.db.run('UPDATE routines SET last_run_at=?,next_run_at=? WHERE id=?', stamp(1), stamp(2), routine.id);

@@ -160,7 +160,7 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger','room'], 'routine.update': ['id','enabled','delete'],
-    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': ['main','max_chars'], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': ['main','max_chars','maxChars'], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.update_bot': ['bot','name','instructions','reason'], 'team.routines': ['bot'], 'team.routine_update': ['bot','id','action','title','instructions','trigger','room','reason'], 'team.usage': [],
     'profile.read': [], 'profile.write': ['text','reason'], 'team.overlap': [],
@@ -318,8 +318,10 @@ export function toolArguments(tool, args) {
   if (tool === 'browser.read') {
     // main: only the page's main content (no menus, header, footer); max_chars: a shorter text (500 to 20.000).
     if (args.main !== undefined && typeof args.main !== 'boolean') throw new Error('Use main true para ler só o conteúdo principal.');
-    if (args.max_chars !== undefined && (!Number.isInteger(args.max_chars) || args.max_chars < 500 || args.max_chars > 20000)) throw new Error('max_chars vai de 500 a 20000.');
-    return { ...(args.main ? { main: true } : {}), ...(args.max_chars ? { maxChars: args.max_chars } : {}) };
+    // maxChars is this function's own output: the computer's browser checks the arguments again after the supervisor did.
+    const maxChars = args.max_chars ?? args.maxChars;
+    if (maxChars !== undefined && (!Number.isInteger(maxChars) || maxChars < 500 || maxChars > 20000)) throw new Error('max_chars vai de 500 a 20000.');
+    return { ...(args.main ? { main: true } : {}), ...(maxChars ? { maxChars } : {}) };
   }
   if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.login') return {};
   if (tool === 'browser.act') {

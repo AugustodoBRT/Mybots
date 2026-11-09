@@ -161,8 +161,14 @@ export class Routines {
         : routine.trigger.type === 'after' ? routine.pending : routine.nextRunAt && routine.nextRunAt <= stamp;
       // Conversation comes first: a busy bot keeps the routine due for the next tick.
       // With two devices sharing the routines, only the bot's owner runs them (see `owns` in index.mjs).
-      if (due && !this.busy(routine.botId) && this.owns(routine.botId)) this.launch(routine);
+      if (due && !this.busy(routine.botId) && this.owns(routine.botId, this.origin(routine))) this.launch(routine);
     }
+  }
+  /** The trigger type at the start of a chain: a routine "after" another runs where the first one runs. */
+  origin(routine) {
+    let current = routine;
+    for (let step = 0; step < 10 && current?.trigger?.type === 'after'; step++) current = this.all().find(item => item.id === current.trigger.routine);
+    return current?.trigger?.type || routine.trigger.type;
   }
   skip(routine, reason, advance) {
     const row = this.db.get('SELECT skipped_at FROM routines WHERE id=?', routine.id);

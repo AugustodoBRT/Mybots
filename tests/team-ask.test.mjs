@@ -98,3 +98,18 @@ test('quantos turnos rodam juntos no computador: pela memória e pelos núcleos,
   assert.equal(pcParallel(2 ** 30, 2, '6'), 6);
   assert.equal(pcParallel(14 * 2 ** 30, 16, 'abc'), 9);
 });
+
+test('team.bots with a bot returns its full instructions, only that bot', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mybots-botfull-'));
+  const db = new Database(dir), tools = new Tools(db);
+  try {
+    const chief = db.create({ name: 'Lua', isChief: true }, selection);
+    const long = 'Função longa. '.repeat(40).trim();
+    const sol = db.create({ name: 'Sol', instructions: long }, selection);
+    const team = new Team(db, { rooms: new Rooms(db, { schedule() {} }), schedule() {} });
+    const all = team.bots({ botId: chief.id }).bots.find(b => b.name === 'Sol');
+    assert.ok(all.role.length <= 140);
+    const one = team.bots({ botId: chief.id }, { bot: 'sol' }).bots;
+    assert.equal(one.length, 1); assert.equal(one[0].instructions, long);
+  } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+});

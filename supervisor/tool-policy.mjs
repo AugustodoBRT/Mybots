@@ -175,7 +175,7 @@ export function toolArguments(tool, args) {
     'canvas.update': ['id','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h'], 'canvas.link': ['from','to','label'], 'canvas.remove': ['id'], 'browser.viewport': ['size','width','height'],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
     'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
-    'team.status': [], 'team.bots': [], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
+    'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
@@ -291,7 +291,8 @@ export function toolArguments(tool, args) {
     if (!['open', 'done', 'all'].includes(state)) throw new Error('Use state open, done ou all.');
     return { state, limit: integer('limit', 1, 200, 50) };
   }
-  if (tool === 'team.status' || tool === 'team.bots' || tool === 'team.rooms') return {};
+  if (tool === 'team.bots') return {};
+  if (tool === 'team.status' || tool === 'team.rooms') return {};
   if (tool === 'team.create_bot') {
     const color = text('color', 10, true); const avatar = text('avatar', 10, true); const access = text('access', 10, true); const home = text('home', 10, true);
     if (color && !['green','blue','purple','orange'].includes(color)) throw new Error('Use color green, blue, purple ou orange.');

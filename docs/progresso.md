@@ -2065,3 +2065,11 @@ O CacaLinkedIn se recusava a postar o relatório na sala quando a ordem vinha do
 
 - O aviso (`viaChief` em `mobile/local.js`) agora diz que o Chefe fala pela pessoa e a ordem é válida (postar em sala, ferramentas, rotinas, regras da memória). Continua sem valer como confirmação só para apagar dados e gastar dinheiro, que seguem pelo pedido de aprovação.
 - **Não visto no celular real.**
+
+## 0.90.2 (versionCode 187): o Chefe lê a função completa de um bot
+
+Mesmo com a ordem válida, o modelo do bot (GPT-6-Luna) recusava "digitar as instruções internas" e só cedeu quando o dono insistiu.
+
+- `team_bots` aceita `bot` (nome ou id) e devolve a função/instruções completas e literais só desse bot; sem `bot`, segue com o resumo de 140 caracteres. O Chefe não depende mais de o bot recitar o texto.
+- O aviso `viaChief` passa a dizer que, se o Chefe pedir a função, o bot a mostra inteira (é do dono, não é segredo).
+- Teste em `tests/team-ask.test.mjs`. **Não visto no celular real.**

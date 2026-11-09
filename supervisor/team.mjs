@@ -36,7 +36,10 @@ export class Team {
   }
   describeBot(bot, you) { return { id: bot.id, name: bot.name, role: short(bot.instructions), ...(bot.isChief ? { isChief: true } : {}), ...(bot.access ? { access: bot.access } : {}), ...(you ? { you: true } : {}) }; }
   describeRoom(room) { return { id: room.id, name: room.name, members: this.rooms.members(room).map(bot => bot.name), active: this.rooms.active(room.id).length > 0 }; }
-  bots(run) { return { bots: this.live().map(bot => this.describeBot(bot, bot.id === run.botId)) }; }
+  bots(run, args = {}) {
+    if (args.bot) { const bot = this.bot(args.bot); return { bots: [{ ...this.describeBot(bot, bot.id === run.botId), role: undefined, instructions: bot.instructions || '' }] }; }
+    return { bots: this.live().map(bot => this.describeBot(bot, bot.id === run.botId)) };
+  }
   roomsOf(run) { return { rooms: this.rooms.list().filter(room => room.botIds.includes(run.botId) || room.createdBy === run.botId).map(room => this.describeRoom(room)) }; }
 
   create(run, args, caller) {
@@ -181,7 +184,7 @@ export class Team {
   perform(run, tool, args) {
     const caller = this.db.requireBot(run.botId);
     switch (tool) {
-      case 'team.bots': return this.bots(run);
+      case 'team.bots': return this.bots(run, args);
       case 'team.rooms': return this.roomsOf(run);
       case 'team.create_bot': return this.create(run, args, caller);
       case 'team.create_room': return this.createRoom(run, args, caller);

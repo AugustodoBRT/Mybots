@@ -40,6 +40,7 @@ import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-fr
 import { Link } from './link.mjs';
 import { Tables, Decisions } from './shared-data.mjs';
 import { Canvas } from './canvas.mjs';
+import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
@@ -48,7 +49,7 @@ import { create as createFile } from './creator.mjs';
 const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
-  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000 } = {}) {
+  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000, aiUpdateMs = 6 * 3600000 } = {}) {
   process.umask(0o077);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = join(directory, 'supervisor.lock');
@@ -61,7 +62,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, rooms, nodes, link, negotiations, decisions, decisionTimer;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, aiTimer, rooms, nodes, link, negotiations, decisions, decisionTimer;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -510,6 +511,20 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (op === 'list') return { accounts: nodes.computer?.()?.accounts || null };
           return link.aiAccounts(op, { provider: params.provider, id: params.id, label: params.label });
         }
+        // The IAs of this device and of the computer: versions, the update button and "Atualizar sozinho" (on by default).
+        case 'ai.status': {
+          const local = await aiStatus({ check: params.check !== false });
+          const pc = kind !== 'computer' && nodes.computer?.() ? await link.aiRuntime('status').catch(error => ({ error: error.message })) : null;
+          return { local, pc, auto: db.get("SELECT value FROM metadata WHERE key='ai.autoUpdate'")?.value !== 'false', last: (() => { try { return JSON.parse(db.get("SELECT value FROM metadata WHERE key='ai.lastUpdate'")?.value || 'null'); } catch { return null; } })() };
+        }
+        case 'ai.update': {
+          const [local, pc] = await Promise.all([aiUpdate(), kind !== 'computer' && nodes.computer?.() ? link.aiRuntime('update').catch(error => ({ error: error.message })) : null]);
+          const result = { local, pc, at: new Date().toISOString() };
+          db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'ai.lastUpdate', JSON.stringify(result));
+          db.record('ai_updated', `IAs atualizadas: ${[...(local.results || []), ...(pc?.results || [])].filter(item => item.ok && item.from && item.version !== item.from).map(item => `${item.name} ${item.version}`).join(', ') || 'nada novo'}.`.slice(0, 300), null, null); broadcast('activity.new');
+          return result;
+        }
+        case 'ai.auto': { if (typeof params.on !== 'boolean') throw new Error('Pedido inválido.'); db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'ai.autoUpdate', String(params.on)); return { auto: params.on }; }
         case 'pc.update': {
           if (!['state', 'check', 'install'].includes(params.op)) throw new Error('Pedido inválido.');
           if (!nodes.computer?.()) throw new Error('O computador não está conectado.');
@@ -898,7 +913,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     let api;
     server = createServer(async (request, response) => {
       if (request.url === '/mcp') { await handleMcp(request, response, tools); return; }
-      if (request.method === 'POST' && ['/tools/claim','/tools/call','/tools/list','/tools/chrome'].includes(request.url)) {
+      if (request.method === 'POST' && ['/tools/claim','/tools/call','/tools/list','/tools/chrome','/tools/approval'].includes(request.url)) {
         response.setHeader('Content-Type', 'application/json'); response.setHeader('Cache-Control', 'no-store');
         if (request.headers.origin || !request.headers.authorization?.startsWith('Bearer ')) { response.writeHead(403).end(JSON.stringify({ error: 'Conexão não autorizada.' })); return; }
         const runToken = request.headers.authorization.slice(7);
@@ -908,6 +923,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           for await (const chunk of request) { size += chunk.length; if (size > 16000) throw new Error('Pedido grande demais.'); chunks.push(chunk); }
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           const result = request.url === '/tools/chrome' ? await tools.chromeHook(runToken, body)
+            : request.url === '/tools/approval' ? await tools.codexApproval(runToken, body)
             : request.url === '/tools/claim' ? (tools.context(runToken, body.bridgeId, true), { connected: true })
             : request.url === '/tools/list' ? { tools: tools.toolList(runToken, body.bridgeId) }
             : body.name !== undefined ? await tools.callMcp(runToken, body) : await tools.call(runToken, body);
@@ -1112,7 +1128,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
     api = { db, queue, tools, routines, decisions: () => decisions, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(decisionTimer); clearInterval(itemTimer); clearInterval(pruneTimer); email.stop(); routines.stop(); link.close();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(decisionTimer); clearInterval(itemTimer); clearInterval(pruneTimer); clearInterval(aiTimer); email.stop(); routines.stop(); link.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();
@@ -1128,6 +1144,15 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // With a computer paired, only the computer tidies the memory, so both devices never move the same notes at once.
     const prune = () => { if (kind === 'computer' || !peer()?.known) { const now = clock ? Number(clock()) : Date.now(); try { pruneNotes(db, { now }); } catch {} try { linkProjects(db, { now }); } catch {} } };
     prune(); if (pruneMs) pruneTimer = setInterval(prune, pruneMs);
+    // "Atualizar sozinho": once a day, this device updates its IAs (the computer's are updated by its own supervisor). Off in tests.
+    const autoAi = async () => {
+      if (db.get("SELECT value FROM metadata WHERE key='ai.autoUpdate'")?.value === 'false' || process.env.NODE_TEST_CONTEXT) return;
+      const last = Date.parse(db.get("SELECT value FROM metadata WHERE key='ai.lastAuto'")?.value || '') || 0;
+      if (Date.now() - last < 22 * 3600000) return;
+      db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'ai.lastAuto', new Date().toISOString());
+      try { const done = await aiUpdate(); const changed = done.results.filter(item => item.ok && item.from && item.version !== item.from); if (changed.length) { db.record('ai_updated', `IAs atualizadas sozinhas: ${changed.map(item => `${item.name} ${item.version}`).join(', ')}.`.slice(0, 300), null, null); broadcast('activity.new'); } } catch {}
+    };
+    if (aiUpdateMs) { aiTimer = setInterval(autoAi, aiUpdateMs); aiTimer.unref?.(); setTimeout(autoAi, 10 * 60000).unref?.(); }
     return api;
   } catch (error) {
     clearInterval(timer); clearInterval(pingTimer); clearInterval(pruneTimer); clearInterval(decisionTimer); email?.stop(); routines?.stop(); link?.close();

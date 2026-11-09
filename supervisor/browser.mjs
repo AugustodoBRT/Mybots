@@ -24,13 +24,22 @@ const DEVICE_OPS = ['pdfRead', 'pdfCreate'];
 const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, pay: 60000, pcPay: 30000, passwordsSync: 30000, payDone: 20000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, phoneOpenApp: 30000, phoneScreen: 25000 };
 
 // Loopback and link-local hosts are never opened: the supervisor and other local services live there.
-export function safeUrl(value) {
+// A site the bot is building on the computer (npm run dev, python -m http.server…): the usual development ports on this machine.
+// MyBots' own ports are never among them.
+export const DEV_PORTS = new Set([1234, 3000, 3001, 3002, 3003, 3004, 3005, 4000, 4173, 4200, 4321, 5000, 5001, 5173, 5174, 5175, 5500, 5501, 6006, 8000, 8001, 8008, 8080, 8081, 8888, 9000]);
+const LOOPBACK = host => host === 'localhost' || host.endsWith('.localhost') || /^127\./.test(host) || host === '::1' || host === '0.0.0.0';
+/** A development site on this computer (http://localhost:5173 and the like). */
+export function localDevUrl(value) {
+  try { const url = new URL(value); const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase(); return ['http:', 'https:'].includes(url.protocol) && LOOPBACK(host) && DEV_PORTS.has(Number(url.port)) && !url.username && !url.password; } catch { return false; }
+}
+export function safeUrl(value, { local = false } = {}) {
+  if (local && localDevUrl(value)) return new URL(value).href;
   let url;
   try { url = new URL(value); } catch { throw new Error('Endereço inválido. Use um link completo, como https://exemplo.com.'); }
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('O navegador do bot só abre links http ou https.');
   const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (host === 'localhost' || host.endsWith('.localhost') || /^127\./.test(host) || /^0\./.test(host) || host === '0.0.0.0' || host === '::1' || host === '::' || /^169\.254\./.test(host) || /^fe80:/.test(host) || /^::ffff:127\./.test(host))
-    throw new Error('O navegador do bot não abre endereços deste próprio celular.');
+    throw new Error('O navegador do bot não abre endereços deste próprio aparelho, fora as portas de desenvolvimento no computador (como localhost:5173, :3000 ou :8000).');
   if (url.username || url.password) throw new Error('Não coloque usuário ou senha no link; a pessoa entra pelo botão Assumir.');
   return url.href;
 }

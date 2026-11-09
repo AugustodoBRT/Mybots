@@ -5,6 +5,7 @@ import claudeRunner from '../lib/claude-runner.cjs';
 import agyRunner from '../lib/agy-runner.cjs';
 import opencodeRunner from '../lib/opencode-runner.cjs';
 import { promptFor } from '../mobile/local.js';
+import { aiBinary } from '../lib/ai-runtimes.mjs';
 import { friendlyError } from '../lib/codex.mjs';
 import { PROVIDERS, PROVIDER_NAMES } from '../lib/models.mjs';
 import { now } from './database.mjs';
@@ -18,10 +19,10 @@ import { accounts } from '../lib/accounts.mjs';
 export const runReply = (bot, prompt, options) => {
   const provider = bot.provider || 'codex', env = accounts.env(provider, bot.aiAccount);
   const withAccount = { ...options, ...(env ? { env } : {}) };
-  return provider === 'claude' ? claudeRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.CLAUDE_BIN || 'claude' })
-    : provider === 'agy' ? agyRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.AGY_BIN || 'agy' })
-    : provider === 'opencode' ? opencodeRunner.runReply(bot, prompt, { ...withAccount, binary: process.env.OPENCODE_BIN || 'opencode' })
-    : runner.runReply(bot, prompt, { ...withAccount, binary: process.env.CODEX_BIN || 'codex' });
+  return provider === 'claude' ? claudeRunner.runReply(bot, prompt, { ...withAccount, binary: aiBinary('claude') })
+    : provider === 'agy' ? agyRunner.runReply(bot, prompt, { ...withAccount, binary: aiBinary('agy') })
+    : provider === 'opencode' ? opencodeRunner.runReply(bot, prompt, { ...withAccount, binary: aiBinary('opencode') })
+    : runner.runReply(bot, prompt, { ...withAccount, binary: aiBinary('codex') });
 };
 
 // Why a running turn was stopped by the supervisor instead of the person, and what the conversation says.
@@ -186,7 +187,7 @@ export class Queue extends EventEmitter {
           ...(!quiet && (!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
           onDelta: quiet ? undefined : text => { if (!controller.signal.aborted) draftOf(text); },
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
+          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', github: next.lane === 'pc' && this.tools.policy(runBot.id, 'github') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
             computer: next.lane === 'pc' && this.tools.policy(runBot.id, 'computer') !== 'deny' ? { folders: Array.isArray(runBot.folders) ? runBot.folders : [], full: ['full', 'free'].includes(runBot.access) } : false,
             // Livre on the phone: Termux's whole shell. Codex cannot ask command by command, so "Comandos no Termux" on the list keeps it without one.

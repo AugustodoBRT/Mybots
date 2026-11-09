@@ -30,11 +30,13 @@ export class Desktop {
   async command(op, input, signal) {
     if (!hasDesktopControl()) throw new Error('O controle da tela e do teclado do computador só existe no Linux (Wayland/Hyprland) por enquanto.');
     const args = toolArguments(op, input); const kind = op.slice(8);
-    const run = async (bin, argv, options = {}) => {
+    const run = async (bin, argv, options = {}, retried = false) => {
       signal?.throwIfAborted();
       try { return (await this.run(bin, argv, { timeout: 15000, maxBuffer: 16 * 1024 * 1024, signal, ...options })).stdout; }
       catch (error) {
         if (signal?.aborted) throw new Error('Controle do computador interrompido.');
+        // At boot ydotoold may start before the person's session can use /dev/uinput, fail a few times and give up: start it again once.
+        if (bin === 'ydotool' && !retried) { try { await this.run('systemctl', ['--user', 'restart', 'ydotool'], { timeout: 10000 }); await new Promise(resolve => setTimeout(resolve, 800)); return await run(bin, argv, options, true); } catch {} }
         if (bin === 'ydotool') throw new Error('ydotool indisponível. Instale ydotool e ative ydotoold (serviço do usuário ydotool); ele precisa de acesso a /dev/uinput.');
         throw new Error(`${bin} não conseguiu executar a ação. Confira a sessão Wayland/Hyprland e as dependências.`);
       }

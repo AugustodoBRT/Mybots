@@ -111,7 +111,7 @@ test('the bot\'s Chrome process streams frames to the node over IPC and reports 
   t.after(async () => { browser.close(); await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); });
   await browser.command(botId, 'view', { on: true });
   await until(() => frames.some(frame => frame.image));
-  await assert.rejects(browser.command(botId, 'input', { type: 'open', url: 'localhost:3219' }), /celular/);
+  await assert.rejects(browser.command(botId, 'input', { type: 'open', url: 'localhost:3219' }), /próprio aparelho/);  // 3219 is MyBots' own port: never a development site
   browser.stop(botId);
   await until(() => frames.some(frame => frame.closed));
 });

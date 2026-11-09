@@ -7,6 +7,7 @@ import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
 import { AiAccounts } from './AiAccounts';
+import { AiRuntimes } from './AiRuntimes';
 import { RemotePanel, TermuxGuide } from './Setup';
 import { DesktopUpdate } from './DesktopUpdate';
 import { PcUpdate } from './PcUpdate';
@@ -113,7 +114,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const solid = useFaces3d();
   const categories = useMemo(() => [
     { key: 'account', icon: 'user', title: 'Conta e IA', summary: data?.person?.name ? `${data.person.name} · aparência e contas Google` : 'Seu nome, aparência e contas Google', keywords: ['nome', 'tema', 'escuro', 'claro', 'sistema', 'gmail', 'e-mail', 'google', 'contas', 'login'] },
-    ...(phone ? [{ key: 'ai', icon: 'user', title: 'Contas de IA', summary: aiSummary(data?.aiAccounts), keywords: ['claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
+    ...(phone ? [{ key: 'ai', icon: 'user', title: 'IAs e contas', summary: aiSummary(data?.aiAccounts), keywords: ['atualizar', 'atualização', 'versão', 'instaladas', 'claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', '3d', 'aparência', 'rosto', ...bots.map(bot => bot.name)] },
     { key: 'controls', icon: 'list', title: 'Tabelas e limites', summary: 'Quem lê e escreve cada tabela compartilhada, e o limite de gasto de cada bot', keywords: ['tabela', 'tabelas', 'dados', 'permissão', 'limite', 'gasto', 'custo', 'orçamento', 'dinheiro'] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
@@ -135,7 +136,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
         onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}
         onLogin={async (botId, account) => { onClose(); await a.googleLogin(botId, account); }} />
     </>;
-    if (key === 'ai') return <AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} />;
+    if (key === 'ai') return <><AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} /><AiRuntimes call={a.call} /></>;
     if (key === 'bots') return <>
       {FACES_3D_AVAILABLE ? <View style={[s.botRow, { gap: 12 }]}>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Bots em 3D</Text>

@@ -8,14 +8,14 @@ import { connect as tlsConnect } from 'node:tls';
 import { dialRelay, roomFor, validRelay } from './relay.mjs';
 
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
-export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome'];
+export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome', '/tools/approval'];
 export const MAX_FRAME = 32 * 1024 * 1024;
 const NOT_FOUND = 'Não achei o computador neste Wi-Fi. Confira se ele está ligado e na mesma rede, ou use o Tailscale para funcionar de qualquer lugar.';
 const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
 // backups, connectors with passwords, pairing or the phone's own hardware.
-export const DESKTOP_METHODS = [...noteMethods, 'state.get', 'ai.accounts', 'pc.update', 'decision.answer', 'chief.weekly', 'budget.set', 'table.access', 'tables.list', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'bot.resumeSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
+export const DESKTOP_METHODS = [...noteMethods, 'state.get', 'ai.accounts', 'pc.update', 'ai.status', 'ai.update', 'ai.auto', 'decision.answer', 'chief.weekly', 'budget.set', 'table.access', 'tables.list', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'bot.resumeSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
   'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput', 'passwords.list', 'passwords.save', 'passwords.remove', 'passwords.import'];
@@ -337,6 +337,16 @@ export class Link {
       if (!this.post({ type: 'pc_update', rid, op })) done({ error: 'offline' });
     });
   }
+  /** The IAs installed on the computer (lib/ai-runtimes.mjs): op is status or update (which may take minutes). */
+  aiRuntime(op) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou para responder.' }), op === 'update' ? 20 * 60000 : 60000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result || {}); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'ai_runtime', rid, op })) done({ error: 'offline' });
+    });
+  }
   /** The skills (folders with SKILL.md) found on the computer, for the profile's list and to check what a bot turns on. */
   skills() {
     return new Promise((resolve, reject) => {
@@ -371,7 +381,7 @@ export class Link {
       const end = () => { clearTimeout(timer); this.runs.delete(id); };
       this.runs.set(id, { taskId: tools?.taskId, onSession, onProgress, onDelta, resolve: value => { end(); resolve(value); }, reject: error => { end(); reject(error); } });
       const { messages, ...settings } = bot;
-      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, phone: Boolean(tools.phone), computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
+      send({ type: 'run', id, bot: settings, prompt, tools: tools ? { token: tools.token, desktop: Boolean(tools.desktop), github: Boolean(tools.github), browser: Boolean(tools.browser), connectors: tools.connectors, connectorDeny: tools.connectorDeny, connectorWrites: tools.connectorWrites, phone: Boolean(tools.phone), computer: tools.computer ? { folders: tools.computer.folders || [], full: Boolean(tools.computer.full) } : false } : null });
       signal?.addEventListener('abort', () => {
         send({ type: 'cancel', id });
         timer = setTimeout(() => this.runs.get(id)?.reject(new Error('Pedido cancelado.')), 8000);

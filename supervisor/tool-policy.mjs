@@ -57,6 +57,8 @@ export const TOOL_DEFINITIONS = [
   { name: 'routine.update', label: 'Pausar ou apagar rotinas', description: 'Pausa, retoma ou apaga uma rotina deste bot.', defaultAllowed: true },
   // Bots answering from the paired computer: files in their own folder there are free; the rest goes by the level.
   { name: 'computer', label: 'Mexer no computador', description: 'Quando responde pelo computador: cria e edita arquivos na pasta dele (~/MyBots/Nome) e roda comandos. Acesso total aos arquivos e ao terminal disponíveis no aparelho.' },
+  // GitHub: the person's own login (gh and the git token), shown to this bot's turns on the computer only when turned on.
+  { name: 'github', label: 'Usar o seu GitHub', description: 'No computador, o bot usa o gh e o git com a sua conta: vê seus repositórios, cria projetos, faz commit e push, seguindo as mesmas regras de aprovação do terminal. Desligado, sua conta fica escondida dele.' },
   { name: 'desktop', label: 'Controlar a tela do computador', description: 'Vê a tela e as janelas, abre apps, clica e digita no PC.' },
   // Skills: small programs a bot made, run on the phone without the IA. Installing one always asks the person.
   { name: 'negotiation.status', label: 'Ver negociações', description: 'Consulta os mandatos de negociação deste bot.', readOnly: true, defaultAllowed: true },
@@ -359,14 +361,15 @@ export function toolArguments(tool, args) {
   }
   if (tool === 'browser.tabs') {
     if (!['list','switch','new','close'].includes(args.action)) throw new Error('Ação de abas inválida.');
-    return { action: args.action, ...(['switch','close'].includes(args.action) || args.tab !== undefined ? { tab: integer('tab', 1, 5) } : {}), ...(args.url !== undefined ? { url: safeUrl(text('url', 2000)) } : {}) };
+    return { action: args.action, ...(['switch','close'].includes(args.action) || args.tab !== undefined ? { tab: integer('tab', 1, 5) } : {}), ...(args.url !== undefined ? { url: safeUrl(text('url', 2000), { local: true }) } : {}) };
   }
   if (tool === 'browser.find') return { query: text('query', 200), limit: integer('limit', 1, 20, 5) };
   if (tool === 'browser.screenshot') {
     if (args.marks !== undefined && typeof args.marks !== 'boolean') throw new Error('Use marks true ou false.');
     return { marks: args.marks === true };
   }
-  if (tool === 'browser.open') return { url: safeUrl(text('url', 2000)) };
+  // A local development site passes here; whether this bot may open it is decided where it runs (tools.mjs).
+  if (tool === 'browser.open') return { url: safeUrl(text('url', 2000), { local: true }) };
   if (tool === 'browser.click') return { id: integer('id', 1, 100000) };
   if (tool === 'browser.type') {
     if (args.submit !== undefined && typeof args.submit !== 'boolean') throw new Error('Use submit true ou false.');

@@ -1,4 +1,5 @@
 import { VIEWPORTS } from './canvas.mjs';
+import { localDevUrl } from './browser.mjs';
 import { noteTool } from './notes.mjs';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -169,6 +170,8 @@ export class Tools {
     if (tool === 'delivery.write' || chiefOnly(tool)) return this.allowed(botId, tool) ? 'allow' : 'deny';
     if (['account.connectors', 'email.search', 'email.read'].includes(tool) || tool.startsWith('mcp:')) return 'deny';
     if (tool === 'phone') return bot.phoneControl === true ? 'allow' : 'deny';
+    // The person's GitHub account: only for the bots it was turned on for (Perfil → Acesso → Usar o seu GitHub), off by default.
+    if (tool === 'github') return this.allowed(botId, 'github') ? 'allow' : 'deny';
     return 'allow';
   }
   /** Whether this call needs the person now, and whether the card may offer "Sempre permitir". */
@@ -422,6 +425,18 @@ export class Tools {
     if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
     return deny('Use o serviço diretamente pelo navegador do MyBots. Não é necessário conectar apps na conta da IA.');
   }
+  /**
+   * Codex asking to step out of its sandbox (lib/codex-server.cjs), like it asks the person in their own terminal: decided by the same
+   * rules as Claude's commands and files on the computer (keys refused, risky commands and the "sempre perguntar" list ask the person).
+   */
+  async codexApproval(token, body) {
+    const run = this.runs.get(token);
+    if (!run || !this.runsHas(run) || !body || typeof body !== 'object') throw new Error('Autorização de execução inválida ou encerrada.');
+    const text = (value, max) => typeof value === 'string' ? value.slice(0, max) : '';
+    const decision = body.kind === 'command' ? await this.computerPermission(run, 'Bash', { command: text(body.command, 2000), ...(body.reason ? { description: text(body.reason, 300) } : {}) })
+      : body.kind === 'file' ? await this.computerPermission(run, 'Write', { file_path: text(body.path, 2000) }) : { behavior: 'deny' };
+    return { allow: decision.behavior === 'allow', ...(decision.message ? { message: decision.message } : {}) };
+  }
   /** The official extension executes on the PC; every native call is gated on the phone, including reads. */
   async chromeHook(token, body) {
     const run = this.runs.get(token);
@@ -638,6 +653,8 @@ export class Tools {
       this.requireGrant(run, 'browser');
       // A bot answering on the phone browses in the computer's Chromium when it is connected; the phone's WebView is the fallback.
       const viaPc = run.lane === 'pc' || Boolean(this.pcBrowserFor?.(bot));
+      // A site the bot is building on the computer (localhost:5173…): only in the computer's browser, for a bot that may use the computer.
+      if (args.url && localDevUrl(args.url) && !(viaPc && this.policy(bot.id, 'computer') !== 'deny')) throw new Error('Endereços locais (localhost) abrem só no navegador do computador, para bots com "Mexer no computador". Rode o site no computador e abra por lá.');
       const command = async (botId, op, input = {}) => {
         checkMine();
         this.requireGrant(run, 'browser');

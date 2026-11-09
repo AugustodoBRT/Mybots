@@ -21,6 +21,7 @@ import { Opencode } from '../lib/opencode.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
 const { discover, enabledFor } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
+import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
 import { SENSITIVE, browserMode } from '../supervisor/tool-policy.mjs';
 import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
@@ -127,13 +128,17 @@ const HIDDEN = ['.ssh', '.gnupg', '.mybots-pc', '.password-store', '.aws', '.kub
 const OTHER_LOGINS = [['codex', '.codex'], ['claude', '.claude'], ['agy', '.gemini'], ['opencode', '.local/share/opencode']];
 // `accountDir`: the folder of the extra account this turn logs in with (lib/accounts.mjs). The folder of all the accounts is hidden and
 // only this one is mounted back, so a turn sees neither the other accounts nor, when it uses an extra one, the IA's own default login.
-export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev', accountDir = null, accountsRoot = accounts.root() } = {}) {
+export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev', accountDir = null, accountsRoot = accounts.root(), github = false } = {}) {
   if (!bwrap) return null;
   const ownLogin = accountDir ? [] : [provider || 'codex'];   // an extra account hides the default login of its own IA too
-  const hidden = [...new Set([...HIDDEN, ...OTHER_LOGINS.filter(([key]) => !ownLogin.includes(key)).map(([, path]) => path)].map(path => join(home, path)).concat(directory, accountsRoot))].filter(path => existsSync(path) && statSync(path).isDirectory());
+  const hidden = [...new Set([...HIDDEN.filter(path => !(github && path === '.config/gh')), ...OTHER_LOGINS.filter(([key]) => !ownLogin.includes(key)).map(([, path]) => path)].map(path => join(home, path)).concat(directory, accountsRoot))].filter(path => existsSync(path) && statSync(path).isDirectory());
   // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
   // prevents reaching the host's sockets and browser profiles through another process's root directory.
   const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
+  // Files with secrets: git's saved logins (the GitHub token in plain text) only reach a bot the person gave GitHub to.
+  const holdsSecret = path => { try { return /(_auth|token|password|passwd|secret)/i.test(readFileSync(path, 'utf8').slice(0, 65536)); } catch { return true; } };
+  const secretFiles = [...(github ? [] : ['.git-credentials', '.config/git/credentials']), '.netrc', '.npmrc', '.pypirc'].map(path => join(home, path))
+    .filter(path => existsSync(path) && !statSync(path).isDirectory() && (path.includes('credentials') || holdsSecret(path)));
   const sockets = ['/tmp/.ydotool_socket', process.env.YDOTOOL_SOCKET, process.env.XAUTHORITY, join(home, '.Xauthority')].filter(path => path?.startsWith('/') && existsSync(path) && !statSync(path).isDirectory());
   // Skills turned on for the bot: only their folder, at the same absolute path, mounted after the folders hidden above
   // (a skill under ~/.claude stays reachable for a Codex bot while the rest of ~/.claude is empty). Read-only unless
@@ -146,7 +151,7 @@ export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap'
   // The graphics card only when the person turned it on for this bot: the private /dev has no render devices.
   const devices = gpu ? gpuDevices(dev).flatMap(path => ['--dev-bind', path, path]) : [];
   return [bwrap, '--dev-bind', '/', '/', '--die-with-parent', '--unshare-pid', '--proc', '/proc', '--dev', '/dev',
-    ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set(sockets)].flatMap(path => ['--ro-bind', '/dev/null', path]), ...folders, ...devices];
+    ...[...new Set([...hidden, ...desktop])].flatMap(path => ['--tmpfs', path]), ...[...new Set([...sockets, ...secretFiles])].flatMap(path => ['--ro-bind', '/dev/null', path]), ...folders, ...devices];
 }
 
 const local = { codex: new Codex(), claude: new Claude(process.env.CLAUDE_BIN || 'claude'), agy: new Agy(), opencode: new Opencode() };
@@ -410,6 +415,12 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
+      // The IAs installed here (Codex, Claude Code, Antigravity, opencode): their versions, and updating them, asked by the phone.
+      if (message.type === 'ai_runtime' && typeof message.rid === 'string') {
+        try { send({ type: 'pc_result', rid: message.rid, result: message.op === 'update' ? await aiUpdate() : await aiStatus() }); }
+        catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type === 'agent_skills' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: { skills: discover().map(({ id, name, description, path, source }) => ({ id, name, description, path, source })) } }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
@@ -454,7 +465,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         const enabledSkills = enabledFor(bot, discover());
-        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true, accountDir: accounts.folder(bot.provider || 'codex', bot.aiAccount) });
+        const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true, accountDir: accounts.folder(bot.provider || 'codex', bot.aiAccount), github: Boolean(message.tools?.github) });
         // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it, but Codex gets no
         // terminal (read-only) and Claude's commands and writes outside the bot's folder go through approval cards.
         if (!wrap && hasIsolation()) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');

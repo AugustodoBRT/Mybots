@@ -11,7 +11,7 @@ try {
   cpSync(join(root, 'supervisor/mcp'), join(temporary, 'supervisor/mcp'), { recursive: true });
   // ws's README is documentation only; leaving it out keeps the package under the bridge limit.
   cpSync(join(root, 'supervisor/node_modules/ws'), join(temporary, 'supervisor/node_modules/ws'), { recursive: true, filter: source => !source.endsWith('README.md') });
-  for (const file of ['accounts.mjs','codex.mjs','cli-bin.cjs','codex-runner.cjs','claude.mjs','claude-runner.cjs','models.mjs','agent-skills.cjs','stream-batch.cjs','cli-run.cjs','agy.mjs','agy-runner.cjs','opencode.mjs','opencode-runner.cjs','mimo.mjs','pricing.mjs','node-binary.cjs']) cpSync(join(root,'lib',file), join(temporary,'lib',file));
+  for (const file of ['accounts.mjs','ai-runtimes.mjs','codex-server.cjs','codex.mjs','cli-bin.cjs','codex-runner.cjs','claude.mjs','claude-runner.cjs','models.mjs','agent-skills.cjs','stream-batch.cjs','cli-run.cjs','agy.mjs','agy-runner.cjs','opencode.mjs','opencode-runner.cjs','mimo.mjs','pricing.mjs','node-binary.cjs']) cpSync(join(root,'lib',file), join(temporary,'lib',file));
   for (const file of ['local.js','supervisor-client.js','routine-text.js','markdown.js','file-references.js']) cpSync(join(root,'mobile',file), join(temporary,'mobile',file));
   for (const file of ['isolate-accounts.mjs','supervisor.test.mjs','tools.test.mjs','claude.test.mjs','routines.test.mjs','apps.test.mjs','access.test.mjs','default-access.test.mjs']) cpSync(join(root,'tests',file), join(temporary,'tests',file));
   writeFileSync(join(temporary,'package.json'), JSON.stringify({ type: 'module' }));

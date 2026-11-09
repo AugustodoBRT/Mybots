@@ -6,7 +6,7 @@ import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/br
 import { viewSize } from '../supervisor/browser-frame.mjs';
 import { redactCardNumbers } from '../supervisor/card-pan.mjs';
 import { readCheckoutTotal } from '../supervisor/wallet-checkout.mjs';
-import { safeUrl, stepCaption, BLOCKED } from '../supervisor/browser.mjs';
+import { safeUrl, stepCaption, BLOCKED, localDevUrl } from '../supervisor/browser.mjs';
 import { dataDirectory } from './platform.mjs';
 import { electronInfo, connectElectron, electronCall, electronPage } from './electron-link.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
@@ -24,7 +24,9 @@ const PROCESSORS = ['stripe.com', 'stripe.network', 'mercadopago.com', 'mercadop
 const cardFrame = (frameUrl, pageHost) => { try { const url = new URL(frameUrl); return url.protocol === 'https:' && (url.hostname === pageHost || PROCESSORS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))); } catch { return frameUrl === 'about:srcdoc' || frameUrl === 'about:blank'; } };
 const CARD_MARK = '[data-mybots-card]';
 
-export async function allowedUrl(value) {
+export async function allowedUrl(value, { local = false } = {}) {
+  // A development site on this computer: only what the supervisor already let this bot open (see localDevUrl).
+  if (local && localDevUrl(value)) return new URL(value).href;
   const url = new URL(safeUrl(value));
   const ips = await lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true });
   for (const { address } of ips) safeUrl(`${url.protocol}//${address.includes(':') ? '[' + address + ']' : address}/`);
@@ -84,7 +86,9 @@ export function downloadName(value, folder) {
   return name;
 }
 async function checkRoute(route) {
-  try { await allowedUrl(route.request().url()); await route.continue(); } catch { await route.abort().catch(() => {}); }
+  // A page on localhost may load its own files; a site from the internet never reaches this computer's ports through the bot's browser.
+  let local = false; try { const frame = route.request().frame(); local = localDevUrl(route.request().isNavigationRequest() && frame === frame.page().mainFrame() ? route.request().url() : frame.page().url()); } catch {}
+  try { await allowedUrl(route.request().url(), { local }); await route.continue(); } catch { await route.abort().catch(() => {}); }
 }
 // Google refuses to sign in on a browser that says it is automated ("este navegador pode não ser seguro"): no
 // --enable-automation flag, no navigator.webdriver, and a user agent that is not "HeadlessChrome" (the person
@@ -216,7 +220,7 @@ export class BrowserSession {
   async newPage(url) {
     if (this.closing) throw new Error('O navegador do bot foi interrompido.');
     if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
-    const safe = url ? await allowedUrl(url) : null;
+    const safe = url ? await allowedUrl(url, { local: true }) : null;
     const page = this.context.electron ? await electronPage(this.context, this.botId) : await this.context.newPage();
     if (this.context.electron) await page.route('**/*', route => this.route(route));
     if (this.closing) { await this.closePage(page); throw new Error('O navegador do bot foi interrompido.'); }
@@ -617,7 +621,7 @@ export class BrowserSession {
     else if (args.type === 'scroll') { await this.page.mouse.move(at(args.x, width), at(args.y, height)); await this.page.mouse.wheel(delta(args.dx), delta(args.dy)); }
     else if (args.type === 'text' && typeof args.text === 'string' && args.text.length <= 2000) { const sensitive = await this.sensitiveFocus(); await this.page.keyboard.insertText(args.text); if (sensitive) await this.rememberField(); }
     else if (args.type === 'key' && KEYS.includes(args.key)) await this.page.keyboard.press(args.key);
-    else if (args.type === 'open' && typeof args.url === 'string' && args.url.length <= 2000) await this.page.goto(await allowedUrl(/^[a-z]+:\/\//i.test(args.url.trim()) ? args.url.trim() : 'https://' + args.url.trim()), { waitUntil: 'commit' });
+    else if (args.type === 'open' && typeof args.url === 'string' && args.url.length <= 2000) await this.page.goto(await allowedUrl(/^[a-z]+:\/\//i.test(args.url.trim()) ? args.url.trim() : /^(localhost|127\.)/i.test(args.url.trim()) ? 'http://' + args.url.trim() : 'https://' + args.url.trim(), { local: true }), { waitUntil: 'commit' });
     else if (args.type === 'back') await this.page.goBack({ waitUntil: 'commit' }).catch(() => {});
     else if (args.type === 'reload') await this.page.reload({ waitUntil: 'commit' }).catch(() => {});
     else throw new Error('Ação inválida.');
@@ -694,7 +698,7 @@ export class BrowserSession {
       finally { await cdp.detach().catch(() => {}); }
     }
     if (op === 'open') {
-      const safe = await allowedUrl(args.url), before = this.downloadSerial;
+      const safe = await allowedUrl(args.url, { local: true }), before = this.downloadSerial;
       await this.showAction('open', args);
       // A link straight to a file starts a download instead of a page.
       try { await this.page.goto(safe, { waitUntil: 'domcontentloaded' }); } catch (error) { if (!/Download is starting/i.test(error.message)) throw error; }
@@ -725,7 +729,7 @@ export class BrowserSession {
       if (this.tabError) { const error = this.tabError; this.tabError = null; throw new Error(error); }
       if (args.action === 'new') {
         if (this.pages.length >= 5) throw new Error('Até 5 abas por bot. Feche uma aba antes de abrir outra.');
-        const url = args.url ? await allowedUrl(args.url) : null;
+        const url = args.url ? await allowedUrl(args.url, { local: true }) : null;
         const page = await this.newPage(); await this.activate(page);
         if (url) await page.goto(url, { waitUntil: 'domcontentloaded' });
       } else if (args.action === 'switch' || args.action === 'close') {

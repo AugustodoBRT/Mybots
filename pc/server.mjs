@@ -22,7 +22,8 @@ import agentSkills from '../lib/agent-skills.cjs';
 const { discover, enabledFor } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
-import { SENSITIVE, browserMode } from '../supervisor/tool-policy.mjs';
+import { SENSITIVE, browserMode, browserSlot } from '../supervisor/tool-policy.mjs';
+import { ACCOUNT_SLOT } from '../mobile/local.js';
 import { createUi, phoneBridge, paced, DEFAULT_UI_PORT } from './ui.mjs';
 import { Desktop } from './desktop.mjs';
 import { PcBrowser } from './browser.mjs';
@@ -221,7 +222,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   // Only a taken-over browser accepts the person's taps and keys; the phone decides that and tells the node.
   const viewOptions = new Map(), viewGovernor = new ViewGovernor(); let viewTimer;
   const views = new Map(), browserModes = new Map(); let assumed = new Set();
-  const configureBrowser = bot => { const mode = browserMode(bot); browserModes.set(bot.id, mode); browser.configure?.(bot.id, mode); };
+  const configureBrowser = bot => { const mode = browserSlot(bot); browserModes.set(bot.id, mode); browser.configure?.(bot.id, mode); };
   browser.onFrame = (botId, frame) => { for (const sink of views.get(botId) || []) sink(frame); };
   const updateView = async (botId, force = false) => {
     const sinks = [...(views.get(botId) || [])];
@@ -426,7 +427,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
-      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','shared','separate','mine','claude'].includes(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
+      if (message.type === 'browser_control' && message.control && typeof message.control === 'object') { for (const [id, mode] of Object.entries(message.modes || {})) if (['own','shared','separate','mine','claude'].includes(mode) || ACCOUNT_SLOT.test(mode)) configureBrowser({ id, browserMode: mode }); const previousControl = assumed; assumed = new Set(Object.entries(message.control).filter(([, who]) => who === 'person').map(([botId]) => botId)); for (const botId of previousControl) if (!assumed.has(botId)) browser.command(botId, 'device', { restore: true }).catch(() => {}); for (const botId of views.keys()) updateView(botId).catch(() => {}); return; }
       if (message.type === 'browser_input' && typeof message.botId === 'string') {
         personInput(message.botId, message.input).then(() => { if (message.rid) send({ type: 'pc_result', rid: message.rid, result: { sent: true } }); }, () => message.rid ? send({ type: 'pc_result', rid: message.rid, error: 'Entrada recusada.' }) : send({ type: 'browser_frame', botId: message.botId, error: 'Toque em Assumir antes de usar a página.' }));
         return;
@@ -435,7 +436,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
       if (message.type === 'pc_command') {
         // A bot that answers on the phone has no run here: its browser ops are checked by the supervisor, and only the bot's own Chromium is reachable.
-        const direct = !message.id && typeof message.botId === 'string' && ['shared', 'separate'].includes(message.mode) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op);
+        const direct = !message.id && typeof message.botId === 'string' && (['shared', 'separate'].includes(message.mode) || ACCOUNT_SLOT.test(message.mode)) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op);
         if (direct && browserModes.get(message.botId) !== message.mode) configureBrowser({ id: message.botId, browserMode: message.mode });
         const run = direct ? { controller: new AbortController(), bot: { id: message.botId, browserMode: message.mode }, tools: { browser: true } } : runs.get(message.id);
         try {

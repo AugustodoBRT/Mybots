@@ -12,7 +12,7 @@ import FaceArt from '../FaceArt';
 import { DesktopReveal } from './DesktopReveal';
 import { SideHeader, SideMenu, SideFrame, BrowserCards, BrowserFull } from './DesktopSide';
 import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
-import { browserMode } from '../local';
+import { browserMode, ownAccountBrowser } from '../local';
 
 const s = themed(() => ({
   desk: { flex: 1, flexDirection: 'row', backgroundColor: C.chrome || C.bg2 },
@@ -353,7 +353,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
         {side.active === 'settings' ? profilePanel
           : side.active === 'file' ? filePanel
           : side.active === 'today' ? <TodayPanel data={data} onOpen={id => onOpen(id)} onRespond={onRespond} approvalBusy={approvalBusy} onComplete={onComplete} onActivity={() => openPage('activity')} />
-          : side.active === 'browser' ? (native ? <>{bot && data.browser?.control?.[bot.id] === 'person' ? <View style={{ padding: 12 }}><ReturnCard bot={bot} onReturn={() => onBrowserControl(bot.id, 'bot')} /></View> : null}
+          : side.active === 'browser' ? (native && !ownAccountBrowser(bot) ? <>{bot && data.browser?.control?.[bot.id] === 'person' ? <View style={{ padding: 12 }}><ReturnCard bot={bot} onReturn={() => onBrowserControl(bot.id, 'bot')} /></View> : null}
             <BrowserCards onOpen={() => setFull(true)} /></> : !bot ? <Text style={[s.line, { padding: 24, textAlign: 'center' }]}>Abra a conversa de um bot para ver o navegador dele.</Text>
             : browserMode(bot) === 'claude' ? <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={who => onBrowserControl(bot.id, who)} onClose={() => closeKind('browser')} side onFile={onFile} />
             : <>{data.browser?.control?.[bot.id] === 'person' ? <View style={{ padding: 12 }}><ReturnCard bot={bot} onReturn={() => onBrowserControl(bot.id, 'bot')} /></View> : null}

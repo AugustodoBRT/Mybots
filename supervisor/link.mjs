@@ -1,5 +1,5 @@
 import { noteMethods } from './notes.mjs';
-import { browserMode } from '../mobile/local.js';
+import { browserMode, browserSlot } from '../mobile/local.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { decodeFrame, frameMetadata, viewSize } from './browser-frame.mjs';
@@ -225,7 +225,7 @@ export class Link {
         if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8), ...(validRelay(message.relay) ? { relay: message.relay.replace(/\/$/, '') } : {}) });
         this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
-        send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) });
+        send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserSlot(bot)])) });
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
@@ -285,7 +285,7 @@ export class Link {
     this.post({ type: 'browser_view', botId, on: Boolean(on), ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
   }
   /** Who controls each bot's browser: the computer takes the person's taps only for a browser taken over here. */
-  control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserMode(bot)])) }); }
+  control(controls) { this.controls = { ...controls }; this.post({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserSlot(bot)])) }); }
   /** A tap, key or address from the person, already checked against "Assumir" on the phone. */
   input(botId, input) {
     if (!this.post({ type: 'browser_input', botId, input })) throw new Error('O computador está desconectado.');
@@ -373,7 +373,7 @@ export class Link {
       const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); run.signal?.removeEventListener('abort', stop); error ? reject(new Error(error)) : resolve(result || {}); };
       const timer = setTimeout(() => done({ error: 'O computador demorou para executar a ferramenta.' }), 135000);
       this.commands.set(rid, done); run.signal?.addEventListener('abort', stop, { once: true });
-      this.socket.send(JSON.stringify({ type: 'pc_command', rid, id: entry[0], op, args, ...(entry[0] ? {} : { botId: run.botId, mode: browserMode(this.db.bot(run.botId)) }) }));
+      this.socket.send(JSON.stringify({ type: 'pc_command', rid, id: entry[0], op, args, ...(entry[0] ? {} : { botId: run.botId, mode: browserSlot(this.db.bot(run.botId)) }) }));
     });
   }
   /** One turn on the computer: same contract as the local runner (resolves the reply, rejects with output). */

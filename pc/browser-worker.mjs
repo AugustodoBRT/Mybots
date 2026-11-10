@@ -890,13 +890,13 @@ export class BrowserSession {
 }
 
 if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const kind = process.argv[3], mine = kind === 'mine', shared = kind === 'shared', sessions = new Map(), secrets = new Set(); let connection, sharedContext;
+  const kind = process.argv[3], mine = kind === 'mine', shared = kind === 'shared' || kind === 'account', sessions = new Map(), secrets = new Set(); let connection, sharedContext;
   const connect = () => connection ||= connectMine(process.argv[4]).then(browser => { browser.on('disconnected', () => { connection = null; }); return browser; }).catch(error => { connection = null; throw error; });
   // The shared Chrome (the default): one profile for every bot that uses it, so a login made by one serves all of them.
   // Old logins are copied in before any bot's page opens.
   const imports = [];
   // With the MyBots window (Electron) running, the shared browser is the window's own: real tabs the person and the bots both use.
-  const open = () => sharedContext ||= (async () => { const info = process.env.MYBOTS_NODE_DIR && electronInfo(process.env.MYBOTS_NODE_DIR); if (info) { try { return await connectElectron(info); } catch {} } return launchContext(join(process.argv[2], 'chrome')); })().then(async context => {
+  const open = () => sharedContext ||= (async () => { const info = kind === 'shared' && process.env.MYBOTS_NODE_DIR && electronInfo(process.env.MYBOTS_NODE_DIR); if (info) { try { return await connectElectron(info); } catch {} } return launchContext(join(process.argv[2], 'chrome')); })().then(async context => {
     context.on('close', () => { sharedContext = null; });
     for (let n = 0; n < imports.length; n++) await imports[n](context).catch(() => {});
     return context;
@@ -914,7 +914,7 @@ if (process.send && process.argv[1] && import.meta.url === pathToFileURL(process
   const commands = new Map(); const people = new Map();
   const handle = async ({ id, botId = basename(process.argv[2]), op, args }) => {
     if (op === 'import') {
-      if (!shared || typeof args?.profile !== 'string') return;
+      if (kind !== 'shared' || typeof args?.profile !== 'string') return;
       const copy = context => importLogins(context, args.profile);
       imports.push(copy); if (sharedContext) await sharedContext.then(copy).catch(() => {});
       return;

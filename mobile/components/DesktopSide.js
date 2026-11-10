@@ -4,6 +4,7 @@ import { C, Icon, F, themed } from '../theme';
 import { IconButton } from './shared';
 import BotBrowserPanel, { browserFrames, TabStrip, AddressRow, ReturnCard } from '../BotBrowserPanel';
 import { native } from '../desktop';
+import { ownAccountBrowser } from '../local';
 
 const s = themed(() => ({
   side: { flex: 1, marginTop: 8, marginRight: 8, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg2, overflow: 'hidden' },
@@ -189,7 +190,8 @@ function NativeFull({ bot, data, onClose, onSend, onControl }) {
 
 export function BrowserFull({ bot, data, call, onControl, onFile, onClose, onSend, color }) {
   const [text, setText] = useState(''); const busy = Boolean(data.active?.includes(bot.id));
-  if (native) return <NativeFull bot={bot} data={data} onClose={onClose} onSend={onSend} onControl={onControl} />;
+  // The window's real tabs are the shared browser; a Google account's own browser is another process, seen through its live picture.
+  if (native && !ownAccountBrowser(bot)) return <NativeFull bot={bot} data={data} onClose={onClose} onSend={onSend} onControl={onControl} />;
   const go = async () => { const value = text.trim(); if (!value || busy) return; setText(''); if ((await onSend(value)) === false) setText(value); };
   return <View style={s.full}>
     <BotBrowserPanel bot={bot} browser={data.browser} pc call={call} onControl={onControl} onClose={onClose} side onFile={onFile} color={color} keepView />

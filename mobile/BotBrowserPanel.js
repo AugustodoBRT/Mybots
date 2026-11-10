@@ -1,7 +1,7 @@
 import { desktop as desktopWindow } from './desktop';
 import { textEdit, protectEdit } from './browser-input';
 import { touchPoint, zoomAt } from './browser-coordinates';
-import { browserMode } from './local';
+import { browserMode, ownAccountBrowser } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, termuxAvailable, walletRules, walletFreeze } from './termux';
@@ -51,7 +51,7 @@ export const browserEvents = new Set();
 
 const hostOf = url => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
 // Which browser a bot uses, in words: the shared one is the same for every bot of that device.
-export const browserName = bot => browserMode(bot) === 'mine' ? 'Meu Chrome' : browserMode(bot) === 'separate' ? `Navegador de ${bot.name}` : `Navegador compartilhado`;
+export const browserName = bot => browserMode(bot) === 'mine' ? 'Meu Chrome' : browserMode(bot) === 'separate' ? `Navegador de ${bot.name}` : ownAccountBrowser(bot) ? `Navegador de ${bot.googleAccount}` : `Navegador compartilhado`;
 
 function TabIcon({ icon }) {
   const [failed, setFailed] = useState(false);

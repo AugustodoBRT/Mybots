@@ -263,3 +263,25 @@ test('both hops limit view changes during ten simulated seconds of oscillating p
     const recovered = governor.next(hop, options, 0, 15500); assert.equal(recovered.congested, false);
   }
 });
+
+test('choosing a Google account for a bot moves it to that account\'s own browser on the computer; going back returns it to the shared one', async t => {
+  const { accountKey } = await import('../mobile/local.js');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-account-slot-'));
+  const app = await createSupervisor({ directory: join(directory, 'phone'), port: 0, codex });
+  const configured = [];
+  const browser = { command: async () => ({}), configure: (botId, mode) => configured.push([botId, mode]), stop: () => {}, close: () => {} };
+  const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], browser,
+    status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }), desktop: { indicate: async () => async () => {} } });
+  t.after(async () => { await app.close(); await node.close(); await rm(directory, { recursive: true, force: true }); });
+  const bot = await app.rpc('bot.create', { name: 'Gmail', home: 'pc', access: 'full', ...selection });
+  await app.rpc('computer.pair', { link: node.pairing().link }); await until(() => app.state().computer.state === 'online');
+  const last = () => configured.filter(([id]) => id === bot.id).at(-1)?.[1];
+  await until(() => last() === 'shared');
+  await app.rpc('bot.update', { botId: bot.id, googleAccount: 'Conta.Um@gmail.com' });
+  await until(() => last() === 'acct:' + accountKey('conta.um@gmail.com'));
+  await app.rpc('bot.update', { botId: bot.id, googleAccount: 'conta.dois@gmail.com' });
+  await until(() => last() === 'acct:' + accountKey('conta.dois@gmail.com'));
+  assert.notEqual(accountKey('conta.um@gmail.com'), accountKey('conta.dois@gmail.com'));
+  await app.rpc('bot.update', { botId: bot.id, googleAccount: '' });
+  await until(() => last() === 'shared');
+});

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { chromeEndpoint, IMPORTED } from './browser-worker.mjs';
 import { mkdirSync, existsSync } from 'node:fs';
+import { ACCOUNT_SLOT } from '../mobile/local.js';
 
 // "own" is the pre-v58 name of a bot's Chrome; those bots moved to the shared one.
 const MODES = ['shared', 'separate', 'mine', 'claude'];
@@ -20,7 +21,7 @@ export class PcBrowser {
   constructor(directory, { onFrame = () => {}, mineProfile = chromeProfile(), downloads = join(directory, 'downloads') } = {}) { this.directory = directory; this.workers = new Map(); this.onFrame = onFrame; this.modes = new Map(); this.mineProfile = mineProfile; this.downloads = downloads; this.imports = new Set(); }
   configure(botId, mode) {
     if (mode === 'own') mode = 'shared';
-    if (!MODES.includes(mode)) throw new Error('Modo de navegador inválido.');
+    if (!MODES.includes(mode) && !ACCOUNT_SLOT.test(mode)) throw new Error('Modo de navegador inválido.');
     if (this.modes.has(botId) && this.modes.get(botId) !== mode) this.stop(botId);
     this.modes.set(botId, mode);
     // Logins of a bot's old Chrome are copied into the shared one once; the old profile stays for "Navegador separado".
@@ -29,21 +30,22 @@ export class PcBrowser {
       this.imports.add(botId); this.workers.get('shared')?.child.send({ op: 'import', args: { profile: legacy } }, () => {});
     }
   }
-  key(botId) { const mode = this.modes.get(botId) || 'shared'; return mode === 'mine' || mode === 'shared' ? mode : botId; }
+  // One browser process per key: the shared one, Meu Chrome, a Google account's own (`acct:<key>`, shared by the bots that pick that account), or one per bot.
+  key(botId) { const mode = this.modes.get(botId) || 'shared'; return mode === 'mine' || mode === 'shared' || ACCOUNT_SLOT.test(mode) ? mode : botId; }
   running(botId) { return this.workers.has(this.key(botId)); }
   worker(botId) {
     if (!/^[0-9a-f-]{36}$/i.test(botId)) throw new Error('Bot inválido.');
-    const key = this.key(botId), mine = key === 'mine', shared = key === 'shared';
+    const key = this.key(botId), mine = key === 'mine', shared = key === 'shared', account = ACCOUNT_SLOT.test(key);
     const endpoint = mine ? chromeEndpoint(this.mineProfile) : null;
     const current = this.workers.get(key);
     if (current && current.endpoint === endpoint) { current.botIds.add(botId); return current; }
     if (current) { current.child.kill('SIGTERM'); this.workers.delete(key); }
-    const profile = join(this.directory, 'browsers', key);
+    const profile = join(this.directory, 'browsers', account ? 'acct-' + key.slice(5) : key);
     mkdirSync(profile, { recursive: true, mode: 0o700 }); mkdirSync(this.downloads, { recursive: true, mode: 0o700 });
     const env = Object.fromEntries(['PATH', 'HOME', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'LANG'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
     env.MYBOTS_DOWNLOADS = this.downloads; env.MYBOTS_NODE_DIR = this.directory;
-    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : shared ? 'shared' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true, windowsHide: true });
-    const worker = { child, pending: new Map(), botIds: new Set([botId]), mine, multi: mine || shared, endpoint }; this.workers.set(key, worker);
+    const child = fork(fileURLToPath(new URL('./browser-worker.mjs', import.meta.url)), [profile, mine ? 'mine' : shared ? 'shared' : account ? 'account' : 'own', ...(endpoint ? [endpoint] : [])], { env, serialization: 'advanced', stdio: ['ignore', 'ignore', 'ignore', 'ipc'], detached: true, windowsHide: true });
+    const worker = { child, pending: new Map(), botIds: new Set([botId]), mine, multi: mine || shared || account, endpoint }; this.workers.set(key, worker);
     if (shared) for (const id of this.imports) child.send({ op: 'import', args: { profile: join(this.directory, 'browsers', id) } }, () => {});
     const end = () => {
       if (this.workers.get(key) === worker) this.workers.delete(key);

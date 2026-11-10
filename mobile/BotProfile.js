@@ -106,15 +106,15 @@ export default function BotProfile({ chiefName, initialTab, visible, bot, models
             {toggle(grants.some(item => item.name === 'github' && item.allowed), on => act(() => onGithub(on)), 'Usar o seu GitHub')}
           </View></View> : null}
           <Text style={s.label}>Conta Google</Text>
-          <Text style={s.hint}>Gmail, Agenda, Drive e outros serviços abrem direto no navegador. Escolha a conta que este bot deve usar. Se faltar login, ele pede para você entrar.</Text>
-          {radio(!bot?.googleAccount, 'Conta já aberta no navegador', '', () => act(() => onGoogleAccount('')), { disabled: saving || active })}
-          {[...new Set([...googleAccounts, bot?.googleAccount].filter(Boolean))].map(email => radio(bot?.googleAccount === email, email, '', () => act(() => onGoogleAccount(email)), { disabled: saving || active }))}
+          <Text style={s.hint}>Gmail, Agenda, Drive e outros serviços abrem direto no navegador. A primeira opção é o navegador que todos os bots usam. Cada conta abaixo tem um navegador só dela, isolado dos outros, que guarda o login: escolha uma e este bot passa a usá-lo.</Text>
+          {radio(!bot?.googleAccount, 'Navegador padrão', 'O de todos os bots, com a conta que estiver aberta nele', () => act(() => onGoogleAccount('')), { disabled: saving || active })}
+          {[...new Set([...googleAccounts, bot?.googleAccount].filter(Boolean))].map(email => radio(bot?.googleAccount === email, email, 'Navegador próprio, separado do padrão', () => act(() => onGoogleAccount(email)), { disabled: saving || active }))}
           <View style={[s.permission, { borderBottomWidth: 0 }]}>
             <TextInput accessibilityLabel="E-mail de outra conta Google" value={account} onChangeText={setAccount} placeholder="Outra conta Google" placeholderTextColor={C.faint} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" style={[s.input, { flex: 1 }]} />
             <Pressable accessibilityRole="button" disabled={saving || active || !account.trim()} onPress={() => act(async () => { await onGoogleAccount(account.trim().toLowerCase()); setAccount(''); })}><Text style={s.link}>Adicionar</Text></Pressable>
           </View>
-          {bot?.googleAccount ? <Pressable accessibilityRole="button" disabled={saving || active} onPress={() => act(() => onGoogleLogin(bot.googleAccount))} style={s.smallButton}><Icon name="globe" size={16} color={C.accent} /><Text style={s.link}>Entrar nesta conta no navegador</Text></Pressable> : null}
-          <Text style={s.hint}>Você pode manter várias contas conectadas no mesmo navegador. Os logins do celular e do PC são separados; entre em cada aparelho quando necessário.</Text>
+          {bot?.googleAccount ? <Pressable accessibilityRole="button" disabled={saving || active} onPress={() => act(() => onGoogleLogin(bot.googleAccount))} style={s.smallButton}><Icon name="globe" size={16} color={C.accent} /><Text style={s.link}>Entrar nesta conta no navegador dela</Text></Pressable> : null}
+          <Text style={s.hint}>Entre uma vez em cada conta (botão acima): o login fica guardado no navegador dela e vale para todos os bots que usarem essa conta. Os logins do celular e do PC são separados; as contas Google funcionam no navegador do computador.</Text>
           {onComputer && onAgentSkills ? <>
             <Pressable accessibilityRole="button" onPress={() => setSkillsOpen(value => !value)} style={s.disclosure}><Text style={s.link}>Skills{(bot.skills || []).length ? ` · ${(bot.skills || []).length} ligada${(bot.skills || []).length === 1 ? '' : 's'}` : ''}</Text><Icon name={skillsOpen ? 'down' : 'back'} size={15} color={C.accent} /></Pressable>
             {skillsOpen && <View style={s.group}>

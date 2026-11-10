@@ -10,6 +10,19 @@ export function defaultBotAccess(bot) {
     ...(Array.isArray(bot.skills) ? { skills: bot.skills.map(skill => typeof skill === 'object' && skill !== null ? { ...skill, write: true } : skill) } : {}) };
 }
 export const validGoogleAccount = value => typeof value === 'string' && value.length <= 254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+/** A short, safe name for a Google account's own browser profile (letters, digits, hyphens): the e-mail plus a hash, so two e-mails never share one. */
+export function accountKey(email) {
+  const clean = String(email || '').trim().toLowerCase();
+  let hash = 0x811c9dc5; for (const char of clean) { hash ^= char.codePointAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+  return `${clean.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'conta'}-${hash.toString(16).padStart(8, '0')}`;
+}
+export const ACCOUNT_SLOT = /^acct:[a-z0-9-]{1,60}$/;
+/**
+ * Which browser runs a bot's pages: the one every bot shares ('shared'), the isolated browser of its Google account ('acct:<key>': its own
+ * profile, logged in once, used by every bot that picks that account), or the bot's own, Meu Chrome and Claude's.
+ */
+export const browserSlot = bot => { const mode = browserMode(bot); return mode === 'shared' && validGoogleAccount(bot?.googleAccount) ? 'acct:' + accountKey(bot.googleAccount) : mode; };
+export const ownAccountBrowser = bot => browserSlot(bot).startsWith('acct:');
 export function googleAccountUrl(value, account) {
   if (!account || !value) return value;
   const url = new URL(value);

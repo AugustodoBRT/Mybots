@@ -191,3 +191,37 @@ test('closing a bot tab in the window does not strand its next browser command o
   await a.command('read');
   assert.equal(a.page, remaining); assert.equal(a.pages.length, 1);
 });
+
+test('a Google account has a browser of its own: same account shares it, another account and the default stay apart', async t => {
+  const { accountKey, browserSlot, ACCOUNT_SLOT, ownAccountBrowser } = await import('../mobile/local.js');
+  // The key is safe for a folder and for a WebView profile, and two e-mails never collapse into one.
+  const a = accountKey('Augusto.Teste@gmail.com'), b = accountKey('augusto-teste@gmail.com');
+  assert.match(a, /^[a-z0-9-]+$/); assert.notEqual(a, b); assert.equal(accountKey('AUGUSTO.teste@gmail.com'), a, 'upper case is the same account');
+  assert.ok(ACCOUNT_SLOT.test('acct:' + a));
+  // Only the default browser changes with the account: Meu Chrome, Claude's and the bot's own stay what they are.
+  assert.equal(browserSlot({}), 'shared'); assert.equal(browserSlot({ googleAccount: 'x@gmail.com' }), 'acct:' + accountKey('x@gmail.com'));
+  assert.equal(browserSlot({ browserMode: 'separate', googleAccount: 'x@gmail.com' }), 'separate'); assert.equal(browserSlot({ browserMode: 'mine', googleAccount: 'x@gmail.com' }), 'mine');
+  assert.equal(browserSlot({ googleAccount: 'nao-e-email' }), 'shared'); assert.equal(ownAccountBrowser({ googleAccount: 'x@gmail.com' }), true); assert.equal(ownAccountBrowser({}), false);
+  assert.throws(() => new PcBrowser('/tmp/x').configure(randomUUID(), 'acct:../etc'), /inválido/);
+
+  // On the computer: one browser process per account, shared by the bots that pick it; switching account moves the bot.
+  const pc = new PcBrowser(await mkdtemp(join(tmpdir(), 'mybots-accounts-'))); t.after(async () => { await pc.close(); await rm(pc.directory, { recursive: true, force: true }); });
+  const [one, two, three, plain] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()], slot = email => 'acct:' + accountKey(email);
+  pc.configure(one, slot('a@gmail.com')); pc.configure(two, slot('a@gmail.com')); pc.configure(three, slot('b@gmail.com')); pc.configure(plain, 'shared');
+  assert.equal(pc.key(one), pc.key(two)); assert.notEqual(pc.key(one), pc.key(three)); assert.equal(pc.key(plain), 'shared');
+  pc.configure(two, slot('b@gmail.com')); assert.equal(pc.key(two), pc.key(three), 'the bot that changed account follows the new browser');
+  pc.configure(two, 'shared'); assert.equal(pc.key(two), 'shared', 'back to the default browser');
+});
+
+test('the account browsers are real and separate: a process and a profile folder each, none of them the shared one', chrome, async t => {
+  const { accountKey } = await import('../mobile/local.js');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-accounts-real-')); const pc = new PcBrowser(directory);
+  t.after(async () => { await pc.close(); await rm(directory, { recursive: true, force: true }); });
+  const [one, two, plain] = [randomUUID(), randomUUID(), randomUUID()], slot = email => 'acct:' + accountKey(email);
+  pc.configure(one, slot('a@gmail.com')); pc.configure(two, slot('b@gmail.com')); pc.configure(plain, 'shared');
+  for (const bot of [one, two, plain]) await pc.command(bot, 'open', { url: 'https://example.com/' });
+  assert.equal(pc.workers.size, 3, 'default + one browser per account');
+  assert.ok(existsSync(join(directory, 'browsers', 'acct-' + accountKey('a@gmail.com'), 'chrome')) && existsSync(join(directory, 'browsers', 'acct-' + accountKey('b@gmail.com'), 'chrome')));
+  assert.ok(!existsSync(join(directory, 'browsers', 'acct-' + accountKey('a@gmail.com'), 'bots', two)), 'the other account never touches this one');
+  const read = await pc.command(one, 'read', {}); assert.match(JSON.stringify(read), /Example Domain/);
+});

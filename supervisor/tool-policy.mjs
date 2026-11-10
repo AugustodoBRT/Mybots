@@ -117,7 +117,7 @@ export function validFolders(list) {
   if (!Array.isArray(list) || list.length > 10) return false;
   return list.every(path => typeof path === 'string' && /^(~|\/)[^\u0000-\u001f]{0,300}$/.test(path) && !/(^|\/)\.\.(\/|$)/.test(path) && !SENSITIVE.test(path) && !['/', '~', '~/'].includes(path.trim()));
 }
-export { browserMode } from '../mobile/local.js';
+export { browserMode, browserSlot } from '../mobile/local.js';
 import { BROWSER_MODES } from '../mobile/local.js';
 import agentSkills from '../lib/agent-skills.cjs';
 // A bot's face: a seed, an optional color (#rrggbb) and the choices the person made for the body (`mimo`; what is not there comes from the

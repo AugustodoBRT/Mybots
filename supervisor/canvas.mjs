@@ -13,6 +13,8 @@ const SIZES = { note: [320, 220], table: [420, 260], chart: [420, 280], html: [4
 // A phone, a tablet and a computer, for a page the bot is testing.
 export const VIEWPORTS = { celular: { width: 390, height: 844, mobile: true }, tablet: { width: 820, height: 1180, mobile: true }, computador: { width: 1280, height: 800, mobile: false } };
 const GAP = 40, AREA_GAP = 160;
+// An area is rows of about three cards; the areas stand side by side, a few per row of the board.
+const AREA_WIDE = 1150, BOARD_WIDE = 2700;
 
 const clip = (value, max) => typeof value === 'string' ? value.slice(0, max) : '';
 const number = (value, min, max) => Number.isFinite(value) ? Math.round(Math.max(min, Math.min(max, value))) : undefined;
@@ -75,25 +77,31 @@ export class Canvas {
   read({ area } = {}, botId = null) {
     const names = new Map(this.db.bots().map(bot => [bot.id, bot.name]));
     const cards = this.cards().filter(card => !area || fold(card.area || '') === fold(area));
-    const short = card => ({ id: card.id, kind: card.kind, title: card.title, area: card.area || null, x: card.x, y: card.y, w: card.w, h: card.h, by: names.get(card.botId) || null,
+    const short = card => ({ id: card.id, kind: card.kind, title: card.title, area: card.area || null, x: card.x, y: card.y, w: card.w, h: card.h, by: card.sticky ? 'a pessoa (dona do app)' : names.get(card.botId) || null,
       ...(card.kind === 'note' ? { text: clip(card.text, 300) } : {}), ...(card.kind === 'table' ? (card.source ? { table: card.source } : { columns: card.columns, rows: card.rows?.length || 0 }) : {}),
       ...(card.kind === 'chart' ? (card.source ? { table: card.source, by: card.by } : { chart: card.chart?.type }) : {}), ...(card.kind === 'html' ? { html: `${card.html?.length || 0} caracteres` } : {}),
       ...(['image', 'video'].includes(card.kind) ? { file: card.file?.name || null } : {}), ...(card.kind === 'browser' ? { url: card.url || '', viewport: card.viewport || 'computador' } : {}), updatedAt: card.updatedAt });
     const ids = new Set(cards.map(card => card.id));
     return { cards: cards.map(short), links: this.links().filter(link => ids.has(link.from) || ids.has(link.to)).map(({ id, from, to, label }) => ({ id, from, to, label })),
       areas: [...new Set(this.cards().map(card => card.area).filter(Boolean))], mine: botId ? cards.filter(card => card.botId === botId).length : undefined,
-      note: 'Reaproveite um cartão (canvas_update) antes de criar outro igual. Cartões sem posição são arrumados sozinhos na área.' };
+      note: 'Reaproveite um cartão (canvas_update) antes de criar outro igual. Cartões sem posição são arrumados sozinhos na área. Notas com by "a pessoa" foram escritas por ela no canvas: leia e leve em conta.' };
   }
-  /** Where a new card goes: to the right of its area's last row, or a new area below the others. */
+  /** Where a new card goes: to the right of its area's last row; a new area goes beside the last one, and under them when the row of areas is full. */
   place(area, w, h) {
     const cards = this.cards(); const same = cards.filter(card => fold(card.area || '') === fold(area || ''));
     if (same.length) {
       const top = Math.min(...same.map(card => card.y)), right = Math.max(...same.map(card => card.x + card.w)), left = Math.min(...same.map(card => card.x));
-      // Rows of up to about four cards: then a new row under the area.
-      if (right - left + w < 1700) return { x: right + GAP, y: top };
+      // Rows of up to about three cards: then a new row under the area.
+      if (right - left + w < AREA_WIDE) return { x: right + GAP, y: top };
       return { x: left, y: Math.max(...same.map(card => card.y + card.h)) + GAP };
     }
-    return { x: 0, y: cards.length ? Math.max(...cards.map(card => card.y + card.h)) + AREA_GAP : 0 };
+    if (!cards.length) return { x: 0, y: 0 };
+    // The lowest band of areas: the new area continues it while it fits.
+    const tops = new Map(); for (const card of cards) { const key = fold(card.area || ''); tops.set(key, Math.min(tops.get(key) ?? Infinity, card.y)); }
+    const bandTop = Math.max(...tops.values()); const band = cards.filter(card => tops.get(fold(card.area || '')) >= bandTop - 200);
+    const right = Math.max(...band.map(card => card.x + card.w));
+    if (right + AREA_GAP + w <= BOARD_WIDE) return { x: right + AREA_GAP, y: bandTop };
+    return { x: Math.min(...cards.map(card => card.x)), y: Math.max(...cards.map(card => card.y + card.h)) + AREA_GAP };
   }
   content(kind, args, old = {}) {
     const out = {};
@@ -147,6 +155,7 @@ export class Canvas {
   }
   update(botId, args) {
     const card = this.card(args.id); this.botId = botId;
+    if (card.sticky) throw new Error('Essa nota é da pessoa e só ela muda. Para responder, crie um cartão seu ao lado dela (canvas_add com near).');
     const next = { ...card, ...this.content(card.kind, args, card) };
     if (args.title !== undefined) next.title = clip(String(args.title).trim(), CANVAS_LIMITS.title) || card.title;
     if (args.area !== undefined) next.area = clip(String(args.area).trim(), CANVAS_LIMITS.area);
@@ -193,23 +202,43 @@ export class Canvas {
     this.db.run('INSERT INTO canvas_items(id,kind,body,bot_id,created_at,updated_at) VALUES(?,?,?,?,?,?)', id, 'browser', JSON.stringify({ kind: 'browser', title: clip(title, CANVAS_LIMITS.title) || `Navegador de ${bot.name}`, area, ...spot, w, h, url: clip(url, 2000), viewport: viewport || 'computador', touchedBy: botId, touchedAt: stamp }), botId, stamp, stamp);
     this.changed(); return id;
   }
+  /**
+   * The person's own note (a sticky note): written in the app, on the spot they chose. The bots read it in canvas_read as written by the
+   * owner. With `id` the text of an existing one changes.
+   */
+  personNote({ id, text: body, x, y } = {}) {
+    const value = text(body, 4000, 'A nota');
+    if (!value?.trim()) throw new Error('Escreva a nota.');
+    if (id) {
+      const card = this.card(id); if (!card.sticky) throw new Error('Só as suas notas podem ser editadas aqui.');
+      this.save({ ...card, text: value.trim() }, null); return { id: card.id };
+    }
+    if (this.cards().length >= CANVAS_LIMITS.cards) throw new Error(`O canvas já tem ${CANVAS_LIMITS.cards} cartões: tire um antes.`);
+    const w = 240, h = 180; const spot = Number.isFinite(x) && Number.isFinite(y) ? this.free(number(x, -100000, 100000), number(y, -100000, 100000), w, h) : this.place('', w, h);
+    const stamp = now(), key = randomUUID();
+    this.db.run('INSERT INTO canvas_items(id,kind,body,bot_id,created_at,updated_at) VALUES(?,?,?,?,?,?)', key, 'note', JSON.stringify({ kind: 'note', title: 'Sua nota', area: '', ...spot, w, h, text: value.trim(), sticky: true }), null, stamp, stamp);
+    this.changed(); return { id: key };
+  }
   /** The person moves, resizes or renames a card, or tidies an area, in the app. */
   personMove({ id, x, y, w, h }) {
     const card = this.card(id);
     this.save({ ...card, x: number(x, -100000, 100000) ?? card.x, y: number(y, -100000, 100000) ?? card.y, w: number(w, 160, 2400) ?? card.w, h: number(h, 100, 2400) ?? card.h }, null);
     return { moved: true };
   }
-  /** Tidies the canvas: each area becomes rows of cards, areas one under the other, nothing overlapping. */
+  /** Tidies the canvas: each area becomes rows of cards, the areas side by side in rows of the board, nothing overlapping. */
   tidy() {
-    const cards = this.cards(); const areas = [...new Set(cards.map(card => card.area || ''))]; let top = 0;
+    const cards = this.cards(); const areas = [...new Set(cards.map(card => card.area || ''))]; let left = 0, top = 0, band = 0;
     for (const area of areas) {
-      let x = 0, y = top, row = 0;
+      // The area's own shape first (from 0,0), then where it goes on the board.
+      let x = 0, y = 0, row = 0, wide = 0; const spots = [];
       for (const card of cards.filter(item => (item.area || '') === area).sort((a, b) => a.y - b.y || a.x - b.x)) {
-        if (x && x + card.w > 1700) { x = 0; y += row + GAP; row = 0; }
-        if (card.x !== x || card.y !== y) this.db.run('UPDATE canvas_items SET body=?,updated_at=? WHERE id=?', JSON.stringify(strip({ ...card, x, y })), now(), card.id);
-        x += card.w + GAP; row = Math.max(row, card.h);
+        if (x && x + card.w > AREA_WIDE) { x = 0; y += row + GAP; row = 0; }
+        spots.push([card, x, y]); x += card.w + GAP; row = Math.max(row, card.h); wide = Math.max(wide, x - GAP);
       }
-      top = y + row + AREA_GAP;
+      const tall = y + row;
+      if (left && left + wide > BOARD_WIDE) { left = 0; top += band + AREA_GAP; band = 0; }
+      for (const [card, cx, cy] of spots) if (card.x !== left + cx || card.y !== top + cy) this.db.run('UPDATE canvas_items SET body=?,updated_at=? WHERE id=?', JSON.stringify(strip({ ...card, x: left + cx, y: top + cy })), now(), card.id);
+      left += wide + AREA_GAP; band = Math.max(band, tall);
     }
     this.changed(); return { tidied: cards.length };
   }

@@ -1,5 +1,6 @@
 import './isolate-accounts.mjs';
 import test from 'node:test';
+import { DESKTOP_METHODS } from '../supervisor/link.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createSupervisor } from '../supervisor/index.mjs';
 import { toolArguments } from '../supervisor/tool-policy.mjs';
-import { areaBoxes, botSpots, bounds, fitView, hit, linkLine, sandboxed, zoomAround, HTML_POLICY } from '../mobile/state/canvas-layout.js';
+import { areaBoxes, botSpots, bounds, cord, fitView, hit, linkLine, sandboxed, teamCords, teamSpots, zoomAround, HTML_POLICY, NODE_W, NODE_H } from '../mobile/state/canvas-layout.js';
 
 // The team's canvas (it replaced the 3D office): the bots leave cards there, link them and group them in areas; the person sees it in
 // the app on the phone and on the computer.
@@ -66,6 +67,18 @@ test('bots fill the canvas: notes, live tables and charts, html, links, areas, t
   const tidy = (await app.rpc('canvas.state')).cards;
   for (const a of tidy) for (const b of tidy) if (a !== b) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, 'tidy leaves no card over another');
 
+  // The person's own note: on the canvas as a sticky, read by the bots as written by the owner, and only the person changes it.
+  const sticky = await app.rpc('canvas.note', { text: 'Priorizar vagas remotas.', x: 9000, y: 9000 });
+  const mine = (await app.rpc('canvas.state')).cards.find(card => card.id === sticky.id);
+  assert.equal(mine.sticky, true); assert.equal(mine.botId, null); assert.equal(mine.x, 9000);
+  assert.match((await call('canvas_read')).cards.find(card => card.id === sticky.id).by, /pessoa/);
+  await assert.rejects(() => call('canvas_update', { id: sticky.id, text: 'outra coisa' }), /é da pessoa/);
+  await app.rpc('canvas.note', { id: sticky.id, text: 'Priorizar remotas acima de 9 mil.' });
+  assert.equal((await app.rpc('canvas.state')).cards.find(card => card.id === sticky.id).text, 'Priorizar remotas acima de 9 mil.');
+  await assert.rejects(() => app.rpc('canvas.note', { text: '  ' }), /Escreva a nota/);
+  await app.rpc('canvas.remove', { id: sticky.id });
+  for (const method of ['canvas.state', 'canvas.move', 'canvas.remove', 'canvas.tidy', 'canvas.browserImage', 'canvas.note']) assert.ok(DESKTOP_METHODS.includes(method), `a janela do PC pode pedir ${method}`);
+
   // Removing a card takes its links with it.
   await call('canvas_remove', { id: table.id });
   const after = await app.rpc('canvas.state');
@@ -114,6 +127,17 @@ test('the canvas geometry: areas, links, bots, fitting, zoom and touches', () =>
   const plain = { k: 1, x: 0, y: 0 };
   assert.equal(hit(plain, 50, 10, cards).kind, 'header'); assert.equal(hit(plain, 50, 100, cards).kind, 'body'); assert.equal(hit(plain, 295, 195, cards).kind, 'resize');
   assert.equal(hit(plain, 350, 100, cards), null); assert.equal(hit(plain, spots.x.x + 5, spots.x.y + 5, cards, spots).kind, 'bot');
+  // The team on the canvas: the Chefe is the hub, a bot stands above the card it touched last, the others ring the Chefe; every bot is tied to the Chefe and to what it made.
+  const team = [{ id: 'chefe' }, { id: 'x' }, { id: 'y' }, { id: 'z' }], owned = cards.map((card, index) => ({ ...card, botId: index === 2 ? 'y' : 'x' }));
+  const places = teamSpots(team, owned, { x: { card: 'b' } }, 'chefe');
+  assert.equal(places.x.card, 'b'); assert.ok(places.x.y < 0, 'above its card'); assert.equal(places.y.card, 'c', 'a bot that made a card and touched none stands on its own');
+  assert.equal(places.chefe.hub, true); assert.ok(places.chefe.x + NODE_W < 0, 'the hub is left of the cards'); assert.equal(places.z.card, null);
+  const lines = teamCords(team, owned, places, { x: { card: 'b' } }, 'chefe');
+  assert.equal(lines.filter(line => line.kind === 'team').length, 3); assert.equal(lines.filter(line => line.kind === 'owns').length, 3);
+  assert.equal(lines.find(line => line.kind === 'owns' && line.live).key, 'oxb'); assert.match(cord(cards[0], cards[1]).d, /^M300,100 C/);
+  const alone = teamSpots(team, [], {}, 'chefe');
+  assert.deepEqual([alone.chefe.x + NODE_W / 2, alone.chefe.y + NODE_H / 2], [0, 0], 'with nothing on the canvas the Chefe is the centre');
+  assert.equal(hit(plain, places.z.x + NODE_W - 4, places.z.y + NODE_H - 4, cards, places).kind, 'bot', 'the whole plate is the bot');
   const html = sandboxed('<img src="https://example.com/x.png">');
   assert.ok(html.includes(HTML_POLICY) && HTML_POLICY.includes("default-src 'none'") && !HTML_POLICY.includes('http'), 'a page of a bot has no network');
 });

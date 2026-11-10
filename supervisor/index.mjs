@@ -548,6 +548,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'canvas.move': return tools.canvas.personMove(params || {});
         case 'canvas.remove': if (typeof params.id !== 'string') throw new Error('Cartão inválido.'); return tools.canvas.remove(params.id);
         case 'canvas.tidy': return tools.canvas.tidy();
+        case 'canvas.note': return tools.canvas.personNote(params || {});
         case 'canvas.browserImage': { db.requireBot(params.botId); const step = db.get('SELECT id,url,title,width,height,created_at FROM browser_steps WHERE bot_id=? AND image IS NOT NULL ORDER BY rowid DESC LIMIT 1', params.botId); if (!step) return { image: null }; return { image: db.browserStepImage(step.id)?.image || null, url: step.url, title: step.title, width: step.width, height: step.height, at: step.created_at }; }
         case 'decision.answer': return decisions.answer(params.id, { option: params.option, text: params.text });
         case 'bots.list': return state().bots;

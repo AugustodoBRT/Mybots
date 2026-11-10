@@ -2098,3 +2098,16 @@ Pedido do dono: comparar com OpenBot, MausBot e Grok Bot, melhorar o app em gera
 - **Títulos** em negrito (700) no lugar do extra-negrito, no PC e no celular.
 - Referências vistas: OpenBot (app instalado, aberto com o login do dono), MausBot (capturas do repositório) e Grok Bot (artigo). agents.ai não abriu.
 - Conferido por capturas (1440 e 860 px) com supervisor de teste, com e sem Chefe. **Não visto no celular real** (tela do Chefe e peso dos títulos mudam nele) nem na janela instalada.
+
+## 0.93.0 (versionCode 190): Canvas com papel pontilhado, cordas e notas da pessoa
+
+Pedido do dono: tirar os atalhos de bots e sugestões da tela do Chefe (ficam só "Continuar" e "Ver sessões") e melhorar bastante o Canvas, no espírito do Maestri: fundo de bolinhas e uma corda ligando cada bot ao que ele controla.
+
+- **Defeito corrigido**: na janela do PC o Canvas mostrava "Isto só pode ser feito no celular" e ficava vazio, porque `canvas.*` não estava em `DESKTOP_METHODS` (`supervisor/link.mjs`). O teste da janela do canvas falava direto com o supervisor e não pegava isso; agora `tests/canvas.test.mjs` confere a lista.
+- **Papel pontilhado** que acompanha o movimento e o zoom (`Dots` em `Canvas.js`).
+- **A equipe no canvas** (`teamSpots`, `teamCords`, `cord` em `state/canvas-layout.js`): cada bot é uma placa (rosto, nome, "trabalhando", "espera você", "aqui por último", "livre"). O Chefe é o centro, com uma corda pontilhada até cada bot; cada bot tem uma corda na cor dele até cada cartão que fez, e a do cartão em que está agora é cheia. Bots sem cartão ficam em volta do Chefe. Ligações entre cartões viraram curvas com pontas e rótulo legível.
+- **Notas da pessoa** (`canvas.note`, `personNote` em `supervisor/canvas.mjs`): botão "Nota" cria um adesivo amarelo onde a pessoa está olhando; tocar nele edita ou tira. Os bots leem em `canvas_read` como escritas pela pessoa e não conseguem alterá-las (`canvas_update` recusa).
+- **Áreas lado a lado**: uma área nova vai ao lado da última (e para baixo quando a fileira enche) em vez de sempre embaixo; "Arrumar" segue a mesma regra. Nome da área grande, acima da moldura tracejada.
+- **Controles flutuantes**: título e contagem, "Nota" e "Arrumar", zoom com porcentagem e "Mostrar tudo", e a caixa de mensagem como pílula no centro (Enter envia no PC). No cartão aberto, "Falar sobre isto" prepara a mensagem para o bot que o fez.
+- **Tela do Chefe**: saíram os atalhos dos bots, "Equipe" e as sugestões.
+- Não feito: arrastar a placa de um bot (a posição é calculada), cartão de terminal, a pessoa ligar cartões à mão. Conferido por capturas com supervisor de teste (1440 px e 430 px). **Não visto no celular real** nem na janela instalada.

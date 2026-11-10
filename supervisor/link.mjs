@@ -18,7 +18,9 @@ const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 export const DESKTOP_METHODS = [...noteMethods, 'state.get', 'ai.accounts', 'pc.update', 'ai.status', 'ai.update', 'ai.auto', 'decision.answer', 'chief.weekly', 'budget.set', 'table.access', 'tables.list', 'google.accounts.add', 'google.login', 'bot.phoneControl', 'connection.refresh', 'bots.list', 'bot.create', 'bot.update', 'bot.delete', 'bot.apps', 'bot.profile', 'chat.page', 'bot.newSession', 'bot.resumeSession', 'room.newSession', 'chat.read', 'chat.search', 'message.pin', 'queue.pause', 'task.steer', 'chat.send',
   'tasks.list', 'task.cancel', 'activity.list', 'grants.set', 'approval.respond', 'room.create', 'room.update', 'room.delete', 'room.send', 'person.update',
   'limits.refresh', 'account.connectors', 'routines.list', 'routine.update', 'routine.delete', 'routine.run', 'item.complete', 'file.read', 'file.resolve', 'file.uploadStart', 'file.uploadChunk', 'computer.retry', 'skill.run', 'skill.remove', 'browser.control',
-  'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput', 'passwords.list', 'passwords.save', 'passwords.remove', 'passwords.import'];
+  'agent.skills', 'browser.steps', 'browser.stepImage', 'browser.downloads', 'browser.download.open', 'browser.download.send', 'phone.status', 'phone.stop', 'browser.phoneFrame', 'browser.phoneInput', 'passwords.list', 'passwords.save', 'passwords.remove', 'passwords.import',
+  // The team's canvas in the window: look, move, tidy, take a card off and leave a note.
+  'canvas.state', 'canvas.move', 'canvas.remove', 'canvas.tidy', 'canvas.browserImage', 'canvas.note'];
 // What only the computer's own node may ask (the sync between the two supervisors); never the window.
 export const SYNC_METHODS = ['sync.status', 'sync.changes', 'sync.apply', 'sync.mark', 'sync.have', 'sync.file', 'sync.fileWrite', 'passwords.sync', 'passwords.export', 'passwords.merge'];
 // Events the window needs to refresh; the phone's notice delivery (bot.notify) stays on the phone.

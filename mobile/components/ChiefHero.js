@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
-import { Avatar, greeting, botLine } from './shared';
-import { desktop, desktopBus } from '../desktop';
+import { View, Text, Pressable } from 'react-native';
+import { Avatar, greeting } from './shared';
+import { desktop } from '../desktop';
 import { useStore } from '../state/useStore';
 import { C, F, Icon } from '../theme';
 import { graphModel } from '../state/graph-layout';
@@ -15,12 +15,8 @@ const store = { positions: {}, view: null };
 // The Chefe's empty conversation: his face in the middle and the memory map growing around him like an aura. It is the real
 // map (move a note, hover to light up its links); the view is fixed so nothing can slide behind him, and notes cannot enter his disc.
 // It goes away as soon as the first message of this visit is sent.
-// What a person usually asks first; a touch writes it in the message field, ready to send or change.
-const SUGGESTIONS = ['Como está a equipe hoje?', 'O que precisa de mim agora?', 'Crie um bot para me ajudar com…'];
-
-export function ChiefHero({ bot, state, call, onSessions, resume, onResume, onSuggest, onTeam }) {
+export function ChiefHero({ bot, state, call, onSessions, resume, onResume }) {
   const home = useStore(({ data }) => data);
-  const team = (home?.bots || []).filter(item => !item.deletedAt && !item.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8);
   const waiting = (home?.approvals || []).length, working = (home?.active || []).filter(id => id !== bot.id).length;
   const sum = [working ? `${working} ${working > 1 ? 'bots trabalhando' : 'bot trabalhando'}` : '', waiting ? `${waiting} ${waiting > 1 ? 'decisões esperam' : 'decisão espera'} você` : ''].filter(Boolean).join(' · ') || `Diga o que precisa: ${bot.name} cuida ou chama quem sabe.`;
   // The conversation screen only knows its own bot, so the colours need the whole team from the store.
@@ -52,20 +48,6 @@ export function ChiefHero({ bot, state, call, onSessions, resume, onResume, onSu
       <Text style={{ color: C.muted, fontFamily: F.m, fontSize: desktop ? 15 : 13.5, textAlign: 'center' }} numberOfLines={2}>{sum}</Text>
     </View>
     <View style={{ position: 'absolute', bottom: 8, left: 0, right: 0, alignItems: 'center', gap: 10 }}>
-      {team.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, maxWidth: '100%' }} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, alignItems: 'center' }}>
-        {team.map(item => { const line = botLine(item, home); const busy = line.state !== 'idle'; return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`Ir para ${item.name}`} onPress={() => desktopBus.emit('open-bot', item.id)}
-          style={({ pressed, hovered }) => [{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingLeft: 6, paddingRight: 14, borderRadius: 22, backgroundColor: C.surface, borderWidth: 1, borderColor: busy ? C.accent + '66' : C.line }, hovered && { backgroundColor: C.surface2 }, pressed && { opacity: 0.7 }]}>
-          <Avatar bot={item} size={32} state={line.state} animated={busy} />
-          <View><Text style={{ color: C.text, fontFamily: F.s, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
-            {busy || item.unread > 0 ? <Text style={{ color: line.tone || C.accent, fontFamily: F.m, fontSize: 10.5 }} numberOfLines={1}>{busy ? (line.state === 'waiting' ? 'espera você' : 'trabalhando') : 'mensagem nova'}</Text> : null}</View>
-        </Pressable>; })}
-        {onTeam ? <Pressable accessibilityRole="button" accessibilityLabel="Ver a equipe inteira" onPress={onTeam} style={({ pressed, hovered }) => [{ height: 44, paddingHorizontal: 14, borderRadius: 22, justifyContent: 'center' }, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
-          <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Equipe</Text></Pressable> : null}
-      </ScrollView> : null}
-      {onSuggest ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 16 }}>
-        {SUGGESTIONS.map(text => <Pressable key={text} accessibilityRole="button" onPress={() => onSuggest(text.replace(/…$/, ' '))} style={({ pressed, hovered }) => [{ paddingVertical: 7, paddingHorizontal: 13, borderRadius: 16, borderWidth: 1, borderColor: C.line2 }, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
-          <Text style={{ color: C.text2, fontFamily: F.m, fontSize: 13 }}>{text}</Text></Pressable>)}
-      </View> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 16 }}>
       {resume && onResume ? <Pressable accessibilityRole="button" accessibilityLabel={`Continuar a sessão ${resume}`} onPress={onResume} style={({ pressed }) => [{ maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 18, borderWidth: 1, borderColor: C.accent + '66', backgroundColor: C.accent + '14', paddingVertical: 8, paddingHorizontal: 14 }, pressed && { opacity: 0.7 }]}>
         <Icon name="right" size={14} color={C.accent} /><Text numberOfLines={1} style={{ flexShrink: 1, color: C.accent, fontFamily: F.b, fontSize: 13.5 }}>Continuar: {resume}</Text></Pressable> : null}

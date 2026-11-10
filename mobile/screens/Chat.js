@@ -211,7 +211,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
         </View>
       </View>}
       </View>} />
-    {showHero ? <ChiefHero bot={bot} call={browserCall} onSuggest={setDraft} onTeam={onTeam} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} resume={latestSession?.title} onResume={latestSession ? () => onResume?.(latestSession.id) : null} /> : null}
+    {showHero ? <ChiefHero bot={bot} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} resume={latestSession?.title} onResume={latestSession ? () => onResume?.(latestSession.id) : null} /> : null}
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}

@@ -8,7 +8,8 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 // setTheme, so a component reads C.text at render and the whole tree repaints on a change without restarting the app.
 // One accent (orange); a bot's own color lives only in its face.
 export { PALETTES, resolveTheme, FACE_COLORS, HUES };
-const desktopColors = { bg: '#131416', bg2: '#191A1D', surface: '#1E2023', surface2: '#25272B', elevated: '#2C2E33', line: '#2B2D31', line2: '#3B3E44', text: '#F0F0F2', text2: '#D2D3D7', muted: '#A6A8B0', faint: '#91949E', accent: '#EAB875', accentInk: '#292014' };
+// The window: a darker frame (chrome) around a lighter content panel; surfaces are told apart by tone, with quiet lines.
+const desktopColors = { chrome: '#0D0E10', bg: '#151619', bg2: '#151619', surface: '#1D1F22', surface2: '#25272B', elevated: '#2A2C31', line: '#232529', line2: '#34373C', text: '#F0F0F2', text2: '#D2D3D7', muted: '#A6A8B0', faint: '#91949E', accent: '#EAB875', accentInk: '#292014' };
 const colorsFor = name => ({ ...PALETTES[name], ...(desktop && name === 'dark' ? desktopColors : {}) });
 export const C = colorsFor('dark');
 let themeName = 'dark', themeVersion = 0; const listeners = new Set();
@@ -30,7 +31,7 @@ export function themed(factory) {
 export const hueOf = botColor;
 export const F = {
   r: 'PlusJakartaSans_400Regular', m: 'PlusJakartaSans_500Medium', s: 'PlusJakartaSans_600SemiBold',
-  b: 'PlusJakartaSans_700Bold', x: 'PlusJakartaSans_800ExtraBold'
+  b: 'PlusJakartaSans_700Bold', x: 'PlusJakartaSans_700Bold'
 };
 export const R = { s: 10, m: 14, l: 20, xl: 26 };
 

@@ -15,13 +15,14 @@ import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
 import { browserMode } from '../local';
 
 const s = themed(() => ({
-  desk: { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
-  rail: { width: 76, alignItems: 'center', paddingVertical: 10, gap: 3, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg },
+  desk: { flex: 1, flexDirection: 'row', backgroundColor: C.chrome || C.bg2 },
+  panel: { flex: 1, minWidth: 0, marginRight: 8, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg, overflow: 'hidden' },
+  rail: { width: 76, alignItems: 'center', paddingVertical: 10, gap: 3 },
   railNarrow: { width: 52, gap: 6 },
   railItem: { width: 66, minHeight: 50, paddingVertical: 7, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 4 },
   railItemNarrow: { width: 36, minHeight: 36, height: 36, paddingVertical: 0, borderRadius: 11 },
   railText: { color: C.muted, fontFamily: F.m, fontSize: 10.5, letterSpacing: -0.1 },
-  railOn: { backgroundColor: C.accent + '16' }, railHover: { backgroundColor: C.surface },
+  railOn: { backgroundColor: C.surface2 }, railHover: { backgroundColor: C.surface },
   dot: { position: 'absolute', top: 5, right: 18, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg },
   dotNarrow: { top: 7, right: 7 },
   kbd: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 6, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
@@ -30,7 +31,10 @@ const s = themed(() => ({
   paletteFoot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.text + '05' },
   hintItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, hintText: { color: C.muted, fontFamily: F.m, fontSize: 12 },
   ringText: { color: C.muted, fontFamily: F.m, fontSize: 11, marginTop: 1 },
-  list: { backgroundColor: C.bg2, borderRightWidth: 1, borderRightColor: C.line },
+  list: {},
+  chief: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 10, marginHorizontal: 8, marginBottom: 6, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+  chiefOn: { backgroundColor: C.accent + '14', borderColor: C.accent + '55' },
+  chiefTag: { color: C.accent, fontFamily: F.s, fontSize: 10.5 },
   listHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
   listTitle: { color: C.text, fontFamily: F.x, fontSize: 16, letterSpacing: -0.4 },
   find: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingLeft: 11, paddingRight: 7, height: 34, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
@@ -43,9 +47,9 @@ const s = themed(() => ({
   line: { color: C.muted, fontFamily: F.m, fontSize: 12 }, unread: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
   divider: { width: 6, marginLeft: -3, marginRight: -3, zIndex: 5, cursor: 'col-resize' },
   main: { flex: 1, minWidth: 0 },
-  tabs: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, height: 38, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.bg2 },
+  tabs: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 2, paddingRight: 8, height: 42 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 190, paddingLeft: 10, paddingRight: 6, height: 28, borderRadius: 8 },
-  tabOn: { backgroundColor: C.surface2 }, tabText: { color: C.muted, fontFamily: F.m, fontSize: 12, flexShrink: 1 }, tabTextOn: { color: C.text },
+  tabOn: { backgroundColor: C.surface2 }, tabHome: { paddingRight: 11 }, tabText: { color: C.muted, fontFamily: F.m, fontSize: 12, flexShrink: 1 }, tabTextOn: { color: C.text },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
   chipText: { color: C.text2, fontFamily: F.m, fontSize: 12.5 },
   tool: { height: 32, paddingHorizontal: 11, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -139,7 +143,7 @@ function Palette({ visible, onClose, bots, rooms, onOpen, onRoom, onSearch, onCr
 }
 
 function Help({ visible, onClose }) {
-  const keys = [[['Ctrl', 'K'], 'Buscar e trocar de bot ou sala'], [['Ctrl', 'N'], 'Criar um bot'], [['Enter'], 'Enviar a mensagem'], [['Shift', 'Enter'], 'Quebrar a linha na mensagem'], [['Esc'], 'Fechar a janela ou o painel aberto'], [['Botão direito'], 'Menu do bot ou da mensagem']];
+  const keys = [[['Ctrl', 'K'], 'Buscar e trocar de bot ou sala'], [['Ctrl', '1'], 'Voltar para o Chefe'], [['Ctrl', 'N'], 'Criar um bot'], [['Enter'], 'Enviar a mensagem'], [['Shift', 'Enter'], 'Quebrar a linha na mensagem'], [['Esc'], 'Fechar a janela ou o painel aberto'], [['Botão direito'], 'Menu do bot ou da mensagem']];
   return <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
     <Pressable style={s.scrim} onPress={onClose}><Pressable style={[s.palette, { width: 480 }]} onPress={() => {}}>
       <View style={[s.paletteHead, { paddingVertical: 12, paddingRight: 10 }]}><Text style={[s.sideTitle, { flex: 1 }]}>Atalhos do teclado</Text><IconButton icon="close" label="Fechar os atalhos" onPress={onClose} size={30} /></View>
@@ -220,7 +224,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   }, [selected, roomId]);
   const go = target => (target ? (target.kind === 'room' ? onRoom(target.id) : onOpen(target.id)) : onHome?.());
   const closeTab = tab => { const rest = tabs.filter(item => !(item.kind === tab.kind && item.id === tab.id)); setTabs(rest); if (current && current.kind === tab.kind && current.id === tab.id) go(rest[rest.length - 1] || null); };
-  const keepBar = useRef(false);
+  const keepBar = useRef(false); const chiefRef = useRef(false);
   useEffect(() => { if (profileOpen) openKind('settings'); else dropKind('settings', !keepBar.current); }, [profileOpen]);
   // The bar belongs to the conversation it was opened for: going to another bot or room brings back its start screen
   // (the agent's settings and the open file were the other one's), and on pages without a conversation the bar is not shown.
@@ -245,6 +249,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
     const listen = event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true); }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); onCreate(); }
+      else if ((event.ctrlKey || event.metaKey) && event.key === '1' && chiefRef.current) { event.preventDefault(); onHome?.(); }
       else if (event.key === 'Escape' && !event.defaultPrevented) {
         if (palette) setPalette(false);
         else if (menu) setMenu(null);
@@ -262,13 +267,14 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const bot = selected ? bots.find(item => item.id === selected) : null; const chiefHome = Boolean(bot?.isChief); const room = roomId ? roomList.find(item => item.id === roomId) : null;
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
+  const working = (data.active || []).filter(id => !offline(data, id));
   const windowsOf = provider => data.usage?.limits?.[provider]?.windows || [];
   const left = (provider, key) => { const window = windowsOf(provider).find(item => item.key === key); return window ? 100 - window.used : null; };
   // The 5-hour window first (the first window the IA reports when it has no 5-hour one), and the week next to it.
   const limit = provider => left(provider, 'five_hour') ?? (windowsOf(provider)[0] ? 100 - windowsOf(provider)[0].used : null);
   const weekLimit = provider => left(provider, 'five_hour') == null ? null : left(provider, 'week');
   const openPage = key => onPage(key);
-  const hasChief = bots.some(item => item.isChief);
+  const chief = bots.find(item => item.isChief) || null; const hasChief = Boolean(chief); chiefRef.current = hasChief;
   const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['memory', 'Memória', () => openPage('memory'), page === 'memory'], ['canvas', 'Canvas', () => openPage('canvas'), page === 'canvas'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
   // The icon bar names each place under its icon; a narrow window keeps only the icons.
   const narrow = width < 900;
@@ -284,13 +290,21 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       {railButton('info', 'Ajuda e atalhos', 'Ajuda', () => setHelp(true), false, false)}
       {railButton('settings', 'Ajustes', 'Ajustes', () => openPage('settings'), page === 'settings', false)}
     </View>
-    {page ? <View style={{ flex: 1, minWidth: 0 }}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
+    {page ? <View style={[s.panel, { marginTop: 8 }]}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
       : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View> : <>
-    <View style={[s.list, { display: chiefHome || (fileOpen && width < 900) ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
+    <View style={[s.list, { display: fileOpen && width < 900 ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
         <View style={s.listHead}><Text style={s.listTitle}>Conversas</Text><View style={{ flexDirection: 'row', gap: 6 }}><IconButton icon="plus" label="Novo bot (Ctrl+N)" onPress={onCreate} size={34} tint={C.accent} /></View></View>
         <Pressable accessibilityRole="search" accessibilityLabel="Buscar bot ou sala (Ctrl+K)" onPress={() => setPalette(true)} style={s.find}><Icon name="search" size={15} color={C.faint} /><Text style={s.findText} numberOfLines={1}>Buscar bot ou sala</Text><View style={{ flexDirection: 'row', gap: 3 }}><Kbd>Ctrl</Kbd><Kbd>K</Kbd></View></Pressable></>}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
+        {chief ? (() => { const line = botLine(chief, data); return compact
+          ? <Row compact selected={chiefHome} label={`Conversar com ${chief.name}, o Chefe`} onPress={onHome} face={<Avatar bot={chief} size={34} state={line.state} animated={line.state !== 'idle'} />} />
+          : <Pressable accessibilityRole="button" accessibilityLabel={`Conversar com ${chief.name}, o Chefe`} accessibilityState={{ selected: chiefHome }} onPress={onHome} style={({ hovered }) => [s.chief, hovered && { backgroundColor: C.surface2 }, chiefHome && s.chiefOn]}>
+            <Avatar bot={chief} size={40} state={line.state} animated={line.state !== 'idle'} />
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}><Text style={[s.name, { fontSize: 14 }]} numberOfLines={1}>{chief.name}</Text><Text style={s.chiefTag}>Chefe</Text><View style={{ flex: 1 }} /><View style={{ flexDirection: 'row', gap: 3 }}><Kbd>Ctrl</Kbd><Kbd>1</Kbd></View></View>
+              <Text style={[s.line, line.tone && { color: line.tone }]} numberOfLines={1}>{working.length || waiting ? [working.length ? `${working.length} trabalhando` : '', waiting ? `${waiting} ${waiting > 1 ? 'esperam' : 'espera'} você` : ''].filter(Boolean).join(' · ') : 'Peça aqui; ele distribui para a equipe'}</Text></View>
+          </Pressable>; })() : null}
         {roomList.length || bots.length >= 2 ? <>
           {compact ? null : <Pressable accessibilityRole="button" accessibilityState={{ expanded: rooms }} onPress={() => setRooms(value => !value)} style={s.section}><Icon name={rooms ? 'down' : 'right'} size={14} color={C.muted} /><Text style={s.sectionText}>Salas</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Nova sala" disabled={bots.length < 2} onPress={onNewRoom} hitSlop={8}><Icon name="plus" size={15} color={C.muted} /></Pressable></Pressable>}
@@ -309,11 +323,13 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       {compact ? null : <Pressable accessibilityRole="button" onPress={onConnection} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: C.line }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint }, phoneOnline && { backgroundColor: C.good }]} /><Text style={s.line}>{data.source === 'local' ? (!phoneOnline ? 'Iniciando o MyBots do computador…' : data.sync ? (data.sync.state === 'syncing' ? 'Sincronizando com o celular…' : data.sync.online ? 'Sincronizado com o celular' : 'Celular fora de alcance · só neste computador') : 'Só neste computador') : phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>}
     </View>
-    {compact || chiefHome ? null : <View accessibilityRole="adjustable" accessibilityLabel="Arrastar para mudar a largura da lista" style={s.divider} {...divider.panHandlers} />}
+    {compact ? null : <View accessibilityRole="adjustable" accessibilityLabel="Arrastar para mudar a largura da lista" style={s.divider} {...divider.panHandlers} />}
     <View style={[s.main, fileOpen && width < 760 && { display: 'none' }]}>
       {current ? <View style={s.tabs}>
-        {chiefHome ? null : <IconButton icon="sidebar" label={collapsed ? "Expandir conversas" : "Recolher conversas"} onPress={() => setCollapsed(value => !value)} size={28} />}
+        <IconButton icon="sidebar" label={collapsed ? "Expandir conversas" : "Recolher conversas"} onPress={() => setCollapsed(value => !value)} size={28} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 2, alignItems: 'center', paddingHorizontal: 6 }}>
+          {chief ? <Pressable accessibilityRole="tab" accessibilityLabel={`${chief.name}, o Chefe`} accessibilityState={{ selected: chiefHome }} onPress={onHome} style={({ hovered }) => [s.tab, s.tabHome, hovered && s.rowHover, chiefHome && s.tabOn]}>
+            <Avatar bot={chief} size={20} animated={false} /><Text style={[s.tabText, chiefHome && s.tabTextOn]} numberOfLines={1}>{chief.name}</Text><Icon name="spark" size={12} color={C.accent} /></Pressable> : null}
           {tabs.map(tab => { const on = current.kind === tab.kind && current.id === tab.id; return <Pressable key={tab.kind + tab.id} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => go(tab)} style={({ hovered }) => [s.tab, hovered && s.rowHover, on && s.tabOn]}>
             {faceOf(tab)}<Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{nameOf(tab)}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={`Fechar a aba de ${nameOf(tab)}`} onPress={() => closeTab(tab)} hitSlop={6}><Icon name="close" size={13} color={C.faint} /></Pressable></Pressable>; })}
@@ -321,7 +337,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
         <Pressable accessibilityRole="button" accessibilityLabel="Barra lateral" accessibilityState={{ expanded: side.open }} onPress={() => setSide(old => ({ ...old, open: !old.open }))} style={({ hovered }) => [s.tool, hovered && s.rowHover, side.open && s.tabOn]}>
           <Icon name="sidebar" size={18} color={waiting && !side.open ? C.accent : C.text2} />{waiting ? <View style={s.badge}><Text style={s.badgeText}>{waiting}</Text></View> : null}</Pressable>
       </View> : null}
-      <View style={{ flex: 1 }}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
+      <View style={[s.panel, !current && { marginTop: 8 }]}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
     <DesktopReveal open={side.open && Boolean(current) && !team && (!page || (page === 'canvas' && side.active === 'file'))} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>

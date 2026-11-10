@@ -22,6 +22,7 @@ if (desktop) {
     [role=button], [role=tab] { transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
     [role=button]:focus-visible, [role=tab]:focus-visible { outline: 2px solid #EAB875; outline-offset: 3px; }
     [data-desktop-message] { animation: message-in 220ms ease-out both; }
+    [data-desktop-composer] textarea { field-sizing: content; }
     [data-hover-only=true] { opacity: 0; }
     [data-desktop-message]:hover [data-hover-only=true], [data-hover-only=true]:focus-visible { opacity: 1; }
     textarea, input, textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; box-shadow: none !important; }

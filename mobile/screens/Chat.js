@@ -160,7 +160,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
       {/* The bot's own settings open by touching its face; the memory map is on the start page. Only two buttons stay: its browser and
           the start page (the team, rooms, memory and the app's settings). */}
       {browsing && !desktop ? <IconButton icon="globe" label={browserOpen ? 'Esconder navegador do bot' : 'Ver navegador do bot'} active={browserOpen || assumed} onPress={() => assumed ? setBrowserKey(key => key + 1) : setBrowserOpen(value => !value)} size={40} /> : null}
-      {bot.isChief ? <IconButton icon="apps" label="Início: equipe, salas, memória e ajustes" onPress={onTeam} size={40} /> : null}
+      {bot.isChief && !desktop ? <IconButton icon="apps" label="Início: equipe, salas, memória e ajustes" onPress={onTeam} size={40} /> : null}
     </View>
     {bot.isChief ? <ChiefStatus onTeam={onTeam} /> : null}
     {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
@@ -211,7 +211,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
         </View>
       </View>}
       </View>} />
-    {showHero ? <ChiefHero bot={bot} call={browserCall} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} resume={latestSession?.title} onResume={latestSession ? () => onResume?.(latestSession.id) : null} /> : null}
+    {showHero ? <ChiefHero bot={bot} call={browserCall} onSuggest={setDraft} onTeam={onTeam} state={waiting ? 'waiting' : asleep ? 'sleeping' : working ? 'working' : 'idle'} onSessions={bot.messageCount ? () => setSessionsOpen(true) : null} resume={latestSession?.title} onResume={latestSession ? () => onResume?.(latestSession.id) : null} /> : null}
     {away ? <ToEndButton onPress={toEnd} /> : null}
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}

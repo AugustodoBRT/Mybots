@@ -2086,3 +2086,15 @@ Pedido do dono: melhorar a experiência e o design do app, começando pelo PC, p
 - **Barra direita vazia**: cartões com ícone e descrição em vez de quatro botões soltos no meio.
 - **Início**: ações com o botão principal destacado. **Lista**: bolinha de não lida à direita, "Capacidade disponível" sem maiúsculas. **Ajustes**: categorias mais leves, botões e campos na densidade do PC (42 px, cantos menores).
 - Conferido por capturas da interface exportada (1440 e 860 px) com um supervisor de teste. **Não visto no celular real** (tabela, bloco de código e telas vazias mudam nele). Ctrl+N logo depois de fechar a busca com Esc às vezes não abre (já era assim); não corrigido.
+
+## 0.92.0 (versionCode 189): o Chefe como ponto de partida e janela em painéis
+
+Pedido do dono: comparar com OpenBot, MausBot e Grok Bot, melhorar o app em geral e destravar a tela inicial (falar com o Chefe, ir para os outros bots e voltar).
+
+- **O Chefe sempre a um clique** (`DesktopShell.js`): a lista de conversas não some mais na tela do Chefe; ele fica fixo no topo da lista (cartão próprio, "Chefe") e como primeira aba, sem botão de fechar. **Ctrl+1** volta para ele de qualquer lugar. Saiu o botão "apps" do cabeçalho no PC.
+- **Tela do Chefe** (`ChiefHero.js`, PC e celular): saudação e resumo do dia no alto; embaixo, os bots da equipe como atalhos (com "trabalhando", "espera você" ou "mensagem nova") e três pedidos prontos que escrevem no campo de mensagem. O mapa da memória e o rosto continuam no meio.
+- **Janela em painéis**: moldura mais escura com o conteúdo num painel arredondado; abas na moldura; barra direita como painel próprio; menos linhas de borda (paleta do PC em tons).
+- **Conversa no PC**: campo de mensagem em uma linha (cresce com o texto), botões redondos; balões sem borda.
+- **Títulos** em negrito (700) no lugar do extra-negrito, no PC e no celular.
+- Referências vistas: OpenBot (app instalado, aberto com o login do dono), MausBot (capturas do repositório) e Grok Bot (artigo). agents.ai não abriu.
+- Conferido por capturas (1440 e 860 px) com supervisor de teste, com e sem Chefe. **Não visto no celular real** (tela do Chefe e peso dos títulos mudam nele) nem na janela instalada.

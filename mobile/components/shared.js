@@ -911,6 +911,17 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
   const { voice } = dictation;
   const commands = voice ? [] : commandsFor(value || '');
   const complete = commands.length && !commands.some(item => [item.name, ...item.aliases].includes((value || '').toLowerCase()));
+  const field = <TextInput ref={inputRef} accessibilityLabel={accessibilityLabel} value={value} onChangeText={setValue} editable={editable}
+      placeholder={placeholder} placeholderTextColor={C.faint} multiline rows={desktop ? 1 : undefined} maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.accent}
+      // On the computer, Enter sends and Shift+Enter breaks the line.
+      onKeyPress={desktop ? event => { if ((event.nativeEvent.key === 'Enter' || event.nativeEvent.key === 'Tab') && !event.nativeEvent.shiftKey && complete) { event.preventDefault(); setValue(commands[0].name); } else if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />;
+  const attachTool = <>{voice ? <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" disabled={voice.busy} onPress={dictation.cancel} style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}><Icon name="close" size={20} color={C.text2} /></Pressable>
+        : onAttach ? <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={attachDisabled} onPress={onAttach} style={({ pressed }) => [styles.composerTool, attachDisabled && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable> : null}</>;
+  const actions = <>{voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.accentInk} stroke={2.6} /></Pressable>
+        : <>
+          {dictation.available ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={!editable} onPress={dictation.start} style={({ pressed }) => [styles.composerTool, !editable && styles.sendDisabled, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.accentInk : C.muted} stroke={2.6} /></Pressable>
+        </>}</>;
   return <View dataSet={desktop ? { desktopComposer: "true" } : undefined} style={[styles.composerBox, voice && styles.composerListening]}>
     {commands.length ? <View accessibilityRole="menu" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', marginBottom: 6, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 4, zIndex: 20 }}>
       {commands.map(item => <Pressable key={item.name} accessibilityRole="menuitem" onPress={() => setValue(item.name)} style={({ pressed, hovered }) => [{ flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8 }, (pressed || hovered) && { backgroundColor: C.accent + '16' }]}>
@@ -920,20 +931,13 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
       <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
       <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>
     </View>
-    : <TextInput ref={inputRef} accessibilityLabel={accessibilityLabel} value={value} onChangeText={setValue} editable={editable}
-      placeholder={placeholder} placeholderTextColor={C.faint} multiline maxLength={8000} textAlignVertical="top" style={styles.composerInput} selectionColor={C.accent}
-      // On the computer, Enter sends and Shift+Enter breaks the line.
-      onKeyPress={desktop ? event => { if ((event.nativeEvent.key === 'Enter' || event.nativeEvent.key === 'Tab') && !event.nativeEvent.shiftKey && complete) { event.preventDefault(); setValue(commands[0].name); } else if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) { event.preventDefault(); if (canSend) onSend(); } } : undefined} />}
-    <View style={styles.composerRow}>
-      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Cancelar ditado" disabled={voice.busy} onPress={dictation.cancel} style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}><Icon name="close" size={20} color={C.text2} /></Pressable>
-        : onAttach ? <Pressable accessibilityRole="button" accessibilityLabel="Anexar arquivo ou foto" disabled={attachDisabled} onPress={onAttach} style={({ pressed }) => [styles.composerTool, attachDisabled && styles.sendDisabled, pressed && styles.pressed]}><Icon name="plus" size={21} color={C.text2} stroke={2} /></Pressable> : null}
+    : desktop ? null : field}
+    {desktop && !voice ? <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>{attachTool}{field}{actions}</View>
+    : <View style={styles.composerRow}>
+      {attachTool}
       <View style={{ flex: 1 }} />
-      {voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.accentInk} stroke={2.6} /></Pressable>
-        : <>
-          {dictation.available ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={!editable} onPress={dictation.start} style={({ pressed }) => [styles.composerTool, !editable && styles.sendDisabled, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable> : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.accentInk : C.muted} stroke={2.6} /></Pressable>
-        </>}
-    </View>
+      {actions}
+    </View>}
   </View>;
 }
 

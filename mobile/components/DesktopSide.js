@@ -6,7 +6,7 @@ import BotBrowserPanel, { browserFrames, TabStrip, AddressRow, ReturnCard } from
 import { native } from '../desktop';
 
 const s = themed(() => ({
-  side: { flex: 1, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
+  side: { flex: 1, marginTop: 8, marginRight: 8, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.bg2, overflow: 'hidden' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.line },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 170, height: 30, paddingLeft: 10, paddingRight: 8, borderRadius: 9 },
   tabOn: { backgroundColor: C.surface2 }, hover: { backgroundColor: C.surface },

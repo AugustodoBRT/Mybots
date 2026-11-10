@@ -15,7 +15,7 @@ import { NewBot } from './components/NewBot';
 import { DesktopShell } from './components/DesktopShell';
 import { ActivityColumns, ActivityPage } from './components/Activity';
 import { UsagePanel } from './components/Usage';
-import { desktop, pwa, column, paintPage } from './desktop';
+import { desktop, pwa, column, paintPage, desktopBus } from './desktop';
 import { downloadFromComputer } from './web-file';
 import { DEFAULT_ACCOUNT } from './ai-accounts';
 import { syncPasswords } from './password-sync';
@@ -844,6 +844,8 @@ function AppMain() {
     if (selected !== id) setDraft(desktopDrafts.current.get(id) || '');
     setSelected(id); setRoomId(null);
   };
+  const openBotRef = useRef(null); openBotRef.current = openDesktopBot;
+  useEffect(() => desktopBus.on('open-bot', id => openBotRef.current?.(id)), []);
   const openDesktopRoom = id => {
     if (selected) desktopDrafts.current.set(selected, draft);
     setRoomId(id); setSelected(null);

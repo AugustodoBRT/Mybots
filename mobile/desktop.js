@@ -38,6 +38,8 @@ export function paintPage(colors) {
   const style = document.getElementById('mybots-scroll'); if (style) style.textContent = `::-webkit-scrollbar{width:6px;height:6px;background:transparent}::-webkit-scrollbar-thumb{background:${colors.line2};border-radius:5px}`;
 }
 
+// A bot whose browser should open as soon as its conversation shows (the canvas asks it on the phone).
+export const pendingBrowser = { botId: null };
 // Small messages between the window's shell and the open conversation (for example "open the browser panel").
 const listeners = new Map();
 export const desktopBus = {

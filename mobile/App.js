@@ -15,7 +15,7 @@ import { NewBot } from './components/NewBot';
 import { DesktopShell } from './components/DesktopShell';
 import { ActivityColumns, ActivityPage } from './components/Activity';
 import { UsagePanel } from './components/Usage';
-import { desktop, pwa, column, paintPage, desktopBus } from './desktop';
+import { desktop, pwa, column, paintPage, desktopBus, pendingBrowser } from './desktop';
 import { downloadFromComputer } from './web-file';
 import { DEFAULT_ACCOUNT } from './ai-accounts';
 import { syncPasswords } from './password-sync';
@@ -860,7 +860,9 @@ function AppMain() {
             onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
   // On the computer these are whole pages beside the icon bar instead of sheets.
   const canvasPage = onClose => data ? <Canvas data={data} call={callNotes} onSend={canvasSend} sending={sending} onClose={onClose}
-    onOpenBot={id => { setDeskPage(null); desktop ? openDesktopBot(id) : navigate({ kind: 'bot', id }); }} onFile={file => file && openConversationFile?.(file)} /> : null;
+    onOpenBot={id => { setDeskPage(null); desktop ? openDesktopBot(id) : navigate({ kind: 'bot', id }); }}
+    onOpenBrowser={id => { if (desktop) { desktopBus.emit('browser-full', { botId: id }); return; } pendingBrowser.botId = id; setDeskPage(null); navigate({ kind: 'bot', id }); }}
+    onFile={file => file && openConversationFile?.(file)} /> : null;
   const canvasView = !desktop && deskPage === 'canvas' && canvasPage(() => setDeskPage(null));
   const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} />;
   const deskPages = desktop ? {
@@ -900,7 +902,7 @@ function AppMain() {
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data && setup ? <SetupScreen onScanned={pairPc} onTermux={enableTermux} busy={setupBusy} error={setupError} />
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{openLogs ? <Pressable accessibilityRole="button" onPress={openLogs} style={styles.changeModeButton}><Text style={styles.changeModeText}>Ver detalhes do erro</Text></Pressable> : null}{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
-      : desktop ? <DesktopShell fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
+      : desktop ? <DesktopShell onSendTo={canvasSend} fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
           filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>

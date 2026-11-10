@@ -107,7 +107,7 @@ function Dots({ view, width, height }) {
   </Svg>;
 }
 
-export default function Canvas({ data: shell, call, onSend, onOpenBot, onFile, onClose, sending }) {
+export default function Canvas({ data: shell, call, onSend, onOpenBot, onOpenBrowser, onFile, onClose, sending }) {
   // With each bot's last message (the shell leaves it out), for the reply above the box.
   const data = useStore(selectHome) || shell;
   const { width, height } = useWindowDimensions();
@@ -152,7 +152,7 @@ export default function Canvas({ data: shell, call, onSend, onOpenBot, onFile, o
   const viewRef = useRef(v); viewRef.current = v;
   const cardsRef = useRef(cards); cardsRef.current = cards; const spotsRef = useRef(spots); spotsRef.current = spots;
   const handlers = useRef({}); handlers.current = {
-    open: card => { if (card.sticky) setNoting({ id: card.id, text: card.text || '' }); else if (card.kind === 'browser') onOpenBot?.(card.botId); else if (card.kind === 'video') onFile?.(card.file, card.botId); else setOpened(card.id); },
+    open: card => { if (card.sticky) setNoting({ id: card.id, text: card.text || '' }); else if (card.kind === 'browser') (onOpenBrowser || onOpenBot)?.(card.botId); else if (card.kind === 'video') onFile?.(card.file, card.botId); else setOpened(card.id); },
     bot: id => { setBotId(id); setPicking(false); },
     save: rect => call('canvas.move', rect).then(load).catch(err => { setError(err.message); setMoving(null); })
   };
@@ -242,6 +242,8 @@ export default function Canvas({ data: shell, call, onSend, onOpenBot, onFile, o
   const remove = async card => { setOpened(null); try { await call('canvas.remove', { id: card.id }); await load(); } catch (err) { setError(err.message); } };
 
   const working = bots.filter(bot => data?.active?.includes(bot.id)).length;
+  // A narrow screen (the phone): the tools keep only their icons and the zoom is the pinch (plus "Mostrar tudo").
+  const narrow = size.width < 640;
   return <View ref={padRef} style={[s.page, { paddingBottom: pad }]}>
     <View ref={surface} style={s.surface} onLayout={e => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })} {...responder.panHandlers}>
       <Dots view={v} width={size.width} height={size.height} />
@@ -254,25 +256,22 @@ export default function Canvas({ data: shell, call, onSend, onOpenBot, onFile, o
       <View style={s.pill}>
         {onClose ? <IconButton icon="back" label="Voltar" onPress={onClose} size={34} /> : <Icon name="canvas" size={17} color={C.accent} />}
         <Text style={s.title}>Canvas</Text>
-        {size.width < 520 ? null : <Text style={s.count}>{state.cards.length ? `${state.cards.length} ${state.cards.length === 1 ? 'cartão' : 'cartões'}` : 'vazio'}{working ? ` · ${working} trabalhando` : ''}</Text>}
+        {narrow ? null : <Text style={s.count}>{state.cards.length ? `${state.cards.length} ${state.cards.length === 1 ? 'cartão' : 'cartões'}` : 'vazio'}{working ? ` · ${working} trabalhando` : ''}</Text>}
       </View>
       <View style={{ flex: 1 }} />
       <View style={s.pill}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Deixar uma nota sua no canvas" onPress={() => setNoting({ text: '' })} style={({ hovered, pressed }) => [s.tool, hovered && s.toolHover, pressed && { opacity: 0.6 }]}><Icon name="edit" size={15} color={C.text2} /><Text style={s.toolText}>Nota</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Arrumar os cartões" onPress={() => call('canvas.tidy', {}).then(load).then(() => setTimeout(fitAll, 200)).catch(err => setError(err.message))} style={({ hovered, pressed }) => [s.tool, hovered && s.toolHover, pressed && { opacity: 0.6 }]}><Icon name="apps" size={15} color={C.text2} /><Text style={s.toolText}>Arrumar</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Deixar uma nota sua no canvas" onPress={() => setNoting({ text: '' })} style={({ hovered, pressed }) => [s.tool, hovered && s.toolHover, pressed && { opacity: 0.6 }]}><Icon name="edit" size={15} color={C.text2} />{narrow ? null : <Text style={s.toolText}>Nota</Text>}</Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Arrumar os cartões" onPress={() => call('canvas.tidy', {}).then(load).then(() => setTimeout(fitAll, 200)).catch(err => setError(err.message))} style={({ hovered, pressed }) => [s.tool, hovered && s.toolHover, pressed && { opacity: 0.6 }]}><Icon name="apps" size={15} color={C.text2} />{narrow ? null : <Text style={s.toolText}>Arrumar</Text>}</Pressable>
+      </View>
+      <View style={[s.pill, { paddingHorizontal: 4, gap: 0 }]}>
+        {narrow ? null : <><IconButton icon="minus" label="Afastar" onPress={() => setView(zoomAround(v, size.width / 2, size.height / 2, 0.8))} size={32} />
+        <Text style={s.zoomText}>{Math.round(v.k * 100)}%</Text>
+        <IconButton icon="plus" label="Aproximar" onPress={() => setView(zoomAround(v, size.width / 2, size.height / 2, 1.25))} size={32} /></>}
+        <IconButton icon="expand" label="Mostrar tudo" onPress={fitAll} size={32} />
       </View>
     </View>
     {error ? <Text style={s.error} onPress={() => setError('')}>{error}</Text> : null}
     <View pointerEvents="box-none" style={s.dock}>
-      <View pointerEvents="box-none" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
-        <View style={{ flex: 1 }} />
-        <View style={[s.pill, { paddingHorizontal: 4, gap: 0 }]}>
-          <IconButton icon="minus" label="Afastar" onPress={() => setView(zoomAround(v, size.width / 2, size.height / 2, 0.8))} size={32} />
-          <Text style={s.zoomText}>{Math.round(v.k * 100)}%</Text>
-          <IconButton icon="plus" label="Aproximar" onPress={() => setView(zoomAround(v, size.width / 2, size.height / 2, 1.25))} size={32} />
-          <IconButton icon="expand" label="Mostrar tudo" onPress={fitAll} size={32} />
-        </View>
-      </View>
       <View style={s.talk}>
         {reply?.text && reply.role !== 'user' ? <Pressable accessibilityRole="button" accessibilityLabel={`Abrir a conversa com ${target.name}`} onPress={() => onOpenBot?.(target.id)} style={s.reply}>
           <Text numberOfLines={2} style={s.replyText}><Text style={s.replyName}>{target.name}: </Text>{reply.text}</Text><Icon name="right" size={14} color={C.faint} /></Pressable> : null}
@@ -325,7 +324,7 @@ const s = themed(() => ({
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
   chipText: { color: C.text2, fontFamily: F.s, fontSize: 13 },
   surface: { flex: 1, overflow: 'hidden', backgroundColor: C.chrome || C.bg },
-  bar: { position: 'absolute', left: 12, right: 12, top: TOP + 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bar: { position: 'absolute', left: 12, right: 12, top: TOP + 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, boxShadow: '0 6px 22px rgba(0,0,0,0.28)' },
   count: { color: C.muted, fontFamily: F.m, fontSize: 12 },
   tool: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingHorizontal: 9, borderRadius: 9 }, toolHover: { backgroundColor: C.surface2 },

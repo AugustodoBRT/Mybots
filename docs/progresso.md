@@ -2111,3 +2111,9 @@ Pedido do dono: tirar os atalhos de bots e sugestões da tela do Chefe (ficam s�
 - **Controles flutuantes**: título e contagem, "Nota" e "Arrumar", zoom com porcentagem e "Mostrar tudo", e a caixa de mensagem como pílula no centro (Enter envia no PC). No cartão aberto, "Falar sobre isto" prepara a mensagem para o bot que o fez.
 - **Tela do Chefe**: saíram os atalhos dos bots, "Equipe" e as sugestões.
 - Não feito: arrastar a placa de um bot (a posição é calculada), cartão de terminal, a pessoa ligar cartões à mão. Conferido por capturas com supervisor de teste (1440 px e 430 px). **Não visto no celular real** nem na janela instalada.
+
+## 0.93.1 (versionCode 191): o cartão do navegador abre o navegador
+
+- **Cartão do navegador no Canvas** abria a conversa do bot; agora abre o navegador daquele bot em tela cheia. Na janela do PC, vai direto para a aba dele (as abas do Electron guardam o dono) e a caixa embaixo fala com esse bot, mesmo que não seja o da conversa aberta (`browser-full` no `desktopBus`, `onSendTo` no `DesktopShell`). No celular, abre a conversa do bot já com o navegador aberto (`pendingBrowser` em `desktop.js`).
+- **Zoom** foi para o canto de cima, junto de "Nota" e "Arrumar" (ficava solto acima da caixa de mensagem, perto do meio da tela). Em tela estreita (celular) a barra fica só com ícones e o zoom é a pinça mais "Mostrar tudo".
+- Conferido por capturas com supervisor de teste (1440 e 430 px), incluindo o clique no cartão. **Não visto no celular real** nem na janela instalada com o navegador nativo (a ida para a aba do bot não foi testada com o Electron).

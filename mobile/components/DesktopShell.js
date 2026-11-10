@@ -202,13 +202,13 @@ function Welcome({ onCreateChief, data, error, onRespond, approvalBusy, onCreate
  * The computer's window: a narrow bar of icons, the list of conversations (one line each), the open conversation in the middle
  * with tabs on top, and a side panel that stays closed until asked. Ctrl+K searches, Ctrl+N creates a bot, Esc closes.
  */
-export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, filePanel, fileOpen, onFileClose, profilePanel, profileOpen, fileKey, onProfileClose, onBrowserControl, onSend, onFile, children }) {
+export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, filePanel, fileOpen, onFileClose, profilePanel, profileOpen, fileKey, onProfileClose, onBrowserControl, onSend, onSendTo, onFile, children }) {
   const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions(); const [collapsed, setCollapsed] = useState(false); const compact = width < 900 || collapsed;
   const [listWidth, setListWidth] = useState(264); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
   const [menu, setMenu] = useState(null);
   // The right bar: tabs of what is open in it (browser, agent settings, today, a file), always inside the bar.
-  const [side, setSide] = useState({ open: false, tabs: [], active: null }); const [wide, setWide] = useState(false); const [full, setFull] = useState(false);
+  const [side, setSide] = useState({ open: false, tabs: [], active: null }); const [wide, setWide] = useState(false); const [full, setFull] = useState(false); const [fullBotId, setFullBotId] = useState(null);
   const openKind = kind => setSide(old => ({ open: true, tabs: old.tabs.includes(kind) ? old.tabs : [...old.tabs, kind], active: kind }));
   // A tab the app closed by itself (file, profile) takes the bar with it when it was the last one.
   const dropKind = (kind, quiet) => setSide(old => { const rest = old.tabs.filter(item => item !== kind); return { open: quiet && !rest.length ? false : old.open, tabs: rest, active: old.active === kind ? rest[rest.length - 1] || null : old.active }; });
@@ -241,9 +241,16 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   }, [currentKey]);
   useEffect(() => { if (fileOpen) openKind('file'); else dropKind('file', !keepBar.current); }, [fileOpen, fileKey]);
   useEffect(() => desktopBus.on('browser-open', () => openKind('browser')), []);
+  // A browser card on the canvas: that bot's browser in full, on the tab it is using (the window's tabs know their bot).
+  useEffect(() => desktopBus.on('browser-full', async ({ botId } = {}) => {
+    if (!botId) return;
+    if (native) { try { const state = await native.tabs(); const own = (state?.tabs || []).filter(tab => tab.owner === botId); if (own.length) await native.activate(own[own.length - 1].id); } catch {} }
+    setFullBotId(botId); setFull(true);
+  }), []);
+  useEffect(() => { if (!full) setFullBotId(null); }, [full]);
   const browserTab = side.open && side.tabs.includes('browser') && side.active === 'browser';
   useEffect(() => { if (selected) desktopBus.emit('browser-state', { botId: selected, open: browserTab }); }, [browserTab, selected]);
-  useEffect(() => { if (!browserTab) setFull(false); }, [browserTab]);
+  useEffect(() => { if (!browserTab && !fullBotId) setFull(false); }, [browserTab]);
   // Keyboard: Ctrl+K searches, Ctrl+N creates a bot, Esc closes what is open.
   useEffect(() => {
     const listen = event => {
@@ -354,7 +361,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
           : <SideMenu onTeam={() => { setSide(old => ({ ...old, open: false })); onTeam(); }} bot={bot} waiting={waiting} onPick={kind => { if (kind === 'settings') { onProfile(bot); openKind('settings'); } else openKind(kind); }} />}
       </SideFrame>
     </DesktopReveal>
-    {full && (bot || native) ? <BrowserFull bot={bot} data={data} call={call} onControl={who => onBrowserControl(bot.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={onSend} /> : null}
+    {(() => { const shown = (fullBotId && bots.find(item => item.id === fullBotId)) || bot; return full && (shown || native) ? <BrowserFull bot={shown} data={data} call={call} onControl={who => onBrowserControl(shown.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={shown && shown.id !== bot?.id && onSendTo ? text => onSendTo(shown.id, text) : onSend} /> : null; })()}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
     <Help visible={help} onClose={() => setHelp(false)} />
     {menu ? <Modal transparent visible animationType="none" onRequestClose={() => setMenu(null)}><Pressable style={{ flex: 1 }} onPress={() => setMenu(null)} onContextMenu={event => { event?.preventDefault?.(); setMenu(null); }}>

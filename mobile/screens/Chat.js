@@ -8,7 +8,7 @@ import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
 import { useState, useEffect, useRef } from 'react';
 import { termuxAvailable, pickFile } from '../termux';
-import { desktop, pwa, desktopBus, readingColumn } from '../desktop';
+import { desktop, pwa, desktopBus, readingColumn, pendingBrowser } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, F, Icon } from '../theme';
@@ -76,7 +76,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
   const [browserOpen, setBrowserOpen] = useState(false); const [browserKey, setBrowserKey] = useState(0);
   const help = data.browser?.help?.[bot.id];
   const assumed = data.browser?.control?.[bot.id] === 'person';
-  useEffect(() => { if (!savedFiles) setFiles([]); setComposerError(''); setBrowserOpen(false); }, [bot.id]);
+  useEffect(() => { if (!savedFiles) setFiles([]); setComposerError(''); const asked = !desktop && pendingBrowser.botId === bot.id; pendingBrowser.botId = null; setBrowserOpen(asked); }, [bot.id]);
   // Files shared from another app land in the tray, ready to send with a message.
   useEffect(() => {
     if (!incoming) return;

@@ -9,7 +9,7 @@ export const pwa = Platform.OS === 'web' && !desktop;
 export const native = desktop && globalThis.mybotsNative ? globalThis.mybotsNative : null;
 // On the computer, sheets open as centered dialogs instead of rising from the bottom.
 export const dialogBackdrop = desktop ? { justifyContent: 'center', paddingVertical: 28, paddingHorizontal: 20 } : {};
-export const dialogShape = desktop ? { borderRadius: 26, borderWidth: 1 } : {};
+export const dialogShape = desktop ? { borderRadius: 18, borderWidth: 1 } : {};
 export const noHandle = desktop ? { display: 'none' } : {};
 // A wide window keeps the phone's layout as one centered column, sheets included.
 export const column = desktop ? { width: '100%', maxWidth: 820, marginHorizontal: 'auto' } : {};
@@ -22,6 +22,8 @@ if (desktop) {
     [role=button], [role=tab] { transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
     [role=button]:focus-visible, [role=tab]:focus-visible { outline: 2px solid #EAB875; outline-offset: 3px; }
     [data-desktop-message] { animation: message-in 220ms ease-out both; }
+    [data-hover-only=true] { opacity: 0; }
+    [data-desktop-message]:hover [data-hover-only=true], [data-hover-only=true]:focus-visible { opacity: 1; }
     textarea, input, textarea:focus, input:focus, textarea:focus-visible, input:focus-visible { outline: none !important; box-shadow: none !important; }
     @keyframes message-in { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; } }

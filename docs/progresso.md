@@ -2073,3 +2073,16 @@ Mesmo com a ordem válida, o modelo do bot (GPT-6-Luna) recusava "digitar as ins
 - `team_bots` aceita `bot` (nome ou id) e devolve a função/instruções completas e literais só desse bot; sem `bot`, segue com o resumo de 140 caracteres. O Chefe não depende mais de o bot recitar o texto.
 - O aviso `viaChief` passa a dizer que, se o Chefe pedir a função, o bot a mostra inteira (é do dono, não é segredo).
 - Teste em `tests/team-ask.test.mjs`. **Não visto no celular real.**
+
+## 0.91.0 (versionCode 188): acabamento da janela do PC (primeira passada)
+
+Pedido do dono: melhorar a experiência e o design do app, começando pelo PC, para ficar com cara de profissional ao lado dos outros apps de bots.
+
+- **Barra de ícones com nomes** (`DesktopShell.js`): cada lugar tem o nome embaixo do ícone (Conversas, Equipe, Memória, Canvas, Atividade, Rotinas, Negócios, Ajuda, Ajustes); a janela estreita (menos de 900 px) continua só com os ícones.
+- **Respostas dos bots** (`RichMessage.js`, vale no celular também): as colunas das tabelas agora se alinham (cada célula tinha a sua largura); o bloco de código ganhou cabeçalho com a linguagem e o botão **Copiar**.
+- **Conversa no PC**: balões com largura máxima (900 px o bot, 680 px a pessoa), mantendo o bot à esquerda e a pessoa à direita; botão **Copiar** que aparece ao passar o mouse na mensagem.
+- **Telas vazias** (`EmptyState` em `shared.js`, `Lists.js`): Rotinas e Negociações explicam para que servem e oferecem os bots para criar a primeira (também na folha do celular).
+- **Busca Ctrl+K**: grupos (Bots, Salas, Ações), teclas desenhadas e rodapé de atalhos; **Atalhos** virou uma lista com as teclas e botão de fechar.
+- **Barra direita vazia**: cartões com ícone e descrição em vez de quatro botões soltos no meio.
+- **Início**: ações com o botão principal destacado. **Lista**: bolinha de não lida à direita, "Capacidade disponível" sem maiúsculas. **Ajustes**: categorias mais leves, botões e campos na densidade do PC (42 px, cantos menores).
+- Conferido por capturas da interface exportada (1440 e 860 px) com um supervisor de teste. **Não visto no celular real** (tabela, bloco de código e telas vazias mudam nele). Ctrl+N logo depois de fechar a busca com Esc às vezes não abre (já era assim); não corrigido.

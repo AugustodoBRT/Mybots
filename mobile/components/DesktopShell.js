@@ -16,22 +16,31 @@ import { browserMode } from '../local';
 
 const s = themed(() => ({
   desk: { flex: 1, flexDirection: 'row', backgroundColor: C.bg },
-  rail: { width: 52, alignItems: 'center', paddingVertical: 10, gap: 6, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg },
-  railItem: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  rail: { width: 76, alignItems: 'center', paddingVertical: 10, gap: 3, borderRightWidth: 1, borderRightColor: C.line, backgroundColor: C.bg },
+  railNarrow: { width: 52, gap: 6 },
+  railItem: { width: 66, minHeight: 50, paddingVertical: 7, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  railItemNarrow: { width: 36, minHeight: 36, height: 36, paddingVertical: 0, borderRadius: 11 },
+  railText: { color: C.muted, fontFamily: F.m, fontSize: 10.5, letterSpacing: -0.1 },
   railOn: { backgroundColor: C.accent + '16' }, railHover: { backgroundColor: C.surface },
-  dot: { position: 'absolute', top: 7, right: 7, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg },
+  dot: { position: 'absolute', top: 5, right: 18, width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg },
+  dotNarrow: { top: 7, right: 7 },
+  kbd: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 6, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center' },
+  kbdText: { color: C.muted, fontFamily: F.s, fontSize: 10.5 },
+  paletteGroup: { color: C.faint, fontFamily: F.s, fontSize: 11, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4 },
+  paletteFoot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.text + '05' },
+  hintItem: { flexDirection: 'row', alignItems: 'center', gap: 5 }, hintText: { color: C.muted, fontFamily: F.m, fontSize: 12 },
   ringText: { color: C.muted, fontFamily: F.m, fontSize: 11, marginTop: 1 },
   list: { backgroundColor: C.bg2, borderRightWidth: 1, borderRightColor: C.line },
   listHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
   listTitle: { color: C.text, fontFamily: F.x, fontSize: 16, letterSpacing: -0.4 },
-  find: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 12, height: 33, borderRadius: 9, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
+  find: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginBottom: 8, paddingLeft: 11, paddingRight: 7, height: 34, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
   findText: { flex: 1, color: C.faint, fontFamily: F.m, fontSize: 12 }, key: { color: C.faint, fontFamily: F.m, fontSize: 10 },
   section: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
-  sectionText: { flex: 1, color: C.muted, fontFamily: F.s, fontSize: 10.5, letterSpacing: 0.2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, marginHorizontal: 8, marginVertical: 2, borderRadius: 11, borderWidth: 1, borderColor: 'transparent' },
-  rowOn: { backgroundColor: C.surface2, borderColor: C.line2 }, rowHover: { backgroundColor: C.surface },
-  name: { color: C.text, fontFamily: F.b, fontSize: 13, flexShrink: 1 }, time: { marginLeft: 'auto', color: C.faint, fontFamily: F.m, fontSize: 10 },
-  line: { color: C.muted, fontFamily: F.m, fontSize: 11.5 }, unread: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.accent },
+  sectionText: { flex: 1, color: C.faint, fontFamily: F.s, fontSize: 11.5 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 10, marginHorizontal: 8, marginVertical: 1, borderRadius: 11, borderWidth: 1, borderColor: 'transparent' },
+  rowOn: { backgroundColor: C.surface2, borderColor: C.line }, rowHover: { backgroundColor: C.surface },
+  name: { color: C.text, fontFamily: F.s, fontSize: 13.5, flexShrink: 1 }, time: { marginLeft: 'auto', color: C.faint, fontFamily: F.m, fontSize: 10.5 },
+  line: { color: C.muted, fontFamily: F.m, fontSize: 12 }, unread: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
   divider: { width: 6, marginLeft: -3, marginRight: -3, zIndex: 5, cursor: 'col-resize' },
   main: { flex: 1, minWidth: 0 },
   tabs: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 8, height: 38, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.bg2 },
@@ -53,12 +62,15 @@ const s = themed(() => ({
   hi: { color: C.text, fontFamily: F.x, fontSize: 34, letterSpacing: -1.1, marginTop: 10 },
   sum: { color: C.muted, fontFamily: F.m, fontSize: 17, marginBottom: 14 },
   acts: { flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' },
-  act: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: C.line2 },
-  actText: { color: C.text2, fontFamily: F.m, fontSize: 14 },
+  act: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: C.line2, backgroundColor: C.surface },
+  actMain: { backgroundColor: C.accent, borderColor: C.accent }, actHover: { backgroundColor: C.surface2 },
+  actText: { color: C.text, fontFamily: F.s, fontSize: 13.5 },
   scrim: { flex: 1, backgroundColor: '#000000A0', alignItems: 'center', paddingTop: 110 },
-  palette: { width: 560, maxWidth: '92%', borderRadius: 18, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, overflow: 'hidden' },
-  paletteInput: { color: C.text, fontFamily: F.m, fontSize: 17, paddingHorizontal: 18, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: C.line },
-  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 16 },
+  palette: { width: 600, maxWidth: '92%', borderRadius: 16, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' },
+  paletteHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: C.line },
+  paletteInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 15.5, paddingVertical: 15 },
+  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 7, paddingHorizontal: 10, marginHorizontal: 8, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
+  paletteFace: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   hints: { color: C.faint, fontFamily: F.m, fontSize: 12.5, padding: 12, borderTopWidth: 1, borderTopColor: C.line },
   menu: { position: 'absolute', minWidth: 190, paddingVertical: 6, borderRadius: 12, backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2 },
   menuItem: { paddingVertical: 9, paddingHorizontal: 16 }, menuText: { color: C.text, fontFamily: F.m, fontSize: 14 }
@@ -85,14 +97,17 @@ function AiMark({ provider, left, week = null, compact = false }) {
   </View>;
 }
 
+/** A key on the keyboard, drawn as a small cap. */
+function Kbd({ children }) { return <View style={s.kbd}><Text style={s.kbdText}>{children}</Text></View>; }
+
 // The window's own look at "who is doing what": a face, a name, a line, the time and a dot for what is unread.
 function Row({ face, title, line, tone, time, selected, onPress, onMenu, label, compact, unread }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onPress={onPress} onContextMenu={event => { event?.preventDefault?.(); onMenu?.(event.nativeEvent || event); }}
     style={({ hovered }) => [s.row, compact && { justifyContent: 'center', paddingHorizontal: 0 }, hovered && s.rowHover, selected && s.rowOn]}>
     {face}
     {compact ? null : <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}><Text style={s.name} numberOfLines={1}>{title}</Text>{unread ? <View style={s.unread} /> : null}<Text style={s.time}>{time}</Text></View>
-      <Text style={[s.line, tone && { color: tone }]} numberOfLines={1}>{line}</Text></View>}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}><Text style={[s.name, unread && { fontFamily: F.b }]} numberOfLines={1}>{title}</Text><Text style={[s.time, unread && { color: C.accent }]}>{time}</Text></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={[s.line, { flex: 1 }, unread && { color: C.text2 }, tone && { color: tone }]} numberOfLines={1}>{line}</Text>{unread ? <View accessibilityLabel="Mensagem nova" style={s.unread} /> : null}</View></View>}
   </Pressable>;
 }
 
@@ -100,27 +115,36 @@ function Palette({ visible, onClose, bots, rooms, onOpen, onRoom, onSearch, onCr
   const [query, setQuery] = useState(''); const [index, setIndex] = useState(0);
   useEffect(() => { if (visible) { setQuery(''); setIndex(0); } }, [visible]);
   const needle = query.trim().toLowerCase();
-  const items = [...bots.filter(bot => !needle || bot.name.toLowerCase().includes(needle)).map(bot => ({ key: 'b' + bot.id, label: bot.name, face: <Avatar bot={bot} size={30} animated={false} />, go: () => onOpen(bot.id) })),
-    ...rooms.filter(room => !needle || room.name.toLowerCase().includes(needle)).map(room => ({ key: 'r' + room.id, label: `${room.name} (sala)`, face: <Icon name="bots" size={22} color={C.muted} />, go: () => onRoom(room.id) })),
-    ...(needle ? [{ key: 'search', label: `Buscar “${query.trim()}” nas conversas`, face: <Icon name="search" size={20} color={C.muted} />, go: onSearch }] : [{ key: 'new', label: 'Novo bot', face: <Icon name="plus" size={20} color={C.accent} />, go: onCreate }])];
+  const boxed = icon => <View style={s.paletteFace}>{icon}</View>;
+  const items = [...bots.filter(bot => !needle || bot.name.toLowerCase().includes(needle)).map(bot => ({ key: 'b' + bot.id, group: 'Bots', label: bot.name, note: bot.isChief ? 'Chefe' : '', face: <Avatar bot={bot} size={30} animated={false} />, go: () => onOpen(bot.id) })),
+    ...rooms.filter(room => !needle || room.name.toLowerCase().includes(needle)).map(room => ({ key: 'r' + room.id, group: 'Salas', label: room.name, note: `${room.botIds?.length || 0} bots`, face: boxed(<Icon name="bots" size={19} color={C.muted} />), go: () => onRoom(room.id) })),
+    ...(needle ? [{ key: 'search', group: 'Ações', label: `Buscar “${query.trim()}” nas conversas`, face: boxed(<Icon name="search" size={18} color={C.muted} />), go: onSearch }] : [{ key: 'new', group: 'Ações', label: 'Novo bot', keys: ['Ctrl', 'N'], face: boxed(<Icon name="plus" size={18} color={C.accent} />), go: onCreate }])];
   const pick = item => { onClose(); item?.go?.(); };
+  const hint = (keys, text) => <View style={s.hintItem}>{keys.map(key => <Kbd key={key}>{key}</Kbd>)}<Text style={s.hintText}>{text}</Text></View>;
   return <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
     <Pressable style={s.scrim} onPress={onClose}><Pressable style={s.palette} onPress={() => {}}>
+      <View style={s.paletteHead}><Icon name="search" size={18} color={C.muted} />
       <TextInput autoFocus accessibilityLabel="Buscar e trocar de bot" value={query} onChangeText={value => { setQuery(value); setIndex(0); }} placeholder="Buscar bot ou sala" placeholderTextColor={C.faint} style={s.paletteInput} selectionColor={C.accent}
         onKeyPress={event => { const key = event.nativeEvent.key; if (key === 'ArrowDown') { event.preventDefault?.(); setIndex(value => Math.min(items.length - 1, value + 1)); } else if (key === 'ArrowUp') { event.preventDefault?.(); setIndex(value => Math.max(0, value - 1)); } else if (key === 'Enter') pick(items[index]); else if (key === 'Escape') onClose(); }} />
-      <ScrollView style={{ maxHeight: 360 }}>{items.map((item, position) => <Pressable key={item.key} accessibilityRole="button" onPress={() => pick(item)} onHoverIn={() => setIndex(position)} style={[s.paletteRow, position === index && s.rowOn]}>{item.face}<Text style={s.name} numberOfLines={1}>{item.label}</Text></Pressable>)}
-        {!items.length ? <Text style={[s.line, { padding: 16 }]}>Nada encontrado.</Text> : null}</ScrollView>
-      <Text style={s.hints}>↑ ↓ escolhem · Enter abre · Esc fecha · Ctrl+N cria um bot</Text>
+        <Kbd>Esc</Kbd></View>
+      <ScrollView style={{ maxHeight: 430 }} contentContainerStyle={{ paddingBottom: 8 }}>{items.map((item, position) => <View key={item.key}>
+        {position === 0 || items[position - 1].group !== item.group ? <Text style={s.paletteGroup}>{item.group}</Text> : null}
+        <Pressable accessibilityRole="button" onPress={() => pick(item)} onHoverIn={() => setIndex(position)} style={[s.paletteRow, position === index && s.rowOn]}>{item.face}<Text style={[s.name, { flex: 1 }]} numberOfLines={1}>{item.label}</Text>
+          {item.note ? <Text style={s.line}>{item.note}</Text> : null}{item.keys ? <View style={{ flexDirection: 'row', gap: 4 }}>{item.keys.map(key => <Kbd key={key}>{key}</Kbd>)}</View> : null}
+          {position === index && !item.keys ? <Kbd>Enter</Kbd> : null}</Pressable></View>)}
+        {!items.length ? <Text style={[s.line, { padding: 18 }]}>Nada encontrado.</Text> : null}</ScrollView>
+      <View style={s.paletteFoot}>{hint(['↑', '↓'], 'escolher')}{hint(['Enter'], 'abrir')}{hint(['Esc'], 'fechar')}{hint(['Ctrl', 'N'], 'novo bot')}</View>
     </Pressable></Pressable>
   </Modal>;
 }
 
 function Help({ visible, onClose }) {
-  const keys = [['Ctrl+K', 'Buscar e trocar de bot ou sala'], ['Ctrl+N', 'Criar um bot'], ['Esc', 'Fechar a janela ou o painel aberto'], ['Botão direito', 'Menu do bot ou da mensagem']];
+  const keys = [[['Ctrl', 'K'], 'Buscar e trocar de bot ou sala'], [['Ctrl', 'N'], 'Criar um bot'], [['Enter'], 'Enviar a mensagem'], [['Shift', 'Enter'], 'Quebrar a linha na mensagem'], [['Esc'], 'Fechar a janela ou o painel aberto'], [['Botão direito'], 'Menu do bot ou da mensagem']];
   return <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-    <Pressable style={s.scrim} onPress={onClose}><Pressable style={[s.palette, { padding: 20 }]} onPress={() => {}}>
-      <Text style={s.sideTitle}>Atalhos</Text>
-      {keys.map(([key, text]) => <View key={key} style={{ flexDirection: 'row', gap: 14, marginTop: 12 }}><Text style={[s.name, { width: 110 }]}>{key}</Text><Text style={[s.line, { flex: 1, fontSize: 14.5 }]}>{text}</Text></View>)}
+    <Pressable style={s.scrim} onPress={onClose}><Pressable style={[s.palette, { width: 480 }]} onPress={() => {}}>
+      <View style={[s.paletteHead, { paddingVertical: 12, paddingRight: 10 }]}><Text style={[s.sideTitle, { flex: 1 }]}>Atalhos do teclado</Text><IconButton icon="close" label="Fechar os atalhos" onPress={onClose} size={30} /></View>
+      <View style={{ paddingHorizontal: 18, paddingVertical: 8 }}>{keys.map(([combo, text], position) => <View key={text} style={[{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 }, position > 0 && { borderTopWidth: 1, borderTopColor: C.line }]}>
+        <Text style={[s.line, { flex: 1, fontSize: 13.5, color: C.text2 }]}>{text}</Text><View style={{ flexDirection: 'row', gap: 4 }}>{combo.map(key => <Kbd key={key}>{key}</Kbd>)}</View></View>)}</View>
     </Pressable></Pressable>
   </Modal>;
 }
@@ -162,10 +186,10 @@ function Welcome({ onCreateChief, data, error, onRespond, approvalBusy, onCreate
     {error && !bots.length ? <DesktopPair call={call} /> : null}
     <View style={{ width: '100%', maxWidth: 560 }}>{(data.approvals || []).map(approval => <ApprovalCard key={approval.id} approval={approval} bot={bots.find(bot => bot.id === approval.botId)} onRespond={onRespond} busy={approvalBusy === approval.id} />)}</View>
     <View style={s.acts}>
-      {onCreateChief ? <Pressable accessibilityRole="button" onPress={onCreateChief} disabled={!data.models?.length} style={s.act}><Icon name="plus" size={16} color={C.accent} /><Text style={s.actText}>Crie o seu Chefe</Text></Pressable> : null}
-      <Pressable accessibilityRole="button" onPress={onCreate} disabled={!data.models?.length} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="plus" size={16} color={C.accent} /><Text style={s.actText}>Novo bot</Text></Pressable>
-      {bots.length >= 2 ? <Pressable accessibilityRole="button" onPress={onNewRoom} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="bots" size={16} color={C.muted} /><Text style={s.actText}>Nova sala</Text></Pressable> : null}
-      <Pressable accessibilityRole="button" onPress={onSearch} style={({ hovered }) => [s.act, hovered && s.rowHover]}><Icon name="search" size={16} color={C.muted} /><Text style={s.actText}>Buscar · Ctrl+K</Text></Pressable>
+      {onCreateChief ? <Pressable accessibilityRole="button" onPress={onCreateChief} disabled={!data.models?.length} style={({ hovered }) => [s.act, s.actMain, hovered && { opacity: 0.9 }, !data.models?.length && { opacity: 0.5 }]}><Icon name="spark" size={16} color={C.accentInk} /><Text style={[s.actText, { color: C.accentInk }]}>Crie o seu Chefe</Text></Pressable> : null}
+      <Pressable accessibilityRole="button" onPress={onCreate} disabled={!data.models?.length} style={({ hovered }) => [s.act, !onCreateChief && !bots.length && s.actMain, hovered && (!onCreateChief && !bots.length ? { opacity: 0.9 } : s.actHover), !data.models?.length && { opacity: 0.5 }]}><Icon name="plus" size={16} color={!onCreateChief && !bots.length ? C.accentInk : C.accent} /><Text style={[s.actText, !onCreateChief && !bots.length && { color: C.accentInk }]}>Novo bot</Text></Pressable>
+      {bots.length >= 2 ? <Pressable accessibilityRole="button" onPress={onNewRoom} style={({ hovered }) => [s.act, hovered && s.actHover]}><Icon name="bots" size={16} color={C.muted} /><Text style={s.actText}>Nova sala</Text></Pressable> : null}
+      <Pressable accessibilityRole="button" accessibilityLabel="Buscar (Ctrl+K)" onPress={onSearch} style={({ hovered }) => [s.act, { paddingRight: 10 }, hovered && s.actHover]}><Icon name="search" size={16} color={C.muted} /><Text style={s.actText}>Buscar</Text><View style={{ flexDirection: 'row', gap: 3, marginLeft: 4 }}><Kbd>Ctrl</Kbd><Kbd>K</Kbd></View></Pressable>
     </View>
   </ScrollView>;
 }
@@ -246,23 +270,26 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const openPage = key => onPage(key);
   const hasChief = bots.some(item => item.isChief);
   const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['memory', 'Memória', () => openPage('memory'), page === 'memory'], ['canvas', 'Canvas', () => openPage('canvas'), page === 'canvas'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
+  // The icon bar names each place under its icon; a narrow window keeps only the icons.
+  const narrow = width < 900;
+  const railButton = (icon, label, shown, onPress, on, dot) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress} style={({ hovered }) => [s.railItem, narrow && s.railItemNarrow, hovered && s.railHover, on && s.railOn]}>
+    <Icon name={icon} size={20} color={on ? C.accent : C.muted} />{narrow ? null : <Text style={[s.railText, on && { color: C.text, fontFamily: F.s }]} numberOfLines={1}>{shown}</Text>}{dot ? <View style={[s.dot, narrow && s.dotNarrow]} /> : null}</Pressable>;
   const nameOf = tab => (tab.kind === 'room' ? roomList.find(item => item.id === tab.id)?.name : bots.find(item => item.id === tab.id)?.name) || '…';
   const faceOf = tab => tab.kind === 'room' ? <Icon name="bots" size={16} color={C.muted} /> : <Avatar bot={bots.find(item => item.id === tab.id) || { name: '?' }} size={20} animated={false} />;
   return <View style={s.desk}>
-    <View style={s.rail}>
-      {rail.map(([icon, label, onPress, on, dot]) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(on) }} onPress={onPress} style={({ hovered }) => [s.railItem, hovered && s.railHover, on && s.railOn]}>
-        <Icon name={icon} size={19} color={on ? C.accent : C.muted} />{dot ? <View style={s.dot} /> : null}</Pressable>)}
+    <View style={[s.rail, narrow && s.railNarrow]}>
+      {rail.map(([icon, label, onPress, on, dot]) => railButton(icon, label, label === 'Negociações' ? 'Negócios' : label, onPress, on, dot))}
       <View style={{ flex: 1 }} />
       {page || compact ? <>{limit('claude') != null ? <AiMark compact provider="claude" left={limit('claude')} week={weekLimit('claude')} /> : null}{limit('codex') != null ? <AiMark compact provider="codex" left={limit('codex')} week={weekLimit('codex')} /> : null}</> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="Ajuda e atalhos" onPress={() => setHelp(true)} style={({ hovered }) => [s.railItem, hovered && s.railHover]}><Icon name="info" size={22} color={C.muted} /></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Ajustes" accessibilityState={{ selected: page === 'settings' }} onPress={() => openPage('settings')} style={({ hovered }) => [s.railItem, hovered && s.railHover, page === 'settings' && s.railOn]}><Icon name="settings" size={22} color={page === 'settings' ? C.accent : C.muted} /></Pressable>
+      {railButton('info', 'Ajuda e atalhos', 'Ajuda', () => setHelp(true), false, false)}
+      {railButton('settings', 'Ajustes', 'Ajustes', () => openPage('settings'), page === 'settings', false)}
     </View>
     {page ? <View style={{ flex: 1, minWidth: 0 }}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
       : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View> : <>
     <View style={[s.list, { display: chiefHome || (fileOpen && width < 900) ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
         <View style={s.listHead}><Text style={s.listTitle}>Conversas</Text><View style={{ flexDirection: 'row', gap: 6 }}><IconButton icon="plus" label="Novo bot (Ctrl+N)" onPress={onCreate} size={34} tint={C.accent} /></View></View>
-        <Pressable accessibilityRole="search" accessibilityLabel="Buscar bot ou sala (Ctrl+K)" onPress={() => setPalette(true)} style={s.find}><Icon name="search" size={15} color={C.faint} /><Text style={s.findText} numberOfLines={1}>Buscar bot ou sala</Text><Text style={s.key}>Ctrl+K</Text></Pressable></>}
+        <Pressable accessibilityRole="search" accessibilityLabel="Buscar bot ou sala (Ctrl+K)" onPress={() => setPalette(true)} style={s.find}><Icon name="search" size={15} color={C.faint} /><Text style={s.findText} numberOfLines={1}>Buscar bot ou sala</Text><View style={{ flexDirection: 'row', gap: 3 }}><Kbd>Ctrl</Kbd><Kbd>K</Kbd></View></Pressable></>}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
         {roomList.length || bots.length >= 2 ? <>
           {compact ? null : <Pressable accessibilityRole="button" accessibilityState={{ expanded: rooms }} onPress={() => setRooms(value => !value)} style={s.section}><Icon name={rooms ? 'down' : 'right'} size={14} color={C.muted} /><Text style={s.sectionText}>Salas</Text>
@@ -278,7 +305,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
           title={item.isChief ? item.name + ' · Chefe' : item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
         {!bots.filter(item => !item.isChief).length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
       </ScrollView>
-      {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 10, fontFamily: F.s, letterSpacing: 0.2 }}>CAPACIDADE DISPONÍVEL</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
+      {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 11.5, fontFamily: F.s }}>Capacidade disponível</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
       {compact ? null : <Pressable accessibilityRole="button" onPress={onConnection} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: C.line }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint }, phoneOnline && { backgroundColor: C.good }]} /><Text style={s.line}>{data.source === 'local' ? (!phoneOnline ? 'Iniciando o MyBots do computador…' : data.sync ? (data.sync.state === 'syncing' ? 'Sincronizando com o celular…' : data.sync.online ? 'Sincronizado com o celular' : 'Celular fora de alcance · só neste computador') : 'Só neste computador') : phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>}
     </View>

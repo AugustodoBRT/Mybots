@@ -305,19 +305,25 @@ export const styles = themed(() => ({
     messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, minWidth: 0 },
     userMessageRow: { justifyContent: 'flex-end', paddingLeft: 32 },
     messageBubble: { flexShrink: 1, minWidth: 0, maxWidth: '85%' },
-    assistantBubble: { padding: 16, paddingTop: 12, borderRadius: 18, borderTopLeftRadius: 5, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
-    userBubble: { maxWidth: '72%', paddingHorizontal: 17, paddingTop: 13, paddingBottom: 9, borderRadius: 18, borderBottomRightRadius: 5, backgroundColor: parseInt(C.bg.slice(1, 3), 16) < 128 ? '#302B24' : '#F0E5D5', borderWidth: 1, borderColor: C.accent + '26' },
+    assistantBubble: { maxWidth: 'min(85%, 900px)', padding: 16, paddingTop: 11, borderRadius: 16, borderTopLeftRadius: 5, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+    userBubble: { maxWidth: 'min(72%, 680px)', paddingHorizontal: 16, paddingTop: 11, paddingBottom: 8, borderRadius: 18, borderBottomRightRadius: 5, backgroundColor: parseInt(C.bg.slice(1, 3), 16) < 128 ? '#302B24' : '#F0E5D5', borderWidth: 1, borderColor: C.accent + '26' },
     messageText: { color: C.text, fontFamily: F.r, fontSize: 14, lineHeight: 22 },
-    messageMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 9, flexWrap: 'wrap' },
-    messageSpeaker: { color: C.text2, fontFamily: F.b, fontSize: 11.5 },
-    messageTime: { color: C.faint, fontFamily: F.m, fontSize: 10 },
-    userTime: { color: C.muted, fontFamily: F.m, fontSize: 10, alignSelf: 'flex-end', marginTop: 7 },
+    messageMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7, minHeight: 22 },
+    messageSpeaker: { color: C.text, fontFamily: F.b, fontSize: 12.5 },
+    messageTime: { color: C.faint, fontFamily: F.m, fontSize: 11, flexShrink: 1 },
+    userTime: { color: C.muted, fontFamily: F.m, fontSize: 11, alignSelf: 'flex-end', marginTop: 6 },
     composerArea: { paddingHorizontal: 28, paddingTop: 10, paddingBottom: 20, backgroundColor: C.bg },
     composerBox: { borderRadius: 18, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, padding: 9, paddingTop: 4 },
     composerInput: { minHeight: 36, maxHeight: 150, color: C.text, fontFamily: F.r, fontSize: 13.5, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 4, outlineStyle: 'none' },
     composerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
     composerTool: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },
     sendButton: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent },
-    modelPanel: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4, backgroundColor: C.bg2, borderBottomWidth: 1, borderBottomColor: C.line }
+    modelPanel: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 4, backgroundColor: C.bg2, borderBottomWidth: 1, borderBottomColor: C.line },
+    // Buttons, fields and cards in the window's density: lower and less rounded than the phone's, which are sized for a thumb.
+    primaryButton: { minHeight: 42, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.accent, marginTop: 10 },
+    primaryButtonText: { color: C.accentInk, fontFamily: F.b, fontSize: 14 },
+    compactButton: { minHeight: 36, borderRadius: 10, marginTop: 0, paddingHorizontal: 14 }, compactButtonText: { fontSize: 13.5 },
+    formInput: { minHeight: 42, color: C.text, fontFamily: F.m, fontSize: 14, paddingHorizontal: 13, borderRadius: 11, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line2, marginTop: 8 },
+    modeOption: { padding: 16, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, marginBottom: 10 }
   } : {})
 }));

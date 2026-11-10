@@ -90,8 +90,8 @@ function aiSummary(aiAccounts) {
 const s = themed(() => ({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   title: { flex: 1, color: C.text, fontFamily: F.x, fontSize: 26, letterSpacing: -0.8 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 48, borderRadius: 16, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, marginBottom: 6 },
-  searchInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: 15, paddingVertical: 10 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: desktop ? 12 : 14, minHeight: desktop ? 38 : 48, borderRadius: desktop ? 11 : 16, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, marginBottom: 6 },
+  searchInput: { flex: 1, color: C.text, fontFamily: F.m, fontSize: desktop ? 13.5 : 15, paddingVertical: desktop ? 6 : 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: C.line },
   rowTitle: { color: C.text, fontFamily: F.b, fontSize: 16.5 },
   rowSummary: { color: C.muted, fontFamily: F.m, fontSize: 14, marginTop: 2 },
@@ -208,16 +208,16 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const search = <View style={s.search}><Icon name="search" size={18} color={C.faint} />
     <TextInput accessibilityLabel="Buscar nos ajustes" style={s.searchInput} value={query} onChangeText={setQuery} placeholder="Buscar nos ajustes" placeholderTextColor={C.faint} autoCorrect={false} /></View>;
   const rows = shown.map(category => <Pressable key={category.key} accessibilityRole="button" accessibilityLabel={`${category.title}. ${category.summary}`} accessibilityState={{ selected: wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) }} onPress={() => setPage(category.key)}
-    style={({ pressed, hovered }) => [s.row, wide && { paddingHorizontal: 12, borderRadius: 12, borderBottomWidth: 0, paddingVertical: 12 }, wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) && { backgroundColor: C.surface2 }, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
-    <Icon name={category.icon} size={22} color={C.muted} />
-    <View style={{ flex: 1 }}><Text style={s.rowTitle}>{category.title}</Text><Text style={s.rowSummary} numberOfLines={2}>{category.summary}</Text></View>
+    style={({ pressed, hovered }) => [s.row, wide && { paddingHorizontal: 12, borderRadius: 11, borderBottomWidth: 0, paddingVertical: 9, gap: 12, marginBottom: 2 }, hovered && { backgroundColor: C.surface }, wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) && { backgroundColor: C.surface2 }, pressed && { opacity: 0.7 }]}>
+    <Icon name={category.icon} size={wide ? 19 : 22} color={wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) ? C.accent : C.muted} />
+    <View style={{ flex: 1 }}><Text style={[s.rowTitle, wide && { fontSize: 14, fontFamily: F.s }]}>{category.title}</Text><Text style={[s.rowSummary, wide && { fontSize: 12, marginTop: 1 }]} numberOfLines={wide ? 1 : 2}>{category.summary}</Text></View>
     {wide ? null : <Icon name="right" size={16} color={C.faint} />}
   </Pressable>);
   const pane = active === 'passwords' ? <PasswordsScreen bots={bots} onChanged={setPasswords} />
     : <ScrollView style={styles.sheetOptions} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{body(active)}</ScrollView>;
   const inner = <>
       {wide ? <View style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
-        <View style={{ width: 300 }}><Text style={[s.title, { flex: 0, marginBottom: 14 }]}>Ajustes</Text>{search}<ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView></View>
+        <View style={{ width: 280 }}><Text style={[s.title, { flex: 0, marginBottom: 14 }]}>Ajustes</Text>{search}<View style={{ height: 6 }} /><ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled">{rows}{!shown.length ? <Text style={s.empty}>Nada nos ajustes combina com essa busca.</Text> : null}</ScrollView></View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={s.header}>{active === 'passwords' ? <IconButton icon="back" label="Voltar a Senhas e carteira" onPress={() => setPage('secrets')} size={42} /> : null}<Text style={s.title} numberOfLines={1}>{title}</Text>{inline ? null : <IconButton icon="close" label="Fechar os ajustes" onPress={onClose} size={42} />}</View>
           <View style={{ flex: 1, maxWidth: 920 }}>{pane}</View></View>

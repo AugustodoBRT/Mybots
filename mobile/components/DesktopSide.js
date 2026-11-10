@@ -11,9 +11,12 @@ const s = themed(() => ({
   tab: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 170, height: 30, paddingLeft: 10, paddingRight: 8, borderRadius: 9 },
   tabOn: { backgroundColor: C.surface2 }, hover: { backgroundColor: C.surface },
   tabText: { color: C.muted, fontFamily: F.b, fontSize: 12.5, flexShrink: 1 }, tabTextOn: { color: C.text },
-  menu: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
-  item: { width: '100%', maxWidth: 300, flexDirection: 'row', alignItems: 'center', gap: 12, height: 40, paddingHorizontal: 14, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: 'transparent' },
-  itemText: { flex: 1, color: C.text, fontFamily: F.b, fontSize: 13.5 },
+  menu: { flex: 1, padding: 16, gap: 8 },
+  menuTitle: { color: C.faint, fontFamily: F.s, fontSize: 11.5, marginBottom: 2, marginLeft: 2 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line },
+  itemIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface2 },
+  itemText: { color: C.text, fontFamily: F.s, fontSize: 13.5 },
+  itemNote: { color: C.muted, fontFamily: F.m, fontSize: 12, marginTop: 1 },
   badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: '#000', fontFamily: F.x, fontSize: 10.5 },
   card: { gap: 8, alignItems: 'center' },
@@ -52,12 +55,16 @@ export function SideHeader({ tabs, active, onPick, onClose, onNew, wide, onWide,
 
 /** Nothing open in the bar: the one place to pick what to open, always inside the bar. */
 export function SideMenu({ bot, waiting, onPick, onTeam }) {
-  const rows = [bot ? ['browser', SIDE_KINDS.browser.open] : null, bot ? ['settings', SIDE_KINDS.settings.open] : null, ['today', waiting ? `${SIDE_KINDS.today.open} (${waiting})` : SIDE_KINDS.today.open]].filter(Boolean);
+  const rows = [bot ? ['browser', SIDE_KINDS.browser.open, `As páginas que ${bot.name} abre, ao vivo`] : null, bot ? ['settings', SIDE_KINDS.settings.open, 'Perfil, rotinas, acesso e memória'] : null,
+    ['today', SIDE_KINDS.today.open, waiting ? `${waiting} ${waiting > 1 ? 'decisões esperam' : 'decisão espera'} você` : 'O que espera você e o que vem a seguir']].filter(Boolean);
+  const item = (key, icon, label, note, onPress, count) => <Pressable key={key} accessibilityRole="button" onPress={onPress} style={({ hovered }) => [s.item, hovered && { backgroundColor: C.surface2, borderColor: C.line2 }]}>
+    <View style={s.itemIcon}><Icon name={icon} size={17} color={C.text2} /></View>
+    <View style={{ flex: 1, minWidth: 0 }}><Text style={s.itemText} numberOfLines={1}>{label}</Text><Text style={s.itemNote} numberOfLines={1}>{note}</Text></View>
+    {count ? <View style={s.badge}><Text style={s.badgeText}>{count}</Text></View> : <Icon name="right" size={15} color={C.faint} />}</Pressable>;
   return <View style={s.menu}>
-    <Pressable accessibilityRole="button" onPress={onTeam} style={({ hovered }) => [s.item, hovered && { backgroundColor: C.surface2 }]}>
-      <Icon name="bots" size={17} color={C.muted} /><Text style={s.itemText}>Equipe</Text></Pressable>
-    {rows.map(([kind, label]) => <Pressable key={kind} accessibilityRole="button" onPress={() => onPick(kind)} style={({ hovered }) => [s.item, hovered && { backgroundColor: C.surface2 }]}>
-      <Icon name={SIDE_KINDS[kind].icon} size={17} color={C.muted} /><Text style={s.itemText}>{label}</Text></Pressable>)}
+    <Text style={s.menuTitle}>O que abrir nesta barra</Text>
+    {item('team', 'bots', 'Equipe', 'Todos os bots e o que cada um faz', onTeam)}
+    {rows.map(([kind, label, note]) => item(kind, SIDE_KINDS[kind].icon, label, note, () => onPick(kind), kind === 'today' ? waiting : 0))}
   </View>;
 }
 

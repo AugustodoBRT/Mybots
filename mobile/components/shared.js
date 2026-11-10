@@ -104,6 +104,18 @@ export function Dots({ color = C.accent }) {
   return <View style={styles.dots}>{values.map((value, index) => <Animated.View key={index} style={[styles.dot, { backgroundColor: color, opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }] }]} />)}</View>;
 }
 
+/** Nothing to show yet: what this place is for and, when there is one, the next step to take. */
+export function EmptyState({ icon = 'spark', title, text, action, onAction, children }) {
+  return <View style={{ alignItems: 'center', paddingVertical: desktop ? 56 : 30, paddingHorizontal: 20, gap: 6 }}>
+    <View style={{ width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, marginBottom: 8 }}><Icon name={icon} size={24} color={C.accent} /></View>
+    <Text style={{ color: C.text, fontFamily: F.b, fontSize: 16.5, letterSpacing: -0.2, textAlign: 'center' }}>{title}</Text>
+    {text ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 440 }}>{text}</Text> : null}
+    {children}
+    {action ? <Pressable accessibilityRole="button" onPress={onAction} style={({ pressed, hovered }) => [{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.accent, marginTop: 12 }, hovered && { opacity: 0.9 }, pressed && { opacity: 0.7 }]}>
+      <Text style={{ color: C.accentInk, fontFamily: F.b, fontSize: 14 }}>{action}</Text></Pressable> : null}
+  </View>;
+}
+
 export function SheetHeader({ title, subtitle, onClose, icon }) {
   return <View style={styles.sheetHeader}>
     {icon ? <View style={styles.sheetIcon}><Icon name={icon} size={20} color={C.accent} /></View> : null}

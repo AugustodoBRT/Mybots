@@ -50,7 +50,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
 
   // Nothing open: the greeting, the day in a sentence and three quiet actions.
   await page.getByText(/^(Bom dia|Boa tarde|Boa noite), Augusto\.$/).first().waitFor({ timeout: 60000 });
-  for (const label of ['Novo bot', 'Nova sala', 'Buscar · Ctrl+K']) await seen(label);
+  for (const label of ['Novo bot', 'Nova sala', 'Buscar']) await seen(label);
+  await page.getByLabel('Buscar (Ctrl+K)').waitFor();
   for (const name of ['Atlas', 'Clara', 'Nico']) await page.getByLabel(`Conversar com ${name}`).first().waitFor();
   for (const label of ['Conversas', 'Atividade', 'Rotinas', 'Negociações', 'Ajustes', 'Ajuda e atalhos']) await page.getByLabel(label).first().waitFor();
 
@@ -128,7 +129,7 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   }
 
   // Ctrl+K searches and Enter opens the first match.
-  await page.keyboard.press('Control+k'); await page.getByLabel('Buscar e trocar de bot').fill('nic'); await seen('↑ ↓ escolhem · Enter abre · Esc fecha · Ctrl+N cria um bot');
+  await page.keyboard.press('Control+k'); await page.getByLabel('Buscar e trocar de bot').fill('nic'); for (const hint of ['escolher', 'abrir', 'fechar', 'novo bot']) await seen(hint);
   await page.keyboard.press('Enter'); await page.getByRole('tab', { name: /Nico/ }).waitFor();
   assert.equal(await page.getByRole('tab').count(), 2, 'uma aba por conversa aberta');
 
@@ -157,8 +158,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   const spend = await page.getByText(/^US\$ \d/).allInnerTexts(); assert.ok(spend.length >= 3, 'valores em dólar na página');
   const box = await page.getByText('Gasto nos últimos 7 dias', { exact: true }).first().boundingBox(); const side = await page.getByText('Precisa de você', { exact: true }).first().boundingBox();
   assert.ok(box.x < side.x && side.x > 700, 'o gasto ocupa a área principal e as listas ficam ao lado');
-  await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.'); await railStays();
-  await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.');
+  await page.getByLabel('Rotinas', { exact: true }).first().click(); await seen('Nenhuma rotina ainda'); await page.getByLabel('Criar rotina com Atlas').waitFor(); await railStays();
+  await page.getByLabel('Negociações', { exact: true }).first().click(); await seen('Nenhuma negociação ainda'); await page.getByLabel('Negociar com Atlas').waitFor();
   // Outside conversations, the plan meters remain compact in the navigation rail.
   await page.getByLabel(/^Codex, 5 horas: \d+% livre$/).first().waitFor();
   assert.equal(await page.getByText('Codex', { exact: true }).count(), 0, 'sem o nome escrito');

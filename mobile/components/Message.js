@@ -8,6 +8,17 @@ import { claudeName, findModel, EFFORT_NAMES, Avatar, tokensLabel } from './shar
 import { FileChip, FileCard, RichText } from '../RichMessage';
 import { ImageBubble } from './ImageBubble';
 import { isPicture } from '../attachment-images';
+import { copyText } from '../termux';
+
+/** On the computer, a quiet button that copies the message; it shows while the pointer is over the message. */
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  if (!desktop || !String(text || '').trim()) return null;
+  return <Pressable accessibilityRole="button" accessibilityLabel={copied ? 'Mensagem copiada' : 'Copiar mensagem'} dataSet={{ hoverOnly: copied ? 'shown' : 'true' }} hitSlop={6}
+    onPress={async () => { try { await copyText(String(text).trim()); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch {} }}
+    style={({ hovered }) => [{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 22, paddingHorizontal: 6, borderRadius: 6 }, hovered && { backgroundColor: C.text + '12' }]}>
+    <Icon name={copied ? 'check' : 'copy'} size={13} color={copied ? C.good : C.muted} /><Text style={{ color: copied ? C.good : C.muted, fontFamily: F.m, fontSize: 11 }}>{copied ? 'Copiado' : 'Copiar'}</Text></Pressable>;
+}
 
 // Answers a bot's decision (user_decide); App sets it to the supervisor call, so the cards need no extra prop through the lists.
 export const decisionHandler = { current: null };
@@ -64,14 +75,17 @@ export function MessageView({ message, bot, models, onRetry, busy, onFile, fileB
     <View style={[styles.messageBubble, styles.userBubble]}>
       {files}
       {message.text && message.text !== 'Veja o anexo.' ? <Text selectable style={styles.messageText}>{message.text}</Text> : null}
-      <Text style={styles.userTime}>{(message.via === 'chief' ? `${message.asker || 'Você'} · ` : '') + time + (message.live ? (message.delivered === 'live' ? ' · entregue ao bot enquanto ele trabalhava' : ' · chega ao bot na próxima ação dele') : '')}</Text>
+      {(() => { const stamp = (message.via === 'chief' ? `${message.asker || 'Você'} · ` : '') + time + (message.live ? (message.delivered === 'live' ? ' · entregue ao bot enquanto ele trabalhava' : ' · chega ao bot na próxima ação dele') : '');
+        return desktop ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginTop: 5 }}>{message.text !== 'Veja o anexo.' ? <CopyButton text={message.text} /> : null}<Text style={[styles.userTime, { marginTop: 0 }]}>{stamp}</Text></View>
+          : <Text style={styles.userTime}>{stamp}</Text>; })()}
       {error}
     </View>
   </View>;
   return <View dataSet={desktop ? { desktopMessage: "assistant" } : undefined} style={styles.messageRow}>
     {group ? <Avatar bot={bot} size={30} animated={false} tile={false} /> : null}
     <View style={[styles.messageBubble, styles.assistantBubble]}>
-      <View style={styles.messageMeta}>{group || desktop ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>
+      {desktop ? <View style={styles.messageMeta}>{group || desktop ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text>{desktop ? <View style={{ flex: 1, minWidth: 8 }} /> : null}<CopyButton text={message.text} /></View>
+        : <View style={styles.messageMeta}>{group || desktop ? <Text style={styles.messageSpeaker}>{bot.name}</Text> : null}<Text style={styles.messageTime}>{time}{model ? ` · ${model}` : ''}{message.usage ? ` · ${tokensLabel(message.usage.input + message.usage.output)} tokens` : ''}</Text></View>}
       {files}
       <RichText files={message.attachments} botId={bot.id} onFile={desktop ? onFile : undefined} id={message.id} text={message.text} textStyle={styles.messageText} />
       {message.decision ? <><DecisionCard decision={message.decision} />{error}</> : error}

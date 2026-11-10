@@ -1,7 +1,7 @@
 import { Modal, View, ScrollView, Text, Pressable } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
-import { SheetHeader, Avatar } from './shared';
+import { SheetHeader, Avatar, EmptyState } from './shared';
 import { describeTrigger } from '../routine-text.js';
 
 const r = themed(() => ({
@@ -9,15 +9,17 @@ const r = themed(() => ({
   title: { color: C.text, fontFamily: F.b, fontSize: 16 },
   detail: { color: C.muted, fontFamily: F.m, fontSize: 14, lineHeight: 20 },
   page: { flex: 1, paddingHorizontal: 32, paddingTop: 26 },
+  pick: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2 },
+  pickText: { color: C.text, fontFamily: F.s, fontSize: 13.5 },
   pageTitle: { color: C.text, fontFamily: F.x, fontSize: 28, letterSpacing: -0.8 },
   pageHint: { color: C.muted, fontFamily: F.m, fontSize: 15, marginTop: 4, marginBottom: 12 }
 }));
 const NEGOTIATION_STATUS = { active: 'em andamento', awaiting_you: 'espera você', closed: 'encerrada', cancelled: 'cancelada', expired: 'vencida' };
 
 // A list as a sheet (phone) or as a whole page next to the computer's icon bar (`inline`).
-function ListSheet({ visible, inline, title, hint, onClose, children }) {
+function ListSheet({ visible, inline, empty, title, hint, onClose, children }) {
   if (inline) return <View style={r.page}><Text style={r.pageTitle}>{title}</Text><Text style={r.pageHint}>{hint}</Text>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30, maxWidth: 980 }}>{children}</ScrollView></View>;
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 30, maxWidth: empty ? undefined : 980 }}>{children}</ScrollView></View>;
   return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
     <View style={styles.sheetBackdrop}><View style={[styles.sheet, styles.sheetTall]}>
       <View style={styles.sheetHandle} />
@@ -27,24 +29,35 @@ function ListSheet({ visible, inline, title, hint, onClose, children }) {
   </Modal>;
 }
 
+// The empty list offers the next step: pick the bot that will get the first one (its profile opens on the right tab).
+function Starter({ bots, tab, verb, onClose, onOpen }) {
+  const list = bots.filter(bot => !bot.deletedAt).slice(0, 8);
+  if (!list.length) return null;
+  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 14, maxWidth: 560 }}>
+    {list.map(bot => <Pressable key={bot.id} accessibilityRole="button" accessibilityLabel={`${verb} com ${bot.name}`} onPress={() => { onClose?.(); onOpen(bot, tab); }} style={({ pressed, hovered }) => [r.pick, hovered && { backgroundColor: C.surface2 }, pressed && { opacity: 0.7 }]}>
+      <Avatar bot={bot} size={28} animated={false} /><Text style={r.pickText} numberOfLines={1}>{bot.name}</Text></Pressable>)}
+  </View>;
+}
+
 /** Every bot's routines in one list; a row opens that bot's profile on the routines tab. */
 export function RoutinesSheet({ visible, inline, routines = [], bots = [], onClose, onOpen }) {
   const rows = routines.filter(item => bots.some(bot => bot.id === item.botId));
-  return <ListSheet visible={visible} inline={inline} title="Rotinas" hint="O que cada bot faz sozinho, no horário ou quando algo chega." onClose={onClose}>
+  return <ListSheet visible={visible} inline={inline} empty={!rows.length} title="Rotinas" hint="O que cada bot faz sozinho, no horário ou quando algo chega." onClose={onClose}>
     {rows.length ? rows.map(item => { const bot = bots.find(entry => entry.id === item.botId);
       return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.title}, de ${bot.name}`} onPress={() => { onClose?.(); onOpen(bot, 'routines'); }} style={({ pressed, hovered }) => [r.row, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
         <Avatar bot={bot} size={40} animated={false} />
         <View style={{ flex: 1 }}><Text style={r.title} numberOfLines={1}>{item.title}</Text><Text style={r.detail} numberOfLines={2}>{bot.name} · {item.enabled ? describeTrigger(item.trigger) : 'desligada'}</Text></View>
         <Icon name="right" size={16} color={C.faint} />
       </Pressable>; })
-      : <Text style={r.detail}>Nenhuma rotina ainda. Abra um bot e crie uma em Rotinas.</Text>}
+      : <EmptyState icon="bolt" title="Nenhuma rotina ainda" text={bots.length ? 'Uma rotina faz o bot trabalhar sozinho: todo dia num horário, ou quando chega um e-mail. Escolha o bot que vai ganhar a primeira.' : 'Uma rotina faz o bot trabalhar sozinho, no horário ou quando algo chega. Crie um bot para começar.'}>
+        <Starter bots={bots} tab="routines" verb="Criar rotina" onClose={onClose} onOpen={onOpen} /></EmptyState>}
   </ListSheet>;
 }
 
 /** Every bot's negotiations; a row opens that bot's profile on the negotiation tab. */
 export function NegotiationsSheet({ visible, inline, negotiations = [], bots = [], onClose, onOpen }) {
   const rows = negotiations.filter(item => bots.some(bot => bot.id === item.botId));
-  return <ListSheet visible={visible} inline={inline} title="Negociações" hint="Compras e vendas em que um bot fala em seu nome." onClose={onClose}>
+  return <ListSheet visible={visible} inline={inline} empty={!rows.length} title="Negociações" hint="Compras e vendas em que um bot fala em seu nome." onClose={onClose}>
     {rows.length ? rows.map(item => { const bot = bots.find(entry => entry.id === item.botId);
       return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`${item.objective}, de ${bot.name}`} onPress={() => { onClose?.(); onOpen(bot, 'negotiate'); }} style={({ pressed, hovered }) => [r.row, hovered && { backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
         <Avatar bot={bot} size={40} animated={false} />
@@ -52,6 +65,7 @@ export function NegotiationsSheet({ visible, inline, negotiations = [], bots = [
           <Text style={[r.detail, item.status === 'awaiting_you' && { color: C.amber }]} numberOfLines={1}>{bot.name} · {NEGOTIATION_STATUS[item.status] || item.status}</Text></View>
         <Icon name="right" size={16} color={C.faint} />
       </Pressable>; })
-      : <Text style={r.detail}>Nenhuma negociação ainda. Abra um bot e crie uma em Negociar.</Text>}
+      : <EmptyState icon="hand" title="Nenhuma negociação ainda" text={bots.length ? 'Um bot conversa com o vendedor ou o comprador em seu nome, dentro do limite que você definir, e pede a sua aprovação antes de fechar. Escolha quem vai negociar.' : 'Um bot negocia compras e vendas em seu nome. Crie um bot para começar.'}>
+        <Starter bots={bots} tab="negotiate" verb="Negociar" onClose={onClose} onOpen={onOpen} /></EmptyState>}
   </ListSheet>;
 }

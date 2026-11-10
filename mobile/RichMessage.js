@@ -7,6 +7,7 @@ import Svg, { Rect, Line, Polyline, Circle, Path, Text as SvgText } from 'react-
 import { parseBlocks, parseInline } from './markdown';
 import { fileReference, referenceRuns, previewKind } from './file-references';
 import { C, F, Icon, themed } from './theme';
+import { copyText } from './termux';
 
 // Bot replies: Markdown with tables and charts, drawn with the same reader the supervisor uses for files.
 const chartColors = () => [C.sky, C.peach, C.accent, '#F58AB0', C.lilac, '#62CFD9'];
@@ -32,14 +33,30 @@ function Inline({ text, style, cache }) {
   })}</Text>;
 }
 
+// Every column gets one width, from its longest cell, so the header and the rows line up (each cell used to size itself).
+const cellLength = cell => String(cell || '').replace(/[*_`]|\]\([^)]*\)|\[/g, '').length;
+export const columnWidths = (header, rows) => header.map((_, c) => Math.max(76, Math.min(260, Math.round(Math.max(cellLength(header[c]) * 9, ...rows.map(row => cellLength(row[c]) * 7.8))) + 28)));
 function Table({ header, rows, cache }) {
+  const widths = columnWidths(header, rows);
   return <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={s.tableScroll}>
     <View style={s.table}>
       {[header, ...rows].map((row, r) => <View key={r} style={[s.row, r === 0 && s.headRow, r > 0 && r % 2 === 0 && s.stripe]}>
-        {row.map((cell, c) => <View key={c} style={[s.cell, c === row.length - 1 && { borderRightWidth: 0 }]}><Inline cache={cache} text={cell} style={[s.cellText, r === 0 && s.bold]} /></View>)}
+        {header.map((_, c) => <View key={c} style={[s.cell, { width: widths[c] }, c === header.length - 1 && { borderRightWidth: 0 }]}><Inline cache={cache} text={row[c] || ''} style={[s.cellText, r === 0 && s.headText]} /></View>)}
       </View>)}
     </View>
   </ScrollView>;
+}
+
+/** A block of code: what language it is and a button that copies it, above the code itself. */
+function CodeBlock({ lang, text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { try { await copyText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch {} };
+  return <View style={s.codeBox}>
+    <View style={s.codeHead}><Text style={s.codeLang} numberOfLines={1}>{lang || 'código'}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Copiar código" hitSlop={8} onPress={copy} style={({ hovered, pressed }) => [s.codeCopy, hovered && { backgroundColor: C.text + '12' }, pressed && { opacity: 0.6 }]}>
+        <Icon name={copied ? 'check' : 'copy'} size={13} color={copied ? C.good : C.muted} /><Text style={[s.codeCopyText, copied && { color: C.good }]}>{copied ? 'Copiado' : 'Copiar'}</Text></Pressable></View>
+    <Text selectable style={s.codeBlock}>{text}</Text>
+  </View>;
 }
 
 export function Chart({ spec }) {
@@ -102,7 +119,7 @@ export function RichText({ id, text, textStyle, files, botId, onFile, notes }) {
       <Text style={s.marker}>{block.ordered ? `${block.start + i}.` : '•'}  </Text><Inline cache={cache} text={item} /></Text>)}</View>;
     if (block.type === 'table') return <Table cache={cache} key={index} header={block.header} rows={block.rows} />;
     if (block.type === 'chart') return <Chart key={index} spec={block.spec} />;
-    if (block.type === 'code') return <Text key={index} selectable style={s.codeBlock}>{block.text}</Text>;
+    if (block.type === 'code') return <CodeBlock key={index} lang={block.lang} text={block.text} />;
     if (block.type === 'quote') return <Inline cache={cache} key={index} text={block.text} style={[textStyle, s.quote]} />;
     return <View key={index} style={s.rule} />;
   })}</View></FileContext.Provider></NoteContext.Provider>;
@@ -150,11 +167,17 @@ const s = themed(() => ({
   code: { fontFamily: 'monospace', backgroundColor: C.text + '14', fontSize: 13.5 },
   heading: { fontFamily: F.x, fontSize: 16.5, letterSpacing: -0.3, marginTop: 2 }, h1: { fontSize: 19 }, marker: { color: C.accent, fontFamily: F.b },
   quote: { borderLeftWidth: 3, borderLeftColor: C.line2, paddingLeft: 10, color: C.text2, fontStyle: 'italic' },
-  codeBlock: { fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, color: C.text, backgroundColor: C.bg2, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line },
+  codeBox: { alignSelf: 'stretch', borderRadius: 12, borderWidth: 1, borderColor: C.line2, backgroundColor: C.bg2, overflow: 'hidden' },
+  codeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingLeft: 12, paddingRight: 6, height: 32, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.text + '08' },
+  codeLang: { color: C.muted, fontFamily: F.m, fontSize: 11.5, flexShrink: 1 },
+  codeCopy: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 24, paddingHorizontal: 8, borderRadius: 7 },
+  codeCopyText: { color: C.muted, fontFamily: F.m, fontSize: 11.5 },
+  codeBlock: { fontFamily: 'monospace', fontSize: 12.5, lineHeight: 19, color: C.text, padding: 12 },
   rule: { height: 1, backgroundColor: C.line2, marginVertical: 4 },
-  tableScroll: { flexGrow: 0 }, table: { borderWidth: 1, borderColor: C.line2, borderRadius: 14, overflow: 'hidden' },
+  tableScroll: { flexGrow: 0 }, table: { borderWidth: 1, borderColor: C.line2, borderRadius: 12, overflow: 'hidden' },
   row: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.line }, headRow: { backgroundColor: C.elevated, borderTopWidth: 0 }, stripe: { backgroundColor: C.text + '08' },
-  cell: { minWidth: 76, maxWidth: 230, paddingHorizontal: 11, paddingVertical: 9, borderRightWidth: 1, borderRightColor: C.line },
+  cell: { paddingHorizontal: 12, paddingVertical: 9, borderRightWidth: 1, borderRightColor: C.line },
+  headText: { fontFamily: F.s, color: C.text2 },
   cellText: { color: C.text, fontFamily: F.r, fontSize: 13.5, lineHeight: 19 },
   chart: { alignSelf: 'stretch', minWidth: 220, backgroundColor: C.surface, borderRadius: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.line },
   file: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 11, borderRadius: 18, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line2, minWidth: 230 },

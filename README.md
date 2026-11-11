@@ -8,7 +8,7 @@
 
 Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails ou lembretes, e escolha qual conta Google ele usa. Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você. Instale no **computador** (Linux, Windows ou macOS) e no **celular Android**, conecte os dois e pronto: os bots, as conversas e as rotinas ficam iguais nos dois, e cada lado continua funcionando sozinho. O Termux, no celular, é opcional.
 
-![Android](https://img.shields.io/badge/Android-7%2B-7EE2B8?style=flat-square&logo=android&logoColor=white&labelColor=12161E)
+![Android](https://img.shields.io/badge/Android-14%2B-7EE2B8?style=flat-square&logo=android&logoColor=white&labelColor=12161E)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo%20SDK%2057-8AB6FF?style=flat-square&logo=react&logoColor=white&labelColor=12161E)
 ![Node](https://img.shields.io/badge/Supervisor-Node%20%2B%20SQLite-C2A5FF?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=12161E)
 ![Termux](https://img.shields.io/badge/Roda%20no-Termux-FFB38A?style=flat-square&logo=gnubash&logoColor=white&labelColor=12161E)
@@ -21,7 +21,7 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 
 | Sistema | Baixar | Atualização |
 |---|---|---|
-| 📱 **Android** | [APK na Release mais recente](https://github.com/AugustodoBRT/Mybots/releases/latest) | o app avisa e atualiza sozinho |
+| 📱 **Android** | [APK na Release mais recente](https://github.com/AugustodoBRT/Mybots/releases/latest) · ainda fora da Google Play, veja [como instalar](#instalar-o-apk-no-android) | o app avisa e atualiza sozinho |
 | 🐧 **Linux** | [AppImage ou .deb](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | botão "Atualizar e reiniciar" (AppImage) |
 | 🪟 **Windows** | [Instalador .exe](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | botão "Atualizar e reiniciar" |
 | 🍎 **macOS** | [.dmg (Apple Silicon ou Intel)](https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest) | o botão abre a página de download |
@@ -106,10 +106,24 @@ flowchart LR
    - **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro em [docs/windows.md](docs/windows.md).
    - **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
 2. **No iPhone** (web app, sem App Store): no MyBots do computador, abra Ajustes → Celular → **Mostrar QR (iPhone)**, aponte a câmera do iPhone para o QR e toque no link. No Safari, **Compartilhar → Adicionar à Tela de Início** para virar um ícone. Ele conversa com os bots do computador pelo relé cifrado de ponta a ponta, então o computador precisa ficar ligado. Não tem notificações em segundo plano, navegador ao vivo dos bots, senhas nem carteira.
-3. **No celular Android**: baixe o APK em **[Releases](../../releases/latest)**, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Pronto, sem Termux.
+3. **No celular Android**: o MyBots ainda **não está na Google Play**, então o Android trata a instalação como "app de fora da loja" e pede algumas liberações. Passo a passo em [Instalar o APK no Android](#instalar-o-apk-no-android) logo abaixo. Resumindo: baixe o `mybots-vNNN.apk` em **[Releases](../../releases/latest)**, permita instalar apps desconhecidos para o navegador, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Sem Termux.
 4. **Atualizações**: no computador e no Android aparece "Nova versão · Atualizar e reiniciar" e um clique baixa, instala e reinicia sozinho. No computador isso vale para o **Windows** e o **AppImage do Linux**; no **.deb** e no **macOS** (sem assinatura) o botão abre a página de download.
 
 O computador precisa ficar ligado (o MyBots fica na bandeja) para o celular usar os bots dele. Se preferir o celular independente, ative o **Termux** em Ajustes → Termux (avançado), que traz o tutorial completo.
+
+### Instalar o APK no Android
+
+O app exige **Android 14 ou mais novo** e um celular **ARM64** (praticamente todos os atuais) e não passa pela Google Play, então o Android e o Play Protect podem barrar. Siga nesta ordem:
+
+1. **Baixe o APK** pelo navegador do próprio celular: abra [Releases](../../releases/latest) e toque em `mybots-vNNN.apk` (o arquivo `.sha256` ao lado serve só para conferir a integridade; os outros arquivos da release não são necessários).
+2. **Permita instalar apps desconhecidos.** Ao abrir o arquivo, o Android avisa que a instalação está bloqueada: toque em **Configurações** e ligue **Permitir desta fonte** para o app que você usou (Chrome, Arquivos etc.). Se o aviso não aparecer, vá em Configurações → Apps → Acesso especial → **Instalar apps desconhecidos**. Em alguns aparelhos (Xiaomi/POCO, Samsung) o nome muda um pouco.
+3. **Instale.** Se o **Play Protect** mostrar "App bloqueado para proteger seu dispositivo" ou "Instalar mesmo assim", escolha **Mais detalhes → Instalar mesmo assim**. O MyBots pede permissões sensíveis (acesso a notificações, controle do celular, etc.) e por isso o aviso aparece.
+4. **Se o Android bloquear de vez** (sem a opção de instalar mesmo assim; acontece com a proteção reforçada contra fraude, comum no Brasil), há dois caminhos:
+   - desligue o Play Protect **só durante a instalação**: Play Store → seu perfil → **Play Protect** → engrenagem → desative *Analisar apps com o Play Protect*, instale e ligue de novo; ou
+   - instale pelo computador com o `adb` (USB ou depuração por Wi-Fi): `adb install -r mybots-vNNN.apk` (precisa do [platform-tools](https://developer.android.com/tools/releases/platform-tools) e da depuração USB ligada em Opções do desenvolvedor). Instalações por adb não passam por esse bloqueio.
+5. **Abra o app**, conceda as permissões que ele pedir (notificações, etc.) e toque em **Ler o QR do computador**.
+
+Depois da primeira instalação, as **atualizações são pelo próprio app** ("Nova versão · Atualizar e reiniciar"), que baixa, confere a assinatura e instala por cima, sem repetir esse caminho. Atualizar mantém seus bots e conversas; não desinstale antes.
 
 > Guias detalhados: [MyBots no computador](docs/computador.md) · [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 

@@ -6,12 +6,12 @@
 
 **Seu pequeno time de bots pessoais, no computador e no celular.**
 
-Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails ou lembretes, e escolha qual conta Google ele usa. Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você. Instale no **computador** (Linux, Windows ou macOS) e no **celular Android**, conecte os dois e pronto: os bots, as conversas e as rotinas ficam iguais nos dois, e cada lado continua funcionando sozinho. O Termux, no celular, é opcional.
+Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails ou lembretes, e escolha qual conta Google ele usa. Eles conversam, navegam, leem e criam arquivos, seguem rotinas e avisam você. No **celular Android** o MyBots roda **inteiro dentro do app**, sem computador e sem Termux: o APK leva um Linux embutido onde ficam o supervisor e as IAs. Se quiser, instale também no **computador** (Linux, Windows ou macOS) e conecte os dois: os bots, as conversas e as rotinas ficam iguais nos dois, e cada lado continua funcionando sozinho. O Termux é opcional (só para quem já usa).
 
 ![Android](https://img.shields.io/badge/Android-14%2B-7EE2B8?style=flat-square&logo=android&logoColor=white&labelColor=12161E)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo%20SDK%2057-8AB6FF?style=flat-square&logo=react&logoColor=white&labelColor=12161E)
 ![Node](https://img.shields.io/badge/Supervisor-Node%20%2B%20SQLite-C2A5FF?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=12161E)
-![Termux](https://img.shields.io/badge/Roda%20no-Termux-FFB38A?style=flat-square&logo=gnubash&logoColor=white&labelColor=12161E)
+![Celular](https://img.shields.io/badge/Roda%20direto-no%20celular-FFB38A?style=flat-square&logo=android&logoColor=white&labelColor=12161E)
 
 **Últimas versões:**
 [![Android](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2FAugustodoBRT%2FMybots%2Freleases%2Flatest&query=%24.name&label=Android&cacheSeconds=300&style=flat-square&color=7EE2B8&logo=android&logoColor=white&labelColor=12161E)](https://github.com/AugustodoBRT/Mybots/releases/latest)
@@ -56,7 +56,7 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 | 📤 **Compartilhar com o bot** | De qualquer app, em "Compartilhar → MyBots", ou direto no bot pelo Direct Share do Android. Links, textos e até 5 arquivos chegam ao campo de mensagem para você revisar antes de enviar. |
 | 💻 **PC encontrado automaticamente** | Depois de pareado, o celular procura o PC no mesmo Wi-Fi quando o endereço muda. Entre redes diferentes, conecta pelo relé do MyBots (sem instalar nada); o Tailscale continua funcionando como alternativa. Bots e conversas dos dois lados se sincronizam sozinhos. |
 | 🌐 **Navegador dos bots** | Os bots compartilham o navegador de cada aparelho, cada um nas próprias abas. Gmail, Agenda e Drive abrem direto nos sites. Você pode conectar várias contas Google e escolher qual cada bot usa; se faltar login, ele pede para você entrar pelo navegador. Barra de abas, cursor e legenda do que o bot está fazendo, linha do tempo com miniaturas, lista de downloads e navegador ao lado da conversa em tela larga. A página aparece ao vivo no MyBots, com renderização nativa estável no Android e qualidade adaptada ao visor; Meu Chrome preserva suas outras abas. O bot localiza elementos, usa capturas numeradas, rola e abre menus; no PC, também arrasta e usa até 5 abas. Você toca em **Assumir** e o navegador abre em tela cheia, no tamanho do celular, com toques de verdade, pinça para aproximar e o teclado do celular digitando direto no campo; num CAPTCHA, a tela já aproxima o desafio para você resolver. Depois devolve o controle. Senhas nunca vão ao modelo. |
-| 🕹️ **Bot livre no celular** | Opção **Controlar o celular**, por bot: o bot abre e usa os outros apps do celular (ver a tela, tocar, digitar, rolar), usa o terminal completo do Termux com acesso total por padrão. Uma barra com **Parar** fica sempre na tela enquanto ele controla o celular, e você pode **Assumir** a qualquer momento. Senhas aparecem mascaradas e códigos de verificação vão direto do SMS ou da notificação para o campo, sem passar pela IA. |
+| 🕹️ **Bot livre no celular** | Opção **Controlar o celular**, por bot: o bot abre e usa os outros apps do celular (ver a tela, tocar, digitar, rolar), usa o terminal Linux completo que vem dentro do app (ou o Termux, se você preferir) com acesso total por padrão; SMS, contatos, chamadas, localização e avisos são nativos, com as permissões em Ajustes → Celular. Uma barra com **Parar** fica sempre na tela enquanto ele controla o celular, e você pode **Assumir** a qualquer momento. Senhas aparecem mascaradas e códigos de verificação vão direto do SMS ou da notificação para o campo, sem passar pela IA. |
 | 🤝 **Negociar em seu nome** | Na aba **Negociar** do perfil do bot você define um mandato: objetivo, preço-alvo, teto (compra) ou mínimo (venda), canais (WhatsApp, OLX, Facebook Marketplace, e-mail), prazo, tom e se ele se apresenta como assistente. O bot declara cada oferta antes de mandá-la e o MyBots recusa o que passar do teto, do prazo ou do canal. Se ele pode fechar, fecha dentro do mandato e paga pela carteira; senão, ou se a proposta sai do mandato, aparece um cartão **Aceitar/Recusar**. |
 | 💳 **Carteira do bot** | Na aba **Carteira**, cada cartão aparece como um cartão e você escolhe quais bots podem usá-lo. Você define regras de gasto: limite por compra, por dia e por mês, lojas e categorias. O bot compra sozinho dentro delas: o app confere a loja e o total na própria página e só então preenche o cartão, que nunca passa pela IA. Cada compra gera notificação e entra no extrato com comprovante, e **Congelar carteira** bloqueia tudo num toque. |
 | 🔎 **Acabamentos do dia a dia** | Resposta aparecendo enquanto é escrita; **busca** em todas as conversas (e nas mensagens **fixadas**); segurar uma mensagem para copiar, responder citando, fixar ou reenviar; **fila controlável** (pausar, retomar, cancelar item e **Corrigir rumo**); **modelo reserva** (Codex ↔ Claude) quando o limite da assinatura acaba; e **responder, Aprovar ou Recusar direto na notificação**, menos o que envolve dinheiro, senha ou código. |
@@ -83,19 +83,19 @@ flowchart LR
   end
   subgraph Celular
     App["App MyBots<br/>(React Native)"]
-    SupCel["Supervisor no Termux<br/>(opcional)"]
+    SupCel["Supervisor no celular<br/>(Linux embutido no app)"]
   end
   Win <--> SupPC
   SupPC <--> Node
   Node --> AIPC
   App <-- "canal cifrado de ponta a ponta<br/>direto ou pelo relé" --> Node
-  App -. "opcional" .- SupCel
+  App --- SupCel
   SupPC <-- "sincronização" --> SupCel
   AIPC -- "sua conta" --> Nuvem[(OpenAI / Anthropic)]
 ```
 
 - O **app** (computador ou celular) é a interface: conversas, perfis, aprovações, atividade, arquivos e o navegador ao vivo.
-- O **supervisor** guarda tudo num SQLite local: fila de tarefas, rotinas, pendências, memórias e permissões. Ele expõe as ferramentas aos modelos por MCP e decide o que precisa de aprovação. Roda no computador e, se você quiser o celular independente, também no Termux; os dois se sincronizam.
+- O **supervisor** guarda tudo num SQLite local: fila de tarefas, rotinas, pendências, memórias e permissões. Ele expõe as ferramentas aos modelos por MCP e decide o que precisa de aprovação. Roda no computador e no próprio celular (dentro do app, sem Termux); se você usa os dois, eles se sincronizam.
 - Celular e computador se conectam de qualquer rede: direto no mesmo Wi-Fi, ou por um relé que só encaminha dados cifrados de ponta a ponta (ou pelo Tailscale, se você usa).
 - Os modelos usam o **Codex**, o **Claude Code**, o **Antigravity** (`agy`) ou o **opencode**, já conectados à sua conta. O MyBots não lê nem copia as credenciais deles.
 
@@ -106,10 +106,10 @@ flowchart LR
    - **Windows**: `MyBots-<versão>-windows-x64.exe`. Beta, sem assinatura: no aviso do SmartScreen, **Mais informações → Executar assim mesmo**. Roteiro em [docs/windows.md](docs/windows.md).
    - **macOS**: `MyBots-<versão>-mac-arm64.dmg` (Apple Silicon) ou `MyBots-<versão>-mac-x64.dmg` (Intel). Beta, sem assinatura e ainda não testado num Mac: arraste para Aplicativos e, na primeira vez, clique com o botão direito → **Abrir**.
 2. **No iPhone** (web app, sem App Store): no MyBots do computador, abra Ajustes → Celular → **Mostrar QR (iPhone)**, aponte a câmera do iPhone para o QR e toque no link. No Safari, **Compartilhar → Adicionar à Tela de Início** para virar um ícone. Ele conversa com os bots do computador pelo relé cifrado de ponta a ponta, então o computador precisa ficar ligado. Não tem notificações em segundo plano, navegador ao vivo dos bots, senhas nem carteira.
-3. **No celular Android**: o MyBots ainda **não está na Google Play**, então o Android trata a instalação como "app de fora da loja" e pede algumas liberações. Passo a passo em [Instalar o APK no Android](#instalar-o-apk-no-android) logo abaixo. Resumindo: baixe o `mybots-vNNN.apk` em **[Releases](../../releases/latest)**, permita instalar apps desconhecidos para o navegador, instale, abra e toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR). Sem Termux.
+3. **No celular Android**: o MyBots ainda **não está na Google Play**, então o Android trata a instalação como "app de fora da loja" e pede algumas liberações. Passo a passo em [Instalar o APK no Android](#instalar-o-apk-no-android) logo abaixo. Resumindo: baixe o `mybots-vNNN.apk` em **[Releases](../../releases/latest)**, permita instalar apps desconhecidos para o navegador, instale e abra. Na primeira tela, toque em **Usar neste celular** (a preparação leva alguns minutos) e conecte Claude, Codex ou Antigravity em **Ajustes → IAs e contas**. **Não precisa de computador nem de Termux.** Se preferir usar os bots do computador, toque em **Ler o QR do computador** (no PC: Ajustes → Celular → Mostrar QR).
 4. **Atualizações**: no computador e no Android aparece "Nova versão · Atualizar e reiniciar" e um clique baixa, instala e reinicia sozinho. No computador isso vale para o **Windows** e o **AppImage do Linux**; no **.deb** e no **macOS** (sem assinatura) o botão abre a página de download.
 
-O computador precisa ficar ligado (o MyBots fica na bandeja) para o celular usar os bots dele. Se preferir o celular independente, ative o **Termux** em Ajustes → Termux (avançado), que traz o tutorial completo.
+O celular funciona sozinho (**Usar só neste celular**, em Ajustes). Só se você escolher usar os bots do computador é que ele precisa ficar ligado (o MyBots fica na bandeja). O **Termux** continua funcionando em Ajustes → Termux (avançado), mas não é mais necessário. No modo embutido, o opencode ainda não está disponível.
 
 ### Instalar o APK no Android
 
@@ -121,15 +121,15 @@ O app exige **Android 14 ou mais novo** e um celular **ARM64** (praticamente tod
 4. **Se o Android bloquear de vez** (sem a opção de instalar mesmo assim; acontece com a proteção reforçada contra fraude, comum no Brasil), há dois caminhos:
    - desligue o Play Protect **só durante a instalação**: Play Store → seu perfil → **Play Protect** → engrenagem → desative *Analisar apps com o Play Protect*, instale e ligue de novo; ou
    - instale pelo computador com o `adb` (USB ou depuração por Wi-Fi): `adb install -r mybots-vNNN.apk` (precisa do [platform-tools](https://developer.android.com/tools/releases/platform-tools) e da depuração USB ligada em Opções do desenvolvedor). Instalações por adb não passam por esse bloqueio.
-5. **Abra o app**, conceda as permissões que ele pedir (notificações, etc.) e toque em **Ler o QR do computador**.
+5. **Abra o app** e conceda as permissões que ele pedir (notificações, etc.). Depois toque em **Usar neste celular** e conecte uma IA em Ajustes → IAs e contas. Só toque em **Ler o QR do computador** se quiser parear com o PC.
 
 Depois da primeira instalação, as **atualizações são pelo próprio app** ("Nova versão · Atualizar e reiniciar"), que baixa, confere a assinatura e instala por cima, sem repetir esse caminho. Atualizar mantém seus bots e conversas; não desinstale antes.
 
-> Guias detalhados: [MyBots no computador](docs/computador.md) · [configurar o celular](docs/configurar-celular.md) · [Claude no Termux](docs/claude-termux.md) · [Antigravity e opencode](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
+> Guias detalhados: [MyBots no computador](docs/computador.md) · [configurar o celular](docs/configurar-celular.md) · [Claude no Termux, opcional](docs/claude-termux.md) · [Antigravity e opencode no Termux](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
 
 ## Celular e computador juntos
 
-- **Cada um funciona sozinho**: o MyBots do PC tem os próprios bots, conversas e rotinas e responde com o celular desligado. E o celular com Termux funciona sem o PC.
+- **Cada um funciona sozinho**: o MyBots do PC tem os próprios bots, conversas e rotinas e responde com o celular desligado. E o celular funciona sem o PC e sem Termux (Linux embutido no app).
 - **Sincroniza sozinho**: bots, conversas, memória, salas, rotinas, pendências, ajustes e arquivos (até 20 MB) se juntam nos dois sentidos quando os dois estão ligados. Se os dois mudarem a mesma coisa, vale a versão mais recente e o aviso aparece em Atividade. Permissões, senhas e cartões ficam em cada aparelho.
 - **Limites conhecidos**: redes que bloqueiam portas incomuns (faculdade, empresa) podem barrar o relé; arquivos acima de 20 MB ficam onde foram criados; rotinas rodam em um aparelho só. Detalhes em [docs/computador.md](docs/computador.md) e [docs/PLANO-SYNC.md](docs/PLANO-SYNC.md).
 
@@ -143,7 +143,7 @@ scripts/build-apk.sh --offline      # APK ARM64 para o celular
 # o instalador do computador sai pela CI (.github/workflows/desktop.yml)
 ```
 
-Para testar num emulador com Termux e o supervisor de verdade, veja [scripts/emulator/README.md](scripts/emulator/README.md).
+Para testar num emulador com o supervisor de verdade, veja [scripts/emulator/README.md](scripts/emulator/README.md).
 
 | Documento | Conteúdo |
 |---|---|

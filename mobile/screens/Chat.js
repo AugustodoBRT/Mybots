@@ -1,7 +1,7 @@
 import { ChiefStatus, DelegationCards } from '../components/ChiefTeam';
 import { ChiefHero } from '../components/ChiefHero';
 import { sessionsOf, openedLine } from '../state/sessions';
-import { useKeyboardPad } from '../keyboard';
+import { KeyboardArea } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
@@ -27,7 +27,6 @@ const launchPast = new Map();
 // When this visit began: the team's replies from before it are not news on the empty start.
 const visitStart = new Date().toISOString();
 function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
-  const [keyboard, keyboardRef] = useKeyboardPad();
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null);
@@ -56,7 +55,12 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     return fresh ? sessions.find(item => item.id === (fresh.session || 'base')) || null : null;
   }, [bot.isChief, bot.messages, past, sessions]);
   const messages = useMemo(() => (bot.isChief ? [...(current?.messages || [])].filter(item => !openedLine(item)) : [...bot.messages]).reverse(), [bot.isChief, bot.messages, current]);
-  const showHero = bot.isChief && !sessionsOpen && !messages.length && !sending && !saving && !data.active?.includes(bot.id) && !(data.approvals || []).some(item => item.botId === bot.id);
+  const heroAllowed = bot.isChief && !sessionsOpen && !messages.length && !sending && !saving && !data.active?.includes(bot.id) && !(data.approvals || []).some(item => item.botId === bot.id);
+  // The start screen is for a conversation that is really empty: a list empty for an instant (it is being renewed) must not bring it back over the messages.
+  const hadMessages = useRef(0); if (!heroAllowed) hadMessages.current = Date.now();
+  const [, settleHero] = useState(0); const heroWait = hadMessages.current ? hadMessages.current + 2000 - Date.now() : 0;
+  useEffect(() => { if (!heroAllowed || heroWait <= 0) return undefined; const timer = setTimeout(() => settleHero(n => n + 1), heroWait + 20); return () => clearTimeout(timer); }, [heroAllowed, heroWait > 0]);
+  const showHero = heroAllowed && heroWait <= 0;
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll();
   const [showModels, setShowModels] = useState(false);
   const busy = sending || saving || data.active?.includes(bot.id);
@@ -169,12 +173,12 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     {side ? null : panel}
     <View style={side ? styles.chatSplit : { flex: 1 }}>
     <View style={side ? { width: Math.max(360, Math.round(width * 0.42)) } : { flex: 1 }}>
-    <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
+    <KeyboardArea>
     <View style={styles.messagesWrap}>
     {sessionsOpen ? <SessionList sessions={sessions} current={current?.id} more={more} onEarlier={onEarlier} onPick={id => { setSessionsOpen(false); if (id !== current?.id) onResume?.(id); }} onClose={() => setSessionsOpen(false)} /> : null}
     <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
-      {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
+      {...scrollProps} removeClippedSubviews={false} maintainVisibleContentPosition={away ? { minIndexForVisible: 0 } : undefined}
       onEndReached={more && !bot.isChief ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
       ListFooterComponent={more && !bot.isChief ? <EarlierButton onPress={onEarlier} /> : null}
       ListEmptyComponent={<View>
@@ -220,12 +224,12 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
-      <Composer value={draft} setValue={setDraft} editable={!typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
+      <Composer value={draft} setValue={setDraft} editable={mode === 'phone' || !typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
         onSend={async () => { if (await onSend(draft, files)) { setFiles([]); toEnd(); } }} accessibilityLabel="Sua mensagem"
-        placeholder={typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
+        placeholder={mode !== 'phone' && typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
         onAttach={pwa ? pickWebFile : phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
     </View>
-    </View>
+    </KeyboardArea>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />
     </View>
     {side ? <View style={styles.chatSide}>{panel}</View> : null}

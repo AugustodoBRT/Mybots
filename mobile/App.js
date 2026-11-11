@@ -24,7 +24,7 @@ import { loadLink, currentLink, pairFromQr, forgetLink, RemoteSocket } from './p
 import { SetupScreen } from './components/Setup';
 import { DesktopUpdate } from './components/DesktopUpdate';
 import { emptyLocalStore, createId, mergeBotLists, validateBackup, conversationCache, cachedConversations } from './local';
-import { termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow } from './termux';
+import { embeddedEnabled, embeddedSupported, setEmbedded, termuxAvailable, passwordOffer, onPasswordOffer, runTermux, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyTermuxText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow } from './termux';
 import { createPhoneClient, activePhoneBots } from './phone';
 import { SupervisorClient } from './supervisor-client';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
@@ -248,7 +248,7 @@ function AppMain() {
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
     lastSeq.current = typeof next.seq === 'number' ? next.seq : null;
-    appStore.sequence(lastSeq.current);
+    appStore.catchUp(lastSeq.current);
     // The conversation on screen is being read: its new messages are not unseen.
     const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
     setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
@@ -331,6 +331,8 @@ function AppMain() {
     onConnection: connected => {
       if (connected) setNotesVersion(version => version + 1);
       if (phoneMode.current !== 'phone') return;
+      // A supervisor that restarted counts its events from zero again.
+      if (connected) appStore.sequence(null);
       if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => resync().catch(error => setLoadError(error.message)));
       else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : backendRef.current === 'pc' ? 'Sem conexão com o computador. Ele precisa estar ligado. Reconectando…' : 'Supervisor desconectado. Reconectando ao Termux…' } } : current);
     }
@@ -363,8 +365,9 @@ function AppMain() {
       const store = { ...emptyLocalStore(), ...(saved || {}), mode: 'phone', bots: saved?.bots || [] };
       setLocalCache(store);
       setChats(current => ({ ...cachedConversations(store), ...current }));
-      setData(current => ({ ...(current || {}), bots: store.bots.filter(bot => !bot.deletedAt), rooms: store.rooms || [], active: activePhoneBots(store), models: current?.models || [],
-        supervisorConnected: false, connection: { available: false, loggedIn: false, message: 'Conectando ao supervisor no Termux…' }, device: 'Supervisor no Termux' }));
+      // While reconnecting the screen keeps what it had: the old saved list in its place sent the conversation back to the start page for an instant.
+      setData(current => ({ ...(current || {}), bots: current?.supervisorMigrated ? current.bots : store.bots.filter(bot => !bot.deletedAt), rooms: current?.supervisorMigrated ? current.rooms : store.rooms || [], active: current?.supervisorMigrated ? current.active : activePhoneBots(store), models: current?.models || [],
+        supervisorConnected: false, connection: { available: false, loggedIn: false, message: embeddedEnabled() ? 'Abrindo o MyBots deste celular…' : 'Conectando ao supervisor no Termux…' }, device: 'Supervisor no Termux' }));
       const existing = await readPairing();
       if (existing) {
         try { await supervisor.current.connect(existing); return await loadSupervisorState(); }
@@ -376,7 +379,7 @@ function AppMain() {
         snapshot = (await readLocalStore()) || snapshot;
         if (activePhoneBots(snapshot).length) throw new Error('Aguarde a resposta da versão anterior terminar antes de iniciar o supervisor.');
       }
-      setData(current => ({ ...current, connection: { available: false, loggedIn: false, message: 'Preparando o núcleo no Termux. Na primeira vez pode levar alguns minutos…' } }));
+      setData(current => ({ ...current, connection: { available: false, loggedIn: false, message: embeddedEnabled() ? 'Preparando o MyBots neste celular. Na primeira vez pode levar alguns minutos…' : 'Preparando o núcleo no Termux. Na primeira vez pode levar alguns minutos…' } }));
       const backup = await createTermuxBackup(runPhoneCommand, snapshot);
       // Pairing returns a secret: never pass this operation through the diagnostic logger.
       const parts = await supervisorParts();
@@ -547,11 +550,11 @@ function AppMain() {
       catch (error) { setLoadError(error.message); return false; } finally { setSending(false); }
     }
     // Every visit with the Chefe is a new session: the first message sent after opening the app starts it.
+    setSending(true);
     if (bot.isChief && !visitStarted.current && mode !== 'computer') {
       visitStarted.current = true;
       await supervisor.current.call('bot.newSession', { botId: bot.id, opened: true }).catch(() => { visitStarted.current = false; });
     }
-    setSending(true);
     if (mode === 'computer') {
       try {
         await api(`/api/bots/${bot.id}/messages`, { text: text.trim() }, apiToken, apiBase);
@@ -560,11 +563,12 @@ function AppMain() {
       finally { setSending(false); }
       return;
     }
-    try {
-      await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: await uploadWebFiles((...args) => supervisor.current.call(...args), bot.id, files) } : {}) });
-      clearSentDraft(); await loadSupervisorState(); return true;
-    } catch (error) { setLoadError(error.message); return false; }
-    finally { setSending(false); }
+    // Like any messenger, the field empties at once; the text only comes back if it could not be sent.
+    clearSentDraft();
+    try { await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: await uploadWebFiles((...args) => supervisor.current.call(...args), bot.id, files) } : {}) }); }
+    catch (error) { if (selectedBotRef.current === bot.id) setDraft(old => old.trim() ? old : text); setLoadError(error.message); setSending(false); return false; }
+    try { await loadSupervisorState(); } catch (error) { setLoadError(error.message); } finally { setSending(false); }
+    return true;
   };
   // The canvas's box: a message to any bot, without leaving the canvas (the reply shows above the box and in the bot's chat).
   const canvasSend = async (botId, text) => {
@@ -657,18 +661,24 @@ function AppMain() {
   const pairPc = async qr => {
     setSetupBusy(true); setSetupError('');
     try { await pairFromQr(qr); } catch (error) { setSetupError(error.message || 'Não consegui parear com o computador.'); setSetupBusy(false); return; }
-    try { await openBackend('pc', await saveChoice({ backend: 'pc' })); } finally { setSetupBusy(false); }
+    try { setEmbedded(false); await openBackend('pc', await saveChoice({ backend: 'pc' })); } finally { setSetupBusy(false); }
   };
   const enableTermux = async () => {
     if (data?.active?.length) { setSetupError('Aguarde a resposta atual terminar antes de ativar o Termux.'); return; }
     setSetupBusy(true); setSetupError(''); setConnectionBusy(true);
-    try { await openBackend('termux', await saveChoice({ backend: 'termux' })); } finally { setSetupBusy(false); setConnectionBusy(false); }
+    try { setEmbedded(false); await openBackend('termux', await saveChoice({ backend: 'termux' })); } finally { setSetupBusy(false); setConnectionBusy(false); }
+  };
+  // The phone's own MyBots with everything inside the app: same supervisor path as Termux, run by EmbeddedRuntime.
+  const enableEmbedded = async () => {
+    if (data?.active?.length) { setSetupError('Aguarde a resposta atual terminar.'); return; }
+    setSetupBusy(true); setSetupError(''); setConnectionBusy(true);
+    try { setEmbedded(true); await openBackend('termux', await saveChoice({ backend: 'termux' })); } finally { setSetupBusy(false); setConnectionBusy(false); }
   };
   const useComputerOnly = async () => {
     if (!currentLink()) return;
     if (data?.active?.length) { setLoadError('Aguarde a resposta atual terminar antes de trocar.'); return; }
     setConnectionBusy(true);
-    try { await openBackend('pc', await saveChoice({ backend: 'pc' })); } finally { setConnectionBusy(false); }
+    try { setEmbedded(false); await openBackend('pc', await saveChoice({ backend: 'pc' })); } finally { setConnectionBusy(false); }
   };
   const forgetPc = async () => {
     await forgetLink(); supervisor.current.close();
@@ -837,7 +847,7 @@ function AppMain() {
   const settingsContext = { data, mode, googleLogin, call: (method, params) => supervisor.current.call(method, params), reload: loadSupervisorState,
       busy: maintenanceBusy, text: maintenanceText, setText: setMaintenanceText, backupNames, setBackupNames, maintenance, saveBackup, restoreBackup, update, checkUpdate, installUpdate,
       openProfile: bot => { setProfileTab(null); setProfileId(bot.id); }, onCreate: () => setCreateVisible(true), openWallet: () => setWalletVisible(true), readDeviceInfo, copyText: copyTermuxText,
-      backend, pcLink: currentLink(), pcVia: data?.via, setupBusy, setupError, pairPc, forgetPc, enableTermux, useComputerOnly };
+      backend, pcLink: currentLink(), pcVia: data?.via, setupBusy, setupError, pairPc, forgetPc, enableTermux, enableEmbedded, useComputerOnly };
   // Desktop navigation keeps each bot's unsent text.
   const openDesktopBot = id => {
     if (selected) desktopDrafts.current.set(selected, draft);
@@ -900,7 +910,7 @@ function AppMain() {
     {desktop ? <DesktopUpdate /> : null}
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
-      : !data && setup ? <SetupScreen onScanned={pairPc} onTermux={enableTermux} busy={setupBusy} error={setupError} />
+      : !data && setup ? <SetupScreen onScanned={pairPc} onTermux={enableTermux} onEmbedded={embeddedSupported() ? enableEmbedded : null} busy={setupBusy} error={setupError} />
       : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{openLogs ? <Pressable accessibilityRole="button" onPress={openLogs} style={styles.changeModeButton}><Text style={styles.changeModeText}>Ver detalhes do erro</Text></Pressable> : null}{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
       : desktop ? <DesktopShell onSendTo={canvasSend} fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
           filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}

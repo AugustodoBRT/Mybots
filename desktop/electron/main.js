@@ -189,7 +189,7 @@ if (first) app.whenReady().then(async () => {
     overlay.setBounds({ x: width - wide - 20, y: height - tall - 20, width: wide, height: tall }); overlay.setVisible(true); window.contentView.addChildView(overlay);
   };
   window.on('resize', placeOverlay);
-  tabs = createTabs({ window, downloads, above: () => (overlayState ? overlay : null), notify: state => { if (!window.isDestroyed() && !ui.webContents.isDestroyed()) ui.webContents.send('tabs:state', state); } });
+  tabs = createTabs({ window, ui, downloads, above: () => (overlayState ? overlay : null), notify: state => { if (!window.isDestroyed() && !ui.webContents.isDestroyed()) ui.webContents.send('tabs:state', state); } });
   const token = randomBytes(32).toString('hex');
   control = await controlServer({ tabs, token, updates: () => updates });
   // The DevToolsActivePort file appears a moment after the app is ready.

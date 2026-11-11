@@ -131,3 +131,14 @@ test('note links keep Markdown formatting, missing destinations and code; a remo
   assert.equal(noteChanged(base, { ...base, body: 'depois' }), true);
   assert.equal(noteChanged(base, null), true);
 });
+
+test('a state.get behind the events already applied does not make the next event look lost; a reconnection starts over', () => {
+  const store = createStore(); store.setData(initial()); store.catchUp(10);
+  store.page('a', { messages: [message('1')], more: false });
+  store.event('message.added', { seq: 11, botId: 'a', message: message('2') });
+  store.catchUp(10);
+  assert.deepEqual(store.event('message.added', { seq: 12, botId: 'a', message: message('3') }), {});
+  assert.deepEqual(store.getSnapshot().chats.a.messages.map(m => m.id), ['1', '2', '3']);
+  store.sequence(null); store.catchUp(2);
+  assert.deepEqual(store.event('task.progress', { seq: 3, taskId: 't', step: 'depois de reiniciar' }), {});
+});

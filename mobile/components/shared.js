@@ -3,11 +3,11 @@ import { selectHome, selectBots, selectShareTargets } from '../state/store';
 import { C, F, Icon, HUES, hueOf } from '../theme';
 import { stillOf } from '../../lib/mimo.mjs';
 import BotAvatar from '../BotAvatar';
-import { Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
+import { PermissionsAndroid, Pressable, Text, Animated, Easing, View, ActivityIndicator, Modal, ScrollView, useWindowDimensions, TextInput, AppState, Linking, Alert, StyleSheet, Image } from 'react-native';
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { embeddedEnabled, copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop, pwa } from '../desktop';
@@ -367,9 +367,9 @@ export function PhoneAccess({ stats, lastPoll }) {
       ? `Toda notificação (Gmail, bancos, apps) vira um evento para os bots. ${stats?.last24h ?? 0} nas últimas 24 h${stats?.lastAt ? `, a última às ${new Date(stats.lastAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.`
       : 'Ligue para os bots perceberem e-mails, avisos e mensagens assim que chegam. O Android libera todas as notificações; cada bot só lê se você permitir no perfil dele.'}</Text>
     {!granted ? <Pressable onPress={() => openNotificationAccess().catch(() => {})} style={{ marginTop: 8 }}><Text style={styles.deleteText}>Ativar acesso a notificações</Text></Pressable> : null}
-    <Text style={[styles.optionDetail, { marginTop: 8 }]}>SMS, contatos, chamadas, localização, bateria e as notificações que os bots mandam usam o Termux:API. Na primeira vez que um bot usar cada um, o Android pede a permissão.</Text>
+    {embeddedEnabled() ? null : <Text style={[styles.optionDetail, { marginTop: 8 }]}>SMS, contatos, chamadas, localização, bateria e as notificações que os bots mandam usam o Termux:API. Na primeira vez que um bot usar cada um, o Android pede a permissão.</Text>}
     <BotNoticeStatus lastPoll={lastPoll} />
-    <TermuxApiStatus />
+    {embeddedEnabled() ? <PhonePermissions /> : <TermuxApiStatus />}
     <PhoneControlAccess />
   </View>;
 }
@@ -407,13 +407,49 @@ export function BotNoticeStatus({ lastPoll }) {
   const recent = lastPoll && Date.now() - Date.parse(lastPoll) < 90000;
   return <View style={styles.appRow}>
     <Text style={styles.optionLabel}>Notificações dos bots · {allowed ? (recent ? 'Pelo MyBots' : 'Pelo MyBots com o app aberto') : 'Bloqueadas'}</Text>
-    <Text style={styles.optionDetail}>{!allowed ? 'O Android está bloqueando as notificações do MyBots, então elas saem pelo Termux:API (sem abrir a conversa ao tocar). Libere em Notificações do MyBots.'
+    <Text style={styles.optionDetail}>{!allowed ? (embeddedEnabled() ? 'O Android está bloqueando as notificações do MyBots. Libere em Notificações do MyBots.' : 'O Android está bloqueando as notificações do MyBots, então elas saem pelo Termux:API (sem abrir a conversa ao tocar). Libere em Notificações do MyBots.')
       : recent ? 'Chegam como MyBots, aparecem na tela e abrem a conversa do bot ao tocar.'
+      : embeddedEnabled() ? 'Com o app fechado, o HyperOS pode parar o MyBots e os avisos não chegam. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'
       : 'Com o app fechado, o HyperOS pode parar o MyBots e o aviso sai pelo Termux:API. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'}</Text>
     <View style={styles.appActions}>
       {!allowed ? <Pressable onPress={() => notificationPermission().then(check).then(() => openNotificationSettings()).catch(() => {})}><Text style={styles.deleteText}>Liberar notificações do MyBots</Text></Pressable> : null}
       {allowed && !recent ? <Pressable onPress={() => openAppSettings('com.mybots.app').catch(() => {})}><Text style={styles.deleteText}>Abrir configurações do MyBots</Text></Pressable> : null}
     </View>
+  </View>;
+}
+
+const PHONE_PERMISSIONS = [
+  ['SMS', 'Ler e enviar SMS, quando o bot tiver essa permissão no perfil.', ['READ_SMS', 'SEND_SMS']],
+  ['Contatos', 'Procurar um nome ou número.', ['READ_CONTACTS']],
+  ['Chamadas', 'Ver o histórico de ligações.', ['READ_CALL_LOG']],
+  ['Localização', 'Saber onde o celular está.', ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']],
+].map(([title, detail, names]) => ({ title, detail, names: names.map(name => `android.permission.${name}`) }));
+const BACKGROUND_LOCATION = 'android.permission.ACCESS_BACKGROUND_LOCATION';
+
+/** With everything inside the app, these are MyBots' own Android permissions: nothing is asked behind the person's back when a bot needs one. */
+function PhonePermissions() {
+  const [granted, setGranted] = useState({});
+  const check = useCallback(async () => {
+    const next = {};
+    for (const name of [...PHONE_PERMISSIONS.flatMap(item => item.names), BACKGROUND_LOCATION]) next[name] = await PermissionsAndroid.check(name).catch(() => false);
+    setGranted(next);
+  }, []);
+  useEffect(() => { check(); const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); }); return () => subscription.remove(); }, [check]);
+  const ask = async names => {
+    const answers = await PermissionsAndroid.requestMultiple(names).catch(() => ({}));
+    if (Object.values(answers).includes(PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN)) openAppSettings('com.mybots.app').catch(() => {});
+    check();
+  };
+  const located = granted['android.permission.ACCESS_FINE_LOCATION'];
+  return <View style={styles.appRow}>
+    <Text style={styles.optionLabel}>Permissões do celular</Text>
+    <Text style={styles.optionDetail}>Sem o Termux, quem acessa isso é o próprio MyBots. Cada bot continua só podendo usar o que você liberar no perfil dele. Se o Android avisar “Configuração restrita”, abra as informações do app, toque nos três pontos e escolha “Permitir configurações restritas”.</Text>
+    {PHONE_PERMISSIONS.map(item => { const ok = item.names.every(name => granted[name]); return <View key={item.title} style={{ marginTop: 10 }}>
+      <Text style={styles.optionLabel}>{item.title} · {ok ? 'Permitido' : 'Não permitido'}</Text><Text style={styles.optionDetail}>{item.detail}</Text>
+      {ok ? null : <Pressable accessibilityRole="button" accessibilityLabel={`Permitir ${item.title}`} onPress={() => ask(item.names)} style={{ marginTop: 4 }}><Text style={styles.deleteText}>Permitir</Text></Pressable>}
+    </View>; })}
+    {located && !granted[BACKGROUND_LOCATION] ? <View style={{ marginTop: 10 }}><Text style={styles.optionDetail}>Para um bot ver a localização com o app fechado, escolha “Permitir o tempo todo”.</Text>
+      <Pressable accessibilityRole="button" onPress={() => ask([BACKGROUND_LOCATION])} style={{ marginTop: 4 }}><Text style={styles.deleteText}>Permitir o tempo todo</Text></Pressable></View> : null}
   </View>;
 }
 

@@ -180,3 +180,13 @@ test('the app applies pages and events to the open conversations and the lists w
   assert.equal(applyStep(data, { taskId: 't', step: 'Rodando' }).tasks[0].step, 'Rodando');
   assert.equal(applyStep(data, { taskId: 't', step: null }).tasks[0].step, undefined);
 });
+
+test('the latest page again keeps the older pages already read; without overlap it replaces them', () => {
+  const message = id => ({ id, role: 'assistant', text: id, status: 'complete' });
+  let chats = addPage({}, 'bot', { messages: ['3', '4', '5'].map(message), before: 30, more: true });
+  chats = addPage(chats, 'bot', { messages: ['1', '2'].map(message), before: 10, more: true }, true);
+  chats = addPage(chats, 'bot', { messages: ['4', '5', '6'].map(message), before: 40, more: true });
+  assert.deepEqual(chats.bot.messages.map(item => item.id), ['1', '2', '3', '4', '5', '6']); assert.equal(chats.bot.before, 10);
+  chats = addPage(chats, 'bot', { messages: ['9'].map(message), before: 90, more: false });
+  assert.deepEqual(chats.bot.messages.map(item => item.id), ['9']); assert.equal(chats.bot.before, 90);
+});

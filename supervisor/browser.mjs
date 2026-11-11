@@ -21,7 +21,7 @@ const OPS = ['act', 'viewport', 'tabs', 'find', 'open', 'read', 'inspect', 'clic
 // Phone work that is not a bot's browser: reading and writing PDFs with Android's own tools.
 const DEVICE_OPS = ['pdfRead', 'pdfCreate'];
 // open and click may start a download (up to 90 s on the phone).
-const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, pay: 60000, pcPay: 30000, passwordsSync: 30000, payDone: 20000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, phoneOpenApp: 30000, phoneScreen: 25000 };
+const TIMEOUTS = { open: 130000, click: 120000, upload: 60000, login: 60000, pcLogin: 60000, pay: 60000, pcPay: 30000, passwordsSync: 30000, payDone: 20000, wait: 40000, screenshot: 20000, pdfRead: 60000, pdfCreate: 60000, deviceApi: 45000, phoneOpenApp: 30000, phoneScreen: 25000 };
 
 // Loopback and link-local hosts are never opened: the supervisor and other local services live there.
 // A site the bot is building on the computer (npm run dev, python -m http.server…): the usual development ports on this machine.
@@ -85,6 +85,11 @@ export class Browser {
     if (!DEVICE_OPS.includes(op)) return Promise.reject(new Error('Operação do celular inválida.'));
     if (!this.available()) return Promise.reject(new Error('Ler e criar PDF usa o app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots.'));
     return this.queue({ botId: null, op, args });
+  }
+  /** With everything inside the app there is no Termux:API: the same commands are answered by the app itself (DeviceApi.kt). */
+  async deviceApi(command, args = [], { input = '', notice } = {}) {
+    if (!this.available()) throw new Error('O app MyBots não está ativo agora. Peça à pessoa para abrir o MyBots.');
+    return (await this.queue({ botId: null, op: 'deviceApi', args: { command, args, input, ...(notice ? { notice } : {}) } })).output || '';
   }
   /** The person looking at the page (and, once they took it over, clicking and typing) from the window of the computer: not the bot's commands. */
   view(botId, op, args = {}) {

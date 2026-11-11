@@ -132,7 +132,7 @@ internal object BotBrowser {
           // One bot's commands keep their order; different bots (and PDF work) never wait for each other.
           // The phone's other apps have their own lane; Parar, Assumir and the end of a turn never wait behind it.
           val op = command.optString("op")
-          lane(if (op in PHONE_NOW) "phone-now" else if (op.startsWith("phone")) "phone" else command.optString("botId").takeIf { it.isNotEmpty() && it != "null" } ?: "device").execute { respond(context, port, token, command) }
+          lane(if (op in PHONE_NOW) "phone-now" else if (op.startsWith("phone")) "phone" else if (op == "deviceApi") "device-api" else command.optString("botId").takeIf { it.isNotEmpty() && it != "null" } ?: "device").execute { respond(context, port, token, command) }
         }
       } catch (_: InterruptedException) { return }
       catch (_: Exception) { try { Thread.sleep(5000) } catch (_: InterruptedException) { return } }
@@ -173,7 +173,7 @@ internal object BotBrowser {
    * Some pages (old portals with Prototype.js) give arrays, strings and numbers their own `toJSON`, so JSON.stringify returns text
    * inside text ("\"[]\"" instead of "[]") and the answer cannot be read. The app's scripts run without those, and the page gets them back.
    */
-  private fun plain(script: String) = "(() => { const saved = [Array, String, Number, Boolean, Object].map(c => [c, Object.getOwnPropertyDescriptor(c.prototype, 'toJSON')]); " +
+  fun plain(script: String) = "(() => { const saved = [Array, String, Number, Boolean, Object].map(c => [c, Object.getOwnPropertyDescriptor(c.prototype, 'toJSON')]); " +
     "for (const [c, d] of saved) if (d) { try { delete c.prototype.toJSON; } catch (e) {} } try { return (${script.trim().trimEnd(';')}); } " +
     "finally { for (const [c, d] of saved) if (d) { try { Object.defineProperty(c.prototype, 'toJSON', d); } catch (e) {} } } })()"
 
@@ -257,11 +257,19 @@ internal object BotBrowser {
   private fun awaitDownload(botId: String, before: Int): JSONObject? {
     val start = System.currentTimeMillis()
     while (DeviceFiles.downloadSerial() == before && System.currentTimeMillis() - start < 1500) Thread.sleep(100)
+    // A form was just sent and the page is still the same: the site is preparing the answer, and it may be a file.
+    while (DeviceFiles.downloadSerial() == before && System.currentTimeMillis() - start < 20_000 && formPending(botId)) Thread.sleep(300)
     if (DeviceFiles.downloadSerial() == before) return null
     val tab = onMain { tabs[botId] } ?: return null
     val until = System.currentTimeMillis() + 90_000
     while (tab.downloading && System.currentTimeMillis() < until) Thread.sleep(200)
     return tab.download ?: JSONObject().put("error", "O download ainda não terminou.")
+  }
+
+  private fun formPending(botId: String): Boolean {
+    val value = AtomicReference<String?>(); val done = CountDownLatch(1)
+    onMain { tabs[botId]?.web?.evaluateJavascript("!!(window.__mybotsForm && Date.now() - window.__mybotsForm.at < 25000)") { value.set(it); done.countDown() } ?: done.countDown() }
+    return done.await(2000, TimeUnit.MILLISECONDS) && value.get() == "true"
   }
 
   fun cookies(botId: String, url: String): String? = try {
@@ -289,6 +297,7 @@ internal object BotBrowser {
     // File work for the supervisor, not tied to a bot's browser.
     when (command.getString("op")) {
       "pdfRead" -> return DeviceFiles.pdfRead(context, command.optJSONObject("args") ?: JSONObject())
+      "deviceApi" -> return DeviceApi.call(context, command.optJSONObject("args") ?: JSONObject())
       "pdfCreate" -> return DeviceFiles.pdfCreate(context, (command.optJSONObject("args") ?: JSONObject()).getString("html"))
       // The logins of the computer's vault meet the phone's (see PasswordVault.syncMerge); not tied to a bot.
       "passwordsSync" -> return PasswordVault.syncMerge(context, command.optJSONObject("args") ?: JSONObject())
@@ -510,6 +519,7 @@ internal object BotBrowser {
       val observer = context.assets.open("card-observer.js").bufferedReader().use { it.readText() }.replace("__MYBOTS_CARD_FILL__", fillScript(context))
         .replace(CARD_JS, context.assets.open("card-field.js").bufferedReader().use { it.readText() })
       WebViewCompat.addDocumentStartJavaScript(web, observer, setOf("*"))
+      WebViewCompat.addDocumentStartJavaScript(web, context.assets.open("form-recorder.js").bufferedReader().use { it.readText() }, setOf("*"))
     }
     web.settings.apply {
       javaScriptEnabled = true; domStorageEnabled = true

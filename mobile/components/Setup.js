@@ -62,7 +62,7 @@ export function TermuxGuide({ onEnable, busy, enabled = false }) {
 }
 
 /** First screen when nothing is set up: connect to the computer (the default) or set up Termux. */
-export function SetupScreen({ onScanned, onTermux, busy, error }) {
+export function SetupScreen({ onScanned, onTermux, onEmbedded, busy, error }) {
   const [scanning, setScanning] = useState(false); const [guide, setGuide] = useState(false);
   return <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 22, gap: 6 }}>
     <View style={{ alignItems: 'center', marginBottom: 8 }}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={96} state="idle" /></View>
@@ -72,6 +72,11 @@ export function SetupScreen({ onScanned, onTermux, busy, error }) {
       <Pressable accessibilityRole="button" onPress={() => setGuide(false)} style={{ marginTop: 16, alignSelf: 'center' }}><Text style={styles.stopText}>Voltar</Text></Pressable>
     </View> : <>
       <Text style={[styles.loadingText, { textAlign: 'center' }]}>Seus bots trabalham no seu computador, e este app é a tela deles no celular.</Text>
+      {onEmbedded ? <View style={[styles.modeOption, { marginTop: 18 }]}>
+        <Text style={styles.optionLabel}>Usar só neste celular</Text>
+        <Text style={styles.optionDetail}>Tudo roda dentro do app, sem computador e sem instalar mais nada. Na primeira vez a preparação leva alguns minutos.</Text>
+        <PrimaryButton icon="phone" title={busy ? 'Preparando…' : 'Usar neste celular'} disabled={busy} onPress={onEmbedded} style={{ marginTop: 12 }} />
+      </View> : null}
       <View style={[styles.modeOption, { marginTop: 18 }]}>
         <Text style={styles.optionLabel}>1. No computador</Text>
         <Text style={styles.optionDetail}>{pwa ? 'Instale o MyBots, entre nas suas contas de IA por lá e abra Ajustes → Celular → iPhone.' : 'Instale o MyBots, entre nas suas contas de IA por lá e abra Ajustes → Celular → Mostrar QR.'}</Text>

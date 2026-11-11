@@ -119,11 +119,20 @@ internal object KeepAlive {
     if (!due) return Check(false, false, null, "O supervisor não está respondendo. Vou tentar reiniciar.")
     p.edit().putLong("lastRestartAt", now).putInt("attempts", attempts + 1).putLong("restartDownSince", since).apply()
     restart(context)
-    return Check(false, false, null, "O supervisor parou. Reiniciando no Termux…")
+    return Check(false, false, null, if (EmbeddedRuntime.enabled(context)) "O supervisor parou. Reiniciando…" else "O supervisor parou. Reiniciando no Termux…")
   }
 
   private fun restart(context: Context) {
     val p = prefs(context)
+    if (EmbeddedRuntime.enabled(context)) {
+      try {
+        val script = context.assets.open("mybots-restart.sh").bufferedReader().use { it.readText() }
+        val release = context.assets.open("mybots-supervisor.sha256").bufferedReader().use { it.readText().trim() }
+        EmbeddedRuntime.run(context, TERMUX_TIMEOUT, arrayOf("120s", TERMUX_BASH, "-lc", script, "mybots", release, transportPublicKey(), transportDigest()), null, 125_000, true) { restartFinished(context.applicationContext, it) }
+        p.edit().putString("restartMessage", "Reiniciando…").apply()
+      } catch (error: Exception) { p.edit().putString("restartMessage", "Não consegui reiniciar (${error.javaClass.simpleName}).").apply() }
+      return
+    }
     if (context.packageManager.checkPermission(RUN_COMMAND_PERMISSION, context.packageName) != PackageManager.PERMISSION_GRANTED) {
       p.edit().putString("restartMessage", "O MyBots não tem permissão para executar comandos no Termux.").apply(); return
     }

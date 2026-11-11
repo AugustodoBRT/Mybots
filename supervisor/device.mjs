@@ -64,7 +64,7 @@ export function runTermuxApi(command, args = [], { input, timeout = 30000 } = {}
 }
 
 const json = text => {
-  try { return JSON.parse(text); } catch { throw new Error('O Termux:API devolveu uma resposta inesperada. Confira as permissões do Termux:API.'); }
+  try { return JSON.parse(text); } catch { throw new Error('O celular devolveu uma resposta inesperada. Confira as permissões.'); }
 };
 const matches = (needle, ...values) => !needle || values.some(value => String(value ?? '').toLowerCase().includes(needle.toLowerCase()));
 

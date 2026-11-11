@@ -34,3 +34,5 @@ desktop/src-tauri/gen/
 
 # Instaladores do PC
 packaging/node_modules/
+mobile/modules/termux-bridge/android/src/main/assets/mybots-runtime.tgz
+mobile/modules/termux-bridge/android/src/main/assets/mybots-runtime.tgz.sha256

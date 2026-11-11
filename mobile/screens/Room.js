@@ -1,4 +1,4 @@
-import { useKeyboardPad } from '../keyboard';
+import { KeyboardArea } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
@@ -14,7 +14,6 @@ import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageAc
 import { desktop, pwa, readingColumn } from '../desktop';
 
 function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
-  const [keyboard, keyboardRef] = useKeyboardPad();
   const openFile = useLiveCallback(onFile);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null); const hold = useLiveCallback(message => setHeld(message));
@@ -33,7 +32,8 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
   const named = members.filter(bot => new RegExp(`@${bot.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu').test(draft));
   const send = async text => {
     if ((!text.trim() && !files.length) || sending) return; setSending(true); setError('');
-    try { await onSend(text, files); setDraft(''); setFiles([]); toEnd(); } catch (e) { setError(nativeMessage(e)); } finally { setSending(false); }
+    setDraft('');
+    try { await onSend(text, files); setFiles([]); toEnd(); } catch (e) { setDraft(old => old.trim() ? old : text); setError(nativeMessage(e)); } finally { setSending(false); }
   };
   // Files go to the room like to a private chat (phone mode): every bot in it can read them.
   const attach = async () => {
@@ -83,11 +83,11 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       </View>
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
     </View>
-    <View ref={keyboardRef} collapsable={false} style={{ flex: 1, paddingBottom: keyboard }}>
+    <KeyboardArea>
     <View style={styles.messagesWrap}>
     <FlatList showsVerticalScrollIndicator={!desktop} ref={scroll} style={[styles.messages, readingColumn]} contentContainerStyle={styles.messagesContent} keyboardShouldPersistTaps="handled"
       inverted data={messages} keyExtractor={messageKey} initialNumToRender={15} windowSize={7} maxToRenderPerBatch={4}
-      {...scrollProps} maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
+      {...scrollProps} removeClippedSubviews={false} maintainVisibleContentPosition={away ? { minIndexForVisible: 0 } : undefined}
       onEndReached={more ? () => onEarlier().catch(() => {}) : undefined} onEndReachedThreshold={0.25}
       ListFooterComponent={more ? <EarlierButton onPress={onEarlier} /> : null}
       ListEmptyComponent={room.messageCount ? null : <View>
@@ -115,12 +115,12 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       </ScrollView>
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
-      <Composer inputRef={input} value={draft} setValue={setDraft} editable={!sending} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
+      <Composer inputRef={input} value={draft} setValue={setDraft} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
         onAttach={pwa ? attachWeb : phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= 5}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>
-    </View>
+    </KeyboardArea>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem da sala</Text></View></View> : null}
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => send(message.text)} canResend={!sending} />
   </View>;

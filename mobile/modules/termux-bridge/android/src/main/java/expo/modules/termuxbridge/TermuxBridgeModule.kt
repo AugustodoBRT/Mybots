@@ -59,7 +59,7 @@ internal fun startTermux(context: Context, intent: Intent) {
 class TermuxBridgeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("TermuxBridge")
-    Events("onSpeech", "onOpenBot", "onShare", "onUpdate", "onPasswordOffer")
+    Events("onSpeech", "onOpenBot", "onShare", "onUpdate", "onPasswordOffer", "onRuntimeTerminal")
 
     // Tapping a bot notification opens MyBots on that bot; the app may be closed (launch intent) or running (new intent).
     OnActivityEntersForeground {
@@ -633,6 +633,16 @@ class TermuxBridgeModule : Module() {
       true
     }
 
+    Function("embeddedSupported") { appContext.reactContext?.let { EmbeddedRuntime.supported(it) } ?: false }
+    Function("embeddedEnabled") { appContext.reactContext?.let { EmbeddedRuntime.enabled(it) } ?: false }
+    // The saved pairing belongs to the supervisor it was made with: without clearing it, the app would just reconnect to the old one.
+    Function("embeddedSet") { on: Boolean -> appContext.reactContext?.let { EmbeddedRuntime.setEnabled(it, on); pairingPreferences(it).edit().remove("token").apply() }; on }
+    AsyncFunction("terminalStart") { kind: String ->
+      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
+      EmbeddedRuntime.terminalStart(context, kind) { sendEvent("onRuntimeTerminal", it) }
+    }
+    Function("terminalWrite") { text: String -> EmbeddedRuntime.terminalWrite(text) }
+    Function("terminalStop") { EmbeddedRuntime.terminalStop() }
     AsyncFunction("runCodex") { operation: String, payload: Map<String, Any?>, promise: Promise ->
       val context = appContext.reactContext
       if (context == null) {
@@ -657,6 +667,14 @@ class TermuxBridgeModule : Module() {
   }
 
   private fun submit(context: Context, operation: String, payload: Map<String, Any?>, promise: Promise) {
+    if (EmbeddedRuntime.enabled(context)) {
+      val embedded = try { commandFor(context, operation, payload) } catch (error: Exception) {
+        promise.reject("TERMUX_REQUEST", error.message ?: "Não foi possível preparar o pedido.", error)
+        return
+      }
+      EmbeddedRuntime.run(context, embedded.path, embedded.args, embedded.stdin, embedded.timeoutMs, operation == "pair") { result -> mainHandler.post { promise.resolve(result) } }
+      return
+    }
     if (context.packageManager.checkPermission(RUN_COMMAND_PERMISSION, context.packageName) != PackageManager.PERMISSION_GRANTED) {
       promise.reject("TERMUX_PERMISSION", "Permita que o MyBots execute comandos no Termux nas permissões do app.", null)
       return

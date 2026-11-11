@@ -21,15 +21,18 @@ import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.KeyStore
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
@@ -126,14 +129,38 @@ internal object DeviceFiles {
     serial++; tab.downloading = true; tab.download = null
     val cookies = BotBrowser.cookies(tab.botId, url)
     val referer = tab.web.url
-    Thread({
-      tab.download = try { fetchAndStore(context, tab.botId, url, userAgent, disposition, mime, cookies, referer) }
-      catch (error: Exception) { JSONObject().put("error", error.message ?: "O download falhou.") }
-      tab.downloading = false
-    }, "mybots-download").start()
+    val started = AtomicBoolean(false)
+    val fetch = { form: JSONObject? ->
+      if (started.compareAndSet(false, true)) Thread({
+        tab.download = try { fetchAndStore(context, tab.botId, url, userAgent, disposition, mime, cookies, referer, form) }
+        catch (error: Exception) { JSONObject().put("error", error.message ?: "O download falhou.") }
+        tab.downloading = false
+      }, "mybots-download").start()
+    }
+    // The page does not change on a download, so the form that asked for this file is still in its memory.
+    tab.web.evaluateJavascript(BotBrowser.plain("(() => { const form = window.__mybotsForm; window.__mybotsForm = null; return JSON.stringify(form || null); })()")) { value -> fetch(formFor(url, value)) }
+    main.postDelayed({ fetch(null) }, 2000)
   }
 
-  private fun fetchAndStore(context: Context, botId: String, url: String, userAgent: String?, disposition: String?, mime: String?, cookies: String?, referer: String?): JSONObject {
+  private fun formFor(url: String, value: String?): JSONObject? = try {
+    val form = (JSONTokener(value ?: "null").nextValue() as? String)?.let { JSONTokener(it).nextValue() as? JSONObject }
+    form?.takeIf { it.optString("action").substringBefore('#') == url.substringBefore('#') && System.currentTimeMillis() - it.optLong("at") < 120_000 }
+  } catch (_: Exception) { null }
+
+  private fun send(connection: HttpURLConnection, form: JSONObject, referer: String?) {
+    val fields = form.getJSONArray("fields")
+    val pairs = (0 until fields.length()).map { fields.getJSONArray(it).let { pair -> pair.getString(0) to pair.getString(1) } }
+    val boundary = "----MyBots" + java.util.UUID.randomUUID().toString().replace("-", "")
+    val multipart = form.optString("enctype") == "multipart/form-data"
+    val body = if (multipart) pairs.joinToString("") { (name, value) -> "--$boundary\r\nContent-Disposition: form-data; name=\"${name.replace("\"", "%22")}\"\r\n\r\n$value\r\n" } + "--$boundary--\r\n"
+      else pairs.joinToString("&") { (name, value) -> URLEncoder.encode(name, "UTF-8") + "=" + URLEncoder.encode(value, "UTF-8") }
+    connection.requestMethod = "POST"; connection.doOutput = true
+    connection.setRequestProperty("Content-Type", if (multipart) "multipart/form-data; boundary=$boundary" else "application/x-www-form-urlencoded")
+    referer?.let { page -> URL(page).let { connection.setRequestProperty("Origin", "${it.protocol}://${it.authority}") } }
+    connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+  }
+
+  private fun fetchAndStore(context: Context, botId: String, url: String, userAgent: String?, disposition: String?, mime: String?, cookies: String?, referer: String?, form: JSONObject?): JSONObject {
     val target = URL(BotBrowser.secure(url))
     if (target.protocol != "https" || !BotBrowser.allowed(android.net.Uri.parse(target.toString()))) throw IllegalStateException("Este download não é permitido.")
     val connection = target.openConnection() as HttpsURLConnection
@@ -142,9 +169,12 @@ internal object DeviceFiles {
     cookies?.let { connection.setRequestProperty("Cookie", it) }
     userAgent?.let { connection.setRequestProperty("User-Agent", it) }
     referer?.let { connection.setRequestProperty("Referer", it) }
+    form?.let { send(connection, it, referer) }
     if (connection.responseCode != 200) throw IllegalStateException("O site respondeu ${connection.responseCode} ao baixar o arquivo.")
     val header = connection.getHeaderField("Content-Disposition")
     val type = (mime?.takeIf { it.isNotBlank() && it != "application/octet-stream" } ?: connection.contentType?.substringBefore(';')?.trim() ?: "application/octet-stream").lowercase()
+    // An ordinary page in place of the promised file: the site refused the repeated request, and a web page saved as a PDF helps nobody.
+    if (connection.contentType.orEmpty().startsWith("text/html", true) && mime.orEmpty().let { it.isNotBlank() && !it.startsWith("text/html", true) }) throw IllegalStateException("O site devolveu uma página em vez do arquivo. Abra o arquivo pelo botão Assumir.")
     val name = URLUtil.guessFileName(url, disposition?.takeIf { it.isNotBlank() } ?: header, type).replace(Regex("[\\u0000/\\\\]"), "_").take(120)
     if (name.substringAfterLast('.', "").lowercase() in BLOCKED || type == "application/vnd.android.package-archive") throw IllegalStateException("Arquivos executáveis (.${name.substringAfterLast('.', "")}) são bloqueados.")
     val bytes = connection.inputStream.use { input ->

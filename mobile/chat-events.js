@@ -4,9 +4,12 @@
 /** Whether an event continues what the app has seen: a numbered event must be the next one (`last` null: none yet). */
 export const inSequence = (last, seq) => typeof seq !== 'number' || last === null || last === undefined || seq === last + 1;
 
-/** A page from chat.page: the latest one replaces what was loaded, an older one goes on top without repeats. */
+/** A page from chat.page: the latest one renews the end of what was loaded, an older one goes on top without repeats. */
 export function addPage(chats, key, page, older = false) {
   const current = chats[key];
+  // The latest page again (a reconnection): older pages already read stay, or the list would shrink under the person reading them.
+  const overlap = !older && current && page.messages.length ? current.messages.findIndex(message => message.id === page.messages[0].id) : -1;
+  if (overlap > 0) return { ...chats, [key]: { messages: [...current.messages.slice(0, overlap), ...page.messages], before: current.before, more: current.more } };
   if (!older || !current) return { ...chats, [key]: { messages: page.messages, before: page.before, more: page.more } };
   const known = new Set(current.messages.map(message => message.id));
   return { ...chats, [key]: { messages: [...page.messages.filter(message => !known.has(message.id)), ...current.messages], before: page.before ?? current.before, more: page.more } };

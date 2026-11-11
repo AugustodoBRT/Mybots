@@ -106,7 +106,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const vault = new Vault(directory);
     const bundle = bundleOption || new ConnectorBundle(directory);
     email = new EmailConnector(db, vault, bundle, { changed: broadcast, pollMs: emailPollMs, imapOptions });
-    const device = deviceOption || new Device(db);
+    // `browser` exists by the time a bot asks for anything.
+    const device = deviceOption || new Device(db, process.env.MYBOTS_EMBEDDED ? { run: (command, args, options) => browser.deviceApi(command, args, options) } : undefined);
     // Bot notifications go to the MyBots app (its notification listener long-polls /device/outbox) so they
     // show as MyBots; when the app has not polled recently or does not confirm in time, Termux:API shows them.
     const outbox = new Map(); const pollers = new Set(); let lastPoll = 0;
@@ -127,7 +128,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       // An open app shows it right away; the listener's long-poll covers the app being closed.
       broadcast('bot.notify', item);
     });
-    const fallback = notify || notifyUser;
+    const fallback = notify || (process.env.MYBOTS_EMBEDDED ? async ({ title, body }, { id, botId }) => { await browser.deviceApi('termux-notification', [], { notice: { id, title, text: body, ...(botId ? { botId } : {}) } }); return { notified: true }; } : notifyUser);
     // Notifications show plain text: the bots' replies use Markdown (**bold**, `code`, # titles).
     const plain = value => String(value || '').replace(/\*\*|__|`/g, '').replace(/^#{1,6}\s+/gm, '');
     const deliver = async (raw, options = {}) => {
@@ -470,7 +471,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
         interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
         email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
-        computer: link.status(), sync: syncInfo(), deviceKind: kind, instanceId, release, supervisorConnected: true, device: 'Supervisor no Termux' };
+        computer: link.status(), sync: syncInfo(), deviceKind: kind, instanceId, release, supervisorConnected: true, device: process.env.MYBOTS_EMBEDDED ? 'Neste celular' : 'Supervisor no Termux' };
     };
     // What the bot's profile screen shows besides the bot itself.
     const profile = botId => {

@@ -1,0 +1,104 @@
+On x86_64 (the Android emulator) re-issue the legacy syscalls Android's seccomp policy traps as their modern equivalents.
+
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -52,6 +52,7 @@
+ #include "tracee/reg.h"
+ #include "tracee/abi.h"
+ #include "syscall/sysnum.h"
++#include "tracee/mem.h"
+ 
+ #include <signal.h>     /* siginfo_t, SIGSYS, */
+ #include <fcntl.h>      /* AT_EACCESS, */
+@@ -452,6 +453,91 @@
+ 	}
+ #endif
+ 
++#if defined(ARCH_X86_64)
++	/* x86_64 keeps legacy syscalls Android's policy traps, and musl
++	 * calls them directly: re-issue each as its modern equivalent,
++	 * which then goes through the usual path translation.  */
++	if (!is_32on64_mode(tracee)) {
++		struct user_regs_struct r;
++		const unsigned long cwd = (unsigned long) -100; /* AT_FDCWD */
++		int to = -1;
++
++		status = ptrace(PTRACE_GETREGS, tracee->pid, NULL, &r);
++		if (status == 0)
++			switch (siginfo.si_syscall) {
++			case 57: case 58: /* fork, vfork -> clone */
++				r.rdi = SIGCHLD | (siginfo.si_syscall == 58 ? (0x00000100 | 0x00004000) : 0);
++				r.rsi = r.rdx = r.r10 = r.r8 = 0; to = 56; break;
++			case 2: to = 257; goto shift;   /* open -> openat */
++			case 83: to = 258; goto shift;  /* mkdir -> mkdirat */
++			case 133: to = 259; goto shift; /* mknod -> mknodat */
++			case 21: to = 269; goto shift;  /* access -> faccessat */
++			case 90: to = 268; goto shift;  /* chmod -> fchmodat */
++			case 89: to = 267; goto shift;  /* readlink -> readlinkat */
++			shift: r.r10 = r.rdx; r.rdx = r.rsi; r.rsi = r.rdi; r.rdi = cwd; break;
++			case 92: case 94: /* chown, lchown -> fchownat */
++				r.r10 = r.rdx; r.rdx = r.rsi; r.rsi = r.rdi; r.rdi = cwd;
++				r.r8 = siginfo.si_syscall == 94 ? 0x100 : 0; to = 260; break;
++			case 4: case 6: /* stat, lstat -> newfstatat */
++				r.rdx = r.rsi; r.rsi = r.rdi; r.rdi = cwd;
++				r.r10 = siginfo.si_syscall == 6 ? 0x100 : 0; to = 262; break;
++			case 87: case 84: /* unlink, rmdir -> unlinkat */
++				r.rsi = r.rdi; r.rdi = cwd;
++				r.rdx = siginfo.si_syscall == 84 ? 0x200 : 0; to = 263; break;
++			case 82: case 86: /* rename, link -> renameat, linkat */
++				r.r10 = r.rsi; r.rdx = cwd; r.rsi = r.rdi; r.rdi = cwd;
++				r.r8 = 0; to = siginfo.si_syscall == 82 ? 264 : 265; break;
++			case 88: /* symlink -> symlinkat */
++				r.rdx = r.rsi; r.rsi = cwd; to = 266; break;
++			case 85: /* creat -> openat */
++				r.r10 = r.rsi; r.rdx = 0x241; r.rsi = r.rdi; r.rdi = cwd; to = 257; break;
++			case 22: /* pipe -> pipe2 */
++				r.rsi = 0; to = 293; break;
++			case 33: /* dup2 -> dup3; dup3 refuses equal descriptors, so answer those here */
++				if (r.rdi == r.rsi) {
++					r.rax = r.rdi;
++					if (ptrace(PTRACE_SETREGS, tracee->pid, NULL, &r) == 0)
++						return 0;
++					break;
++				}
++				r.rdx = 0; to = 292; break;
++			case 7: { /* poll -> ppoll, the timeout written below the red zone */
++				long ms = (int) r.rdx;
++				struct { long sec, nsec; } ts = { ms / 1000, (ms % 1000) * 1000000 };
++				word_t where = r.rsp - 256;
++
++				if (ms >= 0 && write_data(tracee, where, &ts, sizeof(ts)) < 0)
++					break;
++				r.rdx = ms >= 0 ? where : 0;
++				r.r10 = 0; r.r8 = 8; to = 271; break;
++			}
++			case 111: /* getpgrp -> getpgid(0) */
++				r.rdi = 0; to = 121; break;
++			case 213: /* epoll_create -> epoll_create1 */
++				r.rdi = 0; to = 291; break;
++			case 232: /* epoll_wait -> epoll_pwait */
++				r.r8 = 0; r.r9 = 8; to = 281; break;
++			case 253: /* inotify_init -> inotify_init1 */
++				r.rdi = 0; to = 294; break;
++			case 284: /* eventfd -> eventfd2 */
++				r.rsi = 0; to = 290; break;
++			case 282: /* signalfd -> signalfd4 */
++				r.r10 = 0; to = 289; break;
++			case 43: /* accept -> accept4 */
++				r.r10 = 0; to = 288; break;
++			}
++		if (to >= 0) {
++			r.rax = to;
++			r.orig_rax = (word_t) -1;
++			r.rip -= 2; /* Back onto the "syscall" instruction.  */
++			if (ptrace(PTRACE_SETREGS, tracee->pid, NULL, &r) == 0)
++				return 0;
++		}
++		if (siginfo.si_syscall != 439)
++			VERBOSE(tracee, 1, "trapped syscall %d left as ENOSYS", siginfo.si_syscall);
++	}
++#endif
++
+ 	status = fetch_regs(tracee);
+ 	if (status < 0)
+ 		return SIGSYS;

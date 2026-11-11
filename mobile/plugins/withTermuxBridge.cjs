@@ -8,9 +8,10 @@ module.exports = function withTermuxBridge(config) {
       manifest['uses-permission'].push({ $: { 'android:name': 'com.termux.permission.RUN_COMMAND' } });
     }
     // Screen-off work: foreground service, exact alarms for routines, restart after boot, wake lock while a bot works.
-    for (const [name, extra] of [['android.permission.FOREGROUND_SERVICE'], ['android.permission.FOREGROUND_SERVICE_SPECIAL_USE'], ['android.permission.WAKE_LOCK'],
+    for (const [name, extra] of [['android.permission.ACCESS_NETWORK_STATE'], ['android.permission.FOREGROUND_SERVICE'], ['android.permission.FOREGROUND_SERVICE_SPECIAL_USE'], ['android.permission.WAKE_LOCK'],
       ['android.permission.RECEIVE_BOOT_COMPLETED'], ['android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'], ['android.permission.USE_EXACT_ALARM'],
       ['android.permission.REQUEST_INSTALL_PACKAGES'],
+      ['android.permission.READ_SMS'], ['android.permission.SEND_SMS'], ['android.permission.READ_CONTACTS'], ['android.permission.READ_CALL_LOG'], ['android.permission.ACCESS_FINE_LOCATION'], ['android.permission.ACCESS_COARSE_LOCATION'], ['android.permission.ACCESS_BACKGROUND_LOCATION'],
       ['android.permission.SCHEDULE_EXACT_ALARM', { 'android:maxSdkVersion': '32' }]]) {
       if (!manifest['uses-permission'].some(item => item.$['android:name'] === name)) manifest['uses-permission'].push({ $: { 'android:name': name, ...extra } });
     }

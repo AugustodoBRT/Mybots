@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, View, ScrollView, Text, Pressable, TextInput, Switch, useWindowDimensions } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
-import { termuxAvailable, passwordsList } from '../termux';
+import { embeddedEnabled, embeddedSupported, termuxAvailable, passwordsList } from '../termux';
 import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
 import { AiAccounts } from './AiAccounts';
+import { EmbeddedConnect } from './EmbeddedConnect';
 import { AiRuntimes } from './AiRuntimes';
 import { RemotePanel, TermuxGuide } from './Setup';
 import { DesktopUpdate } from './DesktopUpdate';
@@ -119,6 +120,8 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     { key: 'controls', icon: 'list', title: 'Tabelas e limites', summary: 'Quem lê e escreve cada tabela compartilhada, e o limite de gasto de cada bot', keywords: ['tabela', 'tabelas', 'dados', 'permissão', 'limite', 'gasto', 'custo', 'orçamento', 'dinheiro'] },
     { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'rede', 'tailscale', 'qr'] }] : []),
+    // Asks the supervisor where it really runs: the switch alone can be on while the app is still connected to Termux's.
+    ...(!desktop && embeddedSupported() && data?.device !== 'Neste celular' ? [{ key: 'embedded', icon: 'phone', title: 'Usar só neste celular', summary: 'Tudo dentro do app, sem computador e sem Termux', keywords: ['sozinho', 'sem computador', 'sem termux', 'celular'] }] : []),
     // Termux is optional: a guide for the whole process, and the switch to a supervisor of the phone's own.
     ...(!desktop && termuxAvailable ? [{ key: 'termux', icon: 'bolt', title: 'Termux (avançado)', summary: remote ? 'Usar o celular sem depender do computador' : 'Ativo: o celular tem o próprio MyBots', keywords: ['termux', 'sozinho', 'sem computador', 'offline', 'tutorial', 'instalar', 'codex'] }] : []),
     ...(termuxAvailable || desktop ? [{ key: 'secrets', icon: 'key', title: desktop ? 'Senhas' : 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : desktop ? 'Senhas de sites, as mesmas do celular' : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
@@ -136,7 +139,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
         onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}
         onLogin={async (botId, account) => { onClose(); await a.googleLogin(botId, account); }} />
     </>;
-    if (key === 'ai') return <><AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} /><AiRuntimes call={a.call} /></>;
+    if (key === 'ai') return <>{!remote && embeddedEnabled() ? <EmbeddedConnect connections={data?.connections} reload={a.reload} /> : null}<AiAccounts aiAccounts={data?.aiAccounts} call={a.call} reload={a.reload} /><AiRuntimes call={a.call} /></>;
     if (key === 'bots') return <>
       {FACES_3D_AVAILABLE ? <View style={[s.botRow, { gap: 12 }]}>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Bots em 3D</Text>
@@ -156,6 +159,11 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
     if (key === 'computer' && remote) return <><RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />{computers ? <PcUpdate call={a.call} /> : null}</>;
     if (key === 'controls') return <ControlsPage call={a.call} reload={a.reload} bots={bots} budgets={data?.budgets || {}} usage={data?.usage} />;
+    if (key === 'embedded') return <>
+      <Text style={styles.optionDetail}>Os bots passam a rodar neste celular, dentro do app. Na primeira vez a preparação leva alguns minutos e depois você conecta uma IA em IAs e contas. O que já existe no computador ou no Termux fica onde está, e você pode voltar quando quiser.</Text>
+      <PrimaryButton icon="phone" title={a.setupBusy ? 'Preparando…' : 'Usar neste celular'} disabled={a.setupBusy} onPress={a.enableEmbedded} style={{ marginTop: 16 }} />
+      {a.setupError ? <Text style={[styles.optionDetail, { color: C.amber, marginTop: 10 }]}>{a.setupError}</Text> : null}
+    </>;
     if (key === 'termux') return <>
       <TermuxGuide onEnable={remote ? a.enableTermux : null} busy={a.setupBusy} enabled={!remote} />
       {!remote && a.pcLink ? <PrimaryButton icon="laptop" tone="ghost" title="Voltar a usar só o computador" onPress={a.useComputerOnly} style={{ marginTop: 12 }} /> : null}

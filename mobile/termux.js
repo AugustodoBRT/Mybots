@@ -136,6 +136,14 @@ export const browserAction = (botId, action) => native.browserAction(botId, acti
 export const fileStage = (id, name, chunk, append) => native.fileStage(id, name, chunk, append);
 export const fileAction = (id, name, mime, action) => native.fileAction(id, name, mime, action);
 export const copyTermuxText = value => native?.copyText(value);
+// The phone's own MyBots inside the app (no Termux): see EmbeddedRuntime.kt.
+export const embeddedSupported = () => { try { return Boolean(native?.embeddedSupported?.()); } catch { return false; } };
+export const embeddedEnabled = () => { try { return Boolean(native?.embeddedEnabled?.()); } catch { return false; } };
+export const setEmbedded = on => native?.embeddedSet?.(on);
+export const terminalStart = kind => native.terminalStart(kind);
+export const terminalWrite = text => native?.terminalWrite?.(text);
+export const terminalStop = () => native?.terminalStop?.();
+export const onRuntimeTerminal = listener => native.addListener('onRuntimeTerminal', listener);
 export const runTermux = (operation, payload = {}) => {
   if (!native) throw new Error('A conexão com o Termux exige instalar o APK próprio do MyBots. No Expo Go, use o modo computador.');
   return native.runCodex(operation, payload);

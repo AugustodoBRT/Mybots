@@ -14,6 +14,7 @@ if [ ! -d "$ANDROID_HOME/platforms/android-36" ]; then
 fi
 node "$project/scripts/package-connectors.mjs"
 node "$project/scripts/package-supervisor.mjs"
+"$project/scripts/runtime/stage.sh" arm64-v8a
 cd "$project/mobile/android"
 status=0
 ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain "$@" || status=$?

@@ -7,9 +7,13 @@ const { createServer } = require('node:http');
 
 const PARTITION = 'persist:mybots-browser';
 const limit = (text, size) => String(text || '').slice(0, size);
+const { returnsFocus } = require('./focus-rules');
 
-function createTabs({ window, notify, downloads, above = () => null, log = () => {} }) {
+function createTabs({ window, ui, notify, downloads, above = () => null, log = () => {} }) {
   const tabs = new Map(); let order = [], active = null, serial = 0, place = null;
+  // A bot working in a page must not take the keyboard from someone writing in the interface.
+  let typedAt = 0;
+  ui?.webContents.on('before-input-event', (_event, input) => { if (input.type === 'keyDown') typedAt = Date.now(); });
   const ses = session.fromPartition(PARTITION);
   // A normal Chrome to the sites (Google refuses to sign in to anything that says "Electron").
   const agent = app.userAgentFallback.replace(/ Electron\/\S+/, '').replace(/ mybots-desktop\/\S+/, '');
@@ -62,6 +66,8 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
     // A link that wants a new window opens as a new tab, like in any browser.
     contents.setWindowOpenHandler(({ url: target }) => { if (/^https?:/i.test(target)) setImmediate(() => create(target, { owner })); return { action: 'deny' }; });
     contents.on('destroyed', () => { tabs.delete(id); order = order.filter(item => item !== id); if (active === id) active = order[order.length - 1] ?? null; layout(); changed(); if (!order.length && !window.isDestroyed()) setImmediate(() => create(HOME)); });
+    contents.on('before-mouse-event', (_event, input) => { if (input.type === 'mouseDown') tab.pressedAt = Date.now(); });
+    contents.on('focus', () => { if (ui && !ui.webContents.isDestroyed() && returnsFocus({ typedAt, pressedAt: tab.pressedAt, chosenAt: tab.chosenAt, now: Date.now() })) ui.webContents.focus(); });
     present(contents);
     contents.loadURL(url === 'about:blank' ? `about:blank#${marker}` : url).catch(() => {});
     if (activate) active = id;
@@ -84,7 +90,8 @@ function createTabs({ window, notify, downloads, above = () => null, log = () =>
     for (const id of [...order]) { const tab = tabs.get(id); if (tab && id !== active && !tab.contents.isDestroyed() && Date.now() - (tab.lastUse || 0) > IDLE_TAB_MS && order.length > 1) close(id); }
   }, 60000); sweep.unref?.();
   function close(id) { const tab = tabs.get(id); if (!tab) return false; if (!tab.contents.isDestroyed()) tab.contents.close(); return true; }
-  const activate = id => { if (!tabs.has(id)) return false; active = id; tabs.get(id).lastUse = Date.now(); layout(); changed(); tabs.get(id).contents.focus(); return true; };
+  // `focus` only when the person chose the tab; a bot changing tabs leaves the keyboard where it is.
+  const activate = (id, { focus = true } = {}) => { if (!tabs.has(id)) return false; const tab = tabs.get(id); active = id; tab.lastUse = Date.now(); layout(); changed(); if (focus) { tab.chosenAt = Date.now(); tab.contents.focus(); } return true; };
   const go = (id, url) => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return false; const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : /^[^\s/]+\.[^\s/]+/.test(url) ? `https://${url}` : `https://www.google.com/search?q=${encodeURIComponent(url)}`; if (!/^https?:/i.test(target)) return false; contents.loadURL(target).catch(() => {}); return true; };
   const nav = (id, action) => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return false; if (action === 'back') contents.navigationHistory.goBack(); else if (action === 'forward') contents.navigationHistory.goForward(); else if (action === 'reload') contents.reload(); else return false; return true; };
   const thumb = async id => { const contents = tabs.get(id)?.contents; if (!contents || contents.isDestroyed()) return null; const image = await contents.capturePage(); const small = image.resize({ width: 480 }); return small.toDataURL(); };
@@ -108,7 +115,7 @@ function controlServer({ tabs, token, updates = () => null }) {
         if (path === '/tabs') reply(200, tabs.state());
         else if (path === '/tab/create') { const url = typeof input.url === 'string' && /^https?:/i.test(input.url) ? input.url : 'about:blank'; reply(200, tabs.create(url, { owner: typeof input.owner === 'string' ? input.owner : null, activate: input.activate !== false })); }
         else if (path === '/tab/close') { const id = tabs.markerOf(input.marker); reply(200, { closed: id != null && tabs.close(id) }); }
-        else if (path === '/tab/activate') { const id = tabs.markerOf(input.marker); reply(200, { ok: id != null && tabs.activate(id) }); }
+        else if (path === '/tab/activate') { const id = tabs.markerOf(input.marker); reply(200, { ok: id != null && tabs.activate(id, { focus: false }) }); }
         // The phone asks the computer to update (through the node): look, and install, exactly like the window's own button.
         else if (path === '/update/state' || path === '/update/check' || path === '/update/install') {
           const up = updates(); if (!up) { reply(200, { phase: 'none', unavailable: true }); return; }

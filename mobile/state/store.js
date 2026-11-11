@@ -23,6 +23,8 @@ export function createStore() {
     },
     setChats: value => update({ chats: typeof value === 'function' ? value(state.chats) : value }),
     sequence: value => { seq = value; },
+    // The number in a state.get: behind what the events already brought it says nothing, and going back would make the next event look like a lost one.
+    catchUp: value => { if (seq === null || value === null || value > seq) seq = value; },
     // The reply being written, by conversation (a room keeps one per bot); the finished message or an empty text clears it.
     draft: ({ botId, roomId, text }) => {
       const key = roomId ? roomId + ':' + botId : botId; if (!key) return;

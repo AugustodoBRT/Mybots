@@ -10,11 +10,11 @@ export async function createTermuxBackup(run, snapshot) {
     if (end < serialized.length && /[\uD800-\uDBFF]/.test(serialized[end - 1])) end--;
     const result = await run('backupPart', { requestId, index: index++, chunk: serialized.slice(offset, end) });
     offset = end;
-    if (result.exitCode !== 0 || result.errorMessage) throw new Error('Não consegui salvar o backup no Termux. A cópia anterior foi preservada.');
+    if (result.exitCode !== 0 || result.errorMessage) throw new Error('Não consegui salvar o backup no celular. A cópia anterior foi preservada.');
   }
   const result = await run('backupFinish', { requestId, count: index });
-  if (result.exitCode !== 0 || result.errorMessage) throw new Error('Não consegui concluir o backup no Termux.');
+  if (result.exitCode !== 0 || result.errorMessage) throw new Error('Não consegui concluir o backup no celular.');
   const backup = JSON.parse(result.stdout);
-  if (typeof backup.name !== 'string' || typeof backup.path !== 'string') throw new Error('O Termux não confirmou o arquivo de backup.');
+  if (typeof backup.name !== 'string' || typeof backup.path !== 'string') throw new Error('O celular não confirmou o arquivo de backup.');
   return backup;
 }

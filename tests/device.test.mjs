@@ -101,3 +101,14 @@ test('empty optional filters from the model mean no filter instead of an error',
   f.app.tools.grant(f.bot.id, 'notifications.recent', true);
   assert.equal((await f.call('notifications.recent', { app: '', query: '' })).notifications.length, 1);
 });
+
+test('with everything inside the app, the device commands go to the app and its answer is what Termux:API would give', async () => {
+  const { Browser } = await import('../supervisor/browser.mjs');
+  const browser = new Browser();
+  await assert.rejects(browser.deviceApi('termux-battery-status'), /não está ativo/);
+  browser.lastPoll = Date.now();
+  const sent = []; browser.poll(commands => { sent.push(...commands); for (const command of commands) browser.result({ id: command.id, ok: true, value: { output: JSON.stringify({ percentage: 80 }) } }); });
+  const device = new Device(null, { run: (command, args, options) => browser.deviceApi(command, args, options) });
+  assert.equal((await device.status()).battery.percentage, 80);
+  assert.equal(sent[0].op, 'deviceApi'); assert.equal(sent[0].botId, null); assert.equal(sent[0].args.command, 'termux-battery-status');
+});

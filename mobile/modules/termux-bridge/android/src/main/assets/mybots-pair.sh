@@ -6,7 +6,7 @@ export MYBOTS_PAIR_PUBLIC_KEY="$3"
 export MYBOTS_PAIR_DIGEST="$4"
 root="$HOME/.mybots"
 mkdir -p "$root"
-archive=$(mktemp "$root/supervisor.XXXXXX.tar.gz")
+archive=$(mktemp "$root/supervisor.XXXXXX")
 trap 'rm -f "$archive"' EXIT
 # Packages larger than one RUN_COMMAND arrive first as parts in staging/<hash>; the hash check below covers the joined file.
 # Termux leaves stdin open when no stdin extra is sent, so a staged pairing must never read it.
@@ -29,16 +29,15 @@ fi
 {
   "$node_bin" -v &&
   "$node_bin" -e 'const { DatabaseSync } = require("node:sqlite"); const db=new DatabaseSync(":memory:"); console.log("SQLite nativo disponível"); db.close();' &&
-  codex --version &&
-  codex exec --help &&
-  codex exec resume --help &&
-  codex features list
+  { [ -n "${MYBOTS_EMBEDDED:-}" ] || { codex --version && codex exec --help && codex exec resume --help && codex features list; }; }
 } > "$root/ambiente-supervisor.txt" 2>&1 || { printf 'O supervisor precisa de Node 22.13 ou mais novo com node:sqlite e do Codex instalado. Confira ~/.mybots/ambiente-supervisor.txt.\n' >&2; exit 1; }
 install="$root/runtime/$release"
 if [ ! -f "$install/supervisor/index.mjs" ]; then
   mkdir -p "$install"
   tar -xzf "$archive" -C "$install"
 fi
+# The embedded Linux and this package ship together in the APK and were tested when it was built.
+if [ -n "${MYBOTS_EMBEDDED:-}" ]; then touch "$install/tests-passed"; fi
 if [ ! -f "$install/tests-passed" ]; then
   "$node_bin" --test --test-timeout=15000 "$install/tests/supervisor.test.mjs" "$install/tests/tools.test.mjs" "$install/tests/claude.test.mjs" "$install/tests/routines.test.mjs" "$install/tests/apps.test.mjs" "$install/tests/access.test.mjs" "$install/tests/default-access.test.mjs" > "$root/testes-supervisor.txt" 2>&1 || {
     printf 'Os testes do supervisor não passaram neste aparelho. Confira ~/.mybots/testes-supervisor.txt. Seus dados foram preservados.\n' >&2

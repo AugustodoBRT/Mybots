@@ -1,5 +1,7 @@
 # Segurança das ferramentas — etapa 2
 
+> **Registro histórico.** Cada seção foi escrita na versão indicada no título. O comportamento atual de cada recurso está em [computador.md](computador.md), [celular.md](celular.md) e no [README](../README.md); os princípios (token por tarefa, aprovações, segredos fora da IA) continuam valendo.
+
 ## Como uma ferramenta é executada
 
 1. Para cada tarefa, o supervisor gera um `run_token` de 256 bits ligado a `bot_id` + `task_id`. Ele vive só na memória do supervisor e é revogado quando a tarefa termina, é cancelada ou o supervisor reinicia.

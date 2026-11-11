@@ -1,5 +1,7 @@
 # Supervisor — etapa 1
 
+> **Registro histórico.** Escrito na etapa 1 (v9), quando o supervisor só rodava no Termux. Hoje o mesmo supervisor roda no Linux embutido do app, no Termux e no computador; a instalação e o uso estão em [celular.md](celular.md) e [computador.md](computador.md). O protocolo, a recuperação e os dados abaixo continuam valendo.
+
 ## Instalação e primeira abertura
 
 Instalar a v9 por cima da v8, mantendo `com.mybots.app` e a assinatura atual. No modo Só celular, o app salva um backup do JSON anterior e pareia com o supervisor. O APK leva um pacote pequeno com os arquivos e a dependência WebSocket; não é preciso copiar scripts para o celular.

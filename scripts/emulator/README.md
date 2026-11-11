@@ -1,6 +1,6 @@
 # Emulador de teste
 
-Android 16 (API 36, x86_64) com Termux, Termux:API, `pkg install codex` e o MyBots, para testar como no celular.
+Android 16 (API 36, x86_64) com o MyBots (e Termux, para testar o modo avançado), para testar como no celular. O modo "Usar só neste celular" (Linux embutido) também roda aqui; veja [scripts/runtime/README.md](../runtime/README.md).
 Tudo fica em `.build-tools/` (fora do Git). O login do Codex no emulador é separado do celular e do PC.
 
 - `start.sh [--window]` liga o emulador (sem janela por padrão; com `--window` aparece na tela).

@@ -1,5 +1,7 @@
 # Ambiente — etapa 0A
 
+> **Registro histórico.** Registro das etapas 0A e 0B (v7 e v8, Codex no Termux). Não descreve o ambiente atual; para compilar, veja [desenvolvimento.md](desenvolvimento.md).
+
 Registro em 19/10/2026. A validação no POCO será feita pelo proprietário.
 
 - Desenvolvimento: Codex CLI **0.162.1**. Conferidos `codex --version`, `codex exec --help` e `codex exec resume --help` antes de alterar os argumentos.

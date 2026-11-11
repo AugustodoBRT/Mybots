@@ -1,5 +1,7 @@
 # Assinatura e atualização
 
+> **Registro histórico.** Registro da v8. Para o fluxo atual de atualização, veja [celular.md](celular.md#atualizar-backup-e-dados) e [desenvolvimento.md](desenvolvimento.md).
+
 Registro: 19/10/2026.
 
 ## App instalado e APK v8

@@ -67,7 +67,7 @@ Crie bots com personalidade, dê a cada um uma função, como faculdade, e-mails
 | 🔑 **Senhas salvas** | O bot entra sozinho nos sites com a senha que você salvou ou importou do Chrome (CSV); ela fica só no celular, só vale no site certo e a IA nunca a vê. |
 | 🪄 **Widget animado** | Na tela inicial, os bots respiram, piscam, olham em volta enquanto trabalham e acendem a antena quando esperam você, com a última mensagem e o próximo prazo. |
 | 📊 **Uso e limites** | Tokens de cada bot e de cada resposta, e quanto do limite da sua assinatura (5 horas e semana) já foi usado. |
-| 🔀 **Várias contas de cada IA** | Em Ajustes → **Contas de IA** você adiciona mais de uma conta de Claude, Codex, Antigravity ou opencode (por exemplo duas de Claude e duas de Codex), no celular e no computador. O app mostra o comando para entrar em cada uma e cada bot escolhe a conta no próprio perfil. Os logins ficam no aparelho onde você entrou e os bots só enxergam a conta que usam. |
+| 🔀 **Várias contas de cada IA** | Em Ajustes → **IAs e contas** você conecta o Claude, o Codex e o Antigravity por botão (no celular, sem Termux) e pode adicionar mais de uma conta de cada IA (por exemplo duas de Claude e duas de Codex; o opencode no computador ou no Termux), no celular e no computador. Cada bot escolhe a conta no próprio perfil. Os logins ficam no aparelho onde você entrou e os bots só enxergam a conta que usam. |
 | 🔄 **Atualiza sozinho** | O app avisa quando sai uma versão nova, baixa, confere a assinatura e instala, sem precisar de cabo ou de link. |
 | 🛡️ **Você no controle** | Acesso total por padrão e uma opção por bot para controlar o celular. Parar e Assumir interrompem o controle; senhas, cartões e códigos continuam protegidos. |
 
@@ -125,7 +125,7 @@ O app exige **Android 14 ou mais novo** e um celular **ARM64** (praticamente tod
 
 Depois da primeira instalação, as **atualizações são pelo próprio app** ("Nova versão · Atualizar e reiniciar"), que baixa, confere a assinatura e instala por cima, sem repetir esse caminho. Atualizar mantém seus bots e conversas; não desinstale antes.
 
-> Guias detalhados: [MyBots no computador](docs/computador.md) · [configurar o celular](docs/configurar-celular.md) · [Claude no Termux, opcional](docs/claude-termux.md) · [Antigravity e opencode no Termux](docs/agy-opencode-termux.md) · [conectar o Gmail](docs/conectar-gmail.md)
+> Guias detalhados: [MyBots no celular](docs/celular.md) · [MyBots no computador](docs/computador.md) · [Windows](docs/windows.md) · [conectar o Gmail e contas Google](docs/conectar-gmail.md)
 
 ## Celular e computador juntos
 
@@ -138,22 +138,22 @@ Depois da primeira instalação, as **atualizações são pelo próprio app** ("
 ```bash
 npm ci --prefix supervisor          # dependências do supervisor
 npm install --prefix mobile         # dependências do app
-npm test                            # testes (Codex e Claude reais contra API simulada)
+npm test                            # testes (IAs simuladas, não gastam a sua assinatura)
 scripts/build-apk.sh --offline      # APK ARM64 para o celular
 # o instalador do computador sai pela CI (.github/workflows/desktop.yml)
 ```
 
-Para testar num emulador com o supervisor de verdade, veja [scripts/emulator/README.md](scripts/emulator/README.md).
+Para testar num emulador com o supervisor de verdade, veja [scripts/emulator/README.md](scripts/emulator/README.md). O Linux embutido do APK está em [scripts/runtime/README.md](scripts/runtime/README.md).
 
 | Documento | Conteúdo |
 |---|---|
-| [docs/PLANO-DESENVOLVIMENTO.md](docs/PLANO-DESENVOLVIMENTO.md) | Etapas, regras de teste e de entrega |
-| [docs/progresso.md](docs/progresso.md) | Histórico de cada versão e o que foi validado |
+| [docs/desenvolvimento.md](docs/desenvolvimento.md) | Mapa do repositório, como preparar, testar, compilar e publicar |
+| [docs/celular.md](docs/celular.md) | MyBots no celular: modos de uso, permissões, bateria e atualização |
+| [docs/computador.md](docs/computador.md) | MyBots no computador: instalar, parear, relé, sincronização, navegador e controle de tela |
 | [docs/supervisor.md](docs/supervisor.md) | Protocolo, recuperação e dados do supervisor |
 | [docs/seguranca.md](docs/seguranca.md) | Modelo de segurança e permissões |
-| [docs/desenvolvimento.md](docs/desenvolvimento.md) | Modo celular + computador (Expo Go) e notas técnicas |
-| [docs/computador.md](docs/computador.md) | MyBots no computador: parear, rodar e como a conexão funciona |
-| [docs/PLANO-DISTRIBUICAO.md](docs/PLANO-DISTRIBUICAO.md) | Próximos passos: relé com TLS, instaladores (Linux, Windows e Mac) e o web app do iPhone |
+| [docs/progresso.md](docs/progresso.md) | Histórico de cada versão e o que foi validado |
+| [docs/PLANO-DESENVOLVIMENTO.md](docs/PLANO-DESENVOLVIMENTO.md) · [docs/PLANO-DISTRIBUICAO.md](docs/PLANO-DISTRIBUICAO.md) | Planos de etapas (registro histórico: relé com TLS, instaladores e web app do iPhone já foram feitos) |
 
 ## Privacidade
 

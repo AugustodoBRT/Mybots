@@ -1,6 +1,6 @@
 # MyBots no Windows (beta, sem assinatura)
 
-Escrito em 03/11/2026. O instalador do Windows é um **beta**: o código foi portado e testado só com funções de sistema simuladas em Linux; a primeira execução num Windows de verdade é este roteiro. Plano geral em [PLANO-DISTRIBUICAO.md](PLANO-DISTRIBUICAO.md).
+Escrito em 03/11/2026 e revisado em 11/11/2026 (0.94.1). O instalador do Windows é um **beta**: o código foi portado e testado só com funções de sistema simuladas em Linux; a primeira execução num Windows de verdade é este roteiro. Plano geral em [PLANO-DISTRIBUICAO.md](PLANO-DISTRIBUICAO.md).
 
 ## Instalar
 1. Baixe o `MyBots-<versão>-windows-x64.exe` da Release **pc-latest** (https://github.com/AugustodoBRT/Mybots/releases/tag/pc-latest), sem precisar de login. Depois da primeira instalação, o app se atualiza sozinho pelo botão "Atualizar e reiniciar".
@@ -8,7 +8,7 @@ Escrito em 03/11/2026. O instalador do Windows é um **beta**: o código foi por
 3. O instalador deixa escolher a pasta (por usuário, sem pedir administrador). O MyBots abre, vai para a bandeja e se registra para iniciar com o Windows.
 
 ## Antes de usar: as IAs
-O MyBots usa as IAs que já estão instaladas e logadas no computador. Para instalar, o assistente de primeira execução mostra os comandos; no Windows precisam do **Node.js** (nodejs.org). Depois de instalar o Node.js, num PowerShell:
+O MyBots usa as IAs que já estão instaladas e logadas no computador. Para instalar, o assistente de primeira execução mostra os comandos (inclusive os do Antigravity e do opencode); no Windows precisam do **Node.js** (nodejs.org). Depois de instalar o Node.js, num PowerShell:
 - Codex: `npm install -g @openai/codex` e `codex login`
 - Claude Code: `npm install -g @anthropic-ai/claude-code`, depois `claude` e `/login`
 
@@ -17,7 +17,7 @@ O MyBots acha os programas pelo `PATH` do usuário e entende os atalhos `.cmd` q
 ## O que funciona e o que não
 | | Windows |
 |---|---|
-| Janela, bots, conversas, rotinas, sincronização, relé, celular pareado (com ou sem Termux) | Sim |
+| Janela, bots, conversas, rotinas, sincronização, relé, celular pareado (pelo QR, com o app sozinho ou com Termux) | Sim |
 | Codex | Só leitura e sem terminal (não há isolamento no Windows) |
 | Claude Code | Comandos e escrita fora da pasta do bot pedem **cartão de aprovação** |
 | Navegador dos bots | Usa o Chrome (ou o Edge) instalado; o navegador da janela é próprio |
@@ -35,7 +35,7 @@ Dados: `%APPDATA%\MyBots`. Os arquivos secretos não têm o modo 600 do Linux; f
 4. **IA responde**: crie um bot, mande "oi" e veja a resposta (Codex e Claude, se os dois estiverem instalados). Se não responder, copie o `node.log`.
 5. **Aprovação**: peça ao bot (Claude) para criar um arquivo ou rodar um comando; deve aparecer o cartão de aprovação.
 6. **Navegador**: peça para abrir um site; confira o painel do navegador na janela.
-7. **Celular**: pareie pelo QR (app sem Termux ou com Termux) e veja os bots no celular.
+7. **Celular**: pareie pelo QR (**Ler o QR do computador** no app) e veja os bots no celular.
 8. **Reinício**: reinicie o Windows e veja se o MyBots volta sozinho para a bandeja.
 9. **Fechar**: fechar a janela só esconde (a bandeja continua); "Fechar" na bandeja encerra tudo (confira no Gerenciador de Tarefas que não sobra processo).
 10. **Janelas piscando**: durante o uso não deve aparecer nenhuma janela preta de console.

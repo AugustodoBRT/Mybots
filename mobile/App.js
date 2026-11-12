@@ -875,7 +875,7 @@ function AppMain() {
     onOpenBrowser={id => { if (desktop) { desktopBus.emit('browser-full', { botId: id }); return; } pendingBrowser.botId = id; setDeskPage(null); navigate({ kind: 'bot', id }); }}
     onFile={file => file && openConversationFile?.(file)} /> : null;
   const canvasView = !desktop && deskPage === 'canvas' && canvasPage(() => setDeskPage(null));
-  const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} />;
+  const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} onOpenChief={id => { setDeskPage(null); if (desktop) openDesktopBot(id); else { setRoomId(null); setSelected(id); } }} />;
   const deskPages = desktop ? {
     memory: memoryView,
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,

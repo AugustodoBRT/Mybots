@@ -324,17 +324,17 @@ export class Tools {
       } else if (tool === 'team.routines') result = this.teamRoutines(args);
       else if (tool === 'team.usage') result = this.teamUsage();
       else if (tool === 'team.overlap') result = this.teamOverlap();
-      else if (tool === 'profile.read') { const profile = this.db.person().profile || ''; result = { name: this.db.person().name || null, profile, untrusted: true, ...(profile ? {} : { message: 'A ficha ainda está vazia. A pessoa preenche em Ajustes, ou o Chefe propõe com profile_write.' }) }; }
+      else if (tool === 'profile.read') { const profile = this.db.person().profile || ''; result = { name: this.db.person().name || null, note: 'chefe/voce.md', profile, untrusted: true, ...(profile ? {} : { message: 'A nota Você (chefe/voce.md) ainda está vazia. A pessoa escreve nela na Memória, ou o Chefe propõe com profile_write.' }) }; }
       else if (tool === 'profile.write') {
         const text = typeof args.text === 'string' ? args.text : '', reason = typeof args.reason === 'string' ? args.reason.trim().slice(0, 400) : '';
-        if (!reason) throw new Error('Diga em reason por que a ficha muda: a pessoa lê antes de aprovar.');
-        if (text.length > 4000) throw new Error('A ficha tem até 4.000 caracteres.');
-        if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(text)) throw new Error('A ficha é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
-        const card = { title: `${bot.name} quer atualizar a sua ficha`, summary: `Antes:\n${(this.db.person().profile || '(vazia)').slice(0, 700)}\n\nDepois:\n${text.slice(0, 700) || '(vazia)'}\n\nPor quê: ${reason}` };
-        if (!(await this.ask(run, tool, card, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. A ficha não mudou.');
-        this.requireGrant(run, tool); this.db.setPerson({ profile: text });
-        this.db.record('profile_changed', `${bot.name} atualizou a ficha da pessoa.`, bot.id, run.taskId); this.changed('activity.new');
-        result = { saved: true };
+        if (!reason) throw new Error('Diga em reason por que a nota Você muda: a pessoa lê antes de aprovar.');
+        if (text.length > 8000) throw new Error('A nota Você tem até 8.000 caracteres: leve os detalhes para outras notas e ligue com [[links]].');
+        if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(text)) throw new Error('A nota Você é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
+        const card = { title: `${bot.name} quer atualizar a sua nota Você`, summary: `Antes:\n${(this.db.person().profile || '(vazia)').slice(0, 1500)}\n\nDepois:\n${text.slice(0, 1500) || '(vazia)'}\n\nPor quê: ${reason}` };
+        if (!(await this.ask(run, tool, card, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. A nota Você não mudou.');
+        this.requireGrant(run, tool); this.db.setPerson({ profile: text, botId: bot.id });
+        this.db.record('profile_changed', `${bot.name} atualizou a nota Você.`, bot.id, run.taskId); this.changed('activity.new');
+        result = { saved: true, path: 'chefe/voce.md' };
       }
       else if (tool === 'team.update_bot' || tool === 'team.routine_update') result = await this.teamChange(run, bot, tool, args, hash);
       else if (tool === 'delivery.write' || tool.startsWith('shared.')) result = noteTool(this.db, bot, tool, args);

@@ -2,6 +2,11 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.3', date: '2026-11-12', items: [
+    ['novo', 'A nota Você, no centro da Memória: quem você é e como prefere as respostas. Todos os bots leem; o Chefe propõe mudanças e você aprova. Ela substitui a ficha que ficava nos Ajustes (o que estava lá foi para a nota).'],
+    ['novo', 'Importar das IAs (na Memória): o Chefe lê o que você escreveu no Claude Code, no Codex ou na exportação do ChatGPT e do Claude, mostra o que encontrou e monta a sua nota Você. Senhas, e-mails e as conversas dos próprios bots ficam de fora.'],
+    ['melhoria', 'No gráfico da Memória, a nota Você aparece maior, em destaque e sempre com o nome.']
+  ] },
   { version: '0.94.2', date: '2026-11-11', items: [
     ['novo', 'Botão Reportar: conte um problema ou peça uma melhoria direto do app, com uma foto se quiser. No computador dá para arrastar ou colar a imagem.'],
     ['novo', 'Esta janela: depois de cada atualização o app mostra o que mudou.']

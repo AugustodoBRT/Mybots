@@ -31,6 +31,8 @@ export function degrees(edges) {
 }
 
 export const RADIUS = { min: 5, max: 17 };
+// The person's own note, the center of the memory: always drawn larger, always named.
+export const PERSON_PATH = 'chefe/voce.md';
 export function nodeRadius(degree) {
   return Math.min(RADIUS.max, RADIUS.min + 2.1 * Math.sqrt(Math.max(0, degree || 0)));
 }
@@ -313,7 +315,7 @@ export function graphModel({ nodes, edges }, { ghosts = true, orphans = true } =
   }
   const count = degrees(links), adjacency = new Map(list.map(node => [node.id, new Set()]));
   for (const { from, to } of links) { adjacency.get(from).add(to); adjacency.get(to).add(from); }
-  for (const node of list) { node.degree = count.get(node.id) || 0; node.r = node.orphan ? RADIUS.min + 2 : nodeRadius(node.degree); }
+  for (const node of list) { node.degree = count.get(node.id) || 0; node.person = node.id === PERSON_PATH; node.r = node.person ? RADIUS.max + 4 : node.orphan ? RADIUS.min + 2 : nodeRadius(node.degree); }
   return { nodes: list, edges: links, byId, adjacency };
 }
 
@@ -324,6 +326,7 @@ export function labelIds(model, k, active) {
   if (model.nodes.length <= 40 || k >= 2.4) return new Set(model.nodes.map(node => node.id));
   const room = k >= 1.6 ? 80 : k >= 1 ? 30 : k >= 0.6 ? 14 : 6;
   const ids = new Set([...real].sort((a, b) => b.degree - a.degree || (a.id > b.id) - (a.id < b.id)).slice(0, room).filter(node => node.degree > 1).map(node => node.id));
+  if (model.byId.has(PERSON_PATH)) ids.add(PERSON_PATH);
   if (active && model.byId.has(active)) { ids.add(active); for (const id of model.adjacency.get(active)) ids.add(id); }
   return ids;
 }

@@ -82,6 +82,14 @@ export class Attachments {
     this.db.run('INSERT INTO attachments VALUES(?,?,?,?,?,?)', fileId, botId, upload.name, upload.mime, upload.size, now());
     return { id: fileId, name: upload.name, mime: upload.mime, size: upload.size };
   }
+  /** A file sent in parts that is only read once (an export to import) and then thrown away: its path, out of the upload list. */
+  uploadTake(botId, id) {
+    const upload = this.uploads.get(id);
+    if (!upload || upload.botId !== botId) throw new Error('Envio não encontrado. Mande o arquivo de novo.');
+    if (!upload.size) throw new Error('O arquivo está vazio.');
+    this.uploads.delete(id);
+    return upload.path;
+  }
   /** Keeps one file for a bot (an attachment, a download or a file the bot made). */
   store(botId, { name, mime, bytes }) {
     if (BLOCKED.test(name) || mime === 'application/vnd.android.package-archive') throw new Error('Arquivos executáveis são bloqueados.');

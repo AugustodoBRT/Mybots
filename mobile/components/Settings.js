@@ -18,23 +18,6 @@ import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
 import { FACES_3D_AVAILABLE, setFaces3d, useFaces3d } from '../faces3d';
 
-/** The person's profile: one text with their data and preferences that every bot reads (profile_read), instead of a copy in each bot. */
-function PersonProfile({ value, onSave }) {
-  const [text, setText] = useState(value), [state, setState] = useState('');
-  useEffect(() => { setText(value); }, [value]);
-  const save = async () => {
-    if (text.trim() === value.trim()) return;
-    setState('Salvando…');
-    try { await onSave(text); setState('Salvo.'); setTimeout(() => setState(''), 2000); } catch (error) { setState(error.message); }
-  };
-  return <View style={styles.modeOption}>
-    <Text style={styles.optionLabel}>Sua ficha</Text>
-    <Text style={styles.optionDetail}>Seus dados e preferências que todos os bots leem (curso, cidade, áreas de interesse, horários, jeito de falar). Sem senhas, chaves ou cartões. O Chefe também pode propor mudanças, que você aprova.</Text>
-    <TextInput accessibilityLabel="Sua ficha" style={[styles.formInput, { minHeight: 110, textAlignVertical: 'top' }]} multiline maxLength={4000} placeholder={'Ex.: Estudo Sistemas de Informação na UFPE (5º período).\nMoro no Recife. Procuro estágio em dados ou TI, presencial ou híbrido.\nPrefiro respostas curtas.'}
-      placeholderTextColor={C.faint} value={text} onChangeText={setText} onBlur={save} selectionColor={C.accent} />
-    {state ? <Text style={[styles.optionDetail, { color: /Salv/.test(state) ? C.muted : C.amber }]}>{state}</Text> : null}
-  </View>;
-}
 
 /**
  * Fine controls the Chefe asked for: who reads and writes each shared table (by default every bot), and a monthly spending limit per bot
@@ -135,7 +118,6 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const body = key => {
     if (key === 'account') return <>
       {phone ? <PersonName name={data?.person?.name} onSave={async name => { await a.call('person.update', { name }); await a.reload(); }} /> : null}
-      {phone ? <PersonProfile value={data?.person?.profile || ''} onSave={async profile => { await a.call('person.update', { profile }); await a.reload(); }} /> : null}
       {phone ? <ThemeChoice value={data?.person?.theme || 'dark'} onSave={async theme => { await a.call('person.update', { theme }); await a.reload(); }} /> : null}
       <GoogleAccounts accounts={data?.googleAccounts || []} bots={bots} busy={a.busy}
         onAdd={async account => { await a.call('google.accounts.add', { account }); await a.reload(); }}

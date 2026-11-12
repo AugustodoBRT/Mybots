@@ -1,5 +1,5 @@
 import { uuid } from './validation.mjs';
-import { checkNote, saveNote } from './notes.mjs';
+import { checkNote, saveNote, PERSON_NOTE, PERSON_TITLE, writePersonNote } from './notes.mjs';
 import { PROVIDER_NAMES } from '../lib/models.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
@@ -60,7 +60,7 @@ export const SYNCED = {
   metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 21;
+export const SCHEMA = 22;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -247,6 +247,17 @@ export class Database {
       this.db.exec(`CREATE TABLE IF NOT EXISTS canvas_items (id TEXT PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL, bot_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`);
       this.installSyncLog('canvas_items', SYNCED.canvas_items);
       this.db.exec('PRAGMA user_version=21;');
+    });
+    // The person's profile leaves the settings and becomes the note "Você" (chefe/voce.md) at the center of the memory map.
+    if (version < 22) this.transaction(() => {
+      const profile = this.get("SELECT value FROM metadata WHERE key='person.profile'")?.value;
+      // Created when there is something to put in it; until then the Memória's "Você" button opens it to be written.
+      if (profile && !this.get('SELECT 1 FROM notes WHERE path=?', PERSON_NOTE)) {
+        const at = new Date().toISOString();
+        this.run('INSERT INTO notes(path,bot_id,kind,title,body,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', PERSON_NOTE, null, 'chefe', PERSON_TITLE, profile, at, at);
+      }
+      this.run("DELETE FROM metadata WHERE key='person.profile'");
+      this.db.exec('PRAGMA user_version=22;');
     });
   }
   installSyncLog(table, spec) {
@@ -488,16 +499,16 @@ export class Database {
   }
   person() {
     const theme = this.get("SELECT value FROM metadata WHERE key='person.theme'")?.value;
-    const profile = this.get("SELECT value FROM metadata WHERE key='person.profile'")?.value;
+    // The note "Você"; a profile synced from a device that has not moved it to the note yet still counts until it does.
+    const profile = this.get('SELECT body FROM notes WHERE path=?', PERSON_NOTE)?.body ?? this.get("SELECT value FROM metadata WHERE key='person.profile'")?.value;
     return { name: this.get("SELECT value FROM metadata WHERE key='person.name'")?.value || '', ...(theme ? { theme } : {}), ...(profile ? { profile } : {}) };
   }
-  setPerson({ name, theme, profile } = {}) {
-    // The person's profile: data and preferences every bot reads (never passwords, keys or cards).
+  setPerson({ name, theme, profile, botId } = {}) {
+    // The person's note "Você": data and preferences every bot reads (never passwords, keys or cards).
     if (profile !== undefined) {
-      if (typeof profile !== 'string' || profile.length > 4000 || /\u0000/.test(profile)) throw new Error('A ficha tem até 4.000 caracteres.');
-      if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(profile)) throw new Error('A ficha é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
-      if (profile.trim()) this.run("INSERT INTO metadata VALUES('person.profile',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", profile.trim());
-      else this.run("DELETE FROM metadata WHERE key='person.profile'");
+      if (typeof profile !== 'string' || /\u0000/.test(profile)) throw new Error('Texto inválido para a nota Você.');
+      if (/(senha|password|cvv|token|chave\s*(pix|api|privada))\s*[:=]/i.test(profile)) throw new Error('A nota Você é lida por todos os bots: tire senhas, chaves e dados de cartão dela.');
+      this.transaction(() => { writePersonNote(this, profile.trim(), { botId: botId ?? null }); this.run("DELETE FROM metadata WHERE key='person.profile'"); });
     }
     if (name !== undefined) {
       if (typeof name !== 'string' || name.length > 40 || /[\u0000-\u001f]/.test(name)) throw new Error('Use um nome de até 40 letras.');

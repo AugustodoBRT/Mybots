@@ -38,6 +38,7 @@ import { Negotiations } from './negotiation.mjs';
 import { Nodes } from './nodes.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-frame.mjs';
 import { Link } from './link.mjs';
+import { localSources, claudeSessions, codexSessions, readExport, digest, botFolders } from './history-import.mjs';
 import { Tables, Decisions } from './shared-data.mjs';
 import { Canvas } from './canvas.mjs';
 import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
@@ -863,6 +864,27 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         // The computer's window sends a big file in parts (3 MB each) before the message that carries it.
         case 'file.uploadStart': return attachments.uploadBegin(db.requireBot(params.botId).id, params.name, params.mime);
         case 'file.uploadChunk': return attachments.uploadChunk(params.upload, Number.isInteger(params.offset) ? params.offset : -1, params.data);
+        // "Importar o que as IAs já sabem de você": what is on this device, then one Markdown with the person's own messages for the Chefe.
+        case 'history.sources': return { ...localSources(), chief: db.bots().find(bot => bot.isChief && !bot.deletedAt)?.id || null };
+        case 'history.read': {
+          const chief = db.bots().find(bot => bot.isChief && !bot.deletedAt);
+          if (!chief) throw new Error('Crie o Chefe primeiro: é ele quem lê e organiza o que veio das outras IAs.');
+          const sources = Array.isArray(params.sources) ? params.sources.filter(item => ['claude', 'codex'].includes(item)) : [];
+          const skip = botFolders(directory);
+          const sessions = [...(sources.includes('claude') ? claudeSessions({ skip }) : []), ...(sources.includes('codex') ? codexSessions({ skip }) : [])];
+          if (typeof params.upload === 'string') {
+            const path = attachments.uploadTake(chief.id, params.upload);
+            try { sessions.push(...readExport(path)); } finally { rmSync(path, { force: true }); }
+          } else if (params.file && typeof params.file.data === 'string') {
+            if (params.file.data.length > 14_000_000) throw new Error('No celular o arquivo pode ter até 10 MB. Para uma exportação maior, use o MyBots do computador.');
+            const raw = Buffer.from(params.file.data, 'base64'), temp = join(directory, 'import-' + randomUUID());
+            writeFileSync(temp, raw, { mode: 0o600 });
+            try { sessions.push(...readExport(temp)); } finally { rmSync(temp, { force: true }); }
+          }
+          if (!sessions.length) throw new Error('Não achei mensagens suas nessas fontes.');
+          const result = digest(sessions);
+          return { chief: chief.id, name: 'o-que-as-ias-sabem-de-mim.md', mime: 'text/markdown', data: Buffer.from(result.text).toString('base64'), sessions: result.sessions, messages: result.messages, counts: result.counts };
+        }
         case 'outbox.ack': for (const id of Array.isArray(params.ids) ? params.ids.slice(0, 50) : []) outbox.get(id)?.done(); return { acknowledged: true };
         case 'device.timezone': return routines.setTimeZone(params.timeZone);
         case 'routines.list': return routines.all();

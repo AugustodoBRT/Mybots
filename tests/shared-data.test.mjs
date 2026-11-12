@@ -132,6 +132,14 @@ test('phase 1: tool calls wait their turn, memory search, clear note errors, cha
   const approval = f.app.state().approvals[0]; assert.match(approval.summary, /Depois:\nEstuda SI na UFPE, 5º período\./);
   await f.app.rpc('approval.respond', { approvalId: approval.id, approved: true, actionHash: approval.actionHash });
   await writing; assert.equal(f.app.db.person().profile, 'Estuda SI na UFPE, 5º período.');
+  // The profile is the note "Você" at the center of the memory: the old text goes to the history, and only profile_write changes it.
+  const personNote = await f.app.rpc('notes.read', { path: 'chefe/voce.md' });
+  assert.equal(personNote.title, 'Você'); assert.equal(personNote.body, 'Estuda SI na UFPE, 5º período.'); assert.equal(personNote.botId, f.chief.id);
+  assert.ok((await f.app.rpc('notes.list', { prefix: 'arquivo/historico/chefe/voce' })).notes.length >= 1);
+  await assert.rejects(chief.call('shared.note_write', { path: 'chefe/voce.md', text: 'Outra coisa.', overwrite: true }), /profile_write/);
+  await assert.rejects(f.app.rpc('notes.archive', { path: 'chefe/voce.md' }), /fica sempre na memória/);
+  await f.app.rpc('notes.write', { path: 'chefe/voce.md', text: 'Estuda SI na [[UFPE]].', create: false });
+  assert.equal((await run.call('profile.read')).profile, 'Estuda SI na [[UFPE]].');
   // Overlap: two bots with similar roles.
   f.app.db.create({ name: 'Estágios', instructions: 'Procura estágios de tecnologia e vagas de dados no Recife para a pessoa.', autonomy: 'local' }, selection);
   f.app.db.create({ name: 'Empregos', instructions: 'Procura vagas de dados e estágios de tecnologia no Recife.', autonomy: 'local' }, selection);

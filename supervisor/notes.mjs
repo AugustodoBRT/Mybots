@@ -1,6 +1,25 @@
 import { fold, uuid } from './validation.mjs';
 
 const kinds = { chefe: 'chefe', entregas: 'entrega', arquivo: 'arquivo' };
+// The person's own note, at the center of the memory map: who they are and what they prefer. Every bot reads it (profile_read);
+// a bot changes it only through profile_write, which the person approves. It is never archived or pruned.
+export const PERSON_NOTE = 'chefe/voce.md';
+export const PERSON_TITLE = 'Você';
+
+/** Writes the person's note (creating it the first time), keeping the previous text in arquivo/historico/. Empty text empties it. */
+export function writePersonNote(db, text, { botId = null } = {}) {
+  checkBody(text);
+  const at = new Date().toISOString(), previous = db.get('SELECT * FROM notes WHERE path=?', PERSON_NOTE);
+  if (previous) {
+    if (previous.body === text) return { path: PERSON_NOTE };
+    const history = keepHistory(db, previous, at);
+    db.run('UPDATE notes SET body=?,bot_id=?,updated_at=? WHERE path=?', text, botId, at, PERSON_NOTE);
+    db.notify('notes.changed', { path: PERSON_NOTE });
+    return { path: PERSON_NOTE, history };
+  }
+  saveNote(db, { path: PERSON_NOTE, bot_id: botId, kind: 'chefe', title: PERSON_TITLE, body: text, created_at: at, updated_at: at });
+  return { path: PERSON_NOTE };
+}
 const secret = /\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}|AKIA[A-Z0-9]{12,})|(?:^|\n)[ \t]*(?:password|senha|token|api[_ -]?key)[ \t]*[:=][ \t]*\S|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/i;
 
 export function validPath(path) {
@@ -148,6 +167,7 @@ export function noteTool(db, bot, tool, args) {
       return { path, ...(project ? { project: project.title, projectPath: project.path } : {}),
         ...(known.length ? { message: (project ? `Entrega ligada ao projeto "${project.title}". ` : 'Entrega sem projeto. ') + `Projetos deste bot: ${known.join('; ')}. Use sempre o mesmo nome em project.` } : {}) };
     }
+    if (args.path === PERSON_NOTE) throw new Error(tool === 'shared.archive' ? 'A nota Você fica sempre na memória.' : 'A nota Você muda só com profile_write: a pessoa vê o antes e o depois e aprova.');
     const previous = read(args.path);
     if (tool === 'shared.archive') {
       if (!previous) throw new Error('Entrega não encontrada.');
@@ -335,13 +355,14 @@ export function notesRpc(db, method, params = {}) {
         db.run('UPDATE notes SET body=?,updated_at=? WHERE path=?', text, at, path);
         db.notify('notes.changed', { path });
       } else {
-        saveNote(db, { path, kind, title: path.split('/').at(-1).slice(0, -3), body: text, bot_id: null, created_at: at, updated_at: at });
+        saveNote(db, { path, kind, title: path === PERSON_NOTE ? PERSON_TITLE : path.split('/').at(-1).slice(0, -3), body: text, bot_id: null, created_at: at, updated_at: at });
       }
       action = 'note_written'; detail = previous ? 'Você editou a nota' : 'Você criou a nota';
     } else {
       if (!previous) throw new Error('Nota não encontrada.');
       if (method === 'notes.archive') {
         if (kind === 'arquivo') throw new Error('Esta nota já está no arquivo.');
+        if (path === PERSON_NOTE) throw new Error('A nota Você fica sempre na memória: para mudar, edite o texto.');
         result = archive(db, previous, summary, at);
         action = 'note_archived'; detail = 'Você arquivou a nota';
       } else {

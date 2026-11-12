@@ -2147,3 +2147,18 @@ Pedido do dono: quem usa o app pede melhorias ou conta problemas de dentro do ap
 - **Servidor de relatos** (`relay/reports.mjs`, serviço `mybots-relatos` na VM, porta 3241, `handle /relatos*` no Caddy): é separado do relé, que continua só encaminhando bytes. O envio é aberto, com até 6 relatos por hora por endereço e 300 por dia. Só aceita foto JPG, PNG ou WebP de até 5 MB, conferida pelos bytes do arquivo. O teto é de 1 GB: quando enche, apaga primeiro os resolvidos mais antigos, nunca os novos.
 - **Página do dono** (`https://mybots-rele.duckdns.org/relatos`): pede senha (Basic). Depois de 10 senhas erradas, bloqueia por 15 minutos. Os relatos se dividem em novos, vistos e resolvidos, e dá para buscar, ver a foto ampliada, copiar o texto e apagar com dois toques. As mudanças exigem o cabeçalho `X-Relatos`, contra CSRF, e a página tem CSP sem script inline. Os dados ficam em `/var/lib/mybots-relatos`. A senha está em `/etc/mybots-relatos.senha` na VM e em `~/.mybots-relatos-senha` no PC do dono.
 - **Novidades** (`mobile/changelog.js`, `components/WhatsNew.js`): a primeira entrada precisa ser a versão do app, e `tests/changelog.test.mjs` falha se faltar. Quando o app fica pronto depois de atualizar, abre uma janela com Novo, Melhoria e Correção das versões ainda não vistas, até três. Ela só fecha no botão "Entendi" e cada aparelho guarda a última versão vista.
+
+## 0.94.3 (versionCode 195): a ficha vira a nota "Você" na Memória, e importar o que as IAs já sabem da pessoa
+
+Pedido do dono: a ficha deve ser uma nota no gráfico que todos os bots leem, e não uma opção nos Ajustes; e o app deve poder importar o que as sessões do Claude, do Codex e de outras IAs dizem sobre a pessoa.
+
+- **Nota "Você"** (`chefe/voce.md`, `PERSON_NOTE` em `supervisor/notes.mjs`): `profile_read` e `profile_write` passam a ler e escrever nela. Ela cabe até 8.000 caracteres, e cada mudança guarda a versão anterior em `arquivo/historico/`. Pelo `shared_note_write` nenhum bot consegue alterá-la; só o `profile_write`, que pede aprovação. Também não pode ser arquivada. A migração 22 (`SCHEMA` 22) leva o `person.profile` antigo para a nota e apaga a chave. Se não havia ficha, a nota nasce na primeira vez que alguém escreve nela. No gráfico ela fica maior, na cor de destaque e sempre com o nome. Os Ajustes não têm mais o campo "Sua ficha".
+- **Memória**: tem os botões "Você", que abre a nota ou começa a escrevê-la, e "Importar das IAs". No celular eles ficam numa linha abaixo do título.
+- **Importação** (`supervisor/history-import.mjs`, RPCs `history.sources` e `history.read`, `components/HistoryImport.js`): lê só as mensagens que a pessoa digitou no Claude Code (`~/.claude/projects`), no Codex (`~/.codex/sessions`) e nas exportações do ChatGPT e do Claude.ai (.zip ou `conversations.json`, com o leitor de zip próprio do app).
+  - Fica de fora: o que o próprio CLI injeta, subagentes e resultados de ferramentas.
+  - Pastas de agentes não entram: `~/MyBots`, `workspaces/`, `.mybots*`, `/tmp`, emulador e `OpenBot/Agents`.
+  - Senhas, chaves, tokens, e-mails, telefones e números de cartão são escondidos.
+  - Cada mensagem vai até 700 caracteres, cada sessão até 5 mil e o total até 120 mil.
+  - O Markdown vai como anexo para o Chefe. Ele mostra uma lista numerada, espera a confirmação e só então propõe a nota com `profile_write` (que pede aprovação) e notas para os assuntos maiores.
+  - No PC deste dono, o leitor encontrou 64 sessões do Claude Code e 12 do Codex, sem nenhuma dos bots.
+- O pacote do supervisor do APK (`scripts/package-supervisor.mjs`) inclui o `history-import.mjs`.

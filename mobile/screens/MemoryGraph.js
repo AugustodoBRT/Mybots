@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
-import { LAYOUT, createLayout, fitBox, graphModel, hitTest, labelIds } from '../state/graph-layout';
+import { LAYOUT, PERSON_PATH, createLayout, fitBox, graphModel, hitTest, labelIds } from '../state/graph-layout';
 import { F, themed } from '../theme';
 import { KIND_NAMES, botHues, kindHues, look } from './memory-look';
 
@@ -245,7 +245,7 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
   const near = active ? model.adjacency.get(active) : null;
   const lit = id => near ? id === active || near.has(id) : matches ? matches.has(id) : true;
   const items = useMemo(() => placed.map(({ node, id, x, y, r }) => ({ id, x, y, r: Math.max(r, 3.2 / tier), opacity: lit(id) ? 1 : 0.14,
-    fill: node.ghost ? L.unresolved : colorOf(node), ring: node.orphan, ringColor: L.faint,
+    fill: node.ghost ? L.unresolved : node.person ? L.accent : colorOf(node), ring: node.orphan && !node.person, ringColor: L.faint,
     active: id === active || id === current, accent: L.accent, px: 1 / tier })), [placed, active, matches, colorOf, L, tier]);
   const edges = useMemo(() => {
     const at = new Map(placed.map(p => [p.id, p])), paths = { plain: '', lit: '' };
@@ -263,9 +263,11 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
     const ids = shown && !soloLabel ? labelIds(model, tier * boost, active) : new Set();
     // soloLabel: only the title of the note under the pointer, not its neighbours'.
     const keep = new Set((soloLabel ? [active] : [active, current, ...(near || [])]).filter(Boolean));
+    // The person's note keeps its name at any zoom.
+    if (!soloLabel && model.byId.has(PERSON_PATH)) keep.add(PERSON_PATH);
     for (const id of keep) ids.add(id);
     const base = compact ? 11 : 12;
-    return placed.filter(p => ids.has(p.id)).map(({ node, id, x, y, r }) => ({ id, x, y, r, text: short(node.title || id), strong: id === active || id === current,
+    return placed.filter(p => ids.has(p.id)).map(({ node, id, x, y, r }) => ({ id, x, y, r, text: short(node.title || id), strong: id === active || id === current || node.person,
       // The small local map keeps its titles at a fixed size on screen; the big one scales them with the zoom.
       opacity: lit(id) ? 1 : 0.2, size: compact ? 10.5 / tier : keep.has(id) ? Math.max(base, 11.5 / tier) : base }));
   }, [placed, model, tier, active, matches, display.text, current, compact, soloLabel]);

@@ -49,7 +49,7 @@ async function loadMobile(file, extra = {}) {
     '../state/graph-layout': layout, '../markdown': markdown, '../RichMessage': { Chart: () => null },
     './memory-look': { look: () => LOOK, botHues: bots => new Map(bots.map((bot, i) => [bot.id, '#hue' + i])), kindHues: () => ({ chefe: '#chefe', entrega: '#entrega', arquivo: '#arquivo' }), KIND_NAMES: { chefe: 'Chefe', entrega: 'Entregas', arquivo: 'Arquivo' } },
     '../components/shared': { Avatar: () => null, IconButton: ({ label }) => React.createElement('button', { 'aria-label': label }) },
-    '../state/note-view': view, '../styles': { TOP: 0 },
+    '../state/note-view': view, '../styles': { TOP: 0 }, '../components/HistoryImport': { HistoryImport: () => null },
     '../theme': { themed: () => new Proxy({}, { get: () => ({}) }), F: {}, Icon: () => null, currentTheme: () => 'dark' },
     ...extra };
   const exports = {};
@@ -59,7 +59,7 @@ async function loadMobile(file, extra = {}) {
 
 
 test('memory list rows: bot colour, highlights, orphan badge; references keep missing notes inert', async () => {
-  const { exports, render } = await loadMobile('screens/Memory.js', { './MemoryGraph': {}, './NoteReader': {} });
+  const { exports, render } = await loadMobile('screens/Memory.js', { './MemoryGraph': {}, './NoteReader': {}});
   const row = render(exports.NoteRow, { note: { title: 'Revisão', path: 'entregas/revisao.md', botId: 'sol', botName: 'Sol',
     snippet: 'Uma decisão', snippetMatch: [4, 11], updatedAt: new Date().toISOString(), incomingCount: 0, outgoingCount: 0 }, hue: '#hue0', onOpen() {} });
   assert.match(row, /aria-label="Ler Revisão"/);

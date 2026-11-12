@@ -6,6 +6,10 @@ import { noteChanged } from '../state/note-view';
 import { TOP } from '../styles';
 import { F, Icon, themed } from '../theme';
 import { KIND_NAMES, botHues, look } from './memory-look';
+import { HistoryImport } from '../components/HistoryImport';
+
+// The person's own note, at the center of the memory (it replaced the profile in the settings).
+const PERSON_NOTE = 'chefe/voce.md';
 
 const folders = { chefe: 'Chefe', entrega: 'Entregas', arquivo: 'Arquivo' };
 const periods = [[0, 'Qualquer data'], [1, 'Últimas 24 horas'], [7, 'Últimos 7 dias'], [30, 'Últimos 30 dias']];
@@ -136,10 +140,11 @@ export function References({ label, items, onOpen }) {
   </View>;
 }
 
-export function MemoryScreen({ bots, call, version, onClose }) {
+export function MemoryScreen({ bots, call, version, onClose, onOpenChief }) {
   const L = look();
   const [stack, setStack] = useState([]), path = stack.at(-1);
   const [note, setNote] = useState(null), [editor, setEditor] = useState(null), [confirm, setConfirm] = useState('');
+  const [importing, setImporting] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [loadError, setLoadError] = useState(''), [reload, setReload] = useState(0);
   const [filters, setFilters] = useState(noFilters), [pages, setPages] = useState(1), [width, setWidth] = useState(0);
   const [view, setView] = useState(rememberedView), [graphMounted, setGraphMounted] = useState(rememberedView === 'graph');
@@ -195,20 +200,34 @@ export function MemoryScreen({ bots, call, version, onClose }) {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
+  // The note "Você" is created the first time something is written in it: until then the button opens it to be written.
+  async function openPerson() {
+    setError('');
+    try { await call('notes.read', { path: PERSON_NOTE }); open(PERSON_NOTE); }
+    catch (e) { if (/não encontrada/i.test(e.message)) setEditor({ name: 'voce.md', text: '', person: true }); else setError(e.message); }
+  }
   const narrow = width > 0 && width < 520;
-  const title = editor ? editor.base ? 'Editar nota' : 'Nova nota' : path ? latest ? `${KIND_NAMES[latest.kind] || ''} / ${latest.title}` : 'Nota' : 'Memória';
+  const title = editor ? editor.person ? 'Você' : editor.base ? 'Editar nota' : 'Nova nota' : path ? latest ? `${KIND_NAMES[latest.kind] || ''} / ${latest.title}` : 'Nota' : 'Memória';
 
   return <View style={[s.screen, { backgroundColor: L.bg }]} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
     <View style={[s.bar, { borderBottomColor: L.panelBorder }]}>
       <BarIcon icon="back" label="Voltar" onPress={back} disabled={busy} />
       <Text style={[s.barTitle, { color: path || editor ? L.muted : L.text }]} numberOfLines={1}>{title}</Text>
       {browsing ? <><ViewToggle view={view} onChange={chooseView} />
+        {narrow ? null : <><Button label="Você" name="Abrir a nota Você" onPress={openPerson} />
+          <Button label="Importar das IAs" name="Importar o que as IAs já sabem de você" onPress={() => setImporting(true)} /></>}
         <Button label={narrow ? '+' : 'Nova nota'} name="Nova nota" onPress={() => { setError(''); setEditor({ name: '', text: '' }); }} /></> : null}
       {path && !editor && latest ? latest.kind === 'arquivo' ? <Button label="Apagar para sempre" danger onPress={() => setConfirm('remove')} /> :
         <><Button label="Editar" onPress={() => { setConfirm(''); setError(''); setEditor({ base: latest, text: latest.body }); }} />
-          <Button label="Arquivar" onPress={() => setConfirm('archive')} /></> : null}
+          {path === PERSON_NOTE ? null : <Button label="Arquivar" onPress={() => setConfirm('archive')} />}</> : null}
     </View>
+    {/* On a phone the bar keeps its title: the person's note and the import get their own line below it. */}
+    {browsing && narrow ? <View style={[s.inline, { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: L.panelBorder }]}>
+      <Button label="Você" name="Abrir a nota Você" onPress={openPerson} />
+      <Button label="Importar das IAs" name="Importar o que as IAs já sabem de você" onPress={() => setImporting(true)} /></View> : null}
     {error ? <Text accessibilityRole="alert" style={[s.notice, { color: L.danger }]}>{error}</Text> : null}
+    {path === PERSON_NOTE && !editor && latest ? <Text style={[s.notice, { color: L.muted }]}>{latest.body.trim() ? 'Todos os bots leem esta nota para saber quem você é. Só o Chefe propõe mudanças, e você aprova antes.' : 'Escreva aqui quem você é, o que faz e como prefere as respostas: todos os bots leem esta nota. Ou use Importar das IAs para o Chefe montar a partir das suas conversas.'}</Text> : null}
+    <HistoryImport visible={importing} onClose={() => setImporting(false)} call={call} onOpenChief={onOpenChief} />
     {confirm && !editor ? <View style={[s.confirm, { backgroundColor: L.panel, borderBottomColor: L.panelBorder }]}>
       <Text style={[s.meta, { color: L.text, flex: 1 }]}>{confirm === 'archive' ? 'Mover para o arquivo? Nada é apagado.' : 'Apagar esta nota para sempre? A exclusão será sincronizada com os outros aparelhos e não dá para desfazer.'}</Text>
       <Button label="Cancelar" disabled={busy} onPress={back} />
@@ -225,7 +244,8 @@ export function MemoryScreen({ bots, call, version, onClose }) {
       {graphMounted ? <View style={[s.layer, { display: browsing && view === 'graph' ? 'flex' : 'none' }]}>
         <MemoryGraph bots={bots} call={call} version={version + reload} filters={filters} onFilters={changeFilters} onOpen={open} /></View> : null}
       {editor ? <ScrollView style={s.layer} keyboardShouldPersistTaps="handled" contentContainerStyle={s.editorContent}>
-        {editor.base ? <Text style={[s.meta, { color: L.faint }]}>{path}</Text> : <><Text style={[s.meta, { color: L.muted }]}>Caminho dentro de chefe/</Text>
+        {editor.person ? <Text style={[s.meta, { color: L.muted }]}>Sua nota Você: quem você é, o que faz e como prefere as respostas. Todos os bots leem; senhas e cartões não podem entrar.</Text>
+          : editor.base ? <Text style={[s.meta, { color: L.faint }]}>{path}</Text> : <><Text style={[s.meta, { color: L.muted }]}>Caminho dentro de chefe/</Text>
           <TextInput accessibilityLabel="Caminho da nova nota" style={[s.input, { backgroundColor: L.input, borderColor: L.panelBorder, color: L.text }]} placeholder="projetos/site.md" placeholderTextColor={L.faint}
             value={editor.name} autoCapitalize="none" editable={!busy} onChangeText={name => setEditor({ ...editor, name })} /></>}
         {editor.base?.kind === 'entrega' && editor.base.botId ? <Text style={[s.meta, { color: L.muted }]}>Esta entrega foi escrita por um bot. A versão anterior ficará no histórico.</Text> : null}

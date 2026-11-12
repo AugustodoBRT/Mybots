@@ -8,6 +8,7 @@ import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
 import { useState, useEffect, useRef } from 'react';
 import { termuxAvailable, pickFile } from '../termux';
+import { reportOpen } from '../components/Report';
 import { desktop, pwa, desktopBus, readingColumn, pendingBrowser } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
@@ -118,13 +119,13 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
   const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles; const [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (!desktop || !interactive) return undefined;
-    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files'));
+    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files')) && !reportOpen();
     const enter = event => { if (has(event)) { depth++; setDragging(true); } };
     const over = event => { if (has(event)) event.preventDefault(); };
     const leave = event => { if (has(event) && --depth <= 0) { depth = 0; setDragging(false); } };
-    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
+    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length && !reportOpen()) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
     const paste = event => {
-      const list = Array.from(event.clipboardData?.files || []); if (!list.length) return;
+      const list = Array.from(event.clipboardData?.files || []); if (!list.length || reportOpen()) return;
       // Copied text that also carries a picture (cells of a sheet) stays text; a screenshot or a copied picture or file becomes an attachment.
       if (event.clipboardData.getData('text/plain').trim()) return;
       event.preventDefault(); dropRef.current(list);

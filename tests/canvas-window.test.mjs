@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, extname, normalize } from 'node:path';
 import { createRequire } from 'node:module';
 import { createSupervisor } from '../supervisor/index.mjs';
+import { APP_VERSION } from '../mobile/changelog.js';
 
 const run = promisify(execFile);
 const browserPath = process.env.MYBOTS_TEST_BROWSER || '/usr/bin/google-chrome-stable';
@@ -43,6 +44,8 @@ test('canvas: cartões ao vivo, página isolada, arrastar, zoom, trocar de bot e
   // Hooks run in the order they were added: the folder goes last, after the browser, the server and the supervisor.
   t.after(() => browser.close()); t.after(() => rm(directory, { recursive: true, force: true }));
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  // The news window after an update would cover the screen: here the current version counts as already seen.
+  await page.addInitScript(version => { try { localStorage.setItem('mybots.seenVersion', version); } catch {} }, APP_VERSION);
   const errors = [], outside = []; page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (/example\.com/.test(request.url())) outside.push(request.url()); });
   await page.goto(`http://127.0.0.1:${web.address().port}/`);

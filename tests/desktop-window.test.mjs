@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, extname, normalize } from 'node:path';
 import { createRequire } from 'node:module';
 import { createSupervisor } from '../supervisor/index.mjs';
+import { APP_VERSION } from '../mobile/changelog.js';
 
 const run = promisify(execFile);
 const hasChrome = existsSync('/usr/bin/google-chrome-stable');
@@ -44,6 +45,8 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome-stable', headless: true, args: ['--no-sandbox'] });
   t.after(async () => { await browser.close(); web.close(); await app.close(); await rm(directory, { recursive: true, force: true }); });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // The news window after an update would cover the screen: here the current version counts as already seen.
+  await page.addInitScript(version => { try { localStorage.setItem('mybots.seenVersion', version); } catch {} }, APP_VERSION);
   const errors = []; page.on('pageerror', error => errors.push(error.message)); page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   const seen = async (text, options = {}) => page.getByText(text, { exact: true }).first().waitFor({ timeout: 40000, ...options });
   await page.goto(`http://127.0.0.1:${web.address().port}/`);
@@ -110,6 +113,30 @@ const addUsage = (app, botId, daysAgo, input, cached, output, model = 'gpt-6.1-s
   // The attached files go with the message to the bot: the message shows them.
   await page.getByLabel('Sua mensagem').fill('Veja os anexos'); await page.getByLabel('Enviar mensagem').click();
   await seen('Veja os anexos'); await page.getByLabel(/Imagem colada\.png/).first().waitFor(); await seen('arrastada.txt');
+
+  // Reportar: the window takes a message and a dropped picture (made smaller), sends both to the reports server, and the
+  // dropped picture does not land in the open conversation.
+  const reports = [];
+  await page.route('https://mybots-rele.duckdns.org/relatos/enviar', route => { reports.push(JSON.parse(route.request().postData())); route.fulfill({ status: 201, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"ok":true,"id":"1"}' }); });
+  await page.getByLabel('Reportar um problema ou pedir uma melhoria').click();
+  await page.getByLabel('Mensagem do relato').fill('O Canvas travou ao arrastar');
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 3200; canvas.height = 1000; canvas.getContext('2d').fillRect(0, 0, 50, 50);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const data = new DataTransfer(); data.items.add(new File([blob], 'relato.png', { type: 'image/png' }));
+    window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: data, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+  });
+  await page.getByLabel('Foto anexada').waitFor();
+  assert.equal(await page.getByText('Solte para anexar à mensagem').count(), 0, 'a conversa não recebe a imagem do relato');
+  await page.getByRole('button', { name: 'Enviar', exact: true }).click(); await seen('Recebido, obrigado!');
+  assert.equal(reports.length, 1); assert.equal(reports[0].text, 'O Canvas travou ao arrastar'); assert.equal(reports[0].platform, 'pc');
+  assert.equal(reports[0].image.mime, 'image/jpeg');
+  const sent = Buffer.from(reports[0].image.data, 'base64'); assert.equal(sent[0], 0xff, 'a foto vai como JPEG');
+  assert.equal(sent.readUInt16BE(sent.indexOf(Buffer.from([0xff, 0xc0])) + 7), 1600, 'a foto vai com no máximo 1600 px de largura');
+  await page.getByLabel('Fechar', { exact: true }).last().click();
+  await page.waitForFunction(() => !document.body.innerText.includes('Recebido, obrigado!'));
+  assert.equal(await page.getByText('relato.png').count(), 0);
 
   // Desktop reading column, distinct bubbles and a collapsible conversation list.
   const userBubble = page.locator('[data-desktop-message="user"]').last().locator(':scope > div').first();

@@ -12,6 +12,7 @@ import { AiRuntimes } from './AiRuntimes';
 import { RemotePanel, TermuxGuide } from './Setup';
 import { DesktopUpdate } from './DesktopUpdate';
 import { PcUpdate } from './PcUpdate';
+import { ReportForm } from './Report';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
 import { passwordSummary } from '../password-groups.js';
@@ -126,6 +127,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     ...(!desktop && termuxAvailable ? [{ key: 'termux', icon: 'bolt', title: 'Termux (avançado)', summary: remote ? 'Usar o celular sem depender do computador' : 'Ativo: o celular tem o próprio MyBots', keywords: ['termux', 'sozinho', 'sem computador', 'offline', 'tutorial', 'instalar', 'codex'] }] : []),
     ...(termuxAvailable || desktop ? [{ key: 'secrets', icon: 'key', title: desktop ? 'Senhas' : 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : desktop ? 'Senhas de sites, as mesmas do celular' : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
     ...(!desktop && !remote ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar', 'termux'] }] : []),
+    { key: 'report', icon: 'alert', title: 'Reportar', summary: 'Conte um problema ou peça uma melhoria', keywords: ['problema', 'bug', 'erro', 'defeito', 'sugestão', 'melhoria', 'ideia', 'pedido', 'feedback', 'relato', 'foto', 'print'] },
     { key: 'about', icon: 'info', title: 'Sobre', summary: `MyBots ${a.update?.info?.currentName || ''}${a.update?.info?.available ? ' · atualização disponível' : ''}`.trim(), keywords: ['versão', 'atualização', 'atualizar', 'novidades', 'privacidade'] }
   ], [data, phone, remote, passwords, a.update?.info?.available, a.update?.info?.currentName, data?.aiAccounts]);
   const shown = matchCategories(query, categories);
@@ -192,6 +194,10 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
         const device = await a.readDeviceInfo(); const result = await a.call('environment.get'); a.setText(`${device}\n\n${result.report}`);
       })} />
       <Pressable disabled={a.busy} onPress={() => a.copyText(a.text).catch(error => a.setText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.accent} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable>
+    </>;
+    if (key === 'report') return <>
+      <Text style={[styles.optionDetail, { marginBottom: 4 }]}>Conte um problema ou peça uma melhoria. Chega direto para quem faz o MyBots.</Text>
+      <ReportForm active={visible || inline} />
     </>;
     if (key === 'about') return <>
       {desktop ? <DesktopUpdate full /> : null}

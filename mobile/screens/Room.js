@@ -5,6 +5,7 @@ import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, nativeMessage, IconButton, RoomFaces, Dots, EarlierButton, ApprovalCard, Avatar, offline, HUE_OF, ToEndButton, Composer } from '../components/shared';
 import { useEffect, useRef, useState } from 'react';
 import { pickFile } from '../termux';
+import { reportOpen } from '../components/Report';
 import { FlatList, View, Text, ScrollView, Pressable } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
@@ -56,13 +57,13 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
   const dropRef = useRef(addWebFiles); dropRef.current = addWebFiles; const [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (!desktop) return undefined;
-    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files'));
+    let depth = 0; const has = event => Boolean(event.dataTransfer?.types?.includes('Files')) && !reportOpen();
     const enter = event => { if (has(event)) { depth++; setDragging(true); } };
     const over = event => { if (has(event)) event.preventDefault(); };
     const leave = event => { if (has(event) && --depth <= 0) { depth = 0; setDragging(false); } };
-    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
+    const drop = event => { depth = 0; setDragging(false); if (event.dataTransfer?.files?.length && !reportOpen()) { event.preventDefault(); dropRef.current(event.dataTransfer.files); } };
     const paste = event => {
-      const list = Array.from(event.clipboardData?.files || []); if (!list.length) return;
+      const list = Array.from(event.clipboardData?.files || []); if (!list.length || reportOpen()) return;
       if (event.clipboardData.getData('text/plain').trim()) return;   // copied text that also carries a picture stays text
       event.preventDefault(); dropRef.current(list);
     };

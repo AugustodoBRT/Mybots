@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Relatos do MyBots</title>
+<link rel="stylesheet" href="/relatos/painel.css">
+</head>
+<body>
+<header>
+  <div class="title"><h1>Relatos</h1><span id="summary" class="muted"></span></div>
+  <nav id="filters" aria-label="Filtrar relatos">
+    <button data-filter="novo" class="on">Novos <b data-count="novo">0</b></button>
+    <button data-filter="visto">Vistos <b data-count="visto">0</b></button>
+    <button data-filter="resolvido">Resolvidos <b data-count="resolvido">0</b></button>
+    <button data-filter="todos">Todos <b data-count="todos">0</b></button>
+  </nav>
+  <input id="search" type="search" placeholder="Buscar no texto, versão ou aparelho" aria-label="Buscar">
+</header>
+<main id="list" aria-live="polite"></main>
+<p id="empty" class="muted" hidden>Nada por aqui.</p>
+<div id="viewer" hidden><img id="viewerImage" alt="Foto do relato"></div>
+<script src="/relatos/painel.js"></script>
+</body>
+</html>

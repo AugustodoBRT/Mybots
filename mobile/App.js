@@ -40,6 +40,7 @@ import { HomeScreen } from './screens/Home';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
 import Canvas, { canvasEvent } from './components/Canvas';
+import { WhatsNew } from './components/WhatsNew';
 import { FileBadge, formatSize } from './RichMessage';
 
 const UPLOAD_PART = 3 * 1024 * 1024;
@@ -992,6 +993,7 @@ function AppMain() {
     {data && !share?.botId ? <ShareSheet share={share} bots={data.bots || []} phone={mode === 'phone'} onPick={pickShare} onClose={() => setShare(null)} /> : null}
     <ModeSheet visible={modeVisible} mode={mode} onClose={() => setModeVisible(false)} onSelect={changeMode} />
     <TermuxLogModal visible={logsVisible} log={termuxLog} copied={logsCopied} onClose={() => setLogsVisible(false)} onCopy={copyLogs} />
+    <WhatsNew ready={!initialLoading && Boolean(data)} />
     {desktop ? null : <Splash bot={data?.bots?.find(item => item.isChief && !item.deletedAt) || null} ready={!initialLoading && !String(data?.connection?.message || '').startsWith('Preparando')} note={String(data?.connection?.message || '').startsWith('Preparando') ? data.connection.message : ''} />}
   </View>;
 }

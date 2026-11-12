@@ -32,6 +32,8 @@ export const openNotificationAccess = () => native.openNotificationAccess();
 export const flushNotifications = () => native.flushNotifications();
 export const supervisorParts = () => native.supervisorParts();
 export const pickFile = () => native.pickFile();
+// Older builds without it send the photo as it is.
+export const shrinkImage = data => typeof native?.shrinkImage === 'function' ? native.shrinkImage(data) : Promise.resolve(null);
 export const copyText = async value => { if (native) await native.copyText(String(value)); else await globalThis.navigator?.clipboard?.writeText(String(value)); };
 export const dictate = () => native.dictate();
 export const takeLaunchBot = () => native?.takeLaunchBot();

@@ -10,6 +10,7 @@ import { Avatar, RoomFaces, IconButton, Notice, ApprovalCard, DesktopPair, greet
 import { RoutinesSheet, NegotiationsSheet } from './Lists';
 import FaceArt from '../FaceArt';
 import { DesktopReveal } from './DesktopReveal';
+import { ReportSheet } from './Report';
 import { SideHeader, SideMenu, SideFrame, BrowserCards, BrowserFull } from './DesktopSide';
 import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
 import { browserMode, ownAccountBrowser } from '../local';
@@ -205,7 +206,7 @@ function Welcome({ onCreateChief, data, error, onRespond, approvalBusy, onCreate
 export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, error, selected, roomId, onOpen, onRoom, onHome, onCreate, onNewRoom, onProfile, onActivity, onMaintenance, onSearch, onRespond, approvalBusy, onComplete, onConnection, call, page = null, onPage, pages = {}, filePanel, fileOpen, onFileClose, profilePanel, profileOpen, fileKey, onProfileClose, onBrowserControl, onSend, onSendTo, onFile, children }) {
   const data = useStore(selectHome) || fallback;
   const { width } = useWindowDimensions(); const [collapsed, setCollapsed] = useState(false); const compact = width < 900 || collapsed;
-  const [listWidth, setListWidth] = useState(264); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false);
+  const [listWidth, setListWidth] = useState(264); const [palette, setPalette] = useState(false); const [help, setHelp] = useState(false); const [report, setReport] = useState(false);
   const [menu, setMenu] = useState(null);
   // The right bar: tabs of what is open in it (browser, agent settings, today, a file), always inside the bar.
   const [side, setSide] = useState({ open: false, tabs: [], active: null }); const [wide, setWide] = useState(false); const [full, setFull] = useState(false); const [fullBotId, setFullBotId] = useState(null);
@@ -261,13 +262,14 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
         if (palette) setPalette(false);
         else if (menu) setMenu(null);
         else if (help) setHelp(false);
+        else if (report) setReport(false);
         else if (full) setFull(false);
         else if (fileOpen) { onFileClose?.(); setSide(old => ({ ...old, open: false })); }
         else if (side.open) setSide(old => ({ ...old, open: false }));
       }
     };
     globalThis.addEventListener?.('keydown', listen); return () => globalThis.removeEventListener?.('keydown', listen);
-  }, [onCreate, onFileClose, full, palette, menu, help, fileOpen, side.open, page]);
+  }, [onCreate, onFileClose, full, palette, menu, help, report, fileOpen, side.open, page]);
   const divider = useMemo(() => { let start = 264; return PanResponder.create({ onStartShouldSetPanResponder: () => true, onPanResponderGrant: () => { start = listWidthRef.current; },
     onPanResponderMove: (_, gesture) => setListWidth(Math.max(220, Math.min(360, start + gesture.dx))) }); }, []);
   const listWidthRef = useRef(264); listWidthRef.current = listWidth;
@@ -294,6 +296,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       {rail.map(([icon, label, onPress, on, dot]) => railButton(icon, label, label === 'Negociações' ? 'Negócios' : label, onPress, on, dot))}
       <View style={{ flex: 1 }} />
       {page || compact ? <>{limit('claude') != null ? <AiMark compact provider="claude" left={limit('claude')} week={weekLimit('claude')} /> : null}{limit('codex') != null ? <AiMark compact provider="codex" left={limit('codex')} week={weekLimit('codex')} /> : null}</> : null}
+      {railButton('alert', 'Reportar um problema ou pedir uma melhoria', 'Reportar', () => setReport(true), report, false)}
       {railButton('info', 'Ajuda e atalhos', 'Ajuda', () => setHelp(true), false, false)}
       {railButton('settings', 'Ajustes', 'Ajustes', () => openPage('settings'), page === 'settings', false)}
     </View>
@@ -364,6 +367,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
     {(() => { const shown = (fullBotId && bots.find(item => item.id === fullBotId)) || bot; return full && (shown || native) ? <BrowserFull bot={shown} data={data} call={call} onControl={who => onBrowserControl(shown.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={shown && shown.id !== bot?.id && onSendTo ? text => onSendTo(shown.id, text) : onSend} /> : null; })()}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
     <Help visible={help} onClose={() => setHelp(false)} />
+    <ReportSheet visible={report} onClose={() => setReport(false)} />
     {menu ? <Modal transparent visible animationType="none" onRequestClose={() => setMenu(null)}><Pressable style={{ flex: 1 }} onPress={() => setMenu(null)} onContextMenu={event => { event?.preventDefault?.(); setMenu(null); }}>
       <View style={[s.menu, { left: menu.x, top: menu.y }]}>
         {[['Abrir a conversa', () => onOpen(menu.bot.id)], ['Perfil do bot', () => { onProfile(menu.bot); openKind('settings'); }]].map(([label, act]) => <Pressable key={label} accessibilityRole="menuitem" onPress={() => { setMenu(null); act(); }} style={({ hovered }) => [s.menuItem, hovered && s.rowHover]}><Text style={s.menuText}>{label}</Text></Pressable>)}

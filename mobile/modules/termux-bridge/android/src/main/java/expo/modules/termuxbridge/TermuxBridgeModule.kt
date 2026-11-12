@@ -360,6 +360,32 @@ class TermuxBridgeModule : Module() {
       Base64.encodeToString(context.assets.open("mybots-connectors.bin").use { it.readBytes() }, Base64.NO_WRAP)
     }
 
+    // A photo for a report: at most 1600 px on the longest side, turned upright and saved as JPEG, so it travels small.
+    AsyncFunction("shrinkImage") { data: String ->
+      val bytes = Base64.decode(data, Base64.DEFAULT)
+      val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+      if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("Não consegui abrir essa imagem.")
+      var sample = 1
+      while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1600) sample *= 2
+      val decoded = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        ?: throw IllegalArgumentException("Não consegui abrir essa imagem.")
+      val rotation = try {
+        when (android.media.ExifInterface(java.io.ByteArrayInputStream(bytes)).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)) {
+          android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+          android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+          android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+          else -> 0f
+        }
+      } catch (_: Exception) { 0f }
+      val scale = minOf(1f, 1600f / maxOf(decoded.width, decoded.height))
+      val matrix = android.graphics.Matrix().apply { postScale(scale, scale); postRotate(rotation) }
+      val bitmap = if (scale < 1f || rotation != 0f) android.graphics.Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true) else decoded
+      val out = java.io.ByteArrayOutputStream()
+      bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+      Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+    }
+
     // Attachments use the system document picker: the app reads only the file the person chose.
     AsyncFunction("pickFile") { promise: Promise ->
       val activity = appContext.currentActivity ?: return@AsyncFunction promise.reject("NO_ACTIVITY", "Abra o MyBots para escolher um arquivo.", null)

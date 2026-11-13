@@ -2258,3 +2258,9 @@ Achado no acompanhamento do redesign v2 (`reports/acompanhamento-redesign-v2.md`
 - **Controle da tela** (`pc/server.mjs`): o primeiro bot a usar `desktop_*` ficava dono da tela até o fim do turno inteiro. Agora o controle fica livre depois de 1 minuto sem uso (`desktopIdleMs`), e a recusa diz o nome do bot e há quantos segundos ele usou a tela (`tests/desktop.test.mjs`).
 - **Checklist sincronizado** (banco versão 24): `team.checklist.<chefe>` entrou nas configurações sincronizadas; o Chefe começou no celular e continuou no PC, onde a lista não existia.
 - **Não feito**: `browser_read` ainda não lista os campos de quadros de outra origem (só o `type` por coordenada os alcança).
+
+## 0.94.12 (versionCode 204): controle da tela desligado por padrão
+
+Pedido do dono: os bots não devem controlar a tela, o mouse e o Chrome dele; cada um usa o próprio navegador. O Chefe tinha aberto o Chrome real pelo controle da tela (`desktop_launch`), e o time Stitch disputava o mouse.
+- `desktop` passou a ser desligado por padrão (`supervisor/tools.mjs` `policy`, como o GitHub): sem ele as ferramentas `desktop_*` nem aparecem para o bot. Liga por bot em Perfil → Acesso → **Controlar a tela do computador** (`mobile/BotProfile.js`, `grants.set`).
+- Gerar código, rodar comandos e mexer em arquivos não dependem disso e já rodam vários bots ao mesmo tempo; os navegadores próprios dos bots também.

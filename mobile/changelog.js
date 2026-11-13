@@ -2,6 +2,9 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.12', date: '2026-11-13', items: [
+    ['melhoria', 'Os bots não mexem mais na sua tela, no seu mouse e no seu Chrome: cada um usa o navegador próprio dele, e vários trabalham ao mesmo tempo. Se quiser que um bot controle a tela do computador, ligue em Perfil → Acesso → Controlar a tela do computador.']
+  ] },
   { version: '0.94.11', date: '2026-11-13', items: [
     ['correcao', 'Os bots não conseguiam digitar em sites que desenham os campos dentro de outro site, como o Google Stitch. Agora eles clicam no campo e digitam nele, no computador e no celular. Senhas, códigos e cartões continuam só com você.'],
     ['correcao', 'O controle da tela do computador ficava preso com o primeiro bot que mexia nele até ele terminar tudo. Agora fica livre depois de 1 minuto sem uso, e o aviso diz qual bot está com ele.'],

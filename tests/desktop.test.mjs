@@ -50,8 +50,14 @@ async function setup(t, { desktopIdleMs } = {}) {
   return { app, node, bot, directory, actions, start, finish, approve, release: () => release?.(), setSteps: value => { steps = value; }, get results() { return results; }, get listed() { return listed; }, get visible() { return visible; }, get stopped() { return stopped; } };
 }
 
-test('desktop control is available by default on PC, but a phone-only run cannot invoke a PC executor', async t => {
+// The person's real screen is off unless turned on for the bot (13/11/2026): the bots work in their own browsers.
+test('desktop control is off by default, works once turned on for the bot, and a phone-only run cannot invoke a PC executor', async t => {
   const f = await setup(t);
+  const off = await f.start([['desktop_screenshot']]);
+  await f.finish(off);
+  assert.ok(!f.listed.includes('desktop_click') && !f.listed.includes('desktop_screenshot')); assert.equal(f.actions.length, 0);
+  assert.equal(f.app.tools.grants(f.bot.id).find(item => item.name === 'desktop').allowed, false);
+  f.app.tools.grant(f.bot.id, 'desktop', true);
   const id = await f.start([['desktop_screenshot'], ['desktop_click', { x: 10, y: 20 }]]);
   const result = await f.finish(id);
   assert.equal(result[0].content[1].type, 'image'); assert.equal(result[1].isError, undefined);
@@ -227,9 +233,10 @@ test('the system programs of the desktop tools run without the libraries of the 
 // 13/11/2026: a bot that clicked once held the screen for its whole turn, and the others were told only "outro bot".
 test('PC desktop: the screen is free again after a while without use, and a refusal names the bot that has it', async t => {
   const f = await setup(t, { desktopIdleMs: 300 });
+  f.app.tools.grant(f.bot.id, 'desktop', true);
   const first = await f.start([['desktop_windows']], 'segurar a tela');
   await until(() => f.actions.length === 1);
-  const other = await f.app.rpc('bot.create', { name: 'Outro', home: 'pc', access: 'full', ...selection });
+  const other = await f.app.rpc('bot.create', { name: 'Outro', home: 'pc', access: 'full', ...selection }); f.app.tools.grant(other.id, 'desktop', true);
   f.setSteps([['desktop_click', { x: 1, y: 2 }]]);
   const refused = await f.app.rpc('chat.send', { botId: other.id, requestId: randomUUID(), text: 'clicar' });
   await until(() => ['done','failed'].includes(f.app.db.task(refused.taskId).state));

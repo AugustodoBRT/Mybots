@@ -89,7 +89,7 @@ test('bots keep responding without a PC, move automatically when it connects, an
   f.app.nodes.connect({ id: 'pc', connections: { codex: { loggedIn: true } }, execute: f.execute });
   const second = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Continue' });
   await until(() => f.app.db.task(second.taskId).state === 'done');
-  assert.equal(f.turns[1].tools.computer.full, true); assert.equal(f.turns[1].tools.desktop, true);
+  assert.equal(f.turns[1].tools.computer.full, true); assert.equal(f.turns[1].tools.desktop, false, 'the person\'s screen is off unless turned on for the bot');
   assert.equal(f.turns[1].tools.connectors, false);
   f.app.nodes.disconnect('pc');
   assert.deepEqual(f.app.state().presence[bot.id], { online: true, where: 'phone' });

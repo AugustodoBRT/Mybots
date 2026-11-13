@@ -914,6 +914,7 @@ function AppMain() {
       onGoogleLogin={account => googleLogin(profileId, account)}
       onPhoneControl={async on => { await supervisor.current.call('bot.phoneControl', { botId: profileId, on }); await profileChanged(); }}
       onGithub={async on => { await supervisor.current.call('grants.set', { botId: profileId, tool: 'github', allowed: on }); await profileChanged(); }}
+      onDesktop={async on => { await supervisor.current.call('grants.set', { botId: profileId, tool: 'desktop', allowed: on }); await profileChanged(); }}
       loadAgentSkills={() => supervisor.current.call('agent.skills', {})}
       onAgentSkills={async skills => { await supervisor.current.call('bot.update', { botId: profileId, skills }); await profileChanged(); }}
       onFallback={async fallback => { await supervisor.current.call('bot.update', { botId: profileId, fallback }); await profileChanged(); }} FallbackSettings={FallbackSettings}

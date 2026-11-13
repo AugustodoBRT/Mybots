@@ -28,7 +28,7 @@ export function useKeyboardRoom(scroll) {
   }, []);
   return height;
 }
-export default function BotProfile({ chiefName, initialTab, visible, bot, models, defaultSelection, memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, aiAccounts, skills = [], onSkill, loadAgentSkills, onAgentSkills, onFallback, FallbackSettings, googleAccounts = [], onGoogleAccount, onGoogleLogin, onPhoneControl, grants = [], onGithub, onClose, onSave, onComplete, onRoutine, onDelete, ModelSettings, PhoneControl, inline = false }) {
+export default function BotProfile({ chiefName, initialTab, visible, bot, models, defaultSelection, memories = [], items = [], routines = [], negotiations = [], onNegotiation, phone, active, connections, aiAccounts, skills = [], onSkill, loadAgentSkills, onAgentSkills, onFallback, FallbackSettings, googleAccounts = [], onGoogleAccount, onGoogleLogin, onPhoneControl, grants = [], onGithub, onDesktop, onClose, onSave, onComplete, onRoutine, onDelete, ModelSettings, PhoneControl, inline = false }) {
   const initialForm = () => bot ? { name: bot.name, instructions: bot.instructions, aiAccount: bot.aiAccount || '', color: bot.color, avatar: bot.avatar || 'orbit', ...(bot.face ? { face: bot.face } : {}), autonomy: bot.autonomy || 'ask', provider: bot.provider, model: bot.model, reasoningEffort: bot.reasoningEffort } : { name: '', instructions: '', color: 'green', avatar: 'orbit', autonomy: 'ask', ...defaultSelection };
   const scroll = useRef(null); const keyboard = useKeyboardRoom(scroll);
   const [form, setForm] = useState(initialForm); const [error, setError] = useState(''); const [saving, setSaving] = useState(false); const [tab, setTab] = useState('profile'); const [account, setAccount] = useState(''); const [openRoutine, setOpenRoutine] = useState(null);
@@ -104,6 +104,10 @@ export default function BotProfile({ chiefName, initialTab, visible, bot, models
           {bot && onGithub ? <View style={[s.group, { marginTop: 10 }]}><View style={[s.permission, { borderBottomWidth: 0 }]}>
             <View style={s.permissionCopy}><Text style={s.itemTitle}>Usar o seu GitHub</Text><Text style={s.hint}>No computador, o bot usa o gh e o git com a sua conta: vê seus repositórios, cria projetos, faz commit e push. Desligado, sua conta fica escondida dele.</Text></View>
             {toggle(grants.some(item => item.name === 'github' && item.allowed), on => act(() => onGithub(on)), 'Usar o seu GitHub')}
+          </View></View> : null}
+          {bot && onDesktop ? <View style={[s.group, { marginTop: 10 }]}><View style={[s.permission, { borderBottomWidth: 0 }]}>
+            <View style={s.permissionCopy}><Text style={s.itemTitle}>Controlar a tela do computador</Text><Text style={s.hint}>Mexe no mouse e no teclado do seu PC, na sua tela de verdade (um bot por vez). Desligado, o bot usa só o navegador próprio dele, que não ocupa a sua tela.</Text></View>
+            {toggle(grants.some(item => item.name === 'desktop' && item.allowed), on => act(() => onDesktop(on)), 'Controlar a tela do computador')}
           </View></View> : null}
           <Text style={s.label}>Conta Google</Text>
           <Text style={s.hint}>Gmail, Agenda, Drive e outros serviços abrem direto no navegador. A primeira opção é o navegador que todos os bots usam. Cada conta abaixo tem um navegador só dela, isolado dos outros, que guarda o login: escolha uma e este bot passa a usá-lo.</Text>

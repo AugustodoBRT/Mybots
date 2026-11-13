@@ -172,6 +172,9 @@ export class Tools {
     if (tool === 'phone') return bot.phoneControl === true ? 'allow' : 'deny';
     // The person's GitHub account: only for the bots it was turned on for (Perfil → Acesso → Usar o seu GitHub), off by default.
     if (tool === 'github') return this.allowed(botId, 'github') ? 'allow' : 'deny';
+    // The person's real screen, mouse and keyboard (and so their own Chrome): off unless turned on for the bot (Perfil → Acesso).
+    // The bots work in their own browsers, which never take the person's screen (the owner asked, 13/11/2026).
+    if (tool === 'desktop') return this.allowed(botId, 'desktop') ? 'allow' : 'deny';
     return 'allow';
   }
   /** Whether this call needs the person now, and whether the card may offer "Sempre permitir". */

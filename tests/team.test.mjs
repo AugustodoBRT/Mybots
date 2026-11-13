@@ -26,7 +26,13 @@ async function setup(t, script = bot => `Sou ${bot.name}.`) {
   const make = (name, extra = {}) => app.rpc('bot.create', { name, instructions: `Bot ${name}.`, access: 'full', ...selection, ...extra });
   const idle = () => until(() => !app.db.tasks().some(task => ['queued', 'running', 'waiting_approval'].includes(task.state)));
   const chat = async (bot, text) => { await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text }); await idle(); };
-  return { app, calls, make, idle, chat };
+  // The person already chose the IA of these bots: the one question asked, the first option (the recommendation) tapped.
+  const allow = (maker, names) => {
+    app.tools.team.chooseModels({}, { bots: names, recommended: { provider: 'codex' }, alternatives: [] }, maker);
+    const decision = app.tools.decisions.open(maker.id).at(-1); const reply = app.tools.decisions.reply;
+    app.tools.decisions.reply = () => {}; try { app.tools.decisions.answer(decision.id, { option: 1 }); } finally { app.tools.decisions.reply = reply; }
+  };
+  return { app, calls, make, idle, chat, allow };
 }
 
 test('the person sends files to a room: every member reads them with its own tools, and the message shows them', async t => {
@@ -71,6 +77,7 @@ test('a bot makes a bot and a room, calls the others, and leaves on its own, wit
     return `Feito, ${bot.name}.`;
   });
   const chefe = await f.make('Chefe'); await f.make('Vagas');
+  f.allow(chefe, ['Redator']);
   await f.chat(chefe, 'monte um time');
   const room = f.app.db.rooms().find(item => item.name === 'Projeto');
   assert.equal(room.createdBy, chefe.id);
@@ -89,6 +96,7 @@ test('rules: no stronger bot than its maker, only its own rooms, at least two me
   const f = await setup(t, async (bot, prompt, call) => step ? step(bot, call) : 'ok');
   const medio = await f.make('Medio', { access: 'ask' }); const other = await f.make('Outro', { access: 'ask' }); const lone = await f.make('Solto', { access: 'ask' });
   const room = await f.app.rpc('room.create', { name: 'Fechada', botIds: [other.id, lone.id] });
+  f.allow(medio, ['Forte', 'Fraco', 'Clone 0', 'Clone 1', 'Clone 2', 'Clone 3', 'Clone 4', 'Clone 5']);
   const run = async body => { step = body; let failure; step = async (bot, call) => { try { await body(call); } catch (error) { failure = error; } return 'ok'; }; await f.chat(medio, 'vai'); if (failure) throw failure; };
   await run(call => call('team_create_bot', { name: 'Forte', access: 'full' }));
   await run(async call => { assert.equal((await call('team_create_bot', { name: 'Fraco', access: 'basic' })).access, 'full'); });
@@ -127,4 +135,36 @@ test('a chain of calls made with team_post ends without any limit of rounds', as
   await f.app.rpc('room.send', { roomId: f.app.db.rooms()[0].id, requestId: randomUUID(), text: '@Ping vai' });
   await f.idle();
   assert.ok(f.app.db.task(f.app.db.all('SELECT task_id FROM room_turns').at(-1).task_id).state === 'done');
+});
+
+test('a IA dos bots novos é da pessoa: uma pergunta só para todos, a recomendação primeiro, e nada é criado antes da resposta', async t => {
+  const models = [{ provider: 'codex', model: 'gpt-a', displayName: 'GPT A', isDefault: true, efforts: ['low', 'high'], defaultEffort: 'low' },
+    { provider: 'claude', model: 'sonnet', displayName: 'Sonnet', isDefault: true, efforts: ['high'], defaultEffort: 'high' }];
+  let step;
+  const f = await setup(t, async (bot, prompt, call) => step ? step(call) : 'ok');
+  f.app.tools.team.catalog = () => models;
+  const chefe = await f.make('Chefe');
+  const run = async body => { let failure; step = async call => { try { await body(call); } catch (error) { failure = error; } step = null; return 'ok'; }; await f.chat(chefe, 'vai'); if (failure) throw failure; };
+  // Creating without asking, or asking twice: refused.
+  await assert.rejects(run(call => call('team_create_bot', { name: 'Ana' })), /team_choose_models/);
+  let asked;
+  await run(async call => { asked = await call('team_choose_models', { bots: ['Ana', 'Beto', 'Caio'], recommended: { provider: 'claude', model: 'sonnet', effort: 'high' } }); });
+  assert.deepEqual(asked.options, ['Recomendado: Claude · Sonnet · alto', 'Codex · GPT A · baixo']);
+  const open = f.app.tools.decisions.open(chefe.id);
+  assert.equal(open.length, 1); assert.equal(open[0].question, 'Qual IA usar nos 3 bots novos (Ana, Beto, Caio)?');
+  await assert.rejects(run(call => call('team_choose_models', { bots: ['Davi'], recommended: { provider: 'codex' } })), /ainda não respondeu/);
+  await assert.rejects(run(call => call('team_create_bot', { name: 'Ana' })), /ainda não escolheu/);
+  // She picks the second option: all three bots get it.
+  const reply = f.app.tools.decisions.reply; f.app.tools.decisions.reply = () => {};
+  f.app.tools.decisions.answer(open[0].id, { option: 2 }); f.app.tools.decisions.reply = reply;
+  await run(async call => { for (const name of ['Ana', 'Beto', 'Caio']) await call('team_create_bot', { name, instructions: 'x' }); });
+  for (const name of ['Ana', 'Beto', 'Caio']) { const bot = f.app.db.bots().find(item => item.name === name); assert.equal(bot.provider, 'codex'); assert.equal(bot.model, 'gpt-a'); assert.equal(bot.reasoningEffort, 'low'); }
+  // A bot not in the question needs its own (single) question.
+  await assert.rejects(run(call => call('team_create_bot', { name: 'Zeca' })), /inclua Zeca/);
+  // She writes her answer: the maker passes the IA she asked for.
+  await run(call => call('team_choose_models', { bots: ['Zeca'], recommended: { provider: 'codex' } }));
+  f.app.tools.decisions.reply = () => {}; f.app.tools.decisions.answer(f.app.tools.decisions.open(chefe.id)[0].id, { text: 'usa o Claude' }); f.app.tools.decisions.reply = reply;
+  await assert.rejects(run(call => call('team_create_bot', { name: 'Zeca' })), /A pessoa escreveu: "usa o Claude"/);
+  await run(call => call('team_create_bot', { name: 'Zeca', provider: 'claude' }));
+  assert.equal(f.app.db.bots().find(item => item.name === 'Zeca').provider, 'claude');
 });

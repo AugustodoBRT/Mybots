@@ -171,8 +171,16 @@ export async function localStatus() {
     list[key] = rows.map(row => ({ id: row.id, label: row.label, loggedIn: Boolean(row.status.loggedIn), ...(row.id === DEFAULT_ACCOUNT ? { default: true } : {}) }));
     if (first) models.push(...(await first.client.models().catch(() => [])).map(item => ({ ...item, provider: key === 'codex' ? item.provider : key })));
   }
-  return { connections, models, accounts: list };
+  // Antigravity says its usage windows only when asked (agy -p /usage): read at most every 10 minutes, so the window shows them
+  // before the first reply too. Codex and Claude bring theirs with each reply.
+  const limits = {};
+  if (connections.agy?.loggedIn && Date.now() - agyLimits.at > 600000) {
+    agyLimits.at = Date.now(); agyLimits.value = await local.agy.limits().catch(() => agyLimits.value);
+  }
+  if (connections.agy?.loggedIn && agyLimits.value) limits.agy = agyLimits.value;
+  return { connections, models, accounts: list, ...(Object.keys(limits).length ? { limits } : {}) };
 }
+const agyLimits = { at: 0, value: null };
 
 const FILE_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', json: 'application/json', html: 'text/html', zip: 'application/zip', mp3: 'audio/mpeg', mp4: 'video/mp4', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
 /** The files a bot's browser downloaded here (~/.mybots-pc/downloads/<bot>): listed, read (to open or send to the bot) and removed for the phone. */
@@ -482,6 +490,8 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         });
         if (controller.signal.aborted) throw new Error(controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : 'Resposta interrompida.');
         send({ type: 'done', id: message.id, reply });
+        // Antigravity brings no usage with its replies: the status (which reads it at most every 10 minutes) goes again after one.
+        if (bot.provider === 'agy') refresh().catch(() => {});
       } catch (error) {
         send({ type: 'failed', id: message.id, error: controller.signal.reason === 'panic' ? 'Resposta interrompida pela tecla de pânico no computador.' : error.message, ...(error.output ? { output: String(error.output).slice(-20000) } : {}), ...(error.codexSessionId ? { codexSessionId: error.codexSessionId } : {}) });
       } finally {

@@ -95,7 +95,7 @@ test('real stdio MCP handshake routes through HTTP and UI approval response with
   child.stdout.on('data', chunk => { buffer += chunk; let i; while ((i = buffer.indexOf('\n')) >= 0) { replies.push(JSON.parse(buffer.slice(0, i))); buffer = buffer.slice(i + 1); } });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
   send(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } }); await until(() => replies.some(r => r.id === 1)); assert.equal(replies[0].result.serverInfo.name, 'mybots-tools');
-  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 68);
+  send(2, 'tools/list'); await until(() => replies.some(r => r.id === 2)); assert.equal(replies.find(r => r.id === 2).result.tools.length, 70);
   send(3, 'tools/call', { name: 'task_create_item', arguments: { title: 'Estudar' } });
   await until(() => replies.some(r => r.id === 3)); assert.equal(replies.find(r => r.id === 3).result.isError, undefined); assert.equal(app.db.all('SELECT * FROM pending_items').length, 1);
   assert.ok(!JSON.stringify(app.state()).includes(cap.token));
@@ -169,7 +169,7 @@ test('chat.send marks a message live only while a private turn of that bot is ru
 
 test('an argument a tool does not take is named in the error, with the ones it does take, and is not mistaken for a missing permission', async t => {
   const f = await setup(t);
-  await assert.rejects(f.call('team.create_bot', { name: 'Caça', instructions: 'x', model: 'gpt', personality: 'y' }), error => /não aceita "model", "personality"/.test(error.message) && /aceitos são: name, instructions, color, avatar, access, home/.test(error.message) && /Não é falta de permissão/.test(error.message));
+  await assert.rejects(f.call('team.create_bot', { name: 'Caça', instructions: 'x', mood: 'gpt', personality: 'y' }), error => /não aceita "mood", "personality"/.test(error.message) && /aceitos são: name, instructions, color, avatar, access, home/.test(error.message) && /Não é falta de permissão/.test(error.message));
   await assert.rejects(f.call('memory.read', { botId: f.bot.id }), /argumento/);
   await assert.rejects(f.call('coisa.inexistente', {}), /^Error: Ferramenta ou argumento não permitido\.$/);
 });

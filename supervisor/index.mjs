@@ -151,7 +151,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // The desktop_* tools only where the computer can control its screen (Linux): a Windows or macOS node says it cannot.
     tools.desktopAvailable = () => ![...(nodes?.online?.values?.() || [])].some(node => node.desktop === false);
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
-    tools.team = new Team(db, { rooms, changed: broadcast, schedule: () => queue.schedule(), selectionFor: bot => selectionFor(catalog(), bot),
+    tools.team = new Team(db, { rooms, changed: broadcast, schedule: () => queue.schedule(), selectionFor: bot => selectionFor(catalog(), bot), catalog: () => catalog(), decisions: () => decisions,
       createBot: (data, selection) => { const bot = db.create(data, selection); tools.setAccountApps(bot.id, []); return bot; } });
     // The computer: turns of its bots wait while it is off and start as soon as it connects.
     nodes = new Nodes(db, { changed: (event, data) => { if (data?.node && !nodes.computer()) queue.lost('pc'); else queue.schedule(); broadcast(event, data); broadcast('activity.new'); } }); queue.nodes = nodes;
@@ -767,9 +767,9 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         case 'notes.prune': return pruneNotes(db, { now: clock ? Number(clock()) : Date.now() });
         case 'person.update': { const person = db.setPerson(params); broadcast('activity.new'); return person; }
         case 'limits.refresh': {
-          if (!['codex', 'claude'].includes(params.provider)) throw new Error('IA inválida.');
-          const source = params.provider === 'codex' ? codex : claude;
-          if (!source?.limits || !connections[params.provider]?.loggedIn) throw new Error(`O ${params.provider === 'codex' ? 'Codex' : 'Claude'} não está conectado neste celular.`);
+          if (!['codex', 'claude', 'agy'].includes(params.provider)) throw new Error('IA inválida.');
+          const source = params.provider === 'codex' ? codex : params.provider === 'claude' ? claude : agy;
+          if (!source?.limits || !connections[params.provider]?.loggedIn) throw new Error(`O ${({ codex: 'Codex', claude: 'Claude', agy: 'Antigravity' })[params.provider]} não está conectado neste aparelho.`);
           db.setLimits(params.provider, await source.limits()); broadcast('connection.changed');
           return db.limits();
         }

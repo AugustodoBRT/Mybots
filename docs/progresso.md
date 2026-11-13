@@ -2196,3 +2196,14 @@ Achados e correções:
   - O login aparece pelo caminho completo e com `.cmd` para o Codex e o opencode. Sem isso, o PowerShell bloqueia o `.ps1` do npm com a política padrão.
   - O "(precisa do Node.js)" só aparece nos comandos de npm.
 - **Ferramentas de tela**: o PC informa `desktop: hasDesktopControl()` no `ready`, e `Tools.toolList` esconde as `desktop_*` quando um PC conectado não controla a tela. O `pc/server.mjs` também desliga `tools.desktop` fora do Linux.
+
+## 0.94.6 (versionCode 198): modo claro no PC, uso das IAs no topo e o Chefe pergunta qual IA usar nos bots novos
+
+- **Modo claro no PC:** a cor da moldura (`chrome`) só existia no tema escuro do PC (`desktopColors`), então continuava escura no claro. Isso deixava a barra lateral e o topo pretos e os nomes, em texto escuro, invisíveis. `theme.js` ganhou `desktopLight`, e os selos usam `C.accentInk` em vez de preto fixo. Conferido por print nos dois temas.
+- **Uso das IAs no topo** (`components/UsageRings.js`): saíram os cartões "Capacidade disponível". Agora há um anel por IA conectada (Antigravity, Claude e Codex) que mostra o que resta das 5 horas e fica vermelho abaixo de 15%. Ao passar o mouse (ou tocar), aparecem as 5 horas, a semana, a renovação e os grupos de modelos do Antigravity. O anel aparece nas abas, na tela inicial e nas páginas.
+- **Uso do Antigravity:** vem de `agy -p "/usage"`, em texto separado por tabulação, e passa por `parseLimits` em `lib/agy-runner.cjs`. A janela principal é a do grupo Gemini, e os outros grupos ficam em `groups`. O PC lê no máximo a cada 10 minutos dentro de `localStatus` e manda em `ready`/`status` (`Link.takeLimits`); depois de uma resposta do agy, o status vai de novo. `setLimits` aceita `resetsAt` em texto ISO e guarda os grupos.
+- **IA dos bots novos** (`team_choose_models`, `team_models`):
+  - O Chefe faz uma única pergunta, pelo `user_decide`, com os nomes de todos os bots (até 10). A recomendação vem primeiro, depois as alternativas dele e as IAs conectadas que faltarem, com o modelo padrão de cada uma e o uso livre de 5 horas no texto.
+  - O `team_create_bot` só cria depois da resposta (metadata `team.choice.<id>`, válida por 12 h) e usa a opção escolhida.
+  - Se a pessoa escreveu a resposta, o Chefe passa `provider`, `model` e `effort`.
+  - Uma segunda pergunta só vale depois que a anterior for respondida. Um bot fora da pergunta pede a sua própria.

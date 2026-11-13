@@ -10,7 +10,10 @@ import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 export { PALETTES, resolveTheme, FACE_COLORS, HUES };
 // The window: a darker frame (chrome) around a lighter content panel; surfaces are told apart by tone, with quiet lines.
 const desktopColors = { chrome: '#0D0E10', bg: '#151619', bg2: '#151619', surface: '#1D1F22', surface2: '#25272B', elevated: '#2A2C31', line: '#232529', line2: '#34373C', text: '#F0F0F2', text2: '#D2D3D7', muted: '#A6A8B0', faint: '#91949E', accent: '#EAB875', accentInk: '#292014' };
-const colorsFor = name => ({ ...PALETTES[name], ...(desktop && name === 'dark' ? desktopColors : {}) });
+// The light window: a slightly deeper frame than the content, like the dark one. Every key of desktopColors needs its light value
+// here, or switching to light keeps the dark one (the frame and the side bar stayed black with dark text on them).
+const desktopLight = { chrome: '#ECE8E0' };
+const colorsFor = name => ({ ...PALETTES[name], ...(desktop ? (name === 'dark' ? desktopColors : desktopLight) : {}) });
 export const C = colorsFor('dark');
 let themeName = 'dark', themeVersion = 0; const listeners = new Set();
 export const currentTheme = () => themeName;

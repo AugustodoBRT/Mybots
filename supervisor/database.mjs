@@ -524,11 +524,13 @@ export class Database {
   }
   /** The plan's usage windows (5 hours, week) as the IA last reported them. */
   setLimits(provider, limits) {
-    const windows = Array.isArray(limits?.windows) ? limits.windows.filter(item => Number.isFinite(item?.used)).slice(0, 4).map(item => ({ key: String(item.key).slice(0, 20), used: Math.max(0, Math.min(100, Math.round(item.used))), resetsAt: Number.isFinite(item.resetsAt) ? new Date(item.resetsAt).toISOString() : null })) : [];
+    const windows = Array.isArray(limits?.windows) ? limits.windows.filter(item => Number.isFinite(item?.used)).slice(0, 4).map(item => ({ key: String(item.key).slice(0, 20), used: Math.max(0, Math.min(100, Math.round(item.used))), resetsAt: Number.isFinite(item.resetsAt) ? new Date(item.resetsAt).toISOString() : typeof item.resetsAt === 'string' && Date.parse(item.resetsAt) ? new Date(item.resetsAt).toISOString() : null })) : [];
     if (!windows.length) return;
-    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'limits.' + provider, JSON.stringify({ plan: typeof limits.plan === 'string' ? limits.plan.slice(0, 30) : null, windows, checkedAt: now() }));
+    this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'limits.' + provider, JSON.stringify({ plan: typeof limits.plan === 'string' ? limits.plan.slice(0, 30) : null, windows, checkedAt: now(),
+      // Antigravity has one limit per group of models (Gemini; Claude and GPT; some single models): shown when the pointer is over its mark.
+      ...(Array.isArray(limits.groups) ? { groups: limits.groups.slice(0, 8).map(group => ({ name: String(group?.name || '').slice(0, 40), windows: (Array.isArray(group?.windows) ? group.windows : []).filter(item => Number.isFinite(item?.used)).slice(0, 2).map(item => ({ key: String(item.key).slice(0, 20), used: Math.max(0, Math.min(100, Math.round(item.used))), ...(Date.parse(item.resetsAt) ? { resetsAt: new Date(item.resetsAt).toISOString() } : {}) })) })).filter(group => group.name && group.windows.length) } : {}) }));
   }
-  limits() { return Object.fromEntries(['codex', 'claude'].map(provider => [provider, JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', 'limits.' + provider)?.value || 'null')]).filter(([, value]) => value)); }
+  limits() { return Object.fromEntries(['codex', 'claude', 'agy'].map(provider => [provider, JSON.parse(this.get('SELECT value FROM metadata WHERE key=?', 'limits.' + provider)?.value || 'null')]).filter(([, value]) => value)); }
   /** Tokens per bot (today, 7 and 30 days) and per day for the last week, from the replies' usage; `cost` is the API-equivalent estimate in USD. */
   usage(days = 7) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString(); const day = new Date(); day.setHours(0, 0, 0, 0);
@@ -1063,7 +1065,7 @@ export class Database {
       else if (!turn && files.attachments) this.appendMessage(bot.id, { id: randomUUID(), role: 'assistant', text: 'Estes arquivos ficaram prontos antes da interrupção.', status: 'complete', ...files, createdAt: now() });
       if (!turn) this.putBot({ ...bot, ...(reply?.codexSessionId ? { codexSessionId: reply.codexSessionId } : {}), updatedAt: now() });
       if (usage) this.addUsage(bot, id, reply, usage);
-      if (reply?.limits && ['codex', 'claude'].includes(reply.provider || bot.provider || 'codex')) this.setLimits(reply.provider || bot.provider || 'codex', reply.limits);
+      if (reply?.limits && ['codex', 'claude', 'agy'].includes(reply.provider || bot.provider || 'codex')) this.setLimits(reply.provider || bot.provider || 'codex', reply.limits);
       // What each Claude alias resolves to now, so the model picker can say "Claude Opus 5.5".
       if (state === 'done' && bot.provider === 'claude' && typeof reply.modelId === 'string' && /^[a-z]{1,20}$/.test(reply.model || '')) this.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'claude.model.' + reply.model, reply.modelId.slice(0, 80));
       this.run('UPDATE tasks SET state=?,error=?,worker_pid=NULL,worker_start=NULL,updated_at=? WHERE id=?', state, error, now(), id);

@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.6', date: '2026-11-13', items: [
+    ['novo', 'Antes de criar bots, o Chefe pergunta uma vez só qual IA usar em todos eles: a recomendação dele vem primeiro e as outras opções variam a IA. Você toca numa opção ou escreve o que quer.'],
+    ['novo', 'No computador, o uso de cada IA (Antigravity, Claude e Codex) fica no topo da janela: um anel em volta do ícone mostra o que resta das 5 horas, e ao passar o mouse aparecem as 5 horas, a semana e quando renova.'],
+    ['novo', 'O uso do Antigravity agora aparece, inclusive por grupo de modelos.'],
+    ['correcao', 'O modo claro no computador: a barra lateral e o topo não ficam mais escuros, e os nomes dos bots voltam a aparecer.']
+  ] },
   { version: '0.94.5', date: '2026-11-12', items: [
     ['melhoria', 'No Windows e no Mac, os bots com permissão de mexer no computador usam o terminal com qualquer IA (Codex, Claude e Antigravity). Antes o Codex ficava sem terminal.'],
     ['correcao', 'No Windows, o comando para entrar numa conta de IA usa o caminho completo do programa, então funciona mesmo quando o instalador não colocou a pasta no PATH (como o do Claude). Se a IA não estiver instalada, o app diz como instalar.'],

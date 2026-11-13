@@ -82,3 +82,17 @@ test('a ficha antiga vira a nota Você no centro da memória; sem ficha, nada é
   assert.equal(moved.get("SELECT value FROM metadata WHERE key='person.profile'"), undefined);
   assert.equal(moved.person().profile, 'Estuda SI. Gosta de café.');
 });
+
+test('Antigravity: o uso de /usage vira as janelas de 5 horas e semana, com os outros grupos de modelos guardados', async t => {
+  const { parseLimits } = (await import('node:module')).createRequire(import.meta.url)('../lib/agy-runner.cjs');
+  const text = 'Gemini Models\tWeekly Limit Remaining\t98%\t2026-11-14T09:53:41Z\nGemini Models\tFive Hour Limit Remaining\t90%\t2026-11-13T06:01:57Z\nClaude and GPT models\tFive Hour Limit Remaining\t100%\t2026-11-13T07:31:22Z\nGemini 4 Argon\tGemini 4 Argon Weekly Limit\t27%\t2026-11-14T09:53:34Z';
+  const limits = parseLimits(text);
+  assert.deepEqual(limits.windows.map(item => [item.key, item.used]), [['week', 2], ['five_hour', 10]]);
+  assert.deepEqual(limits.groups.map(group => group.name), ['Gemini Models', 'Claude and GPT models', 'Gemini 4 Argon']);
+  assert.equal(parseLimits('nada aqui'), null);
+  const dir = await mkdtemp(join(tmpdir(), 'mybots-limites-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const db = new Database(dir); db.setLimits('agy', limits);
+  const saved = db.limits().agy;
+  assert.equal(saved.windows.find(item => item.key === 'five_hour').resetsAt, '2026-11-13T06:01:57.000Z');
+  assert.equal(saved.groups[2].windows[0].used, 73);
+});

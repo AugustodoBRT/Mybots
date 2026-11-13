@@ -59,6 +59,11 @@ export class Link {
     // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
     this.watching = new Set(); this.viewOptions = new Map(); this.controls = {}; this.onFrame = () => {};
   }
+  /** Usage windows the computer read (Antigravity's): kept like the ones that come with a reply. */
+  takeLimits(limits) {
+    if (!limits || typeof limits !== 'object') return;
+    for (const provider of ['codex', 'claude', 'agy']) if (limits[provider]) try { this.db.setLimits(provider, limits[provider]); } catch {}
+  }
   saved() { try { return JSON.parse(this.db.get("SELECT value FROM metadata WHERE key='link.computer'")?.value || 'null'); } catch { return null; } }
   save(value) { this.db.run("INSERT INTO metadata VALUES('link.computer',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(value)); }
   phoneId() {
@@ -226,10 +231,11 @@ export class Link {
         this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserSlot(bot)])) });
+        this.takeLimits(message.limits);
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, desktop: message.desktop, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
-      if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
+      if (message.type === 'status') { this.takeLimits(message.limits); this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
       if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }

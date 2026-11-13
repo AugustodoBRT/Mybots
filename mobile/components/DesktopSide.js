@@ -19,7 +19,7 @@ const s = themed(() => ({
   itemText: { color: C.text, fontFamily: F.s, fontSize: 13.5 },
   itemNote: { color: C.muted, fontFamily: F.m, fontSize: 12, marginTop: 1 },
   badge: { minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { color: '#000', fontFamily: F.x, fontSize: 10.5 },
+  badgeText: { color: C.accentInk, fontFamily: F.x, fontSize: 10.5 },
   card: { gap: 8, alignItems: 'center' },
   shot: { width: '100%', borderRadius: 10, overflow: 'hidden', backgroundColor: C.surface, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   cardTitle: { color: C.text2, fontFamily: F.m, fontSize: 12.5, textAlign: 'center', paddingHorizontal: 6 },

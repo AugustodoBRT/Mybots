@@ -90,6 +90,9 @@ test('the model never raises a level: no Livre from team tools, a Livre maker ma
   const f = await setup(t);
   assert.throws(() => toolArguments('team.create_bot', { name: 'X', access: 'free' }), /Só a pessoa/);
   const run = f.open();
+  // The person chose the IA of the new bot (the one question, first option).
+  f.app.tools.team.chooseModels({}, { bots: ['Ajudante'], recommended: { provider: 'codex' }, alternatives: [] }, f.app.db.requireBot(f.bot.id));
+  { const decisions = f.app.tools.decisions, reply = decisions.reply; decisions.reply = () => {}; try { decisions.answer(decisions.open(f.bot.id).at(-1).id, { option: 1 }); } finally { decisions.reply = reply; } }
   const made = await run.call('team_create_bot', { name: 'Ajudante' });
   assert.equal(made.access, 'full');
   const link = new Link(f.app.db, { port: () => f.app.port });

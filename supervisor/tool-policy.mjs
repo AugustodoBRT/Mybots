@@ -99,7 +99,7 @@ export function validFreeAsk(list) {
   return Array.isArray(list) && list.length <= FREE_ASK_OPTIONS.length && list.every(key => FREE_ASK_OPTIONS.some(item => item[0] === key));
 }
 export const BROWSER_TOOLS = ['browser.act', 'browser.tabs', 'browser.find', 'browser.open', 'browser.read', 'browser.click', 'browser.type', 'browser.upload', 'browser.login', 'browser.pay', 'browser.wait', 'browser.screenshot', 'browser.ask_user', 'browser.viewport'];
-export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room', 'team.ask', 'team.answer'];
+export const TEAM_TOOLS = ['team.bots', 'team.rooms', 'team.choose_models', 'team.models', 'team.create_bot', 'team.create_room', 'team.add_to_room', 'team.remove_from_room', 'team.leave_room', 'team.close_room', 'team.post', 'team.read_room', 'team.ask', 'team.answer'];
 export const DESKTOP_TOOLS = ['desktop.screenshot', 'desktop.windows', 'desktop.focus', 'desktop.launch', 'desktop.click', 'desktop.type', 'desktop.key'];
 export const PHONE_TOOLS = ['phone.screen', 'phone.tap', 'phone.type', 'phone.scroll', 'phone.open_app', 'phone.back', 'phone.fill_code', 'phone.ask_user'];
 /** The permission a tool is decided by: every browser tool shares the "browser" switch. */
@@ -175,7 +175,7 @@ export function toolArguments(tool, args) {
     'canvas.update': ['id','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h'], 'canvas.link': ['from','to','label'], 'canvas.remove': ['id'], 'browser.viewport': ['size','width','height'],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
     'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
-    'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.create_bot': ['name','instructions','color','avatar','access','home'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
+    'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.choose_models': ['bots','recommended','alternatives'], 'team.models': [], 'team.create_bot': ['name','instructions','color','avatar','access','home','provider','model','effort'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
@@ -291,7 +291,7 @@ export function toolArguments(tool, args) {
     if (!['open', 'done', 'all'].includes(state)) throw new Error('Use state open, done ou all.');
     return { state, limit: integer('limit', 1, 200, 50) };
   }
-  if (tool === 'team.bots') return {};
+  if (tool === 'team.bots' || tool === 'team.models') return {};
   if (tool === 'team.status' || tool === 'team.rooms') return {};
   if (tool === 'team.create_bot') {
     const color = text('color', 10, true); const avatar = text('avatar', 10, true); const access = text('access', 10, true); const home = text('home', 10, true);
@@ -300,7 +300,20 @@ export function toolArguments(tool, args) {
     if (access === 'free') throw new Error('Só a pessoa põe um bot no nível Livre, pelo app. Use access basic, ask ou full.');
     if (access && !ACCESS_LEVELS.includes(access)) throw new Error('Use access basic, ask ou full.');
     if (home && !HOMES.includes(home)) throw new Error('Use home phone, pc ou any.');
-    return { name: text('name', 40), instructions: text('instructions', 2000, true), ...(color ? { color } : {}), ...(avatar ? { avatar } : {}), ...(access ? { access } : {}), ...(home ? { home } : {}) };
+    const provider = text('provider', 20, true), model = text('model', 120, true), effort = text('effort', 20, true);
+    return { name: text('name', 40), instructions: text('instructions', 2000, true), ...(color ? { color } : {}), ...(avatar ? { avatar } : {}), ...(access ? { access } : {}), ...(home ? { home } : {}),
+      ...(provider ? { provider } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+  }
+  if (tool === 'team.choose_models') {
+    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 10 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 40)) throw new Error('Em bots, liste de 1 a 10 nomes dos bots que vai criar agora (todos de uma vez).');
+    const pick = (value, where) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Em ${where}, mande { provider, model, effort }.`);
+      for (const key of ['provider', 'model', 'effort']) if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 120)) throw new Error(`Em ${where}, ${key} é um texto.`);
+      if (!value.provider) throw new Error(`Em ${where}, diga a IA (provider: codex, claude, agy ou opencode).`);
+      return { provider: value.provider, ...(value.model ? { model: value.model } : {}), ...(value.effort ? { effort: value.effort } : {}) };
+    };
+    if (args.alternatives !== undefined && (!Array.isArray(args.alternatives) || args.alternatives.length > 4)) throw new Error('Em alternatives, mande até 4 opções além da recomendada.');
+    return { bots: args.bots.map(item => item.trim()), recommended: pick(args.recommended, 'recommended'), alternatives: (args.alternatives || []).map((item, index) => pick(item, `alternatives[${index}]`)) };
   }
   if (tool === 'team.create_room') {
     if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 7 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 60)) throw new Error('Em bots, liste de 1 a 7 nomes (ou ids) de bots; você entra na sala sozinho.');

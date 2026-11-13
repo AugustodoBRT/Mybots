@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, PanResponder, useWindowDimensions, Modal } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
-import { CLAUDE_MARK, OPENAI_MARK, CLAUDE_COLOR } from '../brand';
 import { C, Icon, F, themed } from '../theme';
 import { desktopBus, native } from '../desktop';
 import { Avatar, RoomFaces, IconButton, Notice, ApprovalCard, DesktopPair, greeting, botLine, latestOf, latestInRoom, plain, shortTime, findModel, offline } from './shared';
 import { RoutinesSheet, NegotiationsSheet } from './Lists';
 import FaceArt from '../FaceArt';
 import { DesktopReveal } from './DesktopReveal';
+import { UsageRings } from './UsageRings';
 import { ReportSheet } from './Report';
 import { SideHeader, SideMenu, SideFrame, BrowserCards, BrowserFull } from './DesktopSide';
 import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
@@ -48,7 +47,8 @@ const s = themed(() => ({
   line: { color: C.muted, fontFamily: F.m, fontSize: 12 }, unread: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
   divider: { width: 6, marginLeft: -3, marginRight: -3, zIndex: 5, cursor: 'col-resize' },
   main: { flex: 1, minWidth: 0 },
-  tabs: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 2, paddingRight: 8, height: 42 },
+  // Above the panel: the usage details open downward over it.
+  tabs: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 2, paddingRight: 8, height: 42, zIndex: 10, position: 'relative' },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 190, paddingLeft: 10, paddingRight: 6, height: 28, borderRadius: 8 },
   tabOn: { backgroundColor: C.surface2 }, tabHome: { paddingRight: 11 }, tabText: { color: C.muted, fontFamily: F.m, fontSize: 12, flexShrink: 1 }, tabTextOn: { color: C.text },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line },
@@ -59,7 +59,7 @@ const s = themed(() => ({
   optionTitle: { color: C.text, fontFamily: F.b, fontSize: 14.5 },
   optionNote: { color: C.muted, fontFamily: F.m, fontSize: 12.5, marginTop: 2 },
   badge: { minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
-  badgeText: { color: '#000', fontFamily: F.x, fontSize: 10.5 },
+  badgeText: { color: C.accentInk, fontFamily: F.x, fontSize: 10.5 },
   side: { flex: 1, borderLeftWidth: 1, borderLeftColor: C.line, backgroundColor: C.bg2 },
   sideTitle: { color: C.text, fontFamily: F.x, fontSize: 16, letterSpacing: -0.4 },
   group: { color: C.text2, fontFamily: F.b, fontSize: 14, marginTop: 18, marginBottom: 6 },
@@ -83,24 +83,6 @@ const s = themed(() => ({
 
 // Quiet plan meters: remaining capacity, always labeled for assistive technology.
 /** What is left of an IA's subscription: the 5-hour window and the week, each with its own bar (the week is hidden when the IA does not report it). */
-function AiMark({ provider, left, week = null, compact = false }) {
-  const name = provider === 'claude' ? 'Claude' : 'Codex';
-  const bar = (value, label, spoken) => { const shown = Math.max(0, Math.min(100, value)); return <View key={label} accessible accessibilityRole="image" accessibilityLabel={`${name}, ${spoken}: ${Math.round(shown)}% livre`} style={{ gap: 3 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-      <Text style={{ color: C.faint, fontFamily: F.m, fontSize: compact ? 8 : 9, flex: compact ? undefined : 1 }}>{label}</Text>
-      <Text style={{ color: C.text2, fontFamily: F.s, fontSize: compact ? 9 : 10 }}>{Math.round(shown)}%</Text>
-    </View>
-    <View style={{ height: 3, borderRadius: 2, backgroundColor: C.line2, overflow: 'hidden', minWidth: 22 }}>
-      <View style={{ height: 3, borderRadius: 2, width: `${shown}%`, backgroundColor: shown < 15 ? C.red : C.accent }} />
-    </View></View>; };
-  return <View style={{ flex: compact ? undefined : 1, gap: 6, padding: compact ? 4 : 10, borderRadius: 10, backgroundColor: compact ? 'transparent' : C.surface, minWidth: 0 }}>
-    <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: 'center', gap: 7 }}>
-      <Svg width={17} height={17} viewBox="0 0 25 25"><Path d={provider === 'claude' ? CLAUDE_MARK : OPENAI_MARK} fill={provider === 'claude' ? CLAUDE_COLOR : C.text2} /></Svg>
-      {!compact ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 10, flex: 1 }}>{name}</Text> : null}
-    </View>
-    {bar(left, compact ? '5h' : '5 h', '5 horas')}{week != null ? bar(week, compact ? 'Sem' : 'Semana', 'semana') : null}
-  </View>;
-}
 
 /** A key on the keyboard, drawn as a small cap. */
 function Kbd({ children }) { return <View style={s.kbd}><Text style={s.kbdText}>{children}</Text></View>; }
@@ -277,11 +259,6 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
   const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
   const working = (data.active || []).filter(id => !offline(data, id));
-  const windowsOf = provider => data.usage?.limits?.[provider]?.windows || [];
-  const left = (provider, key) => { const window = windowsOf(provider).find(item => item.key === key); return window ? 100 - window.used : null; };
-  // The 5-hour window first (the first window the IA reports when it has no 5-hour one), and the week next to it.
-  const limit = provider => left(provider, 'five_hour') ?? (windowsOf(provider)[0] ? 100 - windowsOf(provider)[0].used : null);
-  const weekLimit = provider => left(provider, 'five_hour') == null ? null : left(provider, 'week');
   const openPage = key => onPage(key);
   const chief = bots.find(item => item.isChief) || null; const hasChief = Boolean(chief); chiefRef.current = hasChief;
   const rail = [['spark', hasChief ? 'Início' : 'Conversas', hasChief || team ? onHome : () => onPage(null), !page && !team], ['bots', 'Equipe', onTeam, !page && team], ['memory', 'Memória', () => openPage('memory'), page === 'memory'], ['canvas', 'Canvas', () => openPage('canvas'), page === 'canvas'], ['activity', 'Atividade', () => openPage('activity'), page === 'activity', waiting > 0 && page !== 'activity'], ['bolt', 'Rotinas', () => openPage('routines'), page === 'routines'], ['hand', 'Negociações', () => openPage('negotiations'), page === 'negotiations']];
@@ -295,13 +272,12 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
     <View style={[s.rail, narrow && s.railNarrow]}>
       {rail.map(([icon, label, onPress, on, dot]) => railButton(icon, label, label === 'Negociações' ? 'Negócios' : label, onPress, on, dot))}
       <View style={{ flex: 1 }} />
-      {page || compact ? <>{limit('claude') != null ? <AiMark compact provider="claude" left={limit('claude')} week={weekLimit('claude')} /> : null}{limit('codex') != null ? <AiMark compact provider="codex" left={limit('codex')} week={weekLimit('codex')} /> : null}</> : null}
       {railButton('alert', 'Reportar um problema ou pedir uma melhoria', 'Reportar', () => setReport(true), report, false)}
       {railButton('info', 'Ajuda e atalhos', 'Ajuda', () => setHelp(true), false, false)}
       {railButton('settings', 'Ajustes', 'Ajustes', () => openPage('settings'), page === 'settings', false)}
     </View>
-    {page ? <View style={[s.panel, { marginTop: 8 }]}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
-      : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View> : <>
+    {page ? <View style={{ flex: 1 }}><View style={[s.tabs, { justifyContent: 'flex-end', height: 36 }]}><UsageRings data={data} /></View><View style={[s.panel, { marginTop: 0 }]}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
+      : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View></View> : <>
     <View style={[s.list, { display: fileOpen && width < 900 ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
         <View style={s.listHead}><Text style={s.listTitle}>Conversas</Text><View style={{ flexDirection: 'row', gap: 6 }}><IconButton icon="plus" label="Novo bot (Ctrl+N)" onPress={onCreate} size={34} tint={C.accent} /></View></View>
@@ -329,7 +305,6 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
           title={item.isChief ? item.name + ' · Chefe' : item.name} time={latestOf(item) ? shortTime(item.updatedAt) : ''} line={line.text} tone={line.tone} unread={item.unread > 0} />; })}
         {!bots.filter(item => !item.isChief).length && !compact ? <Text style={[s.line, { padding: 16 }]}>Nenhum bot ainda. Crie o primeiro com o + acima.</Text> : null}
       </ScrollView>
-      {!compact && (limit('claude') != null || limit('codex') != null) ? <View style={{ padding: 12, gap: 8 }}><Text style={{ color: C.faint, fontSize: 11.5, fontFamily: F.s }}>Capacidade disponível</Text><View style={{ flexDirection: 'row', gap: 6 }}>{['claude', 'codex'].map(provider => limit(provider) != null ? <AiMark key={provider} provider={provider} left={limit(provider)} week={weekLimit(provider)} /> : null)}</View></View> : null}
       {compact ? null : <Pressable accessibilityRole="button" onPress={onConnection} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: C.line }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.faint }, phoneOnline && { backgroundColor: C.good }]} /><Text style={s.line}>{data.source === 'local' ? (!phoneOnline ? 'Iniciando o MyBots do computador…' : data.sync ? (data.sync.state === 'syncing' ? 'Sincronizando com o celular…' : data.sync.online ? 'Sincronizado com o celular' : 'Celular fora de alcance · só neste computador') : 'Só neste computador') : phoneOnline ? 'Celular conectado' : 'Celular fora de alcance'}</Text></Pressable>}
     </View>
@@ -344,10 +319,13 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
             {faceOf(tab)}<Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{nameOf(tab)}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={`Fechar a aba de ${nameOf(tab)}`} onPress={() => closeTab(tab)} hitSlop={6}><Icon name="close" size={13} color={C.faint} /></Pressable></Pressable>; })}
         </ScrollView>
+        <UsageRings data={data} />
         <Pressable accessibilityRole="button" accessibilityLabel="Barra lateral" accessibilityState={{ expanded: side.open }} onPress={() => setSide(old => ({ ...old, open: !old.open }))} style={({ hovered }) => [s.tool, hovered && s.rowHover, side.open && s.tabOn]}>
           <Icon name="sidebar" size={18} color={waiting && !side.open ? C.accent : C.text2} />{waiting ? <View style={s.badge}><Text style={s.badgeText}>{waiting}</Text></View> : null}</Pressable>
       </View> : null}
-      <View style={[s.panel, !current && { marginTop: 8 }]}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
+      {/* With no conversation open there are no tabs: the usage of the IAs still sits at the top right. */}
+      {current ? null : <View style={[s.tabs, { justifyContent: 'flex-end', zIndex: 5 }]}><UsageRings data={data} /></View>}
+      <View style={[s.panel, !current && { marginTop: 0 }]}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}
     <DesktopReveal open={side.open && Boolean(current) && !team && (!page || (page === 'canvas' && side.active === 'file'))} width={width < 760 ? width - 52 : wide ? Math.min(900, Math.max(420, width * 0.56)) : Math.min(480, Math.max(340, width * 0.32))}>

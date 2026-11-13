@@ -183,7 +183,7 @@ test('Termux wrappers find agy and opencode in a proot-distro container and carr
 test('a wrapper that finds no agy or opencode (exit 127) reads as not installed, not as a login problem', async t => {
   const { Agy } = await import('../lib/agy.mjs'); const { Opencode } = await import('../lib/opencode.mjs');
   const missing = await fake(t, 'wrapper', 'process.exit(127);');
-  assert.deepEqual(await new Agy(missing.binary).status(), { available: false, loggedIn: false, message: 'Instale o Antigravity (agy) para usá-lo.' });
+  { const status = await new Agy(missing.binary).status(); assert.equal(status.available, false); assert.equal(status.loggedIn, false); assert.match(status.message, /Instale o Antigravity de linha de comando \(agy\): curl -fsSL https:\/\/antigravity.google\/cli\/install.sh/); }
   assert.deepEqual(await new Opencode(missing.binary).status(), { available: false, loggedIn: false, message: 'Instale o opencode para usá-lo.' });
   await assert.rejects(agyRunner.runReply({ model: 'm' }, 'oi', { binary: missing.binary }), /não foi encontrado/);
   await assert.rejects(opencodeRunner.runReply({ model: 'a/b' }, 'oi', { binary: missing.binary }), /não foi encontrado/);

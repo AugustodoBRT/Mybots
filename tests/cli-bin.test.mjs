@@ -52,3 +52,21 @@ test('MyBots\' own children: a real launcher is used; a .cmd launcher (Windows) 
   for (const launcher of ['C:\\Users\\Ana\\AppData\\Roaming\\MyBots\\bin\\node.cmd', 'x.BAT']) assert.deepEqual(nodeRun({ MYBOTS_NODE: launcher }), { command: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
   assert.deepEqual(nodeRun({}), { command: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
 });
+
+test('Windows: what was installed after the app opened is found (registry PATH and the installers\' folders), and Store apps are never used', () => {
+  const local = 'C:\\Users\\Ana\\AppData\\Local', store = `${local}\\Microsoft\\WindowsApps`;
+  const files = { [`${store}\\codex.exe`]: '', [`${local}\\agy\\bin\\agy.exe`]: '', 'D:\\Novo\\claude.exe': '' };
+  const options = { platform: 'win32', env: { PATH: `C:\\Windows\\System32;${store}`, LOCALAPPDATA: local, USERPROFILE: 'C:\\Users\\Ana' }, ...fake(files), registry: () => ['D:\\Novo'] };
+  assert.deepEqual(resolveCommand('codex', options), { command: 'codex', args: [], env: null });   // the Codex app's copy is not used
+  assert.equal(resolveCommand('agy', options).command, `${local}\\agy\\bin\\agy.exe`);              // the official installer's folder
+  assert.equal(resolveCommand('claude', options).command, 'D:\\Novo\\claude.exe');                   // the PATH saved after the app opened
+});
+
+test('Windows: npm\'s Codex runs its own codex.exe directly, so no console window opens for it', () => {
+  const root = `${NPM}\\node_modules\\@openai\\codex`, exe = `${root}\\node_modules\\@openai\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\bin\\codex.exe`;
+  const files = { [`${NPM}\\codex.cmd`]: SHIM('node_modules\\@openai\\codex\\bin\\codex.js'), [exe]: '' };
+  const options = { platform: 'win32', env, arch: 'x64', registry: () => [], ...fake(files) };
+  assert.deepEqual(resolveCommand('codex', options), { command: exe, args: [], env: { CODEX_MANAGED_PACKAGE_ROOT: root, CODEX_MANAGED_BY_NPM: '1' } });
+  const run = prepare('codex', ['exec'], {});
+  assert.equal(run.options.windowsHide, true);
+});

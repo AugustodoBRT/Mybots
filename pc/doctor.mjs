@@ -9,7 +9,8 @@ import { findChrome } from './chrome.mjs';
 export const AIS = [
   { key: 'codex', name: 'Codex (ChatGPT)', install: 'npm install -g @openai/codex', login: 'codex login', link: 'https://github.com/openai/codex' },
   { key: 'claude', name: 'Claude Code', install: 'npm install -g @anthropic-ai/claude-code', login: 'claude   (depois /login)', link: 'https://claude.com/claude-code' },
-  { key: 'agy', name: 'Antigravity (agy)', install: null, login: 'agy', link: 'https://antigravity.google' },
+  // The command-line Antigravity (agy), not the Antigravity app: the official installer of each system (antigravity.google/docs/getting-started).
+  { key: 'agy', name: 'Antigravity (agy)', install: process.platform === 'win32' ? 'irm https://antigravity.google/cli/install.ps1 | iex' : 'curl -fsSL https://antigravity.google/cli/install.sh | bash', login: 'agy', link: 'https://antigravity.google/docs/getting-started' },
   { key: 'opencode', name: 'opencode', install: 'npm install -g opencode-ai', login: 'opencode auth login', link: 'https://opencode.ai' }
 ];
 

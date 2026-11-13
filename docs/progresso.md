@@ -2162,3 +2162,17 @@ Pedido do dono: a ficha deve ser uma nota no gráfico que todos os bots leem, e 
   - O Markdown vai como anexo para o Chefe. Ele mostra uma lista numerada, espera a confirmação e só então propõe a nota com `profile_write` (que pede aprovação) e notas para os assuntos maiores.
   - No PC deste dono, o leitor encontrou 64 sessões do Claude Code e 12 do Codex, sem nenhuma dos bots.
 - O pacote do supervisor do APK (`scripts/package-supervisor.mjs`) inclui o `history-import.mjs`.
+
+## 0.94.4 (versionCode 196): Windows acha o Antigravity instalado depois e não abre mais janela de terminal
+
+Relato do dono no PC de casa (Windows): o `agy` instalado e logado não era reconhecido. O app mostrava o "ChatGPT" sem o CLI do Codex instalado, e cada mensagem abria uma janela de terminal com um caminho da "openai".
+
+- **Causa 1:** um programa já aberto não vê o PATH atualizado depois. O instalador oficial do agy põe o comando em `%LOCALAPPDATA%\agy\bin` e mexe no PATH do usuário, mas o MyBots aberto continuava com o PATH antigo.
+- **Correção 1:** no Windows, `lib/cli-bin.cjs` relê o PATH do registro (HKCU e HKLM, guardado por 30 s) e procura também nas pastas dos instaladores oficiais: `%LOCALAPPDATA%\agy\bin`, `%USERPROFILE%\.local\bin`, `%APPDATA%\npm` e `WinGet\Links`.
+- **Causa 2:** o app Codex/ChatGPT da Microsoft Store põe um `codex.exe` no PATH, pela pasta `WindowsApps`. Esse executável não roda escondido (abria o terminal) e muitas vezes recusa rodar fora do próprio app.
+- **Correção 2:** pastas `WindowsApps` são ignoradas.
+- **Causa 3 (a janela com "openai"):** o `codex.js` do npm (`@openai/codex` 0.167.2) abre o `codex.exe` nativo sem `windowsHide`. O MyBots o rodava como Node pelo próprio executável, que não tem console, e por isso o Windows criava um console visível para o `codex.exe`.
+- **Correção 3:** o `cli-bin` vai direto ao `codex.exe` do pacote da plataforma (`@openai/codex-win32-x64/vendor/<triplo>/bin/codex.exe`), com as variáveis `CODEX_MANAGED_PACKAGE_ROOT` e `CODEX_MANAGED_BY_NPM` que o `codex.js` passaria.
+- `lib/ai-runtimes.mjs` (versão e atualização das IAs) passa a usar o `cli-bin`, como o resto.
+- A mensagem de agy ausente e o assistente do PC (`pc/doctor.mjs`) mostram o comando oficial do sistema.
+- Para testar de verdade, foi preparada uma VM com o Windows 11 de avaliação no VirtualBox do dono.

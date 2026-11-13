@@ -17,7 +17,7 @@ import { MCP_TOOLS, MCP_NAMES } from './mcp/catalog.mjs';
 import { describeTrigger, routineArguments } from '../mobile/routine-text.js';
 import { skillProposal, SKILL_NOTICE } from './skills.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
-const { commandInside, insideSkill } = agentSkills;
+const { commandInside, insideSkill, githubSource, validSkills } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
 const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close']);
@@ -46,7 +46,7 @@ const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.t
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 // Decisions that never take a button on a notification: money, passwords and codes, code that gets installed, the shell and
 // files leaving the phone. They open the app, where the whole card is read before deciding. A long summary does too.
-const APP_ONLY = /^(wallet\/|browser\/login|browser\/upload|browser\/chrome|browser\/mine\/|phone[./]|termux|skill\.propose|desktop\/|negotiation)/;
+const APP_ONLY = /^(wallet\/|browser\/login|browser\/upload|browser\/chrome|browser\/mine\/|phone[./]|termux|skill\.propose|team\.install_skill|desktop\/|negotiation)/;
 // A decision with arguments the notice would not show (no summary) opens the app too.
 export const noticeable = (tool, summary = '', args = {}) => !APP_ONLY.test(tool) && String(summary).length <= 600 && (Boolean(summary) || !Object.keys(args || {}).length);
 
@@ -54,7 +54,7 @@ function approvalText(tool, args, app) {
   if (tool === 'browser/mine/write') return { title: 'Agir no Meu Chrome', summary: args.summary };
   if (tool.startsWith('browser/chrome')) return { title: 'Controlar o Chrome principal', summary: args.summary };
   if (tool.startsWith('desktop/')) return { title: 'Controlar a tela do computador', summary: args.summary };
-  if (tool === 'team.update_bot' || tool === 'team.routine_update' || tool === 'profile.write') return { title: args.title, summary: args.summary };
+  if (tool === 'team.update_bot' || tool === 'team.routine_update' || tool === 'profile.write' || tool === 'team.install_skill') return { title: args.title, summary: args.summary };
   if (app) return { title: `Usar ${app.server.name}: ${app.tool.name}`, summary: JSON.stringify(args, null, 1).slice(0, 1500) };
   if (tool === 'routine.create') return { title: APPROVAL_TITLES[tool], summary: `${args.title}\n${describeTrigger(args.trigger)}${args.room ? `\nNa sala: ${args.room}` : ''}\n${args.instructions}` };
   if (tool === 'routine.update') return { title: args.delete ? 'Apagar uma rotina' : args.enabled ? 'Retomar uma rotina' : 'Pausar uma rotina', summary: '' };
@@ -84,7 +84,7 @@ export function notifyUser({ title, body }, { id, botId }) {
 const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 'smsSearch', 'sms.send': 'smsSend', 'contacts.search': 'contactsSearch',
   'calls.search': 'callLog', 'location.get': 'location', 'device.status': 'status' };
 
-const chiefOnly = tool => tool.startsWith('shared.') || ['team.status', 'team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap', 'profile.write'].includes(tool);
+const chiefOnly = tool => tool.startsWith('shared.') || ['team.status', 'team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap', 'profile.write', 'team.skills', 'team.enable_skill', 'team.install_skill', 'team.checklist', 'team.check'].includes(tool);
 export class Tools {
   constructor(db, { changed = () => {}, notify = notifyUser, approvalMs = 120000, email = null, device = null, approvalNotice = null } = {}) {
     this.approvalNotice = approvalNotice;
@@ -324,6 +324,10 @@ export class Tools {
       } else if (tool === 'team.routines') result = this.teamRoutines(args);
       else if (tool === 'team.usage') result = this.teamUsage();
       else if (tool === 'team.overlap') result = this.teamOverlap();
+      else if (tool === 'team.checklist' || tool === 'team.check') result = tool === 'team.checklist' ? this.team.checklist(run, args, bot) : this.team.check(run, args, bot);
+      else if (tool === 'team.skills') result = await this.teamSkills(args);
+      else if (tool === 'team.enable_skill') result = await this.teamEnableSkill(run, bot, args);
+      else if (tool === 'team.install_skill') result = await this.teamInstallSkill(run, bot, args, hash);
       else if (tool === 'profile.read') { const profile = this.db.person().profile || ''; result = { name: this.db.person().name || null, note: 'chefe/voce.md', profile, untrusted: true, ...(profile ? {} : { message: 'A nota Você (chefe/voce.md) ainda está vazia. A pessoa escreve nela na Memória, ou o Chefe propõe com profile_write.' }) }; }
       else if (tool === 'profile.write') {
         const text = typeof args.text === 'string' ? args.text : '', reason = typeof args.reason === 'string' ? args.reason.trim().slice(0, 400) : '';
@@ -865,6 +869,53 @@ export class Tools {
       if (score >= 0.2 && shared.length >= 3) pairs.push({ bots: [a.name, b.name], similarity: Math.round(score * 100) / 100, sharedWords: shared.slice(0, 12) });
     }
     return { pairs: pairs.sort((x, y) => y.similarity - x.similarity).slice(0, 20), note: 'Parecido pelas palavras do nome e das instruções: confira as funções (team_bots) antes de propor unir ou aposentar.' };
+  }
+  /** The skills on the computer (where they live and run), and who uses each. */
+  async computerSkills() {
+    if (!this.agentSkills) throw new Error('As skills ficam no computador, e ele não está ligado a este MyBots.');
+    return this.agentSkills.list();
+  }
+  async teamSkills(args = {}) {
+    const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const bots = this.db.bots().filter(item => !item.deletedAt);
+    const query = fold(args.query);
+    const skills = (await this.computerSkills()).filter(skill => !query || fold(skill.name + ' ' + skill.description).includes(query));
+    return { skills: skills.slice(0, 80).map(skill => ({ name: skill.name, description: String(skill.description || '').slice(0, 300), from: skill.source,
+      usedBy: bots.filter(item => (item.skills || []).some(entry => entry?.path === skill.path)).map(item => item.name) })),
+      note: 'Ligue uma skill num bot com team_enable_skill. Para uma que não está aqui, proponha team_install_skill (a pessoa aprova).' };
+  }
+  /** Turns an installed skill on or off for a bot: it is read from its next answer on (the index goes with every turn). */
+  async teamEnableSkill(run, chief, args) {
+    const target = this.team.bot(args.bot), name = String(args.skill || '').trim();
+    if (!name) throw new Error('Diga em skill o nome da skill (veja team_skills).');
+    const all = await this.computerSkills();
+    const matches = all.filter(skill => skill.path === name || skill.name.toLowerCase() === name.toLowerCase());
+    if (!matches.length) throw new Error(`Não há skill "${name}" no computador. Veja as que existem com team_skills, ou proponha instalar com team_install_skill.`);
+    if (matches.length > 1) throw new Error(`Há ${matches.length} skills chamadas ${name} (${matches.map(skill => skill.source).join(', ')}): mande em skill o caminho de uma (veja team_skills).`);
+    const skill = matches[0], on = args.on !== false;
+    const current = Array.isArray(target.skills) ? target.skills : [];
+    const own = current.filter(entry => entry && typeof entry === 'object'), other = current.filter(entry => !entry || typeof entry !== 'object');
+    const has = own.some(entry => entry.path === skill.path);
+    if (on === has) return { changed: false, bot: target.name, skill: skill.name, on };
+    const next = on ? [...own, { path: skill.path }] : own.filter(entry => entry.path !== skill.path);
+    if (!validSkills(next) || next.some(entry => SENSITIVE.test(entry.path))) throw new Error('Um bot usa até 20 skills.');
+    this.db.putBot({ ...target, skills: [...other, ...next], updatedAt: now() });
+    this.db.record('team_changed', `${chief.name} ${on ? 'ligou' : 'desligou'} a skill ${skill.name} em ${target.name}.`, chief.id, run.taskId); this.changed('activity.new');
+    return { changed: true, bot: target.name, skill: skill.name, on, note: on ? `Vale a partir da próxima resposta de ${target.name}: diga a ele para ler a skill antes de começar.` : undefined };
+  }
+  /** A skill from GitHub: the person sees the repository and why, and only then the computer downloads and installs it. */
+  async teamInstallSkill(run, chief, args, hash) {
+    const reason = typeof args.reason === 'string' ? args.reason.trim().slice(0, 400) : '';
+    if (!reason) throw new Error('Diga em reason para que serve a skill: a pessoa lê isso antes de aprovar.');
+    const source = githubSource(args.url, args.path);
+    if (!this.agentSkills) throw new Error('As skills ficam no computador, e ele não está ligado a este MyBots.');
+    const card = { title: `${chief.name} quer instalar uma skill do GitHub`, summary: `Repositório: ${source.url}${source.folder ? `\nPasta: ${source.folder}` : ''}\n\nUma skill são instruções e arquivos que os bots leem quando ela é ligada para eles; algumas trazem scripts que o bot pode rodar. Instale só de quem você confia.\nVai para ~/.agents/skills no computador.\n\nPor quê: ${reason}` };
+    if (!(await this.ask(run, 'team.install_skill', card, hash, null, null))) throw new Error('A pessoa recusou ou não respondeu. Nada foi instalado; não tente de novo sem ela pedir.');
+    this.requireGrant(run, 'team.install_skill');
+    const result = await this.agentSkills.install({ url: args.url, path: args.path || '' });
+    const names = (result.installed || []).map(skill => skill.name);
+    this.db.record('team_changed', `${chief.name} instalou ${names.length ? 'a skill ' + names.join(', ') : 'nenhuma skill nova'} do GitHub.`, chief.id, run.taskId); this.changed('activity.new');
+    return { installed: names, alreadyThere: result.alreadyThere || [], note: names.length ? 'Ligue nos bots com team_enable_skill.' : 'Essas skills já estavam instaladas: ligue com team_enable_skill.' };
   }
   /** The Chefe changes another bot or its routines: the person sees exactly what changes and approves, every time. */
   async teamChange(run, chief, tool, args, hash) {

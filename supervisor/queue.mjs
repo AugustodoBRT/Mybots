@@ -234,7 +234,11 @@ export class Queue extends EventEmitter {
           this.db.run('DELETE FROM codex_sessions WHERE bot_id=?', owner.id); this.db.putBot({ ...this.db.requireBot(owner.id), codexSessionId: undefined });
         }
         if (controller.signal.aborted) this.db.finish(task.id, STOPPED[controller.signal.reason] ? 'failed' : 'cancelled', null, STOPPED[controller.signal.reason] || (controller.signal.reason === 'steer' ? STEERED : 'Pedido cancelado.'));
-        else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.tools?.adoptImages(task.bot_id, task.id, reply.images); const { images, ...rest } = reply; this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] });
+        else { if (reply.accountServers?.length) this.rememberServers?.(reply.accountServers); this.tools?.adoptImages(task.bot_id, task.id, reply.images); const { images, ...rest } = reply;
+          // The chief's answer to the person, once every item of the request's checklist is marked, ends with that list (written by MyBots).
+          const closing = this.db.bot(task.bot_id)?.isChief && !this.db.roomTurn(task.id) ? this.tools?.team?.closingNote?.(task.bot_id) : '';
+          if (closing) rest.text = String(rest.text || '') + closing;
+          this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] });
           if (!reply.fallback) await this.handOff(task, turn, attempt, controller.signal);
           if (!turn) await this.nameSession(task, attempt, controller.signal); }
       } catch (error) {

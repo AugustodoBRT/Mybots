@@ -158,6 +158,11 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // The models to pick from: the phone's, plus those of an IA that is logged in only on the computer.
     const catalog = () => [...models, ...(nodes.computer()?.models || []).filter(item => !models.some(own => (own.provider || 'codex') === (item?.provider || 'codex')))];
     link = new Link(db, nodes, { port: () => server.address().port, changed: broadcast });
+    // The skills live on the computer: the chief lists, turns on and (with the person's approval) installs them through it.
+    tools.agentSkills = {
+      list: async () => { if (link.status().state !== 'online') throw new Error('O computador está desconectado: as skills ficam nele. Tente quando ele voltar.'); return (await link.skills()).skills || []; },
+      install: source => link.installSkill(source)
+    };
     tools.pcCommand = (run, op, args) => link.command(run, op, args);
     tools.pcBrowserFor = bot => link.browserFor(bot);
     // Frames of a bot's Chrome go only to the app connections watching that bot, and are skipped when one is behind.

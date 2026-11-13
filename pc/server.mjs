@@ -19,7 +19,7 @@ import { Claude } from '../lib/claude.mjs';
 import { Agy } from '../lib/agy.mjs';
 import { Opencode } from '../lib/opencode.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
-const { discover, enabledFor } = agentSkills;
+const { discover, enabledFor, githubSource, installFromGithub } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
 import { SENSITIVE, browserMode, browserSlot } from '../supervisor/tool-policy.mjs';
@@ -428,6 +428,12 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (message.type === 'ai_runtime' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: message.op === 'update' ? await aiUpdate() : await aiStatus() }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
+      // A skill from GitHub that the person approved on the phone or here (team_install_skill): downloaded and copied to ~/.agents/skills.
+      if (message.type === 'agent_skill_install' && typeof message.rid === 'string') {
+        try { send({ type: 'pc_result', rid: message.rid, result: await installFromGithub(githubSource(message.url, message.path)) }); }
+        catch (error) { send({ type: 'pc_result', rid: message.rid, error: String(error?.message || error).slice(0, 300) }); }
         return;
       }
       if (message.type === 'agent_skills' && typeof message.rid === 'string') {

@@ -365,6 +365,16 @@ export class Link {
       if (!this.post({ type: 'agent_skills', rid })) done({ error: 'offline' });
     });
   }
+  /** Installs on the computer a skill from GitHub the person already approved (lib/agent-skills.cjs installFromGithub). */
+  installSkill({ url, path = '' }) {
+    return new Promise((resolve, reject) => {
+      const rid = randomUUID();
+      const timer = setTimeout(() => done({ error: 'O computador demorou demais para baixar a skill.' }), 180000);
+      const done = ({ result, error }) => { clearTimeout(timer); this.commands.delete(rid); error ? reject(new Error(error === 'offline' ? 'O computador está desconectado.' : error)) : resolve(result); };
+      this.commands.set(rid, done);
+      if (!this.post({ type: 'agent_skill_install', rid, url, path })) done({ error: 'offline' });
+    });
+  }
   post(value) { if (this.socket?.readyState !== 1 || this.state !== 'online') return false; this.socket.send(JSON.stringify(value)); return true; }
   /** Whether the computer's Chromium can serve a bot whose turn runs on the phone (not Meu Chrome or the main Chrome). */
   browserFor(bot) { return this.state === 'online' && this.socket?.readyState === 1 && ['shared', 'separate'].includes(browserMode(bot)); }

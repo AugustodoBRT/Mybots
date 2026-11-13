@@ -11,6 +11,11 @@ export const TOOL_DEFINITIONS = [
   { name: 'team.usage', label: 'Ver o gasto da equipe', description: 'O Chefe vê (só leitura) o uso e o custo estimado de cada bot e de cada rotina.', readOnly: true },
   { name: 'profile.read', label: 'Ler a nota Você', description: 'Lê a nota Você, no centro da memória: dados e preferências da pessoa (sem senhas), a mesma para todos os bots.', readOnly: true, defaultAllowed: true },
   { name: 'profile.write', label: 'Alterar a nota Você', description: 'O Chefe propõe mudar a nota Você; a pessoa aprova antes.' },
+  { name: 'team.checklist', label: 'Checklist do pedido', description: 'O Chefe anota cada coisa que a pessoa pediu e marca o que foi feito; a resposta final mostra a lista.' },
+  { name: 'team.check', label: 'Marcar o checklist do pedido', description: 'O Chefe marca um item do checklist como feito ou não feito, com o motivo.' },
+  { name: 'team.skills', label: 'Ver as skills do computador', description: 'Mostra ao Chefe as skills (pastas com SKILL.md) instaladas no computador e quais bots usam cada uma.', readOnly: true },
+  { name: 'team.enable_skill', label: 'Ligar skills nos bots', description: 'O Chefe liga ou desliga, num bot, uma skill que já está instalada no computador.' },
+  { name: 'team.install_skill', label: 'Instalar skills do GitHub', description: 'O Chefe propõe instalar no computador uma skill de um repositório do GitHub; a pessoa aprova antes.' },
   { name: 'team.overlap', label: 'Ver papéis parecidos', description: 'Mostra ao Chefe os bots com funções parecidas, para unir ou aposentar.', readOnly: true },
   { name: 'table.list', label: 'Ver tabelas compartilhadas', description: 'Lista as tabelas que todos os bots leem e escrevem.', readOnly: true, defaultAllowed: true },
   { name: 'table.read', label: 'Ler tabela compartilhada', description: 'Lê linhas de uma tabela compartilhada, com filtro.', readOnly: true, defaultAllowed: true },
@@ -176,7 +181,8 @@ export function toolArguments(tool, args) {
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
     'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.choose_models': ['bots','recommended','alternatives'], 'team.models': [], 'team.create_bot': ['name','instructions','color','avatar','access','home','provider','model','effort'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
-    'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'],
+    'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'], 'team.checklist': ['items'], 'team.check': ['item','done','note'],
+    'team.skills': ['query'], 'team.enable_skill': ['bot','skill','on'], 'team.install_skill': ['url','path','reason'],
     'phone.screen': ['image'], 'phone.tap': ['id','x','y','long'], 'phone.type': ['id','text','submit'], 'phone.scroll': ['direction','id'], 'phone.open_app': ['app'], 'phone.back': ['home'], 'phone.fill_code': ['from','id','where'], 'phone.ask_user': ['reason'],
     'negotiation.status': [], 'negotiation.offer': ['channel','to','amount','text','negotiation'], 'negotiation.close': ['channel','to','amount','summary','negotiation'], 'skill.list': [], 'skill.run': ['name','input'], 'skill.propose': ['name','title','description','code','sites','example_input','timeout_seconds','new_bot','daily_at'] }[tool];
   // Say which argument was not accepted and which ones are: "não permitido" alone left the model (and the person) guessing, and the bot
@@ -193,7 +199,7 @@ export function toolArguments(tool, args) {
   // Checked in full by the code that runs them (shared-data.mjs, routines, the team): here only the size.
   // The canvas: html up to 120.000 characters; the rest is checked by canvas.mjs.
   if (/^canvas\./.test(tool)) { if (JSON.stringify(args).length > 160000) throw new Error('Argumentos grandes demais para o canvas.'); return args; }
-  if (/^(table|user|profile)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap'].includes(tool)) {
+  if (/^(table|user|profile)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap', 'team.skills', 'team.enable_skill', 'team.install_skill'].includes(tool)) {
     if (JSON.stringify(args).length > 12000) throw new Error('Argumentos grandes demais.');
     return args;
   }
@@ -324,6 +330,8 @@ export function toolArguments(tool, args) {
   if (tool === 'team.post') return { room: text('room', 60), text: text('text', 4000) };
   if (tool === 'team.ask') return { bot: text('bot', 60), text: text('text', 4000) };
   if (tool === 'team.answer') return { task: text('task', 40) };
+  if (tool === 'team.checklist') { if (!Array.isArray(args.items) || !args.items.length || args.items.length > 20 || args.items.some(item => typeof item !== 'string' || !item.trim() || item.length > 200)) throw new Error('Em items, liste de 1 a 20 coisas que a pessoa pediu (até 200 caracteres cada).'); return { items: args.items }; }
+  if (tool === 'team.check') { if (!Number.isInteger(args.item) || args.item < 1 || args.item > 20 || typeof args.done !== 'boolean') throw new Error('Mande item (o número no checklist) e done (true ou false).'); return { item: args.item, done: args.done, ...(args.note !== undefined ? { note: text('note', 300, true) } : {}) }; }
   if (tool === 'team.read_room') return { room: text('room', 60), limit: integer('limit', 1, 60, 30) };
   if (tool === 'negotiation.status') return {};
   if (tool === 'negotiation.offer' || tool === 'negotiation.close') {

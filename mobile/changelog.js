@@ -2,6 +2,13 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.10', date: '2026-11-13', items: [
+    ['novo', 'O Chefe anota cada coisa que você pediu num checklist e, no fim, a resposta dele mostra item por item o que foi feito e o que não deu (com o motivo). Nada do que você pediu some sem aviso.'],
+    ['novo', 'O Chefe vê as skills do computador e liga nos bots certos. Para instalar uma skill nova do GitHub, ele te mostra o repositório e só instala depois que você aprovar.'],
+    ['melhoria', 'As skills que você instalou para o Antigravity (como impeccable, taste e frontend-design) agora servem para todos os bots, de qualquer IA.'],
+    ['melhoria', 'Quando você pede algo criativo e ousado, o Chefe pede 2 ou 3 direções bem diferentes para você escolher antes de polir, e alguém revisa contra o seu pedido. Sem esse pedido, segue o estilo que já existe.'],
+    ['melhoria', 'Quando um bot não consegue usar um site ou uma ferramenta que você pediu (por exemplo, falta login), ele avisa e pede, em vez de trocar por outro caminho em silêncio.']
+  ] },
   { version: '0.94.9', date: '2026-11-13', items: [
     ['correcao', 'O uso e o gasto dos bots com Gemini (Antigravity) apareciam muito maiores do que eram: cada resposta somava a conversa inteira de novo. Agora conta só a resposta, e o histórico foi corrigido.'],
     ['melhoria', 'Uma sala agora aceita até 30 bots (eram 8).'],

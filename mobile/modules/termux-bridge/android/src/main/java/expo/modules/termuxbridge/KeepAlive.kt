@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 
 /**
  * Keeps MyBots working with the screen off: a foreground service ("MyBots ativo") that wakes the supervisor every
- * minute and at each routine's time (exact alarms survive Doze), restarts it through Termux when it stops answering,
+ * minute and at each routine's time (exact alarms survive Doze), restarts it (inside the app) when it stops answering,
  * and holds a wake lock only while a bot is working. The supervisor still decides and runs everything.
  */
 internal object KeepAlive {
@@ -36,8 +36,8 @@ internal object KeepAlive {
   const val ACTION_ALARM = "expo.modules.termuxbridge.KEEPALIVE_ALARM"
   const val READY = "Rotinas e avisos funcionando com a tela apagada."
   private const val ALARM_MAX_MS = 15 * 60_000L
-  // Waits between restart attempts while the supervisor stays down: 1, 2, 4, 8, 15 and then every 30 minutes.
-  private val BACKOFF = longArrayOf(1, 2, 4, 8, 15, 30).map { it * 60_000 }
+  // Waits between restart attempts while the supervisor stays down: 1, 1, 2, 5 and then every 10 minutes.
+  private val BACKOFF = longArrayOf(1, 1, 2, 5, 10).map { it * 60_000 }
   private val XIAOMI = setOf("xiaomi", "redmi", "poco")
   @Volatile private var alarmLock: PowerManager.WakeLock? = null
 
@@ -119,7 +119,7 @@ internal object KeepAlive {
     if (!due) return Check(false, false, null, "O supervisor não está respondendo. Vou tentar reiniciar.")
     p.edit().putLong("lastRestartAt", now).putInt("attempts", attempts + 1).putLong("restartDownSince", since).apply()
     restart(context)
-    return Check(false, false, null, if (EmbeddedRuntime.enabled(context)) "O supervisor parou. Reiniciando…" else "O supervisor parou. Reiniciando no Termux…")
+    return Check(false, false, null, "O MyBots deste celular parou. Reiniciando…")
   }
 
   private fun restart(context: Context) {
@@ -133,23 +133,8 @@ internal object KeepAlive {
       } catch (error: Exception) { p.edit().putString("restartMessage", "Não consegui reiniciar (${error.javaClass.simpleName}).").apply() }
       return
     }
-    if (context.packageManager.checkPermission(RUN_COMMAND_PERMISSION, context.packageName) != PackageManager.PERMISSION_GRANTED) {
-      p.edit().putString("restartMessage", "O MyBots não tem permissão para executar comandos no Termux.").apply(); return
-    }
-    try {
-      val script = context.assets.open("mybots-restart.sh").bufferedReader().use { it.readText() }
-      val release = context.assets.open("mybots-supervisor.sha256").bufferedReader().use { it.readText().trim() }
-      val id = "keepalive-" + UUID.randomUUID()
-      val callback = Intent(context, TermuxResultReceiver::class.java).setData(Uri.parse("mybots://termux/$id")).putExtra("mybots.requestId", id)
-      val flags = PendingIntent.FLAG_ONE_SHOT or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-      val result = PendingIntent.getBroadcast(context, 41_200, callback, flags)
-      // No stdin extra: the restart script never reads it.
-      startTermux(context, runCommandIntent(TERMUX_TIMEOUT, arrayOf("120s", TERMUX_BASH, "-lc", script, "mybots", release, transportPublicKey(), transportDigest()),
-        null, result, "MyBots · reiniciar supervisor"))
-      p.edit().putString("restartMessage", "Reiniciando…").apply()
-    } catch (error: Exception) {
-      p.edit().putString("restartMessage", "Não consegui acionar o Termux (${error.javaClass.simpleName}).").apply()
-    }
+    // Termux is no longer used: only the phone's own MyBots inside the app is restarted from here.
+    p.edit().putString("restartMessage", "Abra o MyBots e ative \"Usar só neste celular\".").apply()
   }
 
   /** Termux's answer to a restart: the same encrypted envelope as pairing, saved so the app and the service keep working. */
@@ -161,7 +146,7 @@ internal object KeepAlive {
         val envelope = JSONObject((result["stdout"] as? String).orEmpty().trim().lines().last())
         storePairing(context, envelope.getString("encryptedToken"), envelope.getInt("port"), envelope.getString("release"))
         p.edit().putString("restartMessage", "Reiniciado").putLong("reportDownSince", p.getLong("restartDownSince", System.currentTimeMillis())).apply()
-      } catch (_: Exception) { p.edit().putString("restartMessage", "O Termux não confirmou o reinício.").apply() }
+      } catch (_: Exception) { p.edit().putString("restartMessage", "O reinício não foi confirmado.").apply() }
       start(context, "periodic")
     } else {
       val error = (result["stderr"] as? String).orEmpty().lines().lastOrNull { it.isNotBlank() }?.take(200)
@@ -215,7 +200,6 @@ internal object KeepAlive {
       "lastRestartAt" to stamp("lastRestartAt"), "restartMessage" to p.getString("restartMessage", null), "nextAlarmAt" to stamp("nextAlarmAt"),
       "startError" to p.getString("startError", null),
       "batteryUnrestricted" to power.isIgnoringBatteryOptimizations(context.packageName),
-      "termuxBatteryUnrestricted" to power.isIgnoringBatteryOptimizations(TERMUX_PACKAGE),
       "backgroundRestricted" to (Build.VERSION.SDK_INT >= 28 && activity.isBackgroundRestricted),
       "exactAlarms" to (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms()),
       "notifications" to notifications.areNotificationsEnabled(),

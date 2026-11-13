@@ -37,11 +37,11 @@ export class SupervisorClient {
         const pending = this.pending.get(message.id);
         if (pending) { this.pending.delete(message.id); clearTimeout(pending.timer); message.error ? pending.reject(new Error(message.error)) : pending.resolve(message.result); }
       };
-      ws.onerror = () => { if (!settled) { clearTimeout(timeout); reject(new Error('Não consegui conectar ao supervisor no Termux.')); } };
+      ws.onerror = () => { if (!settled) { clearTimeout(timeout); reject(new Error('Não consegui conectar ao MyBots.')); } };
       ws.onclose = () => {
         if (this.socket !== ws) return;
         clearTimeout(timeout); this.authenticated = false;
-        for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(new Error('A conexão com o supervisor foi interrompida. O pedido salvo continua no Termux.')); }
+        for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(new Error('A conexão com o supervisor foi interrompida. O pedido salvo continua lá.')); }
         this.pending.clear(); this.onConnection(false);
         if (!settled) reject(new Error('O supervisor está desconectado.'));
         if (!this.closed) this.scheduleReconnect();

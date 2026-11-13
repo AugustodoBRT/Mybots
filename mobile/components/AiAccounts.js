@@ -26,7 +26,7 @@ export function AiAccounts({ aiAccounts, call, reload }) {
   };
   const act = (where, op, params = {}) => call('ai.accounts', { where, op, ...params });
   if (!devices.length) return <View style={styles.modeOption}><Text style={styles.optionLabel}>Contas de IA</Text>
-    <Text style={styles.optionDetail}>Conecte o computador (ou ative o Termux) para ver e adicionar contas. Cada aparelho guarda os próprios logins.</Text></View>;
+    <Text style={styles.optionDetail}>Conecte o computador (ou use o MyBots deste celular) para ver e adicionar contas. Cada aparelho guarda os próprios logins.</Text></View>;
 
   return <View>
     <Text style={[styles.optionDetail, { marginBottom: 6 }]}>Use mais de uma conta da mesma IA, por exemplo dois Claude ou dois Codex. Cada bot escolhe a conta no próprio perfil. Os logins ficam no aparelho onde você entrou e nunca são copiados.</Text>
@@ -46,7 +46,7 @@ export function AiAccounts({ aiAccounts, call, reload }) {
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => run(() => act(where, 'remove', { provider, id: item.id }), `${item.label} removida.`).then(() => setCommand(null))} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Remover</Text></Pressable>
           </View>}
           {command && command.where === where && command.provider === provider && command.id === item.id ? <View style={{ marginTop: 8 }}>
-            <Text style={styles.optionDetail}>{where === 'here' ? 'Abra o Termux, cole este comando e entre na conta' : 'Abra um terminal no computador, cole este comando e entre na conta'}. Depois toque em Verificar.</Text>
+            <Text style={styles.optionDetail}>{where === 'here' ? 'Abra o terminal deste celular, cole este comando e entre na conta' : 'Abra um terminal no computador, cole este comando e entre na conta'}. Depois toque em Verificar.</Text>
             <Text selectable style={[styles.optionDetail, { fontFamily: 'monospace', color: C.text, backgroundColor: C.surface2, padding: 10, borderRadius: 10, marginTop: 6 }]}>{command.text}</Text>
             <Pressable accessibilityRole="button" onPress={() => copyText(command.text).then(() => setNote('Comando copiado.')).catch(() => {})} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="copy" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Copiar o comando</Text></Pressable>
             {provider === 'agy' ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>Antigravity: o login de contas extras é experimental.</Text> : null}

@@ -89,7 +89,6 @@ export const microphonePermission = () => native.microphonePermission();
 export const startListening = () => native.startListening();
 export const stopListening = (cancel = false) => native.stopListening(cancel);
 export const onSpeech = listener => native.addListener('onSpeech', listener);
-export const termuxApiStatus = () => native.termuxApiStatus();
 export const openAppSettings = packageName => native.openAppSettings(packageName);
 export const keepAliveStatus = () => native.keepAliveStatus();
 export const setKeepAlive = enabled => native.setKeepAlive(enabled);

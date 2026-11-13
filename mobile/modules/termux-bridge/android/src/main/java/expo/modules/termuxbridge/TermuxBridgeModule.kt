@@ -701,42 +701,8 @@ class TermuxBridgeModule : Module() {
       EmbeddedRuntime.run(context, embedded.path, embedded.args, embedded.stdin, embedded.timeoutMs, operation == "pair") { result -> mainHandler.post { promise.resolve(result) } }
       return
     }
-    if (context.packageManager.checkPermission(RUN_COMMAND_PERMISSION, context.packageName) != PackageManager.PERMISSION_GRANTED) {
-      promise.reject("TERMUX_PERMISSION", "Permita que o MyBots execute comandos no Termux nas permissões do app.", null)
-      return
-    }
-    try {
-      @Suppress("DEPRECATION")
-      context.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
-    } catch (_: Exception) {
-      promise.reject("TERMUX_MISSING", "Instale e abra o Termux neste celular para conectar ao Codex.", null)
-      return
-    }
-
-    val command = try { commandFor(context, operation, payload) } catch (error: Exception) {
-      promise.reject("TERMUX_REQUEST", error.message ?: "Não foi possível preparar o pedido.", error)
-      return
-    }
-    val id = if (operation == "reply") payload["requestId"] as String else UUID.randomUUID().toString()
-    if (pending.putIfAbsent(id, promise) != null) {
-      promise.reject("TERMUX_DUPLICATE", "Este pedido já está em execução.", null)
-      return
-    }
-    val callback = Intent(context, TermuxResultReceiver::class.java)
-      .setData(Uri.parse("mybots://termux/$id"))
-      .putExtra(REQUEST_ID, id)
-    val flags = PendingIntent.FLAG_ONE_SHOT or if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-    val result = PendingIntent.getBroadcast(context, requestCodes.incrementAndGet(), callback, flags)
-    val intent = runCommandIntent(command.path, command.args, command.stdin, result, "MyBots · Codex")
-    try {
-      startTermux(context, intent)
-      Handler(Looper.getMainLooper()).postDelayed({
-        pending.remove(id)?.reject("TERMUX_TIMEOUT", "O retorno do Termux demorou. Reabra a conversa para recuperar a resposta salva.", null)
-      }, command.timeoutMs)
-    } catch (error: Exception) {
-      pending.remove(id)
-      promise.reject("TERMUX_START", "Não consegui iniciar o Codex no Termux. Confira a permissão de execução.", error)
-    }
+    // Termux is no longer used: the phone's own MyBots runs inside the app (EmbeddedRuntime) or the computer's is used.
+    promise.reject("EMBEDDED_OFF", "Ative \"Usar só neste celular\" em Ajustes ou conecte o computador.", null)
   }
 
   private fun commandFor(context: Context, operation: String, payload: Map<String, Any?>): TermuxCommand {

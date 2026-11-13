@@ -305,7 +305,7 @@ export function toolArguments(tool, args) {
       ...(provider ? { provider } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
   }
   if (tool === 'team.choose_models') {
-    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 10 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 40)) throw new Error('Em bots, liste de 1 a 10 nomes dos bots que vai criar agora (todos de uma vez).');
+    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 30 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 40)) throw new Error('Em bots, liste de 1 a 30 nomes dos bots que vai criar agora (todos de uma vez).');
     const pick = (value, where) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Em ${where}, mande { provider, model, effort }.`);
       for (const key of ['provider', 'model', 'effort']) if (value[key] !== undefined && (typeof value[key] !== 'string' || value[key].length > 120)) throw new Error(`Em ${where}, ${key} é um texto.`);

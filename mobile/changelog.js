@@ -2,6 +2,11 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.8', date: '2026-11-13', items: [
+    ['correcao', 'No celular, quando o MyBots deste celular parava sozinho depois de um tempo, o app ficava tentando "reconectar ao Termux" e não voltava. Agora ele reinicia o MyBots do celular sozinho, inclusive quando você volta para o app.'],
+    ['melhoria', 'O Termux saiu de vez: quem usava passa automaticamente para o MyBots dentro do app, e o que está no computador volta pela sincronização.'],
+    ['melhoria', 'O Chefe pode criar quantos bots precisar de uma vez (antes eram no máximo 5), com uma pergunta só sobre a IA para até 30 bots.']
+  ] },
   { version: '0.94.7', date: '2026-11-13', items: [
     ['melhoria', 'Uma mensagem agora leva até 20 arquivos (eram 5), nas conversas e nas salas.'],
     ['melhoria', 'No celular, os arquivos maiores vão em partes, como no computador: os anexos de uma mensagem não precisam mais somar menos de 10 MB.']

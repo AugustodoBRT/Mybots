@@ -7,7 +7,7 @@ import { styles } from '../styles';
  * The IAs installed on this device and on the computer (Codex, Claude Code, Antigravity, opencode), their versions, one button that
  * updates them all on both, and "Atualizar sozinho" (once a day on each device). See lib/ai-runtimes.mjs.
  */
-const SOURCE = { mybots: 'mantida pelo MyBots', sistema: 'instalada no sistema', ponte: 'pelo Debian do Termux' };
+const SOURCE = { mybots: 'mantida pelo MyBots', sistema: 'instalada no sistema', ponte: 'por uma ponte' };
 function Device({ title, status }) {
   if (!status) return null;
   if (status.error) return <Text style={[styles.optionDetail, { color: C.amber, marginTop: 8 }]}>{title}: {status.error}</Text>;

@@ -2216,3 +2216,14 @@ Pedido do dono: o limite de 5 anexos atrapalhava.
 - No celular, os arquivos acima de cerca de 1 MB vão em partes de 3 MB (`file.uploadStart` e `file.uploadChunk`, cortando o base64 em blocos de 4 MB), como no PC. Assim cai o teto de 10 MB somados por mensagem; cada arquivo continua com até 10 MB pelo seletor do Android.
 - As salas passam a usar o mesmo envio (`uploadWebFiles` com o primeiro bot da sala, dono dos arquivos em `saveForRoom`).
 - Conferido com o supervisor: um arquivo de 7 MB enviado em partes chega idêntico (sha256).
+
+## 0.94.8 (versionCode 200): sem limite de bots criados por vez, e o celular sem Termux
+
+Pedido do dono: o Chefe criava no máximo 5 bots por resposta. `LIMITS.botsPerTurn` saiu de `supervisor/team.mjs`; continua só o teto do app, 30 bots. A pergunta única de IA (`team_choose_models`) aceita até 30 nomes, em vez de 10.
+
+Pedido do dono: no celular o MyBots desconectava sozinho depois de um tempo e ficava "reconectando ao Termux", que já não devia existir. Os dados não precisam vir do Termux (estavam no PC e sincronizaram).
+
+- **Causa**: no modo "Usar só neste celular" o supervisor roda dentro do app (`EmbeddedRuntime`). Quando o Android o parava, o app só tentava reabrir o socket para sempre, com a mensagem antiga "Reconectando ao Termux…"; quem o reiniciava era só o serviço "MyBots ativo", depois de 1, 2, 4, 8, 15 e 30 min.
+- **App** (`mobile/App.js`): com o app na tela e o núcleo sem responder por 10 s, o app o inicia de novo (o mesmo `pair` do início, que mantém um supervisor vivo e seus dados), com espera crescente até 1 min entre tentativas; ao voltar para o app, tenta na hora. O serviço reinicia mais cedo (1, 1, 2, 5 e depois a cada 10 min, `KeepAlive.kt`).
+- **Termux removido**: um celular que estava no Termux passa sozinho para o MyBots dentro do app (`setEmbedded(true)`; sem suporte, vai para o computador pareado ou para a tela inicial). Saíram a migração (recuperação de respostas e backup importado no pareamento), o guia e o botão do Termux da tela inicial e dos Ajustes, o Termux:API e a bateria do Termux nos Ajustes, e os textos. No nativo, os pedidos e o reinício pelo Termux (`RUN_COMMAND`) respondem que é preciso ativar o modo do celular. "Voltar a usar só o computador" foi para Ajustes → Computador. O nome interno `'termux'` da escolha salva e o módulo `TermuxBridge` ficaram, só como nomes.
+- **Não conferido no celular real**: a queda e o reinício. Se continuar caindo com o app aberto, a suspeita seguinte é o limite de processos filhos do Android 12+ (o mesmo que derruba o Termux), que só se tira pela opção de desenvolvedor ou por adb.

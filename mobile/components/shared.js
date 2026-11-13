@@ -7,7 +7,7 @@ import { PermissionsAndroid, Pressable, Text, Animated, Easing, View, ActivityIn
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { embeddedEnabled, copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, termuxApiStatus, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { embeddedEnabled, copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
 import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop, pwa } from '../desktop';
@@ -21,7 +21,7 @@ export const COLOR_NAMES = { green: 'Verde', blue: 'Azul', purple: 'Lilás', ora
 
 export const EFFORT_NAMES = { none: 'Sem raciocínio', minimal: 'Mínimo', low: 'Baixo', medium: 'Médio', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo', ultra: 'Ultra' };
 
-export const TERMUX_COMMANDS = { status: 'codex login status', models: 'catálogo de modelos do Codex', reply: 'codex exec / resume (mensagem pela entrada padrão)', recover: 'recuperação da resposta salva no Termux', merge: 'juntar as conversas salvas no celular', open: 'abrir o MyBots' };
+export const TERMUX_COMMANDS = { status: 'codex login status', models: 'catálogo de modelos do Codex', reply: 'codex exec / resume (mensagem pela entrada padrão)', recover: 'recuperação da resposta salva', merge: 'juntar as conversas salvas no celular', open: 'abrir o MyBots' };
 
 export const nativeMessage = error => String(error?.message || error).split(/Exception: /).pop().trim();
 
@@ -36,19 +36,19 @@ export function safeLog(value) {
 
 export function formatTermuxLog(log) {
   const lines = [
-    'MyBots · diagnóstico do Termux',
+    'MyBots · diagnóstico do celular',
     `Operação: ${log.operation || 'desconhecida'}`,
     `Comando: ${TERMUX_COMMANDS[log.operation] || log.operation || 'desconhecido'}`,
     `Horário: ${log.startedAt ? new Date(log.startedAt).toLocaleString('pt-BR') : 'indisponível'}`
   ];
   if (log.exitCode !== undefined) lines.push(`Código de saída: ${log.exitCode}`);
-  if (log.errorCode !== undefined) lines.push(`Código do Termux: ${log.errorCode}`);
+  if (log.errorCode !== undefined) lines.push(`Código: ${log.errorCode}`);
   if (log.nativeCode) lines.push(`Código nativo: ${log.nativeCode}`);
-  if (log.errorMessage) lines.push(`Mensagem do Termux: ${safeLog(log.errorMessage)}`);
+  if (log.errorMessage) lines.push(`Mensagem: ${safeLog(log.errorMessage)}`);
   if (log.nativeMessage) lines.push(`Mensagem do MyBots: ${safeLog(log.nativeMessage)}`);
   if (log.stdout?.trim()) lines.push('', 'Saída:', safeLog(log.stdout));
   if (log.stderr?.trim()) lines.push('', 'Erro:', safeLog(log.stderr));
-  if (!log.stdout?.trim() && !log.stderr?.trim() && !log.errorMessage && !log.nativeMessage) lines.push('', 'O Termux não retornou saída de texto.');
+  if (!log.stdout?.trim() && !log.stderr?.trim() && !log.errorMessage && !log.nativeMessage) lines.push('', 'O comando não retornou saída de texto.');
   return lines.join('\n');
 }
 
@@ -130,7 +130,7 @@ export function Notice({ text, onRetry, onLogs, loading = false }) {
     <View style={styles.noticeIcon}><Icon name="alert" size={18} color={C.amber} /></View>
     <View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{loading ? 'Conectando…' : 'Atenção'}</Text><Text style={styles.noticeText}>{text}</Text></View>
     <View style={styles.noticeActions}>
-      {onLogs && !loading && <Pressable accessibilityRole="button" accessibilityLabel="Ver logs do Termux" onPress={onLogs} style={styles.noticeRetry}>
+      {onLogs && !loading && <Pressable accessibilityRole="button" accessibilityLabel="Ver detalhes do erro" onPress={onLogs} style={styles.noticeRetry}>
         <Text style={styles.noticeLogsText}>Logs</Text>
       </Pressable>}
       {onRetry && <Pressable accessibilityRole="button" accessibilityLabel="Tentar conectar novamente" onPress={onRetry} style={styles.noticeRetry}>
@@ -147,7 +147,7 @@ export function TermuxLogModal({ visible, log, copied, onClose, onCopy }) {
       <Pressable style={styles.logsSheet} onPress={event => event.stopPropagation()}>
         <View style={styles.sheetHandle} />
         <View style={styles.logsHeading}>
-          <View style={styles.logsHeadingCopy}><Text style={styles.sheetTitle}>Detalhes do Termux</Text><Text style={styles.logsHint}>Copie este diagnóstico e cole aqui na conversa.</Text></View>
+          <View style={styles.logsHeadingCopy}><Text style={styles.sheetTitle}>Detalhes do erro</Text><Text style={styles.logsHint}>Copie este diagnóstico e cole aqui na conversa.</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Fechar logs" onPress={onClose} style={styles.modalClose}><Text style={styles.modalCloseText}>×</Text></Pressable>
         </View>
         <ScrollView style={styles.logsScroll} contentContainerStyle={styles.logsContent}>
@@ -207,7 +207,7 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   const provider = providerOf(model || (selection?.provider || selection?.model ? selection : models.find(item => item.isDefault) || models[0] || selection));
   const available = models.filter(item => providerOf(item) === provider);
   const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
-  const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code no Termux' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex no Termux') }));
+  const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex') }));
   // Another IA starts on its own default account: accounts belong to one IA.
   const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next, DEFAULT_ACCOUNT); };
   const accountList = accountChoices(aiAccounts, provider, home);
@@ -337,7 +337,7 @@ export function botLine(bot, data) {
 
 export function ModeSheet({ visible, mode, onClose, onSelect }) {
   const options = [['computer', 'Celular + computador', 'O app fica no celular; o Codex e o histórico ficam no PC.', 'wifi'],
-    ['phone', 'Só no celular', termuxAvailable ? 'O Codex ou o Claude rodam no Termux e tudo fica neste celular. Na primeira vez, permita apps externos no Termux.' : 'Requer o APK próprio do MyBots; o Expo Go não inclui a ponte Android.', 'phone']];
+    ['phone', 'Só no celular', termuxAvailable ? 'As IAs rodam dentro do app e tudo fica neste celular.' : 'Requer o APK próprio do MyBots; o Expo Go não inclui a ponte Android.', 'phone']];
   return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
     <Pressable style={styles.sheetBackdrop} onPress={onClose}>
       <Pressable style={styles.sheet} onPress={event => event.stopPropagation()}>
@@ -367,9 +367,8 @@ export function PhoneAccess({ stats, lastPoll }) {
       ? `Toda notificação (Gmail, bancos, apps) vira um evento para os bots. ${stats?.last24h ?? 0} nas últimas 24 h${stats?.lastAt ? `, a última às ${new Date(stats.lastAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}.`
       : 'Ligue para os bots perceberem e-mails, avisos e mensagens assim que chegam. O Android libera todas as notificações; cada bot só lê se você permitir no perfil dele.'}</Text>
     {!granted ? <Pressable onPress={() => openNotificationAccess().catch(() => {})} style={{ marginTop: 8 }}><Text style={styles.deleteText}>Ativar acesso a notificações</Text></Pressable> : null}
-    {embeddedEnabled() ? null : <Text style={[styles.optionDetail, { marginTop: 8 }]}>SMS, contatos, chamadas, localização, bateria e as notificações que os bots mandam usam o Termux:API. Na primeira vez que um bot usar cada um, o Android pede a permissão.</Text>}
     <BotNoticeStatus lastPoll={lastPoll} />
-    {embeddedEnabled() ? <PhonePermissions /> : <TermuxApiStatus />}
+    <PhonePermissions />
     <PhoneControlAccess />
   </View>;
 }
@@ -407,10 +406,9 @@ export function BotNoticeStatus({ lastPoll }) {
   const recent = lastPoll && Date.now() - Date.parse(lastPoll) < 90000;
   return <View style={styles.appRow}>
     <Text style={styles.optionLabel}>Notificações dos bots · {allowed ? (recent ? 'Pelo MyBots' : 'Pelo MyBots com o app aberto') : 'Bloqueadas'}</Text>
-    <Text style={styles.optionDetail}>{!allowed ? (embeddedEnabled() ? 'O Android está bloqueando as notificações do MyBots. Libere em Notificações do MyBots.' : 'O Android está bloqueando as notificações do MyBots, então elas saem pelo Termux:API (sem abrir a conversa ao tocar). Libere em Notificações do MyBots.')
+    <Text style={styles.optionDetail}>{!allowed ? 'O Android está bloqueando as notificações do MyBots. Libere em Notificações do MyBots.'
       : recent ? 'Chegam como MyBots, aparecem na tela e abrem a conversa do bot ao tocar.'
-      : embeddedEnabled() ? 'Com o app fechado, o HyperOS pode parar o MyBots e os avisos não chegam. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'
-      : 'Com o app fechado, o HyperOS pode parar o MyBots e o aviso sai pelo Termux:API. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'}</Text>
+      : 'Com o app fechado, o HyperOS pode parar o MyBots e os avisos não chegam. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'}</Text>
     <View style={styles.appActions}>
       {!allowed ? <Pressable onPress={() => notificationPermission().then(check).then(() => openNotificationSettings()).catch(() => {})}><Text style={styles.deleteText}>Liberar notificações do MyBots</Text></Pressable> : null}
       {allowed && !recent ? <Pressable onPress={() => openAppSettings('com.mybots.app').catch(() => {})}><Text style={styles.deleteText}>Abrir configurações do MyBots</Text></Pressable> : null}
@@ -443,7 +441,7 @@ function PhonePermissions() {
   const located = granted['android.permission.ACCESS_FINE_LOCATION'];
   return <View style={styles.appRow}>
     <Text style={styles.optionLabel}>Permissões do celular</Text>
-    <Text style={styles.optionDetail}>Sem o Termux, quem acessa isso é o próprio MyBots. Cada bot continua só podendo usar o que você liberar no perfil dele. Se o Android avisar “Configuração restrita”, abra as informações do app, toque nos três pontos e escolha “Permitir configurações restritas”.</Text>
+    <Text style={styles.optionDetail}>Quem acessa isso é o próprio MyBots. Cada bot continua só podendo usar o que você liberar no perfil dele. Se o Android avisar “Configuração restrita”, abra as informações do app, toque nos três pontos e escolha “Permitir configurações restritas”.</Text>
     {PHONE_PERMISSIONS.map(item => { const ok = item.names.every(name => granted[name]); return <View key={item.title} style={{ marginTop: 10 }}>
       <Text style={styles.optionLabel}>{item.title} · {ok ? 'Permitido' : 'Não permitido'}</Text><Text style={styles.optionDetail}>{item.detail}</Text>
       {ok ? null : <Pressable accessibilityRole="button" accessibilityLabel={`Permitir ${item.title}`} onPress={() => ask(item.names)} style={{ marginTop: 4 }}><Text style={styles.deleteText}>Permitir</Text></Pressable>}
@@ -453,21 +451,6 @@ function PhonePermissions() {
   </View>;
 }
 
-export function TermuxApiStatus() {
-  const [api, setApi] = useState(null);
-  const check = useCallback(() => { termuxApiStatus().then(setApi).catch(() => setApi(null)); }, []);
-  useEffect(() => { check(); const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); }); return () => subscription.remove(); }, [check]);
-  if (!api) return null;
-  const ok = api.installed && api.sameSigner && api.enabled;
-  return <View style={styles.appRow}>
-    <Text style={styles.optionLabel}>Termux:API · {ok ? 'Pronto' : !api.installed ? 'App não instalado' : !api.sameSigner ? 'Fonte diferente do Termux' : 'Desativado'}</Text>
-    <Text style={styles.optionDetail}>{!api.installed ? 'Instale o app Termux:API do mesmo lugar de onde veio o Termux (F-Droid ou GitHub). Só o comando pkg install termux-api não basta.'
-      : !api.sameSigner ? 'O Termux e o Termux:API vieram de lugares diferentes (por exemplo F-Droid e GitHub/Play Store) e o Android não deixa um falar com o outro. Desinstale o Termux:API e instale do mesmo lugar do Termux.'
-      : !api.enabled ? 'O Termux:API está desativado nas configurações do Android.'
-      : 'Se um bot disser que a notificação demorou: abra o Termux:API uma vez, permita notificações e, no HyperOS/MIUI, ligue o Início automático e tire a economia de bateria dele.'}</Text>
-    {api.installed ? <Pressable onPress={() => openAppSettings('com.termux.api').catch(() => {})} style={{ marginTop: 6 }}><Text style={styles.deleteText}>Abrir configurações do Termux:API</Text></Pressable> : null}
-  </View>;
-}
 
 export function RemoteAccess({ tailscale }) {
   return <View style={{ marginTop: 10 }}>
@@ -487,7 +470,7 @@ export function DesktopNetwork({ call, notice = false }) {
   if (!status) return null;
   if (!notice) return <><DesktopSource call={call} status={status} />
     <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Conexão com o celular</Text><Text style={[styles.optionDetail, status.phone && { color: C.accent }]}>{status.phone ? `Conectado ${PATH_TEXT[status.link?.path] || ''}`.trim() : 'Fora de alcance agora. No mesmo Wi-Fi ele procura o computador sozinho; de outras redes, conecta pelo relé do MyBots.'}</Text></View>
-    {status.apps?.length ? <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Celulares usando o app sem Termux</Text>
+    {status.apps?.length ? <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Celulares usando o MyBots do computador</Text>
       {status.apps.map(item => <View key={item.id} style={styles.passwordRow}><View style={{ flex: 1 }}><Text style={styles.limitName}>{item.name}</Text><Text style={styles.limitMeta}>Pareado em {new Date(item.pairedAt).toLocaleDateString('pt-BR')}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={`Esquecer ${item.name}`} onPress={() => call('desktop.forgetApp', { id: item.id }).catch(() => {})} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Esquecer</Text></Pressable></View>)}
       <Text style={styles.optionDetail}>Esquecer corta o acesso na hora. Para voltar, o celular precisa ler um QR novo.</Text></View> : null}
@@ -563,7 +546,7 @@ export function DesktopPair({ call, compact = false }) {
   return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
     <Text style={styles.optionLabel}>Parear um celular</Text>
     <DesktopNetwork call={call} />
-    <Text style={styles.optionDetail}>No celular, abra o MyBots e leia o QR: na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (com o Termux ativo, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
+    <Text style={styles.optionDetail}>No celular, abra o MyBots e leia o QR: na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (usando o MyBots deste celular, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
     {qr ? <View style={styles.pairQr}><View accessibilityLabel={qr.iphone ? 'QR para parear o iPhone' : 'QR para parear o celular'}><SvgXml xml={qr.svg} width={260} height={260} /></View>
       <Text style={styles.limitMeta}>{qr.iphone ? 'Abra a câmera do iPhone, aponte para o QR e toque no link.' : 'Esperando o celular ler…'}</Text>
       {qr.text ? <Pressable accessibilityRole="button" onPress={() => copyText(qr.text).then(() => setNote('Link copiado.')).catch(() => {})} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="copy" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Copiar o link</Text></Pressable> : null}</View> : null}
@@ -789,15 +772,14 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
   const state = !status.enabled ? 'Desligado' : status.downSince ? 'Supervisor parado' : status.running ? 'Ativo' : 'Parado pelo Android';
   const checks = [
     { ok: status.batteryUnrestricted, label: 'Bateria do MyBots sem restrições', actions: [['Liberar', 'battery'], ...(status.xiaomi ? [['Economia de bateria do HyperOS', 'hyperosBattery']] : [])] },
-    { ok: status.termuxBatteryUnrestricted, label: 'Bateria do Termux sem restrições', actions: [['Abrir', status.xiaomi ? 'termuxBattery' : 'termuxDetails']] },
     { ok: status.exactAlarms, label: 'Alarmes no horário exato (rotinas)', actions: [['Permitir', 'exactAlarm']] },
     { ok: !status.backgroundRestricted, label: 'Atividade em segundo plano permitida', actions: [['Abrir', 'details']] },
   ];
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>Funcionar com a tela apagada · {state}</Text>
     <Text style={styles.optionDetail}>{status.enabled
-      ? 'Uma notificação discreta “MyBots ativo” mantém as rotinas e os avisos funcionando, acorda o celular no horário de cada rotina e reinicia o supervisor no Termux se ele parar.'
-      : 'Desligado: com a tela apagada o Android pode pausar o Termux, e rotinas e avisos atrasam até você abrir o MyBots.'}</Text>
+      ? 'Uma notificação discreta “MyBots ativo” mantém as rotinas e os avisos funcionando, acorda o celular no horário de cada rotina e reinicia o MyBots deste celular se ele parar.'
+      : 'Desligado: com a tela apagada o Android pode pausar o MyBots, e rotinas e avisos atrasam até você abrir o MyBots.'}</Text>
     {status.enabled ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>Último sinal do supervisor: {when(heartbeat)} · Última verificação: {when(status.lastCheckAt)}{status.nextAlarmAt ? ` · Próximo despertar: ${when(status.nextAlarmAt)}` : ''}{nextRoutineAt ? ` · Próxima rotina ou aviso: ${when(nextRoutineAt)}` : ''}</Text> : null}
     {status.enabled && status.lastRestartAt ? <Text style={styles.optionDetail}>Último reinício pelo MyBots: {when(status.lastRestartAt)}{status.restartMessage ? ` · ${status.restartMessage}` : ''}</Text> : null}
     {status.enabled && !status.running && status.startError ? <Text style={styles.optionDetail}>O Android não deixou o serviço iniciar em segundo plano. Libere a bateria abaixo e abra o MyBots de novo.</Text> : null}
@@ -806,7 +788,7 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
       {!item.ok ? <View style={styles.appActions}>{item.actions.map(([title, target]) => <Pressable key={target} onPress={() => open(target)}><Text style={styles.deleteText}>{title}</Text></Pressable>)}</View> : null}
     </View>) : null}
     {status.enabled && status.xiaomi ? <View style={styles.appRow}>
-      <Text style={styles.optionDetail}>No HyperOS ligue também o Início automático do MyBots e do Termux (o sistema não informa se está ligado).</Text>
+      <Text style={styles.optionDetail}>No HyperOS ligue também o Início automático do MyBots (o sistema não informa se está ligado).</Text>
       <View style={styles.appActions}><Pressable onPress={() => open('autostart')}><Text style={styles.deleteText}>Abrir Início automático</Text></Pressable></View>
     </View> : null}
     {status.enabled && !status.notifications ? <Text style={styles.optionDetail}>As notificações do MyBots estão bloqueadas: o serviço funciona, mas sem o aviso “MyBots ativo” e sem os avisos dos bots.</Text> : null}

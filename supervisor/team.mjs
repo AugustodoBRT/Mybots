@@ -5,7 +5,8 @@ import { selectionFor as pickModel, PROVIDER_NAMES } from '../lib/models.mjs';
 
 const RANK = { basic: 0, ask: 1, full: 2, free: 3 };
 // Brakes against a bot (or a loop of bots) multiplying: a few per turn, a ceiling for the whole app.
-export const LIMITS = { bots: 30, rooms: 20, botsPerTurn: 5, roomsPerTurn: 3, asksPerTurn: 8, followDepth: 3, followMs: 20 * 60 * 1000 };
+// No ceiling of bots per turn (the owner asked, 13/11/2026): only the whole app's.
+export const LIMITS = { bots: 30, rooms: 20, roomsPerTurn: 3, asksPerTurn: 8, followDepth: 3, followMs: 20 * 60 * 1000 };
 const short = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
 
 /**
@@ -101,7 +102,6 @@ export class Team {
   }
   create(run, args, caller) {
     if (this.live().length >= LIMITS.bots) throw new Error(`O MyBots já tem ${LIMITS.bots} bots. Reaproveite um existente (team_bots).`);
-    if ((this.made.get(run.taskId) || 0) >= LIMITS.botsPerTurn) throw new Error(`Em uma vez você cria até ${LIMITS.botsPerTurn} bots.`);
     if (this.live().some(bot => fold(bot.name) === fold(args.name))) throw new Error(`Já existe um bot chamado ${args.name}. Escolha outro nome ou use o que existe.`);
     if (/[@\n]/.test(args.name)) throw new Error('O nome do bot não pode ter @ nem quebra de linha.');
     // Never above the maker: a bot with Médio makes Médio or Pouco acesso bots, not Acesso total.

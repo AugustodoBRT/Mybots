@@ -114,8 +114,9 @@ test('rules: no stronger bot than its maker, only its own rooms, at least two me
     await call('team_close_room', { room: 'Minha' });
   });
   assert.ok(f.app.db.rooms().find(item => item.name === 'Minha').deletedAt);
-  // Per-turn ceiling.
-  await assert.rejects(run(async call => { for (let i = 0; i < 6; i++) await call('team_create_bot', { name: 'Clone ' + i }); }), /até 5 bots/);
+  // No ceiling per turn: six bots in one go.
+  await run(async call => { for (let i = 0; i < 6; i++) await call('team_create_bot', { name: 'Clone ' + i }); });
+  assert.equal(f.app.db.bots().filter(bot => bot.name.startsWith('Clone ')).length, 6);
   // The switch is the person's: off blocks even Acesso total; Pouco acesso needs it on.
   await f.app.rpc('grants.set', { botId: medio.id, tool: 'team', allowed: false });
   await run(call => call('team_bots'));

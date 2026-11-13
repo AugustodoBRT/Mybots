@@ -64,7 +64,6 @@ export function SideMenu({ bot, waiting, onPick, onTeam }) {
     {count ? <View style={s.badge}><Text style={s.badgeText}>{count}</Text></View> : <Icon name="right" size={15} color={C.faint} />}</Pressable>;
   return <View style={s.menu}>
     <Text style={s.menuTitle}>O que abrir nesta barra</Text>
-    {item('team', 'bots', 'Equipe', 'Todos os bots e o que cada um faz', onTeam)}
     {rows.map(([kind, label, note]) => item(kind, SIDE_KINDS[kind].icon, label, note, () => onPick(kind), kind === 'today' ? waiting : 0))}
   </View>;
 }

@@ -14,7 +14,7 @@ test('Message keeps the native rendering snapshot from before memoization', () =
 test('extracted screens and app have no loose references', () => {
   const parser = require('@babel/parser'), traverse = require('@babel/traverse').default;
   const globals = new Set(['undefined','require','console','setTimeout','clearTimeout','setInterval','clearInterval','fetch','AbortController','globalThis','process','window','navigator','URL','WebSocket','FileReader','requestAnimationFrame','cancelAnimationFrame','__DEV__']);
-  for (const file of ['App.js','BotProfile.js','components/NewBot.js','components/ChiefTeam.js','components/Settings.js','components/GoogleAccounts.js','styles.js','components/shared.js','components/Message.js','components/MessageActions.js','components/QueuePanel.js','components/Canvas.js','state/canvas-layout.js','components/AiRuntimes.js','components/Search.js','screens/Chat.js','screens/Room.js','screens/Home.js','screens/Memory.js','screens/MemoryGraph.js','screens/NoteReader.js','screens/memory-look.js','RichMessage.js']) {
+  for (const file of ['App.js','components/PhoneTabs.js','screens/Home.js','BotProfile.js','components/NewBot.js','components/ChiefTeam.js','components/Settings.js','components/GoogleAccounts.js','styles.js','components/shared.js','components/Message.js','components/MessageActions.js','components/QueuePanel.js','components/Canvas.js','state/canvas-layout.js','components/AiRuntimes.js','components/Search.js','screens/Chat.js','screens/Room.js','screens/Home.js','screens/Memory.js','screens/MemoryGraph.js','screens/NoteReader.js','screens/memory-look.js','RichMessage.js']) {
     const ast = parser.parse(readFileSync(new URL('../mobile/' + file, import.meta.url), 'utf8'), { sourceType: 'module', plugins: ['jsx'] }); const missing = new Set();
     traverse(ast, { ReferencedIdentifier(path) { if (!path.scope.hasBinding(path.node.name) && !globals.has(path.node.name)) missing.add(path.node.name); } });
     assert.deepEqual([...missing], [], file);
@@ -152,4 +152,45 @@ test('note reader: properties, typeset Markdown, aliases and missing links like 
   assert.match(html, /Links de entrada/);
   assert.match(html, /Índice/);
   assert.match(html, />Ver o rastreamento hoje</, 'snippets read as text');
+});
+
+// The colours and the style sheet the screens read, as plain names.
+const THEMED = { '../theme': { themed: () => new Proxy({}, { get: () => ({}) }), F: {}, Icon: () => null, currentTheme: () => 'dark',
+  C: new Proxy({}, { get: (_, key) => '#' + String(key) }), hueOf: () => '#hue' }, '../styles': { TOP: 0, styles: new Proxy({}, { get: () => ({}) }) } };
+
+// 13/11/2026: the phone opens on the list (with the Chefe pinned), not on the Chefe's conversation; the sections sit at the bottom.
+test('phone tabs: Início, Canvas, Memória and Ajustes at the bottom, the current one selected', async () => {
+  const { exports, presses, render } = await loadMobile('components/PhoneTabs.js', THEMED);
+  const picked = [];
+  const html = render(exports.PhoneTabs, { current: 'memory', onPick: key => picked.push(key), dots: { home: true } });
+  assert.deepEqual([...html.matchAll(/role="tab" aria-label="([^"]+)"/g)].map(match => match[1]), ['Início', 'Canvas', 'Memória', 'Ajustes']);
+  assert.match(html, /aria-label="Memória" aria-selected="true"/);
+  assert.match(html, /aria-label="Início" aria-selected="false"/);
+  for (const name of ['Início', 'Canvas', 'Memória', 'Ajustes']) presses[name]();
+  assert.deepEqual(picked, ['home', 'canvas', 'memory', 'settings']);
+});
+
+test('phone Home: the Chefe pinned at the top of the list, no Equipe title, no Canvas or Memória buttons in the header', async () => {
+  const React = require('react');
+  const stub = name => () => React.createElement('i', null, name);
+  const now = new Date().toISOString();
+  const data = { bots: [{ id: 'c', name: 'chefin', isChief: true, updatedAt: now }, { id: 'm', name: 'Maniaco', updatedAt: now }], rooms: [], connection: { loggedIn: true } };
+  const shared = new Proxy({}, { get: (_, key) => key === 'IconButton' ? ({ label }) => React.createElement('button', { 'aria-label': label }) : key === 'greeting' ? () => 'Boa noite' : key === 'offline' ? () => false
+    : ['plain', 'seenText', 'shortTime'].includes(key) ? text => text || '' : ['latestOf', 'latestInRoom'].includes(key) ? () => null : stub(String(key)) });
+  const { exports, presses, render } = await loadMobile('screens/Home.js', { ...THEMED,
+    '../state/useStore': { useStore: () => data }, '../state/store': { selectHome: x => x }, '../components/shared': shared,
+    '../components/Message': { DecisionCard: stub('decision') }, '../components/Drawer': { Drawer: stub('drawer') }, '../components/CommandBar': { CommandBar: stub('command') },
+    '../components/Lists': { RoutinesSheet: stub('r'), NegotiationsSheet: stub('n') }, '../desktop': { desktop: null }
+  });
+  const opened = [];
+  const props = { team: true, mode: 'phone', onOpen: id => opened.push(id), onProfile() {}, onCanvas() {}, onMemory() {}, onHome() {}, onSearch() {} };
+  const html = render(exports.HomeScreen, { ...props, tabs: true });
+  const chief = html.indexOf('aria-label="Conversar com chefin"'), other = html.indexOf('aria-label="Conversar com Maniaco"');
+  assert.ok(chief >= 0 && other > chief, 'the Chefe comes first, above the other bots');
+  presses['Conversar com chefin'](); assert.deepEqual(opened, ['c']);
+  assert.ok(!/aria-label="Canvas"/.test(html) && !/aria-label="Memória"/.test(html), 'Canvas and Memória live in the bottom tabs');
+  assert.ok(!/>Equipe</.test(html) && !/aria-label="Voltar ao início"/.test(html));
+  // Without the tabs (the computer's window) the list keeps its old header and leaves the Chefe to the sidebar.
+  const old = render(exports.HomeScreen, props);
+  assert.ok(!old.includes('aria-label="Conversar com chefin"') && /aria-label="Canvas"/.test(old));
 });

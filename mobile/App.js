@@ -36,6 +36,7 @@ import { C, Icon, setTheme, resolveTheme } from './theme';
 import { destination } from './state/chief-home';
 import { notifyReply } from './desktop-notify';
 import { HomeScreen } from './screens/Home';
+import { PhoneTabs } from './components/PhoneTabs';
 import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
 import Canvas, { canvasEvent } from './components/Canvas';
@@ -119,7 +120,7 @@ function AppMain() {
   // On the computer's window the saved logins are the computer's own vault, asked through its supervisor (see termux.js).
   useEffect(() => { if (desktop) useComputerVault((method, params) => supervisor.current.call(method, params)); }, []);
   const [route, navigate] = useState({ kind: 'home' });
-  const { selected, roomId, team } = destination(data, route);
+  const { selected, roomId, team } = destination(data, route, { chiefHome: Boolean(desktop) });
   const chiefId = data?.bots?.find(item => item.isChief && !item.deletedAt)?.id;
   const setSelected = id => navigate(old => id ? { kind: 'bot', id } : old.kind === 'bot' ? { kind: 'home' } : old);
   const setRoomId = id => navigate(old => id ? { kind: 'room', id } : old.kind === 'room' ? { kind: 'home' } : old);
@@ -225,11 +226,13 @@ function AppMain() {
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (deskPage === 'memory' || deskPage === 'canvas') return false;
-      if (!roomId && !team && (!selected || selected === chiefId)) return false;
+      // The phone's Home is the list: back there leaves the app; from a conversation it comes back to the list.
+      if (!desktop && route.kind === 'home') return false;
+      if (desktop && !roomId && !team && (!selected || selected === chiefId)) return false;
       goHome(); return true;
     });
     return () => subscription.remove();
-  }, [selected, roomId, team, chiefId, draft, deskPage]);
+  }, [selected, roomId, team, chiefId, draft, deskPage, route.kind]);
 
   const runPhoneCommand = useCallback(async (operation, payload = {}) => {
     const startedAt = new Date().toISOString();
@@ -887,7 +890,7 @@ function AppMain() {
   // Desktop, PWA and paired phones use the same supervisor RPC. The old token-based HTTP API has no chief role.
   const canCreateChief = mode === 'phone' && !chiefId;
   const startChief = () => setCreateVisible('chief');
-  const teamView = data && <HomeScreen onCanvas={!desktop ? () => setDeskPage('canvas') : null} onWeekly={mode === 'phone' ? () => supervisor.current.call('chief.weekly', {}).then(() => loadSupervisorState?.()).catch(error => setLoadError?.(error.message)) : null} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
+  const teamView = data && <HomeScreen tabs={!desktop} onCanvas={!desktop ? () => setDeskPage('canvas') : null} onWeekly={mode === 'phone' ? () => supervisor.current.call('chief.weekly', {}).then(() => loadSupervisorState?.()).catch(error => setLoadError?.(error.message)) : null} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
             onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
@@ -941,7 +944,10 @@ function AppMain() {
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView || teamView}</DesktopShell>
-      : memoryView || canvasView || roomView || chatView || teamView}
+      : <View style={{ flex: 1 }}><View style={{ flex: 1 }}>{memoryView || canvasView || roomView || chatView || teamView}</View>
+        {deskPage === 'memory' || deskPage === 'canvas' || (!roomId && !selected) ? <PhoneTabs current={deskPage === 'canvas' || deskPage === 'memory' ? deskPage : 'home'}
+          dots={{ home: Boolean((data.approvals || []).length || (data.decisions || []).length) }}
+          onPick={key => key === 'home' ? goHome() : key === 'settings' ? setMaintenanceVisible(true) : setDeskPage(key)} /> : null}</View>}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>
       <View style={styles.sheetBackdrop}><View style={[styles.sheet, { maxWidth: 440 }]}>
         <Text style={styles.optionLabel}>{confirm.title}</Text>{confirm.message ? <Text style={[styles.optionDetail, { marginTop: 6 }]}>{confirm.message}</Text> : null}

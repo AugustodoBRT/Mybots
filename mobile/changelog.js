@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.13', date: '2026-11-13', items: [
+    ['novo', 'No celular, Início, Canvas, Memória e Ajustes ficam numa barra embaixo da tela.'],
+    ['melhoria', 'O app abre na tela Início, com o Chefe fixado no topo da lista. Tocando nele, a conversa começa numa sessão nova; se você sair e voltar sem fechar o app, continua na mesma.'],
+    ['melhoria', 'A tela Equipe saiu: ela mostrava o mesmo que a Início.'],
+    ['correcao', 'Se o celular fechasse o MyBots bem na hora em que ele estava iniciando, o MyBots do celular podia não subir mais até reinstalar. Agora ele se recupera sozinho.']
+  ] },
   { version: '0.94.12', date: '2026-11-13', items: [
     ['melhoria', 'Os bots não mexem mais na sua tela, no seu mouse e no seu Chrome: cada um usa o navegador próprio dele, e vários trabalham ao mesmo tempo. Se quiser que um bot controle a tela do computador, ligue em Perfil → Acesso → Controlar a tela do computador.']
   ] },

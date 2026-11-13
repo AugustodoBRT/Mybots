@@ -49,6 +49,7 @@ import { create as createFile } from './creator.mjs';
 // that misses one (reconnection, a connection too far behind) sees the gap and reloads the state and open chats.
 const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const LOCK_FRESH_MS = 10000;
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
   codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000, aiUpdateMs = 6 * 3600000 } = {}) {
   process.umask(0o077);
@@ -57,9 +58,16 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
   try { writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 }); }
   catch (error) {
     if (error.code !== 'EEXIST') throw error;
-    const previous = JSON.parse(readFileSync(lock, 'utf8'));
-    let alive = true; try { process.kill(previous.pid, 0); } catch { alive = false; }
-    if (alive && (!previous.start || previous.start === processIdentity(previous.pid))) throw new Error('O supervisor já está em execução.');
+    // A lock left empty or broken (the process was killed between creating the file and writing it) blocked every start for good:
+    // older than a few seconds it is abandoned; a fresh one may be another start that is writing it right now.
+    let previous = null; try { previous = JSON.parse(readFileSync(lock, 'utf8')); } catch {}
+    if (!Number.isInteger(previous?.pid)) {
+      let age = Infinity; try { age = Date.now() - statSync(lock).mtimeMs; } catch {}
+      if (age < LOCK_FRESH_MS) throw new Error('O supervisor já está em execução.');
+    } else {
+      let alive = true; try { process.kill(previous.pid, 0); } catch { alive = false; }
+      if (alive && (!previous.start || previous.start === processIdentity(previous.pid))) throw new Error('O supervisor já está em execução.');
+    }
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }

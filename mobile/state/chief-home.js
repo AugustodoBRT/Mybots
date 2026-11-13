@@ -1,13 +1,15 @@
 import { instant } from '../routine-text.js';
 
-// Resolve Home against the latest snapshot so a promotion on another device takes effect here too.
-export function destination(data, route = { kind: 'home' }) {
+// Resolve Home against the latest snapshot so a promotion on another device takes effect here too. On the computer Home is the Chefe's
+// conversation beside the list; on the phone it is the list itself, with the Chefe pinned at the top (the owner asked, 13/11/2026).
+export function destination(data, route = { kind: 'home' }, { chiefHome = true } = {}) {
   const chief = data?.bots?.find(bot => bot.isChief && !bot.deletedAt);
   if (route.kind === 'team') return { selected: null, roomId: null, team: true };
   if (route.kind === 'room' && data?.rooms?.some(room => room.id === route.id && !room.deletedAt))
     return { selected: null, roomId: route.id, team: false };
   if (route.kind === 'bot' && data?.bots?.some(bot => bot.id === route.id && !bot.deletedAt))
     return { selected: route.id, roomId: null, team: false };
+  if (!chiefHome) return { selected: null, roomId: null, team: true };
   return { selected: chief?.id || null, roomId: null, team: false };
 }
 

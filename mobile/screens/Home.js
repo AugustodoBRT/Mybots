@@ -89,9 +89,11 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  // The Chefe stays pinned at the top of the list, like on the computer; its conversation opens on a tap.
+  const chief = (data?.bots || []).find(bot => bot.isChief && !bot.deletedAt);
   const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
   const waiting = (data?.approvals || []).length + (data?.decisions || []).length;
@@ -104,23 +106,22 @@ function HomeView({ onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, d
   const summary = [working ? `${working} trabalhando` : '', waiting ? `${waiting} ${waiting > 1 ? 'esperam' : 'espera'} você` : '', openItems ? `${openItems} ${openItems > 1 ? 'pendências' : 'pendência'}` : ''].filter(Boolean).join(' · ');
   const menuItems = [
     { key: 'chats', label: 'Conversas', icon: 'bots', on: true },
-    ...(onCanvas ? [{ key: 'canvas', label: 'Canvas', icon: 'canvas', onPress: onCanvas }] : []),
+    ...(onCanvas && !tabs ? [{ key: 'canvas', label: 'Canvas', icon: 'canvas', onPress: onCanvas }] : []),
     ...(phone ? [{ key: 'activity', label: 'Atividade', icon: 'activity', dot: waiting > 0, onPress: onActivity }] : [{ key: 'activity', label: 'Conexão', icon: 'activity', onPress: onConnection }]),
     ...(onWallet ? [{ key: 'wallet', label: 'Carteira', icon: 'wallet', onPress: onWallet }] : []),
     ...(phone ? [{ key: 'routines', label: 'Rotinas', icon: 'bolt', count: routines || null, onPress: () => setRoutinesOpen(true) },
       { key: 'negotiations', label: 'Negociações', icon: 'hand', count: open.length || null, dot: open.some(item => item.status === 'awaiting_you'), onPress: () => setNegotiationsOpen(true) }] : []),
-    { key: 'rule', rule: true },
-    { key: 'settings', label: 'Ajustes', icon: 'settings', onPress: phone ? onMaintenance : onMode }
+    ...(tabs ? [] : [{ key: 'rule', rule: true }, { key: 'settings', label: 'Ajustes', icon: 'settings', onPress: phone ? onMaintenance : onMode }])
   ];
   return <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
       <View style={s.header}>
         <View><IconButton icon="menu" label={waiting ? 'Abrir o menu, algo espera você' : 'Abrir o menu'} onPress={() => setMenu(true)} size={42} />
           {waiting ? <View style={{ position: 'absolute', top: 2, right: 2, width: 11, height: 11, borderRadius: 6, backgroundColor: C.accent, borderWidth: 2, borderColor: C.bg }} /> : null}</View>
-        {onHome && team ? <IconButton icon="back" label="Voltar ao início" onPress={onHome} size={40} /> : null}
-        <View style={s.wordmark}><Text style={s.wordmarkText}>{team ? 'Equipe' : 'mybots'}</Text><View style={s.wordmarkDot} /></View>
-        {onCanvas ? <IconButton icon="canvas" label="Canvas" onPress={onCanvas} size={42} /> : null}
-        {onMemory ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={42} /> : null}
+        {onHome && team && !tabs ? <IconButton icon="back" label="Voltar ao início" onPress={onHome} size={40} /> : null}
+        <View style={s.wordmark}><Text style={s.wordmarkText}>{team && !tabs ? 'Equipe' : 'mybots'}</Text><View style={s.wordmarkDot} /></View>
+        {onCanvas && !tabs ? <IconButton icon="canvas" label="Canvas" onPress={onCanvas} size={42} /> : null}
+        {onMemory && !tabs ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={42} /> : null}
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={42} />
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={s.modeChip}>
@@ -135,6 +136,7 @@ function HomeView({ onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, d
       {onWeekly && phone && (data?.bots || []).some(bot => bot.isChief && !bot.deletedAt) && !(data?.routines || []).some(item => item.origin === 'weekly') ? <Pressable accessibilityRole="button" onPress={onWeekly} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
         <Icon name="calendar" size={18} color={C.accent} /><View style={{ flex: 1 }}><Text style={{ color: C.text, fontFamily: F.b, fontSize: 15 }}>Ativar o resumo semanal</Text>
           <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Todo domingo às 18h o Chefe resume o que cada bot fez, o que está pendente e o que precisa de você.</Text></View><Icon name="right" size={15} color={C.muted} /></Pressable> : null}
+      {tabs && chief ? <BotRow bot={chief} data={data} onPress={() => onOpen(chief.id)} onProfile={() => onProfile(chief)} /> : null}
       {onCreateChief ? <PrimaryButton icon="plus" title="Crie o seu Chefe" onPress={onCreateChief} disabled={!data.models?.length} /> : null}
       {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
       {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}

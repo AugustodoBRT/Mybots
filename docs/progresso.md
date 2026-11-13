@@ -2264,3 +2264,16 @@ Achado no acompanhamento do redesign v2 (`reports/acompanhamento-redesign-v2.md`
 Pedido do dono: os bots não devem controlar a tela, o mouse e o Chrome dele; cada um usa o próprio navegador. O Chefe tinha aberto o Chrome real pelo controle da tela (`desktop_launch`), e o time Stitch disputava o mouse.
 - `desktop` passou a ser desligado por padrão (`supervisor/tools.mjs` `policy`, como o GitHub): sem ele as ferramentas `desktop_*` nem aparecem para o bot. Liga por bot em Perfil → Acesso → **Controlar a tela do computador** (`mobile/BotProfile.js`, `grants.set`).
 - Gerar código, rodar comandos e mexer em arquivos não dependem disso e já rodam vários bots ao mesmo tempo; os navegadores próprios dos bots também.
+
+## 0.94.13 (versionCode 205): Início em lista no celular, barra de abas e sem a tela Equipe
+
+Pedido do dono: tirar a tela Equipe (repetia a Início); no celular, uma barra embaixo com Início, Canvas, Memória e Ajustes; o app abre na Início, com o Chefe fixado no topo como no PC, e só tocando nele abre a tela do Chefe (sessão nova na primeira vez depois de abrir o app, a mesma ao voltar sem fechar).
+
+- **Navegação** (`mobile/state/chief-home.js` `destination(..., { chiefHome })`): no PC a Início continua sendo a conversa do Chefe ao lado da lista; no celular é a lista. Voltar na lista sai do app; numa conversa, volta para a lista.
+- **Barra de abas** (`mobile/components/PhoneTabs.js`): Início, Canvas, Memória e Ajustes, fora das conversas e salas, como um bloco embaixo do conteúdo (não cobre a busca nem o campo do Canvas). Ícone novo `home` em `theme.js`. A Início ganha um ponto quando há decisões ou aprovações esperando.
+- **Lista** (`mobile/screens/Home.js`, `tabs`): o Chefe fixado no topo; sem título "Equipe", sem os botões de Canvas e Memória no topo e sem Canvas e Ajustes no menu lateral (estão na barra).
+- **PC**: "Equipe" saiu da barra lateral e do menu do bot (`DesktopShell.js`, `DesktopSide.js`).
+- A sessão do Chefe já funcionava assim (`launchPast` em `screens/Chat.js`): na primeira visita depois de abrir o app, a tela vazia com o Chefe; voltando sem fechar o app, a mesma conversa.
+- **Trava do supervisor** (`supervisor/index.mjs`): um `supervisor.lock` vazio ou quebrado (o processo morto entre criar o arquivo e escrever nele) fazia todo início falhar para sempre ("Não foi possível iniciar o supervisor"). Achado no emulador, que caiu no meio de um início. Agora uma trava assim com mais de 10 s é abandonada; uma mais nova ainda conta como outro início em andamento (`tests/supervisor-lock.test.mjs`). Pode ser uma das causas de o MyBots do celular não voltar depois de cair.
+- Conferido no emulador Android (x86_64): abre na Início com o Chefe no topo e a barra embaixo; tocar no Chefe abre a tela inicial dele, sem a barra; voltar retorna à lista; Memória e Canvas abrem pela barra; o núcleo voltou sozinho depois da correção da trava. Testes novos em `tests/mobile-render.test.mjs` e `tests/mobile-store.test.mjs`.
+- **Não conferido**: o grafo de fundo da tela do Chefe (o emulador não tem notas) e uma conversa real com IA no emulador (nenhuma IA conectada nele).

@@ -93,6 +93,9 @@ test('Home follows the chief, Team stays open, and an explicit chat or room wins
   assert.equal(destination(data, { kind: 'home' }).selected, 'b');
   assert.equal(destination(data, { kind: 'bot', id: 'deleted' }).selected, 'b');
   assert.equal(destination({ bots: [{ id: 'a', isChief: true }, { id: 'b' }] }).selected, 'a');
+  // The phone's Home is the list, with the Chefe pinned; his conversation opens on a tap.
+  assert.deepEqual(destination(data, { kind: 'home' }, { chiefHome: false }), { selected: null, roomId: null, team: true });
+  assert.equal(destination(data, { kind: 'bot', id: 'b' }, { chiefHome: false }).selected, 'b');
 });
 
 test('chief status counts bots once, prioritizes approvals, and respects local date-only deadlines', async () => {

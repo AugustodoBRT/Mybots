@@ -19,6 +19,8 @@ import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { QueuePanel } from '../components/QueuePanel';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
+// Files in one message (the supervisor's attachments LIMITS.files says the same).
+const MAX_FILES = 20;
 
 // The computer's window attaches files from the browser (button or drop), up to 5 per message and of any size: the file
 // stays a Blob here and goes to the phone in parts when the message is sent (uploadWebFiles in App.js).
@@ -85,9 +87,9 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
   // Files shared from another app land in the tray, ready to send with a message.
   useEffect(() => {
     if (!incoming) return;
-    const room = 5 - files.length; const added = phone ? (incoming.files || []).slice(0, room) : [];
+    const room = MAX_FILES - files.length; const added = phone ? (incoming.files || []).slice(0, room) : [];
     if (added.length) setFiles(old => [...old, ...added]);
-    const problems = [...(incoming.problems || []), ...(phone && (incoming.files || []).length > room ? ['Uma mensagem leva até 5 arquivos.'] : []), ...(!phone && incoming.files?.length ? ['Arquivos só chegam aos bots no modo Só no celular.'] : [])];
+    const problems = [...(incoming.problems || []), ...(phone && (incoming.files || []).length > room ? [`Uma mensagem leva até ${MAX_FILES} arquivos.`] : []), ...(!phone && incoming.files?.length ? ['Arquivos só chegam aos bots no modo Só no celular.'] : [])];
     setComposerError(problems.join(' '));
     onIncoming();
   }, [incoming]);
@@ -109,9 +111,9 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     setComposerError('');
     try {
       const picked = Array.from(list || []); if (!picked.length) return;
-      if (files.length + picked.length > 5) throw new Error('Uma mensagem leva até 5 arquivos.');
+      if (files.length + picked.length > MAX_FILES) throw new Error(`Uma mensagem leva até ${MAX_FILES} arquivos.`);
       if (picked.some(item => !item.size)) throw new Error('O arquivo está vazio.');
-      const read = picked.map(readWebFile); setFiles(old => [...old, ...read].slice(0, 5));
+      const read = picked.map(readWebFile); setFiles(old => [...old, ...read].slice(0, MAX_FILES));
     } catch (e) { setComposerError(e.message); }
   };
   const pickWebFile = () => { const input = globalThis.document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = () => addWebFiles(input.files); input.click(); };
@@ -138,7 +140,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     setComposerError('');
     try {
       const file = await pickFile(); if (!file) return;
-      if (files.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
+      if (files.length >= MAX_FILES) throw new Error(`Uma mensagem leva até ${MAX_FILES} arquivos.`);
       setFiles(old => [...old, file]);
     } catch (e) { setComposerError(e.message); }
   };
@@ -228,7 +230,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
       <Composer value={draft} setValue={setDraft} editable={mode === 'phone' || !typing} canSend={Boolean(canSend)} phone={phone} call={browserCall} onError={setComposerError}
         onSend={async () => { if (await onSend(draft, files)) { setFiles([]); toEnd(); } }} accessibilityLabel="Sua mensagem"
         placeholder={mode !== 'phone' && typing ? 'Aguarde a resposta…' : busy ? 'Mande mais, ele lê na sequência…' : `Converse com ${bot.name}…`}
-        onAttach={pwa ? pickWebFile : phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= 5} />
+        onAttach={pwa ? pickWebFile : phone ? attach : desktop ? pickWebFile : null} attachDisabled={typing || files.length >= MAX_FILES} />
     </View>
     </KeyboardArea>
     <MessageActionSheet message={held} onClose={() => setHeld(null)} onQuote={message => setDraft(old => quoteOf(message) + old)} onPin={onPin} onResend={message => onSend(message.text)} canResend={!typing} />

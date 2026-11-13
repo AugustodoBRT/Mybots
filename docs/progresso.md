@@ -2207,3 +2207,12 @@ Achados e correções:
   - O `team_create_bot` só cria depois da resposta (metadata `team.choice.<id>`, válida por 12 h) e usa a opção escolhida.
   - Se a pessoa escreveu a resposta, o Chefe passa `provider`, `model` e `effort`.
   - Uma segunda pergunta só vale depois que a anterior for respondida. Um bot fora da pergunta pede a sua própria.
+
+## 0.94.7 (versionCode 199): até 20 arquivos por mensagem
+
+Pedido do dono: o limite de 5 anexos atrapalhava.
+
+- `LIMITS.files` em `supervisor/attachments.mjs` e `MAX_FILES` no `Chat.js` e no `Room.js` passam para 20, inclusive no "Compartilhar → MyBots".
+- No celular, os arquivos acima de cerca de 1 MB vão em partes de 3 MB (`file.uploadStart` e `file.uploadChunk`, cortando o base64 em blocos de 4 MB), como no PC. Assim cai o teto de 10 MB somados por mensagem; cada arquivo continua com até 10 MB pelo seletor do Android.
+- As salas passam a usar o mesmo envio (`uploadWebFiles` com o primeiro bot da sala, dono dos arquivos em `saveForRoom`).
+- Conferido com o supervisor: um arquivo de 7 MB enviado em partes chega idêntico (sha256).

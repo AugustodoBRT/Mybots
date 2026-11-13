@@ -8,7 +8,7 @@ import { BLOCKED } from './browser.mjs';
 // A file the bot already has on disk (a video it rendered) goes to the conversation by copy, never held in memory: the only ceiling is the disk.
 export const BIG_FILE = 4 * 1024 * 1024 * 1024;
 const MIME_BY_EXTENSION = { mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo', mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf', zip: 'application/zip', csv: 'text/csv', txt: 'text/plain', md: 'text/markdown', json: 'application/json', html: 'text/html', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
-export const LIMITS = { files: 5, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20, pdfImagePages: 4 };
+export const LIMITS = { files: 20, bytes: 10 * 1024 * 1024, total: 10 * 1024 * 1024, text: 100000, image: 5 * 1024 * 1024, download: 20 * 1024 * 1024, pdfPages: 20, pdfImagePages: 4 };
 const IMAGES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const TEXT = /^(text\/|application\/(json|xml|csv|javascript|x-yaml|yaml|x-sh|sql)|.*\+xml$|.*\+json$)/;
 const TEXT_NAMES = /\.(txt|md|csv|tsv|json|xml|ya?ml|html?|js|mjs|ts|py|java|kt|c|cpp|h|sh|sql|log|ini|toml)$/i;

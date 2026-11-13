@@ -2,6 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.7', date: '2026-11-13', items: [
+    ['melhoria', 'Uma mensagem agora leva até 20 arquivos (eram 5), nas conversas e nas salas.'],
+    ['melhoria', 'No celular, os arquivos maiores vão em partes, como no computador: os anexos de uma mensagem não precisam mais somar menos de 10 MB.']
+  ] },
   { version: '0.94.6', date: '2026-11-13', items: [
     ['novo', 'Antes de criar bots, o Chefe pergunta uma vez só qual IA usar em todos eles: a recomendação dele vem primeiro e as outras opções variam a IA. Você toca numa opção ou escreve o que quer.'],
     ['novo', 'No computador, o uso de cada IA (Antigravity, Claude e Codex) fica no topo da janela: um anel em volta do ícone mostra o que resta das 5 horas, e ao passar o mouse aparecem as 5 horas, a semana e quando renova.'],

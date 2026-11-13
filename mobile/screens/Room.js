@@ -13,6 +13,8 @@ import { Message } from '../components/Message';
 import { FileChip } from '../RichMessage';
 import { Actionable, MessageActionSheet, quoteOf } from '../components/MessageActions';
 import { desktop, pwa, readingColumn } from '../desktop';
+// Files in one message (the supervisor's attachments LIMITS.files says the same).
+const MAX_FILES = 20;
 
 function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const openFile = useLiveCallback(onFile);
@@ -41,15 +43,14 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
     setError('');
     try {
       const file = await pickFile(); if (!file) return;
-      if (files.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) throw new Error('Os anexos de uma mensagem podem somar até 10 MB.');
+      if (files.length >= MAX_FILES) throw new Error(`Uma mensagem leva até ${MAX_FILES} arquivos.`);
       setFiles(old => [...old, file]);
     } catch (e) { setError(nativeMessage(e)); }
   };
   const addWebFiles = list => {
     const picked = Array.from(list || []); if (!picked.length) return;
-    if (files.length + picked.length > 5) { setError('Uma mensagem leva até 5 arquivos.'); return; }
+    if (files.length + picked.length > MAX_FILES) { setError(`Uma mensagem leva até ${MAX_FILES} arquivos.`); return; }
     if (picked.some(file => !file.size)) { setError('O arquivo está vazio.'); return; }
-    if (files.reduce((sum, file) => sum + file.size, 0) + picked.reduce((sum, file) => sum + file.size, 0) > 10 * 1024 * 1024) { setError('Os anexos de uma mensagem podem somar até 10 MB.'); return; }
     setError(''); setFiles(old => [...old, ...picked.map(file => ({ name: file.name, mime: file.type || 'application/octet-stream', size: file.size, blob: file }))]);
   };
   const attachWeb = () => { const picker = globalThis.document.createElement('input'); picker.type = 'file'; picker.multiple = true; picker.onchange = () => addWebFiles(picker.files); picker.click(); };
@@ -117,7 +118,7 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
       <Composer inputRef={input} value={draft} setValue={setDraft} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
-        onAttach={pwa ? attachWeb : phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= 5}
+        onAttach={pwa ? attachWeb : phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= MAX_FILES}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
     </View>

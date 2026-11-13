@@ -106,5 +106,7 @@ test('attachments are stored outside workspaces, read only by their bot, images 
   // PDFs are read by the phone (Android's renderer): without the app the bot is told to ask for it.
   await assert.rejects(run.call('attachment_read', { id: pdf }), /abrir o MyBots/);
   await assert.rejects(f.runAs(other.id).call('attachment_read', { id: text }), /não encontrado/);
-  await assert.rejects(f.app.rpc('chat.send', { botId: f.bot.id, requestId: randomUUID(), text: 'x', attachments: Array(6).fill({ name: 'a.txt', mime: 'text/plain', data: 'AA==' }) }), /até 5/);
+  // Up to 20 files in one message (the owner asked for many, 13/11/2026); the 21st is refused.
+  await assert.rejects(f.app.rpc('chat.send', { botId: f.bot.id, requestId: randomUUID(), text: 'x', attachments: Array(21).fill({ name: 'a.txt', mime: 'text/plain', data: 'AA==' }) }), /até 20/);
+  assert.equal(f.app.tools.attachments.save(f.bot.id, Array.from({ length: 20 }, (_, i) => ({ name: `a${i}.txt`, mime: 'text/plain', data: 'AA==' }))).length, 20);
 });

@@ -53,10 +53,18 @@ const blobBase64 = blob => new Promise((resolve, reject) => {
 /** Files picked in the computer's window go to the phone in 3 MB parts, so no size limit applies; the phone's own files travel inline. */
 // The command that starts a new IA session in the open conversation.
 const CLEAR = /^\/(clear|limpar|nova)$/i;
+// Base64 text in parts of 3 MB of file (4 MB of text): a multiple of 4 characters, so each part decodes on its own.
+const TEXT_PART = UPLOAD_PART / 3 * 4;
 async function uploadWebFiles(call, botId, files) {
   const out = [];
   for (const file of files) {
-    if (!file.blob) { out.push({ name: file.name, mime: file.mime, data: file.data }); continue; }
+    if (!file.blob) {
+      // The phone's own files: small ones go inside the message; bigger ones in parts, like the computer's, so many files fit.
+      if (!file.data || file.data.length <= 1400000) { out.push({ name: file.name, mime: file.mime, data: file.data }); continue; }
+      const { upload } = await call('file.uploadStart', { botId, name: file.name, mime: file.mime });
+      for (let at = 0; at < file.data.length; at += TEXT_PART) await call('file.uploadChunk', { upload, offset: at / 4 * 3, data: file.data.slice(at, at + TEXT_PART) });
+      out.push({ upload }); continue;
+    }
     const { upload } = await call('file.uploadStart', { botId, name: file.name, mime: file.mime });
     for (let offset = 0; offset < file.blob.size; offset += UPLOAD_PART) await call('file.uploadChunk', { upload, offset, data: await blobBase64(file.blob.slice(offset, offset + UPLOAD_PART)) });
     out.push({ upload });
@@ -830,7 +838,7 @@ function AppMain() {
   const roomFiles = room && desktop ? draftField(`room:${room.id}`, 'files', []) : null;
   const botFiles = bot && desktop ? draftField(`bot:${bot.id}`, 'files', []) : null;
   const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && termuxAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : goHome} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
-          onSend={async (text, files = []) => { if (CLEAR.test(text.trim()) && !files.length) { await supervisor.current.call('room.newSession', { roomId: room.id }); await loadSupervisorState(); return; } const attachments = await Promise.all(files.map(async ({ name, mime, data, blob }) => ({ name, mime, data: blob ? await blobBase64(blob) : data }))); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
+          onSend={async (text, files = []) => { if (CLEAR.test(text.trim()) && !files.length) { await supervisor.current.call('room.newSession', { roomId: room.id }); await loadSupervisorState(); return; } const attachments = await uploadWebFiles((...args) => supervisor.current.call(...args), room.botIds[0], files); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen onResume={async sessionId => { try { await supervisor.current.call('bot.resumeSession', { botId: bot.id, sessionId }); visitStarted.current = true; await loadSupervisorState(); } catch (error) { setLoadError(nativeMessage(error)); } }} savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}

@@ -230,7 +230,7 @@ export class Tools {
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
     const bot = this.db.requireBot(run.botId);
     const chrome = run.lane === 'pc' && browserMode(bot) === 'claude';
-    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow') && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
+    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow' && (this.desktopAvailable?.() ?? true)) && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
   /**

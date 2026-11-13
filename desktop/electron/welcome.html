@@ -59,7 +59,7 @@
       const row = document.createElement('div'); row.className = 'row'; const left = document.createElement('div');
       const name = document.createElement('div'); name.className = 'name'; name.textContent = item.name; left.append(name);
       const hint = document.createElement('div'); hint.className = 'hint';
-      if (!item.available) { hint.append('Instalar: '); if (item.install) { hint.append(cmd(item.install), ' (precisa do Node.js) ou '); } const link = document.createElement('a'); link.href = '#'; link.style.color = '#7EE2B8'; link.textContent = 'site oficial'; link.onclick = event => { event.preventDefault(); api.open(item.link); }; hint.append(link); }
+      if (!item.available) { hint.append('Instalar: '); if (item.install) { hint.append(cmd(item.install), item.install.startsWith('npm ') ? ' (precisa do Node.js) ou ' : ' ou '); } const link = document.createElement('a'); link.href = '#'; link.style.color = '#7EE2B8'; link.textContent = 'site oficial'; link.onclick = event => { event.preventDefault(); api.open(item.link); }; hint.append(link); }
       else if (!item.loggedIn) { hint.append('Entre pelo terminal: ', cmd(item.login)); }
       else hint.textContent = item.message || 'Pronto.';
       left.append(hint);

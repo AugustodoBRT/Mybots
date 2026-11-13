@@ -2176,3 +2176,23 @@ Relato do dono no PC de casa (Windows): o `agy` instalado e logado não era reco
 - `lib/ai-runtimes.mjs` (versão e atualização das IAs) passa a usar o `cli-bin`, como o resto.
 - A mensagem de agy ausente e o assistente do PC (`pc/doctor.mjs`) mostram o comando oficial do sistema.
 - Para testar de verdade, foi preparada uma VM com o Windows 11 de avaliação no VirtualBox do dono.
+
+## 0.94.5 (versionCode 197): no Windows, terminal liberado para todas as IAs, login de conta pelo caminho completo e sem ferramentas de tela
+
+Teste numa VM com Windows 11 (VirtualBox, `~/VirtualBox VMs/mybots-windows`, controlada por `VBoxManage guestcontrol`). Com a 0.94.4:
+- O `agy` e o Codex instalados depois do app aberto foram reconhecidos sem reiniciar.
+- Nenhuma janela de terminal apareceu: um vigia anotou cada processo e todos estavam com `janela=0`.
+- O Codex rodou direto pelo `codex.exe` do pacote.
+
+Achados e correções:
+- **Terminal no Windows e no Mac** (decisão do dono, 12/11/2026: "liberado"):
+  - Antes, o Codex ficava em `read-only` e sem shell; o Claude usava `acceptEdits` e pedia permissão para o resto; o agy rodava com `--dangerously-skip-permissions`.
+  - Agora, sem o isolamento do MyBots (`isolated: false`), um bot com permissão de mexer no computador usa o Codex em `danger-full-access` com o shell ligado e o Claude em `bypassPermissions`.
+- **Login de conta extra no Windows** (`lib/accounts.mjs`):
+  - O comando usa `& "caminho completo"`, que vem do novo `locateCommand` do `cli-bin`. O instalador oficial do Claude (`irm https://claude.ai/install.ps1 | iex`) põe o `claude.exe` em `%USERPROFILE%\.local\bin` sem mexer no PATH.
+  - Sem a IA instalada, o app mostra o comando de instalação do Windows em vez de um login que falharia.
+- **Assistente do PC** (`pc/doctor.mjs`, `welcome.html`):
+  - No Windows, o Claude aparece com o instalador oficial.
+  - O login aparece pelo caminho completo e com `.cmd` para o Codex e o opencode. Sem isso, o PowerShell bloqueia o `.ps1` do npm com a política padrão.
+  - O "(precisa do Node.js)" só aparece nos comandos de npm.
+- **Ferramentas de tela**: o PC informa `desktop: hasDesktopControl()` no `ready`, e `Tools.toolList` esconde as `desktop_*` quando um PC conectado não controla a tela. O `pc/server.mjs` também desliga `tools.desktop` fora do Linux.

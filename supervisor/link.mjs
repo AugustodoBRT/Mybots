@@ -226,7 +226,7 @@ export class Link {
         this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserSlot(bot)])) });
-        leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
+        leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, desktop: message.desktop, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
       if (message.type === 'status') { this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }

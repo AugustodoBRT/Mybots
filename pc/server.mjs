@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dataDirectory, panicEndpoint, hasIsolation } from './platform.mjs';
+import { dataDirectory, panicEndpoint, hasIsolation, hasDesktopControl } from './platform.mjs';
 import { WebSocketServer, createWebSocketStream } from '../supervisor/node_modules/ws/wrapper.mjs';
 import { acceptApp } from './app-channel.mjs';
 import { runReply } from '../supervisor/queue.mjs';
@@ -327,7 +327,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (!phone.local) { bridge.attach(ws); phonePath = pathOf(request.socket.remoteAddress); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
       else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
-      send({ type: 'ready', id: me.id, name: me.name, ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
+      send({ type: 'ready', id: me.id, name: me.name, desktop: hasDesktopControl(), ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
     const tunnel = () => proxy ||= new Promise((resolve, reject) => {
@@ -467,15 +467,15 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
         const enabledSkills = enabledFor(bot, discover());
         const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true, accountDir: accounts.folder(bot.provider || 'codex', bot.aiAccount), github: Boolean(message.tools?.github) });
-        // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it, but Codex gets no
-        // terminal (read-only) and Claude's commands and writes outside the bot's folder go through approval cards.
+        // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it and, as the owner chose
+        // (12/11/2026), a bot allowed to use the computer has a free terminal there with every IA (Codex, Claude and Antigravity).
         if (!wrap && hasIsolation()) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
         log(`Respondendo como ${bot.name}.`);
         const computer = message.tools ? computerFor(message.tools.computer, workspace, undefined, enabledSkills) : undefined; run.computer = computer || null;
         const reply = await execute(bot, message.prompt, {
           signal: controller.signal, workspace,
           wrap,
-          tools: message.tools ? { ...message.tools, isolated: hasIsolation(), chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer, skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
+          tools: message.tools ? { ...message.tools, desktop: Boolean(message.tools.desktop) && hasDesktopControl(), isolated: hasIsolation(), chrome: browserMode(bot) === 'claude' && Boolean(message.tools.browser), browserMode: browserMode(bot), device: me.name, computer, skills: enabledSkills, gpu: bot.gpu === true, endpoint, entry: fileURLToPath(new URL('../supervisor/mcp/index.mjs', import.meta.url)) } : undefined,
           onSession: async sessionId => send({ type: 'session', id: message.id, sessionId }), onProcess: () => {},
           onProgress: progress => send({ type: 'progress', id: message.id, ...progress }),
           onDelta: draft => send({ type: 'progress', id: message.id, draft })

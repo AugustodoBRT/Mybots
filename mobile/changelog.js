@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.5', date: '2026-11-12', items: [
+    ['melhoria', 'No Windows e no Mac, os bots com permissão de mexer no computador usam o terminal com qualquer IA (Codex, Claude e Antigravity). Antes o Codex ficava sem terminal.'],
+    ['correcao', 'No Windows, o comando para entrar numa conta de IA usa o caminho completo do programa, então funciona mesmo quando o instalador não colocou a pasta no PATH (como o do Claude). Se a IA não estiver instalada, o app diz como instalar.'],
+    ['correcao', 'O assistente do PC no Windows mostra o instalador oficial do Claude (sem Node.js) e os comandos de login que o PowerShell aceita.'],
+    ['correcao', 'No Windows e no Mac, os bots não recebem mais as ferramentas de controlar a tela, que só funcionam no Linux.']
+  ] },
   { version: '0.94.4', date: '2026-11-12', items: [
     ['correcao', 'No Windows, o Antigravity (agy) instalado depois de abrir o MyBots agora é encontrado sem reiniciar o app; o mesmo vale para Claude e Codex.'],
     ['correcao', 'No Windows, mandar mensagem para um bot com Codex não abre mais uma janela de terminal na tela.'],

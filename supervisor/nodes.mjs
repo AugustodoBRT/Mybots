@@ -19,9 +19,11 @@ export class Nodes {
     this.db.run("INSERT INTO metadata VALUES('nodes',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(list));
   }
   /** A computer came online. Returns the function that marks it offline again. */
-  connect({ id, name = 'Computador', execute, connections = {}, models = [], accounts = {} }) {
+  connect({ id, name = 'Computador', execute, connections = {}, models = [], accounts = {}, desktop }) {
     if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id) || typeof execute !== 'function') throw new Error('Computador inválido.');
-    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now(), ...this.clean({ connections, models, accounts }) };
+    const node = { id, name: String(name).slice(0, 60) || 'Computador', kind: 'pc', execute, connectedAt: now(), ...this.clean({ connections, models, accounts }),
+      // A computer that says it cannot control the screen (Windows, macOS) never offers the bots the desktop_* tools.
+      ...(desktop === false ? { desktop: false } : {}) };
     this.online.set(id, node); this.save({ id, name: node.name, lastSeen: node.connectedAt });
     const bots = this.db.bots().filter(bot => !bot.deletedAt && bot.home === 'pc').length;
     this.db.record('node_connected', `${node.name} conectado${bots ? `: ${bots} ${bots > 1 ? 'bots ficaram' : 'bot ficou'} online` : ''}.`);

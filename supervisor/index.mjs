@@ -148,6 +148,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       dismiss: (approvalId, botId) => { deliver({ title: '', body: '' }, { id: 'mybots-approval-' + approvalId, botId, dismiss: true }).catch(() => {}); }
     };
     tools = new Tools(db, { changed: broadcast, notify: deliver, approvalMs, email, device, approvalNotice }); queue.tools = tools;
+    // The desktop_* tools only where the computer can control its screen (Linux): a Windows or macOS node says it cannot.
+    tools.desktopAvailable = () => ![...(nodes?.online?.values?.() || [])].some(node => node.desktop === false);
     rooms = new Rooms(db, { changed: broadcast, schedule: () => queue.schedule() }); queue.rooms = rooms;
     tools.team = new Team(db, { rooms, changed: broadcast, schedule: () => queue.schedule(), selectionFor: bot => selectionFor(catalog(), bot),
       createBot: (data, selection) => { const bot = db.create(data, selection); tools.setAccountApps(bot.id, []); return bot; } });

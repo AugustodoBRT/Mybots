@@ -38,7 +38,9 @@ test('extra accounts: names become ids, the folder is private, duplicates and li
   assert.deepEqual(Object.keys(own.env('opencode', own.add('opencode', 'Casa').id)).sort(), ['MYBOTS_ACCOUNT_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME']);
   assert.equal(own.env('codex', 'default'), null); assert.equal(own.env('codex', undefined), null); assert.equal(own.env('codex', 'outra'), null);
   assert.equal(own.loginCommand('codex', 'trabalho', 'linux'), `CODEX_HOME="${own.dir('codex', 'trabalho')}" codex login`);
-  assert.match(own.loginCommand('claude', 'trabalho', 'win32'), /^\$env:CLAUDE_CONFIG_DIR="[^"]+"; claude auth login$/);
+  // Windows: by the full path (the installer may leave it out of the PATH); not installed, it says how to install.
+  assert.match(own.loginCommand('claude', 'trabalho', 'win32', () => 'C:\\Users\\Ana\\.local\\bin\\claude.exe'), /^\$env:CLAUDE_CONFIG_DIR="[^"]+"; & "C:\\Users\\Ana\\.local\\bin\\claude\.exe" auth login$/);
+  assert.throws(() => own.loginCommand('claude', 'trabalho', 'win32', () => null), /Instale o .+ neste computador primeiro\. No PowerShell: irm https:\/\/claude\.ai\/install\.ps1 \| iex/);
   assert.throws(() => own.loginCommand('codex', 'outra'), /não existe/);
   // It survives a restart (a new object over the same folder) and removing deletes the folder.
   assert.deepEqual(createAccounts(folder).list('codex').map(item => item.id), ['trabalho', 'pessoal-e-bom']);

@@ -92,7 +92,7 @@ export class Team {
     for (const provider of [...new Set(this.catalog().map(item => item.provider || 'codex'))]) if (!options.some(item => item.provider === provider)) { try { add({ provider }); } catch {} }
     const labels = options.map((item, index) => this.label(item, index === 0));
     const question = (names.length === 1 ? `Qual IA usar no bot novo ${names[0]}?` : `Qual IA usar nos ${names.length} bots novos (${names.join(', ')})?`).slice(0, 400);
-    const asked = decisions.ask(caller.id, { question, options: labels });
+    const asked = decisions.ask(caller.id, { question, options: labels, new_topic: true });
     this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'team.choice.' + asked.id, JSON.stringify({ botId: caller.id, names, options: options.map((item, index) => ({ ...item, label: labels[index] })), at: new Date().toISOString() }));
     return { asked: true, options: labels, note: 'A pessoa vê uma pergunta só, com estas opções e "Escrever minha resposta". Termine esta resposta; quando a escolha chegar como mensagem, crie os bots com team_create_bot usando os mesmos nomes.' };
   }

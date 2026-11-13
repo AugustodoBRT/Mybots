@@ -94,3 +94,21 @@ test('the chief sees how long each model takes per reply here, without the wait 
   }
   assert.deepEqual(db.turnSpeeds(), [{ provider: 'agy', model: 'gemini-4-hydrogen', effort: 'high', turns: 3, medianSeconds: 160 }]);
 });
+
+// 13/11/2026: Painel and Palco traded five "sigo parado" / "aguardo" messages, each waking the other for a paid turn.
+test('a post that only acknowledges or waits does not wake the bots it names; a delivery with "aguardo" still does', async t => {
+  const { onlyWaiting } = await import('../supervisor/rooms.mjs');
+  for (const text of ['Combinado, @Painel. Sigo aguardando o aviso de liberação e as suas exportações junto com as do @Grafo.',
+    '@Palco, não pediu nada novo, então sigo parado. Aviso na sala "Direção A pronta" quando eu terminar.', 'Certo, fico no aguardo sem mais ações até a liberação na sala.', 'Entendido, @chefin. Não vou usar desktop nesta fase.'])
+    assert.equal(onlyWaiting(text), true, text);
+  for (const text of ['@chefin, a direção B está pronta. Aguardo a direção A do Matiz.', '@chefin, tentei de novo e ainda dá erro: Failed to copy HTML. Aguardo.',
+    '@Fluxo, exportei a direção A em time-stitch/direcao-a. Aguardo a revisão.', '@Painel, combinado. Você consegue exportar hoje?', 'Aguardo. ' + 'x'.repeat(300)])
+    assert.equal(onlyWaiting(text), false, text);
+  const { db, rooms } = setup(t);
+  const [sol, mar] = ['Sol', 'Mar'].map(name => db.create({ name }, selection));
+  const room = rooms.create({ name: 'Sala', botIds: [sol.id, mar.id] });
+  assert.deepEqual(rooms.post(room.id, sol, '@Mar, entendido. Sigo aguardando a sua entrega.', () => selection).called, []);
+  assert.equal(db.activeTasks(mar.id).length, 0);
+  assert.deepEqual(rooms.post(room.id, sol, '@Mar, gravei o arquivo novo. Aguardo a revisão.', () => selection).called, ['Mar']);
+  assert.equal(db.activeTasks(mar.id).length, 1);
+});

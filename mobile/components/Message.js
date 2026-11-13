@@ -47,7 +47,7 @@ export function DecisionCard({ decision }) {
           <Icon name="send" size={14} color={C.accentInk} /><Text style={{ color: C.accentInk, fontFamily: F.b }}>Enviar</Text></Pressable>
       </View></View>
       : pill('Escrever minha resposta', false, () => setWriting(true), 'write')) : null}
-    {decision.expired ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>Expirou sem resposta; o bot seguiu sem essa escolha.</Text> : null}
+    {decision.expired ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>{decision.replaced ? 'Substituída por uma pergunta mais nova logo abaixo.' : 'Expirou sem resposta; o bot seguiu sem essa escolha.'}</Text> : null}
     {decision.deadline && !closed ? <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 12.5 }}>Responda até {new Date(decision.deadline).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text> : null}
     {error ? <Text style={styles.messageErrorText}>{error}</Text> : null}
   </View>;

@@ -10,6 +10,18 @@ const ROOM_QUEUE_LIMIT = 40;
 const PROMPT_WINDOW = 600;
 export { fold };
 
+/**
+ * A message that only acknowledges or says it is waiting ("entendido", "sigo parado", "fico no aguardo"), short and with no question:
+ * it is shown in the room, but the bots it names are not woken for it (13/11/2026: two bots traded five of these, each a paid turn).
+ */
+export function onlyWaiting(text) {
+  const plain = String(text || '').replace(/@[\p{L}\p{N}_.-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!plain || plain.length > 260 || plain.includes('?')) return false;
+  // Something already delivered, done, tried or broken is news for whoever is named, even with an "aguardo" at the end.
+  if (/\b(exportei|gravei|terminei|conclu[ií]|fiz|criei|entreguei|corrigi|apliquei|revisei|ajustei|gerei|publiquei|anexei|mudei|tentei|consegui|falhou|deu erro|erro:|retorna|(est[aá]|est[aã]o|ficou|ficaram) pront[ao]s?|funcionou)\b/iu.test(plain)) return false;
+  return /\b(aguard|sigo (parad|esperando|no aguardo|aguardando)|fico (parad|no aguardo|aguardando|esperando)|estou parad|parei\b|entendido|combinado|certo,|ok[,.!]|sem mais a[cç][oõ]es|n[aã]o (tenho|h[aá]) (nada|pedido)|nada novo|n[aã]o pediu nada|aviso (na sala|quando))/iu.test(plain);
+}
+
 /** The members named with @ in a text ("@Faculdade", "@pobre jobs"), in order, without repeats. */
 export function mentions(text, bots) {
   const plain = fold(text); const found = [];
@@ -80,7 +92,7 @@ export class Rooms {
     if (!room.botIds.includes(bot.id)) throw new Error('Você não está nesta sala.');
     const clean = typeof text === 'string' ? text.trim() : '';
     if (!clean || clean.length > 4000) throw new Error('Escreva de 1 a 4.000 caracteres.');
-    const called = mentions(clean, this.members(room)).filter(item => item.id !== bot.id);
+    const called = onlyWaiting(clean) ? [] : mentions(clean, this.members(room)).filter(item => item.id !== bot.id);
     const round = (taskId && this.db.roomTurn(taskId)?.round) || 0;
     const message = { id: randomUUID(), role: 'assistant', botId: bot.id, text: clean, status: 'complete', posted: true, createdAt: now() };
     this.db.transaction(() => {
@@ -136,6 +148,7 @@ export class Rooms {
     const reply = [...this.db.page({ roomId: room.id, limit: 100 }).messages].reverse().find(item => item.role === 'assistant' && item.botId === task.bot_id && item.replyTo === turn.message_id);
     if (!reply || reply.status !== 'complete') return;
     const waiting = new Set(this.active(room.id).map(item => item.bot_id));
+    if (onlyWaiting(reply.text)) return;
     const next = mentions(reply.text, this.members(room)).filter(bot => bot.id !== task.bot_id && !waiting.has(bot.id));
     if (!next.length) return;
     this.db.transaction(() => { for (const bot of next) this.turn(room.id, bot, reply.id, turn.round + 1, randomUUID(), selectionFor(bot)); });

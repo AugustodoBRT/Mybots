@@ -6,15 +6,15 @@ import { readPage, inspectPoint, markPage, captchaState } from '../supervisor/br
 import { viewSize } from '../supervisor/browser-frame.mjs';
 import { redactCardNumbers } from '../supervisor/card-pan.mjs';
 import { readCheckoutTotal } from '../supervisor/wallet-checkout.mjs';
-import { safeUrl, stepCaption, BLOCKED, localDevUrl } from '../supervisor/browser.mjs';
+import { safeUrl, stepCaption, BLOCKED, localDevUrl, localFileUrl } from '../supervisor/browser.mjs';
 import { dataDirectory } from './platform.mjs';
 import { electronInfo, connectElectron, electronCall, electronPage } from './electron-link.mjs';
-import { toolArguments } from '../supervisor/tool-policy.mjs';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync } from 'node:fs';
-import { join, basename, extname } from 'node:path';
+import { toolArguments, SENSITIVE } from '../supervisor/tool-policy.mjs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync, unlinkSync, realpathSync } from 'node:fs';
+import { join, basename, extname, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // The WebView reads the same function from this bundled asset.
 export const CARD_FIELD_SOURCE = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8').trim();
@@ -24,9 +24,17 @@ const PROCESSORS = ['stripe.com', 'stripe.network', 'mercadopago.com', 'mercadop
 const cardFrame = (frameUrl, pageHost) => { try { const url = new URL(frameUrl); return url.protocol === 'https:' && (url.hostname === pageHost || PROCESSORS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))); } catch { return frameUrl === 'about:srcdoc' || frameUrl === 'about:blank'; } };
 const CARD_MARK = '[data-mybots-card]';
 
-export async function allowedUrl(value, { local = false } = {}) {
+export async function allowedUrl(value, { local = false, home = homedir() } = {}) {
   // A development site on this computer: only what the supervisor already let this bot open (see localDevUrl).
   if (local && localDevUrl(value)) return new URL(value).href;
+  // A file the bot made: it has to exist inside the person's home and not be one of the secrets folders.
+  if (local && /^file:/i.test(String(value))) {
+    const url = localFileUrl(value); let real;
+    try { real = realpathSync(fileURLToPath(url)); } catch { throw new Error('Não achei esse arquivo no computador.'); }
+    const root = realpathSync(home);
+    if (!real.startsWith(root + sep) || SENSITIVE.test(real) || !statSync(real).isFile()) throw new Error('O navegador do bot só abre arquivos da sua pasta pessoal, fora as de senhas e chaves.');
+    return pathToFileURL(real).href;
+  }
   const url = new URL(safeUrl(value));
   const ips = await lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true });
   for (const { address } of ips) safeUrl(`${url.protocol}//${address.includes(':') ? '[' + address + ']' : address}/`);
@@ -87,7 +95,7 @@ export function downloadName(value, folder) {
 }
 async function checkRoute(route) {
   // A page on localhost may load its own files; a site from the internet never reaches this computer's ports through the bot's browser.
-  let local = false; try { const frame = route.request().frame(); local = localDevUrl(route.request().isNavigationRequest() && frame === frame.page().mainFrame() ? route.request().url() : frame.page().url()); } catch {}
+  let local = false; try { const frame = route.request().frame(), page = route.request().isNavigationRequest() && frame === frame.page().mainFrame() ? route.request().url() : frame.page().url(); local = localDevUrl(page) || /^file:/i.test(page); } catch {}
   try { await allowedUrl(route.request().url(), { local }); await route.continue(); } catch { await route.abort().catch(() => {}); }
 }
 // Google refuses to sign in on a browser that says it is automated ("este navegador pode não ser seguro"): no
@@ -120,8 +128,38 @@ export async function launchContext(profile, headless = true) {
   });
   await context.clearPermissions();
   await context.route('**/*', checkRoute);
+  helped.add(context); await context.addInitScript(PAGE_HELPERS);
   return context;
 }
+const helped = new WeakSet();
+/**
+ * In every page and frame of the bots' browsers (13/11/2026, Google Stitch's "Copy code" said "Failed to copy HTML" and its ZIP never
+ * arrived): what a site copies is kept for the bot (browser_read shows it) without touching the computer's clipboard, and a "Save as"
+ * window (showSaveFilePicker), which an automated browser never shows, becomes an ordinary download that MyBots already receives.
+ */
+export const PAGE_HELPERS = `(() => {
+  if (window.__mybotsHelpers) return; window.__mybotsHelpers = true;
+  const keep = text => { if (typeof text === 'string' && text) window.__mybotsCopied = { text: text.slice(0, 2000000), at: Date.now() }; };
+  const blobText = async item => { for (const type of ['text/plain', 'text/html']) if (item.types && item.types.includes(type)) return (await item.getType(type)).text(); return ''; };
+  try {
+    if (navigator.clipboard) {
+      Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: async text => { keep(String(text)); } });
+      Object.defineProperty(navigator.clipboard, 'write', { configurable: true, value: async items => { for (const item of items || []) keep(await blobText(item)); } });
+    }
+    const exec = Document.prototype.execCommand;
+    Document.prototype.execCommand = function (command, ...rest) {
+      if (String(command).toLowerCase() === 'copy') { const field = this.activeElement; keep(field && 'value' in field && field.selectionEnd > field.selectionStart ? field.value.slice(field.selectionStart, field.selectionEnd) : String(this.getSelection ? this.getSelection() : '')); return true; }
+      return exec.call(this, command, ...rest);
+    };
+    window.showSaveFilePicker = async (options = {}) => {
+      const parts = [];
+      const name = String(options.suggestedName || 'arquivo').replace(/[\\/]/g, '_').slice(0, 120);
+      const writable = { write: async data => { parts.push(data && data.type === 'write' ? data.data : data); }, seek: async () => {}, truncate: async () => {},
+        close: async () => { const url = URL.createObjectURL(new Blob(parts)); const link = document.createElement('a'); link.href = url; link.download = name; document.documentElement.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); } };
+      return { kind: 'file', name, createWritable: async () => writable, getFile: async () => new File(parts, name), queryPermission: async () => 'granted', requestPermission: async () => 'granted' };
+    };
+  } catch {}
+})()`;
 /** Copies the cookies (the logins) of a bot's pre-v58 Chrome into the shared one, once; the old profile is kept. */
 export async function importLogins(context, profile) {
   if (existsSync(join(profile, IMPORTED)) || !existsSync(join(profile, 'Default'))) return 0;
@@ -168,6 +206,8 @@ export class BrowserSession {
       if (!this.context) throw new Error(CHROME_SETUP);
     } else if (this.mode === 'shared') this.context = await this.connect();
     else this.context = await launchContext(this.profile, this.headless);
+    // The window's own browser (Electron) does not come from launchContext: the helpers go in once per browser, never in the person's Chrome.
+    if (this.mode !== 'mine' && !helped.has(this.context)) { helped.add(this.context); await this.context.addInitScript(PAGE_HELPERS).catch(() => {}); }
     this.pages = []; this.metrics = new Map(); this.tabError = null; this.closing = false;
     const add = page => {
       if (this.pages.length >= 5) { this.tabError = 'Até 5 abas por bot. Feche uma aba antes de abrir outra.'; this.closePage(page).catch(() => {}); return; }
@@ -456,6 +496,26 @@ export class BrowserSession {
     try { return await Promise.race([this.downloading, late]); } finally { clearTimeout(timer); }
   }
   withTabNote(result) { const note = this.tabNote; this.tabNote = null; return note ? { ...result, tabNote: note } : result; }
+  /**
+   * Text the page copied since the last look (PAGE_HELPERS keeps it in the frame that copied): saved as a file in the bot's downloads,
+   * like a download, with the start of it in the answer, since copied code is often bigger than a reply can carry.
+   */
+  async withCopied(result) {
+    let found = null;
+    for (const frame of this.page?.frames() || []) {
+      const copy = await frame.evaluate(() => window.__mybotsCopied || null).catch(() => null);
+      if (copy?.text && copy.at > (this.copiedAt || 0) && (!found || copy.at > found.at)) found = copy;
+    }
+    if (!found) return result;
+    this.copiedAt = found.at;
+    const folder = join(downloadsRoot(), this.botId); mkdirSync(folder, { recursive: true, mode: 0o700 });
+    const stamp = new Date(found.at).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const name = downloadName(`copiado-${stamp}.${/^\s*</.test(found.text) ? 'html' : 'txt'}`, folder);
+    writeFileSync(join(folder, name), found.text, { mode: 0o600 });
+    const file = { name, size: Buffer.byteLength(found.text), at: new Date().toISOString(), where: 'pc' };
+    this.emitFrame({ download: file });
+    return { ...result, copied: { start: found.text.slice(0, 3000), length: found.text.length, file, note: 'O site copiou este texto; o texto inteiro foi salvo nos downloads deste bot no computador.' } };
+  }
   withDownload(result, file) { return file ? { ...result, download: file, ...(file.error ? {} : { next: 'O arquivo foi salvo nos downloads deste bot no computador.' }) } : result; }
   queueFrame(cdp, frame) {
     this.pendingFrame = frame;
@@ -729,7 +789,7 @@ export class BrowserSession {
         if (frame.url() !== 'about:blank' && frame !== this.page.mainFrame() && new URL(frame.url()).origin !== new URL(this.page.url()).origin) continue;
         for (const id of await frame.evaluate(() => [...document.querySelectorAll('[data-mybots-id]')].map(el => Number(el.dataset.mybotsId))).catch(() => [])) this.elementFrames.set(id, frame);
       }
-      return { ...await this.info(), ...content };
+      return op === 'read' ? this.withCopied({ ...await this.info(), ...content }) : { ...await this.info(), ...content };
     }
     // The bot tests a page at a phone's, a tablet's or a computer's size; the person's own view ("Assumir") sets it again when they look.
     if (op === 'viewport') {
@@ -782,7 +842,7 @@ export class BrowserSession {
       else await mouse.click(args.x, args.y, { button: args.action === 'right_click' ? 'right' : 'left' });
       const { rect, ...shown } = target;
       await this.afterPopup(popups);
-      return this.withDownload(this.withTabNote({ ...await this.info(), target: shown }), await this.awaitDownload(before));
+      return this.withCopied(this.withDownload(this.withTabNote({ ...await this.info(), target: shown }), await this.awaitDownload(before)));
     }
     if (op === 'inspect') return args.action ? this.pageData(inspectPoint, args) : this.inspect(args.id);
     if (op === 'click') {
@@ -791,7 +851,7 @@ export class BrowserSession {
       const popups = this.popupSerial;
       await this.target(args.id).click({ noWaitAfter: true });
       await this.afterPopup(popups);
-      return this.withDownload(this.withTabNote(await this.info()), await this.awaitDownload(before));
+      return this.withCopied(this.withDownload(this.withTabNote(await this.info()), await this.awaitDownload(before)));
     }
     if (op === 'type') {
       const target = this.target(args.id); const inspected = await this.inspect(args.id);

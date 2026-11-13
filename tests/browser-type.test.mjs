@@ -62,3 +62,53 @@ test('Chrome: a bot types where it clicks, inside another site\'s frame and shad
   assert.equal(await frame.locator('#cartao').inputValue(), '');
   await assert.rejects(s.command('act', { action: 'type', x: 650, y: 420, text: 'nada' }), /Nenhum campo de texto/);
 });
+
+// 13/11/2026: bots started local servers just to look at their own mockups; the computer's browser now opens them from the file.
+test('Chrome: a bot opens its own HTML file from the home folder, with its CSS; files outside home or secrets do not open', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async t => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { homedir } = await import('node:os');
+  const { localFileUrl, safeUrl } = await import('../supervisor/browser.mjs');
+  mkdirSync(join(homedir(), '.cache'), { recursive: true });
+  const folder = mkdtempSync(join(homedir(), '.cache', 'mybots-file-test-'));
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-browser-file-'));
+  const s = new BrowserSession(directory);
+  t.after(async () => { await s.close(); rmSync(folder, { recursive: true, force: true }); await rm(directory, { recursive: true, force: true }); });
+  writeFileSync(join(folder, 'estilo.css'), 'h1 { color: rgb(255, 0, 0); }');
+  writeFileSync(join(folder, 'tela inicial.html'), '<link rel="stylesheet" href="estilo.css"><h1>Tela do bot</h1>');
+  assert.equal(toolArguments('browser.open', { url: join(folder, 'tela inicial.html') }).url, localFileUrl(join(folder, 'tela inicial.html')));
+  assert.throws(() => toolArguments('browser.open', { url: '/home/x/.ssh/config.html' }), /senhas ou chaves/);
+  assert.throws(() => safeUrl('/home/x/notas.html'), /inválido|http ou https/, 'outside browser_open (a person typing, a redirect) the old rule holds');
+  await s.start();
+  const opened = await s.command('open', { url: toolArguments('browser.open', { url: join(folder, 'tela inicial.html') }).url });
+  assert.match(opened.url, /^file:\/\/.*tela%20inicial\.html$/);
+  assert.match((await s.command('read', {})).text, /Tela do bot/);
+  assert.equal(await s.page.evaluate(() => getComputedStyle(document.querySelector('h1')).color), 'rgb(255, 0, 0)', 'its own CSS loads');
+  await assert.rejects(s.command('open', { url: 'file:///etc/hostname.txt' }), /não achei|pasta pessoal/i);
+  await assert.rejects(s.command('open', { url: localFileUrl(join(folder, 'nao-existe.html')) }), /Não achei/);
+});
+
+// 13/11/2026: Google Stitch's "Copy code" said "Failed to copy HTML" and its ZIP never reached the bot.
+test('Chrome: what a site copies (even inside another site\'s frame) reaches the bot as a file, and "Save as" becomes a download', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async t => {
+  const inner = createServer((req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(`<body style="margin:0">
+    <button id="copiar" style="position:absolute;left:10px;top:10px;width:200px;height:40px" onclick="navigator.clipboard.writeText('<html><body>Tela gerada</body></html>').then(() => document.title = 'copiou', () => document.title = 'falhou')">Copiar código</button>
+    <button id="salvar" style="position:absolute;left:10px;top:70px;width:200px;height:40px" onclick="(async () => { const h = await showSaveFilePicker({ suggestedName: 'tela.zip' }); const w = await h.createWritable(); await w.write(new Blob(['PK conteúdo'])); await w.close(); })()">Baixar ZIP</button></body>`); });
+  await listen(inner);
+  const outer = createServer((req, res) => { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(`<body style="margin:0"><iframe src="http://127.0.0.1:${inner.address().port}/" style="position:absolute;left:0;top:0;width:600px;height:300px;border:0"></iframe></body>`); });
+  await listen(outer);
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-browser-copy-')), downloads = await mkdtemp(join(tmpdir(), 'mybots-downloads-'));
+  const previous = process.env.MYBOTS_DOWNLOADS; process.env.MYBOTS_DOWNLOADS = downloads;
+  const s = new BrowserSession(directory, { botId: 'bot1' });
+  t.after(async () => { await s.close(); inner.close(); outer.close(); if (previous === undefined) delete process.env.MYBOTS_DOWNLOADS; else process.env.MYBOTS_DOWNLOADS = previous; await rm(directory, { recursive: true, force: true }); await rm(downloads, { recursive: true, force: true }); });
+  await s.start();
+  await s.page.goto(`http://127.0.0.1:${outer.address().port}/`);
+  const frame = await (await s.page.waitForSelector('iframe')).contentFrame(); await frame.waitForSelector('#copiar');
+  const copied = await s.command('act', { action: 'click', x: 100, y: 30 });
+  assert.equal(await frame.evaluate(() => document.title), 'copiou', 'the site is told the copy worked');
+  assert.match(copied.copied.start, /Tela gerada/); assert.match(copied.copied.file.name, /^copiado-.*\.html$/);
+  const { readFileSync } = await import('node:fs');
+  assert.equal(readFileSync(join(downloads, 'bot1', copied.copied.file.name), 'utf8'), '<html><body>Tela gerada</body></html>');
+  assert.equal((await s.command('read', {})).copied, undefined, 'reported once');
+  const saved = await s.command('act', { action: 'click', x: 100, y: 90 });
+  assert.equal(saved.download?.name, 'tela.zip');
+  assert.equal(readFileSync(join(downloads, 'bot1', 'tela.zip'), 'utf8'), 'PK conteúdo');
+});

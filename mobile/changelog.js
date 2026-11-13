@@ -2,6 +2,13 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.14', date: '2026-11-13', items: [
+    ['correcao', 'Quando um site copia algo (como o código no Google Stitch), o bot agora recebe o texto como arquivo, em vez de o site dizer que falhou. A sua área de transferência não é tocada.'],
+    ['correcao', 'Downloads de sites que abrem a janela "Salvar como" (como o ZIP do Google Stitch) agora chegam aos arquivos do bot.'],
+    ['melhoria', 'No computador, os bots abrem direto no navegador as páginas que eles mesmos fizeram (HTML, imagens, PDF) da sua pasta pessoal, sem precisar ligar um servidor.'],
+    ['melhoria', 'Um bot que já tem uma pergunta aberta para você não manda outra igual: a nova substitui a antiga.'],
+    ['melhoria', 'Mensagens de bots que só dizem "entendido" ou "sigo aguardando" não acordam mais outro bot à toa.']
+  ] },
   { version: '0.94.13', date: '2026-11-13', items: [
     ['novo', 'No celular, Início, Canvas, Memória e Ajustes ficam numa barra embaixo da tela.'],
     ['melhoria', 'O app abre na tela Início, com o Chefe fixado no topo da lista. Tocando nele, a conversa começa numa sessão nova; se você sair e voltar sem fechar o app, continua na mesma.'],

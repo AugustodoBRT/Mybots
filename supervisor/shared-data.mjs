@@ -120,6 +120,16 @@ export class Decisions {
     if (hours !== null && (!Number.isInteger(hours) || hours < 1 || hours > 720)) throw new Error('deadline_hours vai de 1 a 720 (até 30 dias).');
     const onTimeout = args.on_timeout === undefined ? (hours ? 'remind' : 'wait') : args.on_timeout;
     if (!TIMEOUTS.includes(onTimeout)) throw new Error('on_timeout é wait (esperar), remind (lembrar de novo) ou cancel (cancelar).');
+    // A bot with a question still open says whether the new one replaces it (same subject) or is another subject (13/11/2026: the chief
+    // asked four rephrasings of one question about Google Stitch in four minutes, all of them waiting on the person's screen).
+    const mine = this.open(botId);
+    if (args.replaces !== undefined && (typeof args.replaces !== 'string' || !mine.some(item => item.id === args.replaces))) throw new Error('Em replaces, mande o id de uma pergunta sua que ainda está aberta.');
+    if (mine.length && args.replaces === undefined && args.new_topic !== true) throw new Error(`Você já tem ${mine.length > 1 ? 'perguntas abertas' : 'uma pergunta aberta'} para a pessoa: ${mine.map(item => `"${item.question.slice(0, 160)}" (id ${item.id})`).join('; ')}. Se a nova é sobre o mesmo assunto, mande replaces com o id dela (a antiga sai da tela da pessoa); se é outro assunto, mande new_topic true.`);
+    const replaced = mine.filter(item => item.id === args.replaces);
+    for (const item of replaced) this.db.transaction(() => {
+      this.db.run("UPDATE decisions SET state='expired',updated_at=? WHERE id=?", now(), item.id);
+      this.db.updateMessage(item.messageId, { decision: { id: item.id, options: item.options, deadline: item.deadline, expired: true, replaced: true } });
+    });
     if (this.open(botId).length >= DECISION_LIMITS.open) throw new Error(`Você já tem ${DECISION_LIMITS.open} decisões esperando a pessoa: espere respostas antes de perguntar mais.`);
     const bot = this.db.requireBot(botId), id = randomUUID(), stamp = now();
     const deadline = hours ? new Date(this.clock() + hours * 3600000).toISOString() : null;
@@ -131,7 +141,7 @@ export class Decisions {
     });
     this.changed();
     this.notify({ title: `${bot.name} precisa de uma decisão`.slice(0, 80), body: `${question}\n${options.map((item, index) => `${index + 1}. ${item}`).join('\n')}`.slice(0, 500) }, { id: 'mybots-decision-' + id, botId: bot.id }).catch(() => {});
-    return { asked: true, id, note: 'A pergunta apareceu para a pessoa com as opções e "Escrever minha resposta". A resposta chega a você como uma nova mensagem: não espere por ela agora, termine esta resposta.' };
+    return { asked: true, id, ...(replaced.length ? { replaced: replaced.length } : {}), note: `${replaced.length ? 'Ela substituiu a sua pergunta parecida que ainda estava aberta. ' : ''}A pergunta apareceu para a pessoa com as opções e "Escrever minha resposta". A resposta chega a você como uma nova mensagem: não espere por ela agora, termine esta resposta.` };
   }
   /** The person's answer: one of the options (`option`, its text or number) or their own words (`text`). */
   answer(id, { option, text } = {}) {

@@ -32,8 +32,24 @@ const LOOPBACK = host => host === 'localhost' || host.endsWith('.localhost') || 
 export function localDevUrl(value) {
   try { const url = new URL(value); const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase(); return ['http:', 'https:'].includes(url.protocol) && LOOPBACK(host) && DEV_PORTS.has(Number(url.port)) && !url.username && !url.password; } catch { return false; }
 }
+/**
+ * A page the bot made on the computer (a mockup, a report), opened from its file: an absolute path or a file:// address to a web page,
+ * a picture, a PDF or text. Bots kept starting local servers just to look at their own HTML (13/11/2026). Only the computer's browser
+ * opens it, and only inside the person's home (pc/browser-worker.mjs checks that the file exists there).
+ */
+const LOCAL_FILE = /\.(html?|svg|png|jpe?g|gif|webp|pdf|txt|md|json|css|js)$/i;
+export function localFileUrl(value) {
+  const text = String(value || '').trim();
+  let path;
+  if (text.startsWith('file://')) { try { const url = new URL(text); if (url.host) return null; path = decodeURIComponent(url.pathname); } catch { return null; } }
+  else if (text.startsWith('/')) path = text;
+  else return null;
+  if (/\u0000/.test(path) || path.split('/').some(part => part === '..') || !LOCAL_FILE.test(path)) return null;
+  return 'file://' + path.split('/').map(part => encodeURIComponent(part)).join('/');
+}
 export function safeUrl(value, { local = false } = {}) {
   if (local && localDevUrl(value)) return new URL(value).href;
+  if (local && localFileUrl(value)) return localFileUrl(value);
   let url;
   try { url = new URL(value); } catch { throw new Error('Endereço inválido. Use um link completo, como https://exemplo.com.'); }
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('O navegador do bot só abre links http ou https.');
@@ -99,6 +115,7 @@ export class Browser {
   }
   command(botId, op, args = {}) {
     if (!OPS.includes(op)) return Promise.reject(new Error('Comando de navegador inválido.'));
+    if (op === 'open' && /^file:/i.test(String(args.url || ''))) return Promise.reject(new Error('Arquivos do computador só abrem no navegador do bot no computador. Peça para responder pelo computador ou suba um servidor local.'));
     if (this.control.get(botId) === 'person') return Promise.reject(new Error('A pessoa assumiu o navegador deste bot. Espere ela tocar em “Devolver ao bot”.'));
     if (!this.available()) return Promise.reject(new Error('O navegador do bot fica no app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots (ou ligar “Funcionar com a tela apagada” nos Ajustes).'));
     return this.queue({ botId, op, args });

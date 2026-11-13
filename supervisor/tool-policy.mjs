@@ -179,7 +179,7 @@ export function toolArguments(tool, args) {
     'canvas.read': ['area'], 'canvas.add': ['kind','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h','near','label'],
     'canvas.update': ['id','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h'], 'canvas.link': ['from','to','label'], 'canvas.remove': ['id'], 'browser.viewport': ['size','width','height'],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
-    'user.decide': ['question','options','deadline_hours','on_timeout'], 'user.decisions': ['state','limit','bot'],
+    'user.decide': ['question','options','deadline_hours','on_timeout','replaces','new_topic'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.choose_models': ['bots','recommended','alternatives'], 'team.models': [], 'team.create_bot': ['name','instructions','color','avatar','access','home','provider','model','effort'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'], 'team.checklist': ['items'], 'team.check': ['item','done','note'],
     'team.skills': ['query'], 'team.enable_skill': ['bot','skill','on'], 'team.install_skill': ['url','path','reason'],
@@ -397,7 +397,7 @@ export function toolArguments(tool, args) {
     return { marks: args.marks === true };
   }
   // A local development site passes here; whether this bot may open it is decided where it runs (tools.mjs).
-  if (tool === 'browser.open') return { url: safeUrl(text('url', 2000), { local: true }) };
+  if (tool === 'browser.open') { const url = safeUrl(text('url', 2000), { local: true }); if (url.startsWith('file:') && SENSITIVE.test(decodeURIComponent(url))) throw new Error('Esse arquivo é de senhas ou chaves e não abre no navegador.'); return { url }; }
   if (tool === 'browser.click') return { id: integer('id', 1, 100000) };
   if (tool === 'browser.type') {
     if (args.submit !== undefined && typeof args.submit !== 'boolean') throw new Error('Use submit true ou false.');

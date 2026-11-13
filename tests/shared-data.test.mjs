@@ -182,3 +182,24 @@ test('phase 3: the person chooses who reads and writes a table, and a monthly li
   await assert.rejects(f.app.rpc('routine.run', { id: routine.id }), /limite de gasto/);
   await until(() => f.notices.some(item => /não rodou: Buscar/.test(item.title)));
 });
+
+// 13/11/2026: the chief asked four rephrasings of the same question in four minutes, all waiting on the person's screen.
+test('a bot with a question open says whether the new one replaces it or is another subject', async t => {
+  const { Database } = await import('../supervisor/database.mjs');
+  const { Decisions } = await import('../supervisor/shared-data.mjs');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'mybots-decide-'));
+  const db = new Database(dir);
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  const bot = db.create({ name: 'Lua', isChief: true }, { model: 'm', reasoningEffort: 'low' });
+  const decisions = new Decisions(db, { notify: async () => {}, reply() {}, changed() {} });
+  const first = decisions.ask(bot.id, { question: 'Como seguimos com o time Stitch?', options: ['Eu colo', 'Pular'] });
+  assert.throws(() => decisions.ask(bot.id, { question: 'O Stitch não aceita digitação. Como seguimos?', options: ['Eu colo', 'Pular'] }), new RegExp(`Como seguimos com o time Stitch.*id ${first.id}.*replaces.*new_topic`, 's'));
+  assert.throws(() => decisions.ask(bot.id, { question: 'x', options: ['a'], replaces: 'outra' }), /replaces/);
+  const second = decisions.ask(bot.id, { question: 'O Stitch não aceita digitação. Como seguimos?', options: ['Eu colo', 'Pular'], replaces: first.id });
+  assert.equal(second.replaced, 1); assert.match(second.note, /substituiu/);
+  assert.deepEqual(decisions.open(bot.id).map(item => item.id), [second.id], 'only the new one waits on the screen');
+  assert.equal(db.message(decisions.open().length ? db.all("SELECT body FROM decisions WHERE id=?", first.id).map(row => JSON.parse(row.body).messageId)[0] : null).decision.replaced, true);
+  const other = decisions.ask(bot.id, { question: 'Qual IA usar nos bots novos?', options: ['Claude', 'GPT'], new_topic: true });
+  assert.deepEqual(decisions.open(bot.id).map(item => item.id).sort(), [second.id, other.id].sort());
+});

@@ -551,6 +551,24 @@ export class BrowserSession {
       return { sent: true };
     } catch { throw new Error('Não consegui digitar no campo protegido.'); }
   }
+  /**
+   * The text field that has the keyboard after a click, in any frame (other sites' frames too, which a page script cannot reach)
+   * and inside shadow roots: whether it is a password or code, or a card field. Null when what has the focus is not a text field.
+   */
+  async focusedField() {
+    const found = [];
+    for (const frame of this.page.frames()) {
+      const field = await frame.evaluate(cardSource => {
+        let el = document.activeElement;
+        while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+        if (!el || el === document.body || el.tagName === 'IFRAME') return null;
+        if (!(el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['button','submit','checkbox','radio','file','image','reset','range','color'].includes(el.type)))) return null;
+        return { focused: document.hasFocus(), secret: el.type === 'password' || el.autocomplete === 'one-time-code', card: Boolean((0, eval)(`(${cardSource})`)(el)) };
+      }, CARD_FIELD_SOURCE).catch(() => null);
+      if (field) found.push(field);
+    }
+    return found.find(field => field.focused) || (found.length === 1 ? found[0] : null);
+  }
   sensitiveFocus() {
     return this.page.evaluate(() => { let el = document.activeElement; while (el?.tagName === 'IFRAME') { try { el = el.contentDocument.activeElement; } catch { return true; } } return el?.type === 'password' || el?.autocomplete === 'one-time-code'; });
   }
@@ -752,6 +770,15 @@ export class BrowserSession {
       else if (args.action === 'scroll') { await mouse.move(args.x, args.y); await mouse.wheel(args.dx, args.dy); }
       else if (args.action === 'drag') { await mouse.move(args.x, args.y); await mouse.down(); try { await mouse.move(args.toX, args.toY, { steps: 10 }); } finally { await mouse.up(); } }
       else if (args.action === 'double_click') await mouse.dblclick(args.x, args.y);
+      else if (args.action === 'type') {
+        await mouse.click(args.x, args.y);
+        const field = await this.focusedField();
+        if (!field) throw new Error('Nenhum campo de texto ficou selecionado nesse ponto. Tire uma captura e clique bem em cima do campo.');
+        if (field.secret) throw new Error('Senhas e códigos só por browser_login ou pela pessoa.');
+        if (field.card) throw new Error('Campos de cartão só podem ser preenchidos pela carteira ou pela pessoa.');
+        await this.page.keyboard.insertText(args.text);
+        if (args.submit) await this.page.keyboard.press('Enter');
+      }
       else await mouse.click(args.x, args.y, { button: args.action === 'right_click' ? 'right' : 'left' });
       const { rect, ...shown } = target;
       await this.afterPopup(popups);

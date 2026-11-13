@@ -222,8 +222,9 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
  * the network), and runs the turns the phone sends with the IA logged in here. The bot's tools stay on the phone:
  * a local endpoint forwards the IA's tool calls through the same connection, with the run's own token.
  */
-export async function createNode({ directory = dataDirectory(), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
+export async function createNode({ directory = dataDirectory(), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), desktopIdleMs = 60000, browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
+  const DESKTOP_IDLE_MS = desktopIdleMs;
   const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
@@ -461,7 +462,12 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
           if (isDesktop ? !run.tools?.desktop : !run.tools?.browser || (!chrome && (mainChrome || !/^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op)))) throw new Error('Ferramenta não permitida nesta resposta.');
           if (!isDesktop && browserMode(run.bot) === 'mine' && [...assumed].some(id => browserModes.get(id) === 'mine')) throw new Error('A pessoa assumiu Meu Chrome. Espere ela devolver.');
           // Only the screen and the mouse have one pilot at a time; each bot's browser is its own, so they run side by side.
-          if (isDesktop) { if (owner && owner !== run) throw new Error('Outro bot está controlando o computador. Aguarde ele terminar.'); owner = run; }
+          // The screen is held by the bot that used it last, until its turn ends or a minute goes by without it touching the screen
+          // (a bot that clicked once and went on to other work held it for its whole turn, 13/11/2026). The refusal names who has it.
+          if (isDesktop) {
+            if (owner && owner !== run && Date.now() - (owner.desktopAt || 0) < DESKTOP_IDLE_MS) throw new Error(`${owner.bot?.name || 'Outro bot'} está controlando o computador (usou a tela há ${Math.round((Date.now() - owner.desktopAt) / 1000)} s). Aguarde: o controle fica livre quando ele terminar ou depois de 1 minuto sem mexer na tela.`);
+            owner = run; run.desktopAt = Date.now();
+          }
           run.indicator ||= direct ? Promise.resolve(() => {}) : desktop.indicate(run.bot);
           const dismiss = await run.indicator;
           if (run.controller.signal.aborted) { await dismiss(); throw new Error('Controle interrompido.'); }

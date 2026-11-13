@@ -57,6 +57,8 @@ test('the chief lists what was asked, marks each item, and its answer ends with 
     // Only once.
     assert.equal(tools.team.closingNote(chief.id), '');
     assert.throws(() => tools.team.checklist({}, { items: ['x'] }, sol), /Só o Chefe/);
+    // Synced with the other device: a chief that goes on there marks the same list.
+    assert.ok(db.get("SELECT 1 AS ok FROM changes WHERE tbl='metadata' AND key=?", 'team.checklist.' + chief.id)?.ok);
   } finally { await queue.close(); }
   assert.throws(() => toolArguments('team.checklist', { items: [] }), /de 1 a 20/);
   assert.throws(() => toolArguments('team.check', { item: 0, done: true }), /item/);

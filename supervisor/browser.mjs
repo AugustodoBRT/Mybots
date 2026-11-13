@@ -10,7 +10,7 @@ export function stepCaption(op, args = {}, target = {}) {
   if (op === 'open') { try { return `Abrindo ${new URL(args.url).hostname.replace(/^www\./, '')}`; } catch { return 'Abrindo a página'; } }
   if (op === 'click') return `Clicando${on}`;
   if (op === 'type') return `Digitando${on}`;
-  if (op === 'act') return { click: `Clicando${on}`, double_click: `Clicando duas vezes${on}`, right_click: `Abrindo o menu${on}`, hover: `Passando o mouse${on}`, scroll: 'Rolando a página', key: `Apertando ${args.key || 'uma tecla'}`, drag: 'Arrastando na página' }[args.action] || 'Mexendo na página';
+  if (op === 'act') return { click: `Clicando${on}`, double_click: `Clicando duas vezes${on}`, right_click: `Abrindo o menu${on}`, hover: `Passando o mouse${on}`, scroll: 'Rolando a página', key: `Apertando ${args.key || 'uma tecla'}`, drag: 'Arrastando na página', type: `Digitando${on}` }[args.action] || 'Mexendo na página';
   if (op === 'viewport') return args.mobile ? `Vendo como no celular (${args.width}×${args.height})` : `Vendo no tamanho ${args.width}×${args.height}`;
   if (op === 'tabs') return { new: 'Abrindo uma aba', switch: `Indo para a aba ${args.tab}`, close: `Fechando a aba ${args.tab}`, list: 'Vendo as abas' }[args.action] || 'Vendo as abas';
   return { read: 'Lendo a página', find: `Procurando “${String(args.query || '').slice(0, 40)}”`, wait: 'Esperando a página', screenshot: 'Olhando a página', login: 'Entrando com a senha salva', pay: 'Pagando com a carteira', upload: `Enviando ${String(args.name || 'um arquivo').slice(0, 40)}`, ask_user: 'Chamando você' }[op] || 'Usando o navegador';

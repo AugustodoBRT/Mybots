@@ -17,9 +17,10 @@ const selection = { model: 'test', reasoningEffort: 'low' };
 const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, efforts: ['low'], defaultEffort: 'low' }] };
 async function until(check) { for (let i = 0; i < 800; i++) { if (check()) return; await new Promise(r => setTimeout(r, 5)); } assert.fail('Estado esperado não chegou.'); }
 
-async function setup(t) {
+async function setup(t, { desktopIdleMs } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-desktop-'));
   const app = await createSupervisor({ directory: join(directory, 'phone'), port: 0, codex, approvalMs: 2000 });
+  let release = null;
   const actions = []; let steps = []; let results = []; let listed = []; let visible = 0; let stopped = 0;
   const execute = async (bot, prompt, { tools, signal }) => {
     const call = async (body, session) => {
@@ -30,13 +31,14 @@ async function setup(t) {
     listed = (await call({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, init.session)).body.result.tools.map(item => item.name);
     results = [];
     for (const [name, args = {}] of steps) results.push((await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name, arguments: args } }, init.session)).body.result);
+    if (prompt.includes('segurar a tela')) await new Promise(resolve => { release = resolve; signal.addEventListener('abort', resolve, { once: true }); });
     if (prompt.includes('esperar pânico')) await new Promise((resolve, reject) => {
       if (signal.aborted) reject(new Error('interrompido'));
       else signal.addEventListener('abort', () => reject(new Error('interrompido')), { once: true });
     });
     return { text: 'feito', ...selection, codexSessionId: randomUUID() };
   };
-  const node = await createNode({ directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], execute, status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }),
+  const node = await createNode({ ...(desktopIdleMs ? { desktopIdleMs } : {}), directory: join(directory, 'pc'), projects: join(directory, 'projects'), port: 0, uiPort: 0, host: '127.0.0.1', advertise: () => ['127.0.0.1'], execute, status: async () => ({ connections: { codex: { loggedIn: true } }, models: [] }),
     desktop: { indicate: async () => { visible++; return async () => { visible--; }; }, command: async (op, args, signal) => { signal.throwIfAborted(); actions.push({ op, args }); return op === 'desktop.screenshot' ? { image: 'aW1hZ2U=' } : { done: true }; } },
     browser: { command: async (botId, op, args) => { actions.push({ botId, op, args }); return op === 'inspect' ? { kind: 'submit', label: 'Enviar', url: 'https://example.com' } : op === 'thumb' ? { image: '/9j/2wBD', width: 480, height: 300 } : { url: 'https://example.com', title: 'Exemplo' }; }, stop: () => { stopped++; }, close: () => {} } });
   t.after(async () => { await app.close(); await node.close(); await rm(directory, { recursive: true, force: true }); });
@@ -45,7 +47,7 @@ async function setup(t) {
   const start = async (script, text = 'executar') => { steps = script; const sent = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text }); return sent.taskId; };
   const finish = async id => { await until(() => ['done','failed','cancelled'].includes(app.db.task(id).state)); return results; };
   const approve = async (approved = true, always = false) => { await until(() => app.state().approvals.length); const card = app.state().approvals[0]; await app.rpc('approval.respond', { approvalId: card.id, actionHash: card.actionHash, approved, always }); return card; };
-  return { app, node, bot, directory, actions, start, finish, approve, get listed() { return listed; }, get visible() { return visible; }, get stopped() { return stopped; } };
+  return { app, node, bot, directory, actions, start, finish, approve, release: () => release?.(), setSteps: value => { steps = value; }, get results() { return results; }, get listed() { return listed; }, get visible() { return visible; }, get stopped() { return stopped; } };
 }
 
 test('desktop control is available by default on PC, but a phone-only run cannot invoke a PC executor', async t => {
@@ -220,4 +222,22 @@ test('the system programs of the desktop tools run without the libraries of the 
   const env = systemEnv({ HOME: '/h', PATH: '/home/a/.local/bin:/tmp/.mount_MyBotsX:/tmp/.mount_MyBotsX/usr/sbin:/usr/bin', LD_LIBRARY_PATH: '/tmp/.mount_MyBotsX/usr/lib:/tmp/.mount_MyBotsY/usr/lib', XDG_DATA_DIRS: '/tmp/.mount_MyBotsX/usr/share/:/usr/share', GSETTINGS_SCHEMA_DIR: '/tmp/.mount_MyBotsX/usr/share/glib-2.0/schemas' });
   assert.deepEqual(env, { HOME: '/h', PATH: '/home/a/.local/bin:/usr/bin', XDG_DATA_DIRS: '/usr/share' });
   assert.deepEqual(systemEnv({ LD_LIBRARY_PATH: '/opt/lib:/usr/lib', PATH: '/usr/bin' }), { LD_LIBRARY_PATH: '/opt/lib:/usr/lib', PATH: '/usr/bin' });
+});
+
+// 13/11/2026: a bot that clicked once held the screen for its whole turn, and the others were told only "outro bot".
+test('PC desktop: the screen is free again after a while without use, and a refusal names the bot that has it', async t => {
+  const f = await setup(t, { desktopIdleMs: 300 });
+  const first = await f.start([['desktop_windows']], 'segurar a tela');
+  await until(() => f.actions.length === 1);
+  const other = await f.app.rpc('bot.create', { name: 'Outro', home: 'pc', access: 'full', ...selection });
+  f.setSteps([['desktop_click', { x: 1, y: 2 }]]);
+  const refused = await f.app.rpc('chat.send', { botId: other.id, requestId: randomUUID(), text: 'clicar' });
+  await until(() => ['done','failed'].includes(f.app.db.task(refused.taskId).state));
+  assert.match(f.results[0].content[0].text, /Tela está controlando o computador \(usou a tela há \d+ s\)/);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  const freed = await f.app.rpc('chat.send', { botId: other.id, requestId: randomUUID(), text: 'clicar de novo' });
+  await until(() => ['done','failed'].includes(f.app.db.task(freed.taskId).state));
+  assert.equal(f.results[0].isError, undefined, 'a minute (here 300 ms) without use frees the screen');
+  assert.deepEqual(f.actions.map(item => item.op), ['desktop.windows', 'desktop.click']);
+  f.release(); await f.finish(first);
 });

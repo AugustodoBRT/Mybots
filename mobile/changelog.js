@@ -2,6 +2,11 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.11', date: '2026-11-13', items: [
+    ['correcao', 'Os bots não conseguiam digitar em sites que desenham os campos dentro de outro site, como o Google Stitch. Agora eles clicam no campo e digitam nele, no computador e no celular. Senhas, códigos e cartões continuam só com você.'],
+    ['correcao', 'O controle da tela do computador ficava preso com o primeiro bot que mexia nele até ele terminar tudo. Agora fica livre depois de 1 minuto sem uso, e o aviso diz qual bot está com ele.'],
+    ['correcao', 'O checklist do pedido agora é o mesmo no celular e no computador.']
+  ] },
   { version: '0.94.10', date: '2026-11-13', items: [
     ['novo', 'O Chefe anota cada coisa que você pediu num checklist e, no fim, a resposta dele mostra item por item o que foi feito e o que não deu (com o motivo). Nada do que você pediu some sem aviso.'],
     ['novo', 'O Chefe vê as skills do computador e liga nos bots certos. Para instalar uma skill nova do GitHub, ele te mostra o repositório e só instala depois que você aprovar.'],

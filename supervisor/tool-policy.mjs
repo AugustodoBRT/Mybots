@@ -172,7 +172,7 @@ export function toolArguments(tool, args) {
     'notifications.recent': ['app','query','sinceMinutes','limit'], 'sms.search': ['query','number','limit'], 'sms.send': ['number','text'],
     'contacts.search': ['query','limit'], 'calls.search': ['query','limit'], 'location.get': ['provider'], 'device.status': [],
     'attachment.read': ['id','offset','page','as_image'], 'file.list': ['limit'], 'file.create': ['name','format','content','send'], 'file.send': ['id', 'path'], 'connector.permission': ['tool_name', 'input', 'tool_use_id'], 'routine.list': [], 'routine.create': ['title','instructions','trigger','room'], 'routine.update': ['id','enabled','delete'],
-    'browser.act': ['action','x','y','dx','dy','key','toX','toY'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': ['main','max_chars','maxChars'], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
+    'browser.act': ['action','x','y','dx','dy','key','toX','toY','text','submit'], 'browser.tabs': ['action','tab','url'], 'browser.find': ['query','limit'], 'browser.open': ['url'], 'browser.read': ['main','max_chars','maxChars'], 'browser.click': ['id'], 'browser.type': ['id','text','submit'], 'browser.upload': ['id','file'], 'browser.login': [], 'browser.pay': ['store','items','category','total','card'], 'browser.wait': ['text','selector','url','timeoutSeconds'], 'browser.screenshot': ['marks'], 'browser.ask_user': ['reason'],
     'desktop.screenshot': [], 'desktop.windows': [], 'desktop.focus': ['address'], 'desktop.launch': ['app'], 'desktop.click': ['x','y','button'], 'desktop.type': ['text'], 'desktop.key': ['keys'],
     'team.update_bot': ['bot','name','instructions','reason'], 'team.routines': ['bot'], 'team.routine_update': ['bot','id','action','title','instructions','trigger','room','reason'], 'team.usage': [],
     'profile.read': [], 'profile.write': ['text','reason'], 'team.overlap': [],
@@ -358,8 +358,14 @@ export function toolArguments(tool, args) {
   }
   if (tool === 'device.status' || tool === 'routine.list' || tool === 'browser.login') return {};
   if (tool === 'browser.act') {
-    if (!['click','double_click','right_click','hover','scroll','key','drag'].includes(args.action)) throw new Error('Ação inválida no navegador.');
+    if (!['click','double_click','right_click','hover','scroll','key','drag','type'].includes(args.action)) throw new Error('Ação inválida no navegador.');
     const result = { action: args.action };
+    // Typing where a click lands: for pages that list no fields to browser_read (an app drawn inside another site's frame, like Google Stitch).
+    if (args.action === 'type') {
+      if (typeof args.text !== 'string' || !args.text || args.text.length > 4000 || /\u0000/.test(args.text)) throw new Error('Em text, mande de 1 a 4.000 caracteres para digitar.');
+      result.text = args.text;
+      if (args.submit !== undefined) { if (typeof args.submit !== 'boolean') throw new Error('submit é true ou false.'); result.submit = args.submit; }
+    } else if (args.text !== undefined || args.submit !== undefined) throw new Error('text e submit só valem com action "type".');
     for (const [name, max] of [['x',1280],['y',800],['toX',1280],['toY',800]]) {
       if (args[name] !== undefined || (args.action !== 'key' && ['x','y'].includes(name)) || (args.action === 'drag' && ['toX','toY'].includes(name))) {
         if (!Number.isFinite(args[name]) || args[name] < 0 || args[name] > max) throw new Error('Coordenadas fora da captura.');

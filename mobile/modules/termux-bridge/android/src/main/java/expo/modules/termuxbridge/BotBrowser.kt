@@ -804,6 +804,16 @@ internal object BotBrowser {
     args => {
       const el = args.action === 'key' ? document.activeElement : document.elementFromPoint(args.x, args.y);
       if (args.action === 'scroll') window.scrollBy(args.dx, args.dy);
+      else if (args.action === 'type') {
+        // A bot types where it clicks, for pages that list no fields to browser_read. Never in passwords, codes or card fields.
+        if (el) { el.focus(); for (const type of ['mousedown','mouseup','click']) el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: args.x, clientY: args.y, view: window })); }
+        let field = document.activeElement; while (field && field.shadowRoot && field.shadowRoot.activeElement) field = field.shadowRoot.activeElement;
+        const editable = field && field !== document.body && (field.isContentEditable || field.tagName === 'TEXTAREA' || (field.tagName === 'INPUT' && !['button','submit','checkbox','radio','file','image','reset','range','color'].includes(field.type)));
+        if (!editable) return JSON.stringify({ error: 'Nenhum campo de texto ficou selecionado nesse ponto. Tire uma captura e toque bem em cima do campo.' });
+        if (field.type === 'password' || field.autocomplete === 'one-time-code' || ($CARD_JS)(field)) return JSON.stringify({ error: 'Senhas, códigos e cartões só pela pessoa, pelo login salvo ou pela carteira.' });
+        if (!document.execCommand('insertText', false, String(args.text || ''))) { if ('value' in field) { field.value += String(args.text || ''); field.dispatchEvent(new Event('input', { bubbles: true })); } }
+        if (args.submit) { field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); if (field.form) field.form.requestSubmit(); field.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true })); }
+      }
       else if (args.action === 'text') {
         // What the person types in the window of the computer while they hold the browser: into the field that has the focus.
         const field = document.activeElement; if (!field || field === document.body) return JSON.stringify({ error: 'Toque num campo antes de digitar.' });

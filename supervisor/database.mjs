@@ -57,10 +57,10 @@ export const SYNCED = {
   canvas_items: { key: 'id', at: 'updated_at' },
   attachments: { key: 'id', at: 'created_at' },
   // The person's own settings; limits, models, queue pauses and link data are per device.
-  metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%')" }
+  metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%' OR key LIKE 'team.checklist.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 23;
+export const SCHEMA = 24;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -272,6 +272,12 @@ export class Database {
         previous = row;
       }
       this.db.exec('PRAGMA user_version=23;');
+    });
+    // The chief's checklist of the person's request (team.checklist.<id>) joins the synced settings: a chief that started on the
+    // phone and went on on the computer could not mark it there (13/11/2026).
+    if (version < 24) this.transaction(() => {
+      this.installSyncLog('metadata', SYNCED.metadata);
+      this.db.exec('PRAGMA user_version=24;');
     });
   }
   installSyncLog(table, spec) {

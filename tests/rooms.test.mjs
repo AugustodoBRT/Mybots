@@ -33,7 +33,7 @@ test('@mentions match member names without accents or case, in order', () => {
 test('a room needs 2 to 8 bots; without @ all answer in order, with @ only the named ones, in the room only', async t => {
   const f = await setup(t);
   const [a, b, c] = [await f.make('Faculdade'), await f.make('Vagas'), await f.make('Agenda')];
-  await assert.rejects(f.app.rpc('room.create', { name: 'Sala', botIds: [a.id] }), /2 a 8/);
+  await assert.rejects(f.app.rpc('room.create', { name: 'Sala', botIds: [a.id] }), /2 a 30/);
   const room = await f.app.rpc('room.create', { name: 'Estudos', botIds: [a.id, b.id, c.id] });
   await f.app.rpc('room.send', { roomId: room.id, requestId: randomUUID(), text: 'Bom dia, time' });
   await f.idle();

@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.9', date: '2026-11-13', items: [
+    ['correcao', 'O uso e o gasto dos bots com Gemini (Antigravity) apareciam muito maiores do que eram: cada resposta somava a conversa inteira de novo. Agora conta só a resposta, e o histórico foi corrigido.'],
+    ['melhoria', 'Uma sala agora aceita até 30 bots (eram 8).'],
+    ['melhoria', 'O Chefe não empilha mais pedidos num bot que ainda está trabalhando: espera a resposta e junta as correções numa mensagem só.'],
+    ['melhoria', 'Ao sugerir a IA dos bots novos, o Chefe olha quanto tempo cada modelo leva para responder no seu aparelho e prefere os rápidos para quem vai trabalhar em sala.']
+  ] },
   { version: '0.94.8', date: '2026-11-13', items: [
     ['correcao', 'No celular, quando o MyBots deste celular parava sozinho depois de um tempo, o app ficava tentando "reconectar ao Termux" e não voltava. Agora ele reinicia o MyBots do celular sozinho, inclusive quando você volta para o app.'],
     ['melhoria', 'O Termux saiu de vez: quem usava passa automaticamente para o MyBots dentro do app, e o que está no computador volta pela sincronização.'],

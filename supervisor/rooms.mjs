@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { now, uuid } from './database.mjs';
 import { CHIEF_TEXT, TOOLS_TEXT } from '../mobile/local.js';
 
-const ROOM_QUEUE_LIMIT = 12;
+// A room holds up to as many bots as the app has (30); a message to everyone queues one turn each, so the queue holds them all and more.
+export const ROOM_BOTS_MAX = 30;
+const ROOM_QUEUE_LIMIT = 40;
 // How much of a room a bot's turn reads at most (the prompt then keeps what fits in its size budget).
 const PROMPT_WINDOW = 600;
 export { fold };
@@ -31,7 +33,7 @@ export class Rooms {
   members(room) { return room.botIds.map(id => this.db.bot(id)).filter(bot => bot && !bot.deletedAt); }
   validate({ name, botIds }) {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 40) throw new Error('Dê um nome de até 40 letras para a sala.');
-    if (!Array.isArray(botIds) || new Set(botIds).size !== botIds.length || botIds.length < 2 || botIds.length > 8) throw new Error('Escolha de 2 a 8 bots para a sala.');
+    if (!Array.isArray(botIds) || new Set(botIds).size !== botIds.length || botIds.length < 2 || botIds.length > ROOM_BOTS_MAX) throw new Error(`Escolha de 2 a ${ROOM_BOTS_MAX} bots para a sala.`);
     for (const id of botIds) this.db.requireBot(id);
     return { name: name.trim(), botIds };
   }

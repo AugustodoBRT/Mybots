@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { fold } from './rooms.mjs';
+import { fold, mentions } from './rooms.mjs';
 import { ACCESS_LEVELS } from './tool-policy.mjs';
 import { selectionFor as pickModel, PROVIDER_NAMES } from '../lib/models.mjs';
 
@@ -7,6 +7,14 @@ const RANK = { basic: 0, ask: 1, full: 2, free: 3 };
 // Brakes against a bot (or a loop of bots) multiplying: a few per turn, a ceiling for the whole app.
 // No ceiling of bots per turn (the owner asked, 13/11/2026): only the whole app's.
 export const LIMITS = { bots: 30, rooms: 20, roomsPerTurn: 3, asksPerTurn: 8, followDepth: 3, followMs: 20 * 60 * 1000 };
+// A bot already working on one request and holding another in line does not get a third from a bot: the chief kept sending
+// reminders to a slow bot and its queue grew to 6 (13/11/2026). One running plus one waiting is the most another bot can pile up.
+export const BUSY_TASKS = 2;
+// How long a model took per reply here, by effort, when there are enough turns to say (team_models).
+const speedOf = (speeds, provider, model) => {
+  const seen = speeds.filter(item => item.provider === provider && item.model === model && item.turns >= 3);
+  return seen.length ? { secondsPerReply: Object.fromEntries(seen.map(item => [item.effort || 'padrão', item.medianSeconds])) } : {};
+};
 const short = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
 
 /**
@@ -59,11 +67,13 @@ export class Team {
     return text.slice(0, 100);
   }
   models() {
-    const limits = this.db.limits();
+    const limits = this.db.limits(), speeds = this.db.turnSpeeds();
     const providers = [...new Set(this.catalog().map(item => item.provider || 'codex'))];
     return { ais: providers.map(provider => ({ provider, name: PROVIDER_NAMES[provider] || provider,
       usage: (limits[provider]?.windows || []).map(item => ({ window: item.key === 'five_hour' ? '5 horas' : item.key === 'week' ? 'semana' : item.key, free: 100 - item.used })),
-      models: this.catalog().filter(item => (item.provider || 'codex') === provider).slice(0, 12).map(item => ({ model: item.model, name: item.displayName, efforts: item.efforts, default: item.isDefault || undefined, defaultEffort: item.defaultEffort })) })) };
+      models: this.catalog().filter(item => (item.provider || 'codex') === provider).slice(0, 12).map(item => ({ model: item.model, name: item.displayName, efforts: item.efforts, default: item.isDefault || undefined, defaultEffort: item.defaultEffort,
+        ...speedOf(speeds, provider, item.model) })) })),
+      speedNote: 'secondsPerReply = quanto este modelo levou por resposta neste aparelho (mediana das últimas 2 semanas, sem a espera na fila), por nível de raciocínio. Para bots que vão receber muitas correções e conversar em sala, recomende os rápidos e esforço médio; esforço alto e modelos lentos só para uma tarefa grande de uma vez.' };
   }
   choices(callerId) {
     return this.db.all("SELECT key, value FROM metadata WHERE key LIKE 'team.choice.%'").map(row => { try { return { id: row.key.slice(12), ...JSON.parse(row.value) }; } catch { return null; } })
@@ -158,7 +168,18 @@ export class Team {
     this.db.record('room_deleted', `${caller.name} encerrou a sala ${room.name}.`, caller.id, run.taskId);
     return { closed: true, name: room.name };
   }
-  post(run, args, caller) { const turns = []; const result = this.rooms.post(this.room(args.room).id, caller, args.text, this.selectionOfBot, run.taskId, turns); this.watch(run, caller, turns); return result; }
+  /** Refuses another request to a bot whose line is already full, saying who and why, so the caller waits for the answer instead. */
+  notBusy(bots, caller) {
+    const full = bots.filter(bot => bot.id !== caller.id).map(bot => ({ bot, tasks: this.db.activeTasks(bot.id) })).filter(item => item.tasks.length >= BUSY_TASKS);
+    if (!full.length) return;
+    const who = full.map(({ bot, tasks }) => `${bot.name} (1 em andamento e ${tasks.length - 1} na fila)`).join(', ');
+    throw new Error(`${who} ainda não terminou o que já recebeu. Não mande outro pedido agora: a resposta chega sozinha. Quando chegar, junte todas as correções numa mensagem só. Se for urgente, chame só quem está livre.`);
+  }
+  post(run, args, caller) {
+    const room = this.room(args.room), members = this.rooms.members(room).filter(bot => bot.id !== caller.id);
+    // A bot's post only wakes the members it names with @ (without one, nobody): those are the ones that must have room in their line.
+    this.notBusy(mentions(args.text, members), caller);
+    const turns = []; const result = this.rooms.post(this.room(args.room).id, caller, args.text, this.selectionOfBot, run.taskId, turns); this.watch(run, caller, turns); return result; }
   read(run, args, caller) {
     const room = this.room(args.room);
     if (!room.botIds.includes(caller.id)) throw new Error('Você só lê salas em que está.');
@@ -218,6 +239,7 @@ export class Team {
     if (!caller.isChief) throw new Error('Só o Chefe manda mensagem direta a outros bots.');
     const target = this.bot(args.bot);
     if (target.id === caller.id) throw new Error('Você não pode mandar mensagem para você mesmo.');
+    this.notBusy([target], caller);
     if ((this.made.get('ask:' + run.taskId) || 0) >= LIMITS.asksPerTurn) throw new Error(`Em uma vez você manda até ${LIMITS.asksPerTurn} mensagens diretas. Espere as respostas (team_answer).`);
     const task = this.db.enqueue(target.id, randomUUID(), args.text, this.selectionOfBot(target), { via: 'chief', asker: this.db.person().name || 'Você' });
     this.made.set('ask:' + run.taskId, (this.made.get('ask:' + run.taskId) || 0) + 1);

@@ -62,7 +62,8 @@ out({ event: 'result', result: { conversation_id: resume, status: 'SUCCESS', res
   const sessions = [], progress = [], drafts = [];
   const first = await agyRunner.runReply({ model: 'gemini-4-argon', reasoningEffort: 'high' }, 'oi', { binary: agy.binary, onSession: async id => sessions.push(id), onProgress: item => progress.push(item), onDelta: text => drafts.push(text) });
   assert.equal(first.text, 'Resposta nova');
-  assert.deepEqual(first.usage, { input: 100, cached: 40, output: 10, calls: 2 }, 'one tool, so two model calls');
+  // agy's input leaves the cached part out and its numbers are the conversation's running total: the supervisor keeps only this turn's part.
+  assert.deepEqual(first.usage, { input: 140, cached: 40, output: 10, calls: 2, session: true, resumed: false }, 'one tool, so two model calls');
   assert.equal(first.codexSessionId, CONVERSATION); assert.deepEqual(sessions, [CONVERSATION]);
   assert.deepEqual(progress, [{ say: 'Vou listar.' }, { step: 'Rodando ls' }]);
   const second = await agyRunner.runReply({ model: 'gemini-4-argon', reasoningEffort: 'low', codexSessionId: CONVERSATION }, 'e agora?', { binary: agy.binary });
@@ -252,7 +253,8 @@ out({ event: 'result', result: { status: 'SUCCESS', response: text, usage: { inp
   const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' }, onProgress: item => item.say && said.push(item.say) });
   assert.equal(result.text, 'Abri: são 3 atividades.');
   assert.deepEqual(said, ['Vou abrir a página de atividades.']);
-  assert.equal(result.usage.input, 20);
+  // Both runs are the same conversation, whose total already includes the first: the later total stands, only the calls add up.
+  assert.equal(result.usage.input, 10); assert.equal(result.usage.calls, 2); assert.equal(result.usage.session, true);
   const calls = await agy.calls(); assert.equal(calls.length, 2);
   assert.ok(calls[1].args.includes('--conversation') && calls[1].args.some(item => /só anunciando o próximo passo/.test(item)));
   // Without the MyBots tools (a plain chat) nothing is added; an answer is not an announcement.
@@ -311,4 +313,24 @@ out({ event: 'result', result: { status: 'SUCCESS', response: ${JSON.stringify(B
   assert.match(last.text, /anotações técnicas minhas/);
   assert.equal((await stubborn.calls()).length, 4, 'asked three times before giving up');
   assert.match(agyRunner.guidanceFor({ token: 't' }), /sem exclamações.*nunca escreva ids de elementos, coordenadas/s);
+});
+
+test('agy: each step\'s usage gives the conversation size, and the running total becomes per turn in the supervisor', async t => {
+  const agy = await fake(t, 'agy', `
+const out = value => console.log(JSON.stringify(value));
+const resume = args.includes('--conversation');
+out({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} });
+out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 1, state: 'DONE', step_type: 'agent_response', text_delta: 'ok', usage: { input_tokens: 2000, output_tokens: 5, cache_read_tokens: 15000 } } });
+out({ event: 'result', result: { status: 'SUCCESS', response: 'ok', usage: resume ? { input_tokens: 19000, output_tokens: 10, cache_read_tokens: 15000 } : { input_tokens: 17000, output_tokens: 5, cache_read_tokens: 0 } } });`);
+  const first = await agyRunner.runReply({ model: 'm' }, 'um', { binary: agy.binary });
+  assert.deepEqual(first.usage, { input: 17000, cached: 0, output: 5, calls: 1, session: true, resumed: false, context: 17000 });
+  const second = await agyRunner.runReply({ model: 'm', codexSessionId: CONVERSATION }, 'dois', { binary: agy.binary });
+  assert.equal(second.usage.resumed, true); assert.equal(second.usage.input, 34000);
+  const { Database } = await import('../supervisor/database.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'mybots-agy-usage-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const db = new Database(directory);
+  const turn = reply => db.turnTokens('b1', { ...reply, codexSessionId: CONVERSATION });
+  assert.deepEqual(turn(first), { input: 17000, cached: 0, output: 5 });
+  assert.deepEqual(turn(second), { input: 17000, cached: 15000, output: 5 }, 'only what the second turn added');
+  db.close?.();
 });

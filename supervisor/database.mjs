@@ -60,7 +60,7 @@ export const SYNCED = {
   metadata: { key: 'key', where: "(key IN ('person.name','person.theme','person.chief','person.profile','google.accounts','time_zone') OR key LIKE 'chat.session.%' OR key LIKE 'budget.%' OR key LIKE 'table.access.%')" }
 };
 const EPOCH = '1970-01-01T00:00:00.000Z';
-export const SCHEMA = 22;
+export const SCHEMA = 23;
 // Per conversation of a bot (its private chat, or one room): when its current IA session began, and the summary for the next one.
 const sinceKey = (botId, roomId) => 'session.since.' + (roomId ? roomId + '.' : '') + botId;
 const handoffKey = (botId, roomId) => 'session.handoff.' + (roomId ? roomId + '.' : '') + botId;
@@ -258,6 +258,20 @@ export class Database {
       }
       this.run("DELETE FROM metadata WHERE key='person.profile'");
       this.db.exec('PRAGMA user_version=22;');
+    });
+    // Antigravity reported the conversation's running total as each turn's usage, without the cached part in the input. Each bot's
+    // rows are made per turn again: a row at or above the one before it (same running conversation) keeps only the difference;
+    // a smaller one is a new conversation and stays as it is. The cached part then joins the input, as with the other IAs.
+    if (version < 23) this.transaction(() => {
+      const rows = this.all("SELECT id, bot_id, input, cached, output FROM usage WHERE provider='agy' ORDER BY bot_id, created_at, rowid");
+      let previous = null;
+      for (const row of rows) {
+        const same = previous && previous.bot_id === row.bot_id && row.input >= previous.input && row.cached >= previous.cached && row.output >= previous.output;
+        const turn = same ? { input: row.input - previous.input, cached: row.cached - previous.cached, output: row.output - previous.output } : row;
+        this.run('UPDATE usage SET input=?, cached=?, output=?, context=CASE WHEN context > ? THEN NULL ELSE context END WHERE id=?', turn.input + turn.cached, turn.cached, turn.output, turn.input + turn.cached, row.id);
+        previous = row;
+      }
+      this.db.exec('PRAGMA user_version=23;');
     });
   }
   installSyncLog(table, spec) {
@@ -703,6 +717,25 @@ export class Database {
    * whole context), so the size is estimated from the last turn: its tokens divided by its calls, times 1.3 because the context grows
    * during the turn. Turns counts the answers since the session began.
    */
+  /**
+   * How long each IA model and effort takes per reply here, from the last weeks of real turns (from starting to answering, the
+   * wait in line left out): the median seconds and how many turns it saw. The chief uses it to pick quick models for back-and-forth.
+   */
+  turnSpeeds(days = 14) {
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const rows = this.all(`SELECT u.provider, u.model, json_extract(t.payload,'$.reasoningEffort') AS effort,
+        (julianday(max(CASE WHEN e.state='done' THEN e.created_at END)) - julianday(min(CASE WHEN e.state='running' THEN e.created_at END))) * 86400 AS seconds
+      FROM usage u JOIN task_events e ON e.task_id=u.task_id JOIN tasks t ON t.id=u.task_id
+      WHERE u.created_at>=? GROUP BY u.task_id`, since);
+    const groups = new Map();
+    for (const row of rows) {
+      if (!(row.seconds > 0) || !row.model) continue;
+      const key = `${row.provider}|${row.model}|${row.effort || ''}`;
+      if (!groups.has(key)) groups.set(key, { provider: row.provider, model: row.model, effort: row.effort || null, list: [] });
+      groups.get(key).list.push(row.seconds);
+    }
+    return [...groups.values()].map(({ list, ...item }) => { list.sort((x, y) => x - y); return { ...item, turns: list.length, medianSeconds: Math.round(list[Math.floor(list.length / 2)]) }; });
+  }
   /** One reply's tokens, with the size of its last model call: the IA's own number, or the reply's prompt tokens over its calls. */
   addUsage(bot, taskId, reply, usage = this.turnTokens(bot.id, reply)) {
     if (!usage) return;

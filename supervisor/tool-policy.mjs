@@ -316,7 +316,7 @@ export function toolArguments(tool, args) {
     return { bots: args.bots.map(item => item.trim()), recommended: pick(args.recommended, 'recommended'), alternatives: (args.alternatives || []).map((item, index) => pick(item, `alternatives[${index}]`)) };
   }
   if (tool === 'team.create_room') {
-    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 7 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 60)) throw new Error('Em bots, liste de 1 a 7 nomes (ou ids) de bots; você entra na sala sozinho.');
+    if (!Array.isArray(args.bots) || args.bots.length < 1 || args.bots.length > 29 || args.bots.some(item => typeof item !== 'string' || !item.trim() || item.length > 60)) throw new Error('Em bots, liste de 1 a 29 nomes (ou ids) de bots; você entra na sala sozinho.');
     return { name: text('name', 40), bots: args.bots.map(item => item.trim()), message: text('message', 4000, true) };
   }
   if (tool === 'team.add_to_room' || tool === 'team.remove_from_room') return { room: text('room', 60), bot: tool === 'team.add_to_room' ? text('bot', 60) : text('bot', 60, true) };

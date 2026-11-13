@@ -165,9 +165,9 @@ test('the room queue limit counts the entire incoming batch of a person message 
   const db = open(t), rooms = new Rooms(db);
   const bots = ['Lua','Sol','Mar','Rio'].map(name => db.create({ name }, selection));
   const room = rooms.create({ name: 'Equipe', botIds: bots.map(bot => bot.id) });
-  for (let n = 0; n < 11; n++) rooms.send(room.id, randomUUID(), '@Lua trabalhe', () => selection);
+  for (let n = 0; n < 39; n++) rooms.send(room.id, randomUUID(), '@Lua trabalhe', () => selection);
   assert.throws(() => rooms.send(room.id, randomUUID(), '@Sol @Mar', () => selection), /fila/);
   assert.throws(() => rooms.post(room.id, bots[0], '@Sol @Mar', () => selection), /fila/);
   rooms.send(room.id, randomUUID(), '@Lua termine', () => selection);
-  assert.equal(rooms.active(room.id).length, 12);
+  assert.equal(rooms.active(room.id).length, 40);
 });

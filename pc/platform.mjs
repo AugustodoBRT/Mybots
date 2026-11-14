@@ -13,10 +13,7 @@ export function dataDirectory(platform = process.platform, env = process.env, ho
   return join(home, '.mybots-pc');
 }
 
-/**
- * Extra addresses the phone should try (MYBOTS_PC_ADVERTISE, comma separated): the computer's Tailscale address when Tailscale runs
- * without a network interface (userspace networking), where it cannot be found by looking at the interfaces. Plain hosts and IPs only.
- */
+/** Extra addresses the phone should try (MYBOTS_PC_ADVERTISE, comma separated), for networks the interfaces do not show. Plain hosts and IPs only. */
 export function extraAddresses(env = process.env) {
   return String(env.MYBOTS_PC_ADVERTISE || '').split(',').map(item => item.trim()).filter(item => /^[0-9a-z.:-]{1,253}$/i.test(item)).slice(0, 4);
 }

@@ -6,8 +6,6 @@ import { styles } from '../styles';
 import { C, Icon } from '../theme';
 import { Avatar, PrimaryButton } from './shared';
 
-const PATHS = { direct: 'pela rede local', relay: 'pelo relé do MyBots' };
-
 /** Reads the QR the computer's MyBots shows. Calls `onRead(text)` once. */
 export function QrScanner({ visible, onRead, onClose, title = 'Aponte para o QR do MyBots no computador.' }) {
   if (pwa) return <PasteLink visible={visible} onRead={onRead} onClose={onClose} />;
@@ -77,7 +75,7 @@ export function RemotePanel({ link, state, onScanned, onForget, busy, note }) {
     <Text style={styles.optionLabel}>{link?.target?.name || 'Seu computador'}</Text>
     <View style={styles.passwordRow}>
       <View style={styles.rowIcon}><Icon name="laptop" size={17} color={online ? C.accent : C.faint} /></View>
-      <View style={{ flex: 1 }}><Text style={styles.limitName}>{online ? `Conectado${state?.via ? ` ${PATHS[state.via] || ''}` : ''}` : 'Desligado ou fora de alcance'}</Text>
+      <View style={{ flex: 1 }}><Text style={styles.limitName}>{online ? 'Conectado' : 'Desligado ou fora de alcance'}</Text>
         <Text style={styles.limitMeta}>Seus bots, conversas e rotinas ficam no computador. Com ele desligado, o app não mostra nada novo.</Text></View>
     </View>
     <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>

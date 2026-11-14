@@ -335,24 +335,6 @@ export function botLine(bot, data) {
   return { text: latest?.origin === 'routine' ? `Rotina · ${latest.routineTitle}` : latest?.role === 'user' ? `Você: ${plain(latest.text)}` : plain(latest?.text) || 'Pronto para começar', tone: C.muted, state: 'idle' };
 }
 
-export function ModeSheet({ visible, mode, onClose, onSelect }) {
-  const options = [['computer', 'Celular + computador', 'O app fica no celular; o Codex e o histórico ficam no PC.', 'wifi'],
-    ['phone', 'Só no celular', termuxAvailable ? 'As IAs rodam dentro do app e tudo fica neste celular.' : 'Requer o APK próprio do MyBots; o Expo Go não inclui a ponte Android.', 'phone']];
-  return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-    <Pressable style={styles.sheetBackdrop} onPress={onClose}>
-      <Pressable style={styles.sheet} onPress={event => event.stopPropagation()}>
-        <View style={styles.sheetHandle} />
-        <SheetHeader title="Onde o MyBots roda?" subtitle="Escolha onde as IAs trabalham e onde as conversas ficam salvas." onClose={onClose} />
-        {options.map(([value, title, detail, icon]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: mode === value }} onPress={() => onSelect(value)} style={[styles.modeOption, styles.rowOption, mode === value && styles.optionChosen]}>
-          <View style={styles.rowIcon}><Icon name={icon} size={19} color={mode === value ? C.accent : C.muted} /></View>
-          <View style={{ flex: 1 }}><Text style={[styles.optionLabel, mode === value && styles.optionLabelChosen]}>{title}</Text><Text style={styles.optionDetail}>{detail}</Text></View>
-          {mode === value ? <Icon name="check" size={18} color={C.accent} stroke={2.4} /> : null}
-        </Pressable>)}
-      </Pressable>
-    </Pressable>
-  </Modal>;
-}
-
 export function PhoneAccess({ stats, lastPoll }) {
   const [granted, setGranted] = useState(null);
   const check = useCallback(() => { notificationAccess().then(setGranted).catch(() => setGranted(false)); }, []);
@@ -452,13 +434,6 @@ function PhonePermissions() {
 }
 
 
-export function RemoteAccess({ tailscale }) {
-  return <View style={{ marginTop: 10 }}>
-    <Text style={styles.optionDetail}>{tailscale ? 'Tailscale detectado no PC. Para conectar de qualquer lugar, mantenha o Tailscale ligado nos dois aparelhos, na mesma conta.' : 'Sem Tailscale detectado no PC. No mesmo Wi-Fi, o celular procura o computador sozinho. Para usar de qualquer lugar, instale o Tailscale nos dois aparelhos e entre na mesma conta.'}</Text>
-    {!tailscale ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://tailscale.com/download')} style={styles.stopButton}><Text style={[styles.stopText, { color: C.accent }]}>Instalar Tailscale</Text></Pressable> : null}
-  </View>;
-}
-
 export function DesktopNetwork({ call, notice = false }) {
   const [status, setStatus] = useState(null); const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -469,23 +444,21 @@ export function DesktopNetwork({ call, notice = false }) {
   }, []);
   if (!status) return null;
   if (!notice) return <><DesktopSource call={call} status={status} />
-    <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Conexão com o celular</Text><Text style={[styles.optionDetail, status.phone && { color: C.accent }]}>{status.phone ? `Conectado ${PATH_TEXT[status.link?.path] || ''}`.trim() : 'Fora de alcance agora. No mesmo Wi-Fi ele procura o computador sozinho; de outras redes, conecta pelo relé do MyBots.'}</Text></View>
+    <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Conexão com o celular</Text><Text style={[styles.optionDetail, status.phone && { color: C.accent }]}>{status.phone ? 'Conectado' : 'Fora de alcance agora. Ele se conecta sozinho quando o celular estiver ligado e com internet.'}</Text></View>
     {status.apps?.length ? <View style={{ marginTop: 10 }}><Text style={styles.optionLabel}>Celulares usando o MyBots do computador</Text>
       {status.apps.map(item => <View key={item.id} style={styles.passwordRow}><View style={{ flex: 1 }}><Text style={styles.limitName}>{item.name}</Text><Text style={styles.limitMeta}>Pareado em {new Date(item.pairedAt).toLocaleDateString('pt-BR')}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={`Esquecer ${item.name}`} onPress={() => call('desktop.forgetApp', { id: item.id }).catch(() => {})} style={styles.stopButton}><Icon name="trash" size={13} color={C.muted} /><Text style={styles.stopText}>Esquecer</Text></Pressable></View>)}
       <Text style={styles.optionDetail}>Esquecer corta o acesso na hora. Para voltar, o celular precisa ler um QR novo.</Text></View> : null}
-    <SyncCard sync={status.sync} onNow={() => call('desktop.sync')} onReset={() => call('desktop.sync', { reset: true })} /><RemoteAccess tailscale={status.tailscale} /></>;
+    <SyncCard sync={status.sync} onNow={() => call('desktop.sync')} onReset={() => call('desktop.sync', { reset: true })} /></>;
   if (status.source === 'local' || status.phone || !status.offlineSince || now - status.offlineSince < 120000) return null;
   return <View style={[styles.modeOption, { margin: 12, flexShrink: 1 }]}>
     <Text style={styles.optionLabel}>O celular não encontrou este computador</Text>
-    <Text style={styles.optionDetail}>O computador mudou de rede? O celular procura sozinho no mesmo Wi-Fi; se não achar, mostre o QR. Em redes diferentes, use o Tailscale.</Text>
+    <Text style={styles.optionDetail}>O celular se conecta sozinho quando estiver ligado e com internet. Se continuar sem conectar, mostre o QR de novo.</Text>
     {status.localAvailable ? <Pressable accessibilityRole="button" onPress={() => call('desktop.source', { source: 'local' }).catch(() => {})} style={styles.stopButton}><Icon name="bots" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Usar só este computador</Text></Pressable> : null}
     <DesktopPair call={call} />
   </View>;
 }
 
-// How the phone and the computer reach each other, as the connection screens say it.
-export const PATH_TEXT = { local: 'neste computador', lan: 'pela rede local', tailscale: 'pelo Tailscale', internet: 'pela internet', relay: 'pelo relé do MyBots (de fora de casa)' };
 
 /** How the sync between the phone and the computer stands (state, progress, conflicts); the window adds a "Sincronizar agora". */
 export function SyncCard({ sync, onNow, onReset }) {
@@ -578,11 +551,10 @@ export function ComputerPanel({ computer, nodes = [], sync = null, onPair, onFor
   };
   const forget = () => Alert.alert(`Esquecer ${computer.name}?`, 'Os bots do computador ficam offline até você parear de novo.', [{ text: 'Cancelar', style: 'cancel' },
     { text: 'Esquecer', style: 'destructive', onPress: () => onForget().catch(error => setNote(error.message)) }]);
-  const state = !computer?.paired ? null : computer.state === 'online' ? `Conectado${computer.path ? ` ${PATH_TEXT[computer.path] || ''}` : ''}${logged.length ? ` · ${logged.join(' e ')} no computador` : ' · nenhuma IA conectada nele'}`
+  const state = !computer?.paired ? null : computer.state === 'online' ? `Conectado${logged.length ? ` · ${logged.join(' e ')} no computador` : ' · nenhuma IA conectada nele'}`
     : computer.state === 'connecting' ? 'Procurando o computador…' : `Desligado ou fora de alcance${node?.lastSeen ? ` · ${seenText(node)}` : ''}`;
   return <View style={styles.modeOption}>
     <Text style={styles.optionLabel}>{computer?.paired ? computer.name : 'Seu computador'}</Text>
-    <RemoteAccess tailscale={computer?.tailscale} />
     {computer?.paired ? <SyncCard sync={sync} /> : null}
     {computer?.paired ? <View style={styles.passwordRow}>
       <View style={styles.rowIcon}><Icon name="laptop" size={17} color={computer.state === 'online' ? C.accent : C.faint} /></View>

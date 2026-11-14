@@ -10,7 +10,7 @@ import { dialRelay, roomFor, validRelay } from './relay.mjs';
 // What the computer may ask the phone's supervisor for: only the IA's tool calls, each checked by its run token.
 export const TUNNEL_PATHS = ['/mcp', '/tools/claim', '/tools/call', '/tools/list', '/tools/chrome', '/tools/approval'];
 export const MAX_FRAME = 32 * 1024 * 1024;
-const NOT_FOUND = 'Não achei o computador neste Wi-Fi. Confira se ele está ligado e na mesma rede, ou use o Tailscale para funcionar de qualquer lugar.';
+const NOT_FOUND = 'Não achei o computador. Confira se ele está ligado, com o MyBots aberto e com internet.';
 const RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 const HEADERS = ['authorization', 'content-type', 'mcp-session-id', 'accept'];
 // What the MyBots window on the computer may do on the phone: the conversation and the bots, not secrets,
@@ -73,7 +73,7 @@ export class Link {
   }
   status() {
     const saved = this.saved();
-    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, tailscale: saved.tailscale === true, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, path: this.state === 'online' ? this.path || null : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
+    return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, path: this.state === 'online' ? this.path || null : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
   }
   set(state, error = '') { if (state === this.state && error === this.error) return; this.state = state; this.error = error; this.changed('connection.changed'); }
   start() { if (this.saved() && !this.socket && !this.timer) this.connect(); }
@@ -105,7 +105,7 @@ export class Link {
     throw last || new Error('Sem endereço.');
   }
   /**
-   * The direct way first (home network, Tailscale). The relay joins in when that fails or is slow, so at home it is
+   * The direct way first (home network). The relay joins in when that fails or is slow, so at home it is
    * never touched and away from home the wait is short. The first to answer wins; the other is dropped.
    */
   async reach(target) {
@@ -142,7 +142,7 @@ export class Link {
     const target = parsePairing(text);
     let connection;
     try { connection = await this.reachDirect(target); }
-    catch (error) { throw new Error(/Outro aparelho/.test(error.message) ? error.message : 'Não encontrei o computador. Confira se o MyBots está rodando nele e se os dois estão no mesmo Wi-Fi (ou na mesma Tailscale).'); }
+    catch (error) { throw new Error(/Outro aparelho/.test(error.message) ? error.message : 'Não encontrei o computador. Confira se o MyBots está rodando nele e se os dois aparelhos estão com internet.'); }
     const { ws, hello } = connection; this.via = 'direct'; this.path = connection.path || 'lan';
     if (hello.id !== target.id) { ws.terminate(); throw new Error('Outro aparelho respondeu no lugar do computador.'); }
     const name = hello.name || target.name;
@@ -227,7 +227,7 @@ export class Link {
       if (message.type === 'ready') {
         const saved = this.saved();
         // The computer's addresses change with the network; the ones it reports are tried first next time.
-        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, tailscale: message.tailscale === true, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8), ...(validRelay(message.relay) ? { relay: message.relay.replace(/\/$/, '') } : {}) });
+        if (saved && Array.isArray(message.addresses)) this.save({ ...saved, name: message.name || saved.name, port: Number.isInteger(message.port) && message.port > 0 && message.port <= 65535 ? message.port : saved.port, addresses: [...new Set([...message.addresses.filter(item => typeof item === 'string'), ...saved.addresses])].slice(0, 8), ...(validRelay(message.relay) ? { relay: message.relay.replace(/\/$/, '') } : {}) });
         this.attempt = 0; this.set('online'); this.watchDirect();
         for (const botId of this.watching) send({ type: 'browser_view', botId, on: true, ...this.viewOptions.get(botId), browserMode: browserMode(this.db.bot(botId)) });
         send({ type: 'browser_control', control: this.controls, modes: Object.fromEntries(this.db.bots().map(bot => [bot.id, browserSlot(bot)])) });

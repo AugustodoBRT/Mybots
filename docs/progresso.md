@@ -2296,3 +2296,12 @@ Corrigido o que o acompanhamento do redesign v2 anotou (`reports/acompanhamento-
 - **Correção** (`mobile/state/svg-budget.js`): no celular, o grafo e as linhas do Canvas desenham só a área visível com meia tela de folga, redesenhada quando a vista sai dela ou o zoom muda meio passo, numa resolução limitada a ~3,5 MP e 4096 px de lado. Arrastando um nó, só a tela (e os pontos e títulos fora dela ficam de fora). No computador nada muda.
 - Teste: `tests/svg-budget.test.mjs`.
 - **Não conferido em aparelho com muitos dados**: o Termux do emulador está quebrado desde 08/11 (o supervisor não sobe) e o pareamento pede o QR pela câmera, então não deu para carregar centenas de notas no emulador. Conferir no celular real: abrir o Canvas, tocar e arrastar no grafo.
+
+## 0.94.16 (versionCode 208): fim do Tailscale e das opções de conexão antigas
+
+Pedido do dono: tirar dos Ajustes as opções antigas (Tailscale, "mesmo Wi-Fi"). Escolha dele: o Tailscale sai de vez; o atalho direto na mesma rede continua, invisível, e fora de casa vale o relé.
+
+- **Tailscale**: saiu `tailscaleAddress` (`supervisor/discovery.mjs`), a faixa 100.64.0.0/10 deixou de contar como rede privada (`pathOf` diz `internet`), o PC não anuncia mais endereços dessa faixa (`addresses()` em `pc/server.mjs`), o campo `tailscale` saiu do `ready`, do `desktop.status` e do `computer` do supervisor, e o painel "Instalar Tailscale" (`RemoteAccess`) saiu do app e da janela do PC. `MYBOTS_PC_ADVERTISE` continua como endereço extra genérico.
+- **Textos**: as telas de conexão dizem só "Conectado" (sem "pela rede local"/"pelo Tailscale"); os avisos de fora de alcance falam de estar ligado e com internet.
+- **Escolha de modo antiga**: o chip "No celular" da Início não abre mais o `ModeSheet` ("Celular + computador", o modo HTTP antigo); a tela "Não consegui conectar" troca "Trocar modo de conexão" por "Conectar de outro jeito" (a tela de boas-vindas: QR do computador ou este celular).
+- **Fica para a remoção do Termux** (próxima entrega): o modo HTTP antigo (`mode === 'computer'`, `api()`), ainda alcançável por link `mybots://` com token.

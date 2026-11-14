@@ -29,7 +29,7 @@ const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).s
 const launchPast = new Map();
 // When this visit began: the team's replies from before it are not news on the empty start.
 const visitStart = new Date().toISOString();
-function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onMode, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null);

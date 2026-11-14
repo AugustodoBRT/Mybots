@@ -2,6 +2,11 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.16', date: '2026-11-13', items: [
+    ['melhoria', 'O Tailscale saiu do MyBots: o celular e o computador se acham sozinhos em casa e, fora de casa, pelo relé do MyBots. Não precisa instalar nada.'],
+    ['melhoria', 'As telas de conexão ficaram mais simples: mostram só se está conectado, sem falar de Wi-Fi ou rede local.'],
+    ['melhoria', 'O botão "No celular" da tela Início não abre mais a escolha antiga "Celular + computador". Para trocar como o app se conecta, use Ajustes → Computador.']
+  ] },
   { version: '0.94.15', date: '2026-11-13', items: [
     ['correcao', 'No celular, abrir o Canvas ou tocar no grafo da Memória podia fechar o app na hora, quando havia muitas notas ou cartões espalhados.'],
     ['correcao', 'Arrastar uma nota com muitas ligações no grafo da Memória ficava travando no celular. Agora o celular desenha só a parte que está na tela.']

@@ -89,7 +89,7 @@ function RoomRow({ room, bots, data, onPress }) {
   </Pressable>;
 }
 
-function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onMode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   // The Chefe stays pinned at the top of the list, like on the computer; its conversation opens on a tap.
@@ -111,7 +111,7 @@ function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, on
     ...(onWallet ? [{ key: 'wallet', label: 'Carteira', icon: 'wallet', onPress: onWallet }] : []),
     ...(phone ? [{ key: 'routines', label: 'Rotinas', icon: 'bolt', count: routines || null, onPress: () => setRoutinesOpen(true) },
       { key: 'negotiations', label: 'Negociações', icon: 'hand', count: open.length || null, dot: open.some(item => item.status === 'awaiting_you'), onPress: () => setNegotiationsOpen(true) }] : []),
-    ...(tabs ? [] : [{ key: 'rule', rule: true }, { key: 'settings', label: 'Ajustes', icon: 'settings', onPress: phone ? onMaintenance : onMode }])
+    ...(tabs ? [] : [{ key: 'rule', rule: true }, { key: 'settings', label: 'Ajustes', icon: 'settings', onPress: onMaintenance }])
   ];
   return <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -124,10 +124,10 @@ function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, on
         {onMemory && !tabs ? <IconButton icon="memory" label="Memória" onPress={onMemory} size={42} /> : null}
         <IconButton icon="refresh" label="Atualizar conexão" onPress={onConnection} size={42} />
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Trocar modo de conexão" disabled={Boolean(desktop)} onPress={onMode} style={s.modeChip}>
+      <View style={s.modeChip}>
         <View style={[styles.statusDot, data?.connection?.loggedIn && styles.statusGood]} />
         <Text style={styles.modeButtonText}>{desktop || remote ? 'No computador' : phone ? 'No celular' : 'No PC'}</Text>
-      </Pressable>
+      </View>
       <Text style={s.greeting} numberOfLines={2}>{greeting()}{data?.person?.name ? `, ${data.person.name}` : ''}.</Text>
       {bots.length ? <Pressable accessibilityRole="button" disabled={!summary} onPress={phone ? onActivity : onConnection}>
         <Text style={s.today}>{summary ? <Text style={s.todayLink}>{summary}</Text> : `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}. Tudo em dia.`}</Text></Pressable>

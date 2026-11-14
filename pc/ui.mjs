@@ -15,7 +15,7 @@ import { openCommand } from './platform.mjs';
 
 export const DEFAULT_UI_PORT = 3232;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp' };
-const OFFLINE = 'O celular está fora de alcance. No mesmo Wi-Fi, ele procura o computador sozinho. Para conectar de outra rede, use o Tailscale. Se preferir, use só este computador em Ajustes → Celular.';
+const OFFLINE = 'O celular está fora de alcance. Ele se conecta sozinho quando estiver ligado e com internet. Se preferir, use só este computador em Ajustes → Celular.';
 const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo em instantes.';
 
 /**
@@ -24,7 +24,7 @@ const STARTING = 'O MyBots deste computador ainda está iniciando. Tente de novo
  * restarts); the WebSocket speaks the supervisor's protocol
  * and each request goes to the phone over the link, which answers only the window's list of methods.
  */
-export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, link: linkOf = () => null, apps: appsOf = () => [], forgetApp = () => {}, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], network = () => ({ tailscale: false }), browser = null, dictation = null, log = () => {} }) {
+export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL('./ui/', import.meta.url)), phone, local: own = () => null, sync: syncOf = () => null, link: linkOf = () => null, apps: appsOf = () => [], forgetApp = () => {}, sourceFile = null, downloads = join(homedir(), 'Downloads'), tokenFile = null, pairing = null, phones = () => [], browser = null, dictation = null, log = () => {} }) {
   let token = null;
   try { token = tokenFile && /^[0-9a-f]{64}$/.test(readFileSync(tokenFile, 'utf8').trim()) ? readFileSync(tokenFile, 'utf8').trim() : null; } catch {}
   if (!token) { token = randomBytes(32).toString('hex'); if (tokenFile) { writeFileSync(tokenFile, token, { mode: 0o600 }); chmodSync(tokenFile, 0o600); } }
@@ -129,7 +129,7 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
           reply(id, { result: await ws.session.call('passwords.merge', params && typeof params === 'object' && !Array.isArray(params) ? params : {}) });
         }
         else if (method === 'desktop.status' && ws.remote) reply(id, { result: { phone: false, remote: true, source: 'local', localAvailable: true, sync: null } });
-        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, ...network(), source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, apps: appsOf().map(({ id, name, pairedAt }) => ({ id, name, pairedAt })), lastPaired: [...phones(), ...appsOf()].map(item => item.pairedAt).sort().at(-1) || null } });
+        else if (method === 'desktop.status') reply(id, { result: { phone: phone.online(), offlineSince, source: ws.source, localAvailable: Boolean(own()), sync: phones().length ? syncOf()?.status() || null : null, link: phone.online() ? linkOf() : null, apps: appsOf().map(({ id, name, pairedAt }) => ({ id, name, pairedAt })), lastPaired: [...phones(), ...appsOf()].map(item => item.pairedAt).sort().at(-1) || null } });
         // A phone app that is lost or no longer wanted: forgotten here, it is cut off at once and cannot come back without a new QR.
         else if (method === 'desktop.forgetApp') {
           if (typeof params?.id !== 'string') throw new Error('Celular inválido.');

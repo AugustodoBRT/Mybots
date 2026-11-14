@@ -79,7 +79,7 @@ async function direct(WebSocketClass, target, options) {
 }
 
 /**
- * Connects to the paired computer: its addresses first (home network, Tailscale), with the relay joining when that fails
+ * Connects to the paired computer: its addresses first (home network), with the relay joining when that fails
  * or takes more than a moment. The first to be in wins; the other is closed.
  */
 export function connectToComputer(WebSocketClass, target, phone) {

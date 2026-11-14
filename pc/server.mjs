@@ -35,17 +35,16 @@ import { hostRelay, roomFor } from '../supervisor/relay.mjs';
 import { createSync, worthSyncing } from './sync.mjs';
 import { pathOf } from '../supervisor/discovery.mjs';
 import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from '../supervisor/browser-frame.mjs';
-import { tailscaleAddress } from '../supervisor/discovery.mjs';
 
 export const DEFAULT_PORT = 3230;
 const PAIRING_MS = 10 * 60000;
 const read = (file, fallback) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return fallback; } };
 const write = (file, value) => { writeFileSync(file + '.tmp', JSON.stringify(value, null, 1), { mode: 0o600 }); renameSync(file + '.tmp', file); };
 
-/** The addresses the phone may try: home network and Tailscale (100.64.0.0/10), never loopback. */
+/** The addresses the phone may try on the same network, never loopback nor VPN ranges (100.64.0.0/10); away from home it uses the relay. */
 export function addresses() {
   return Object.values(networkInterfaces()).flat().filter(item => item && item.family === 'IPv4' && !item.internal).map(item => item.address)
-    .sort((a, b) => Number(/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a)) - Number(/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(b))).slice(0, 6);
+    .filter(address => !/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address)).slice(0, 6);
 }
 
 /**
@@ -320,7 +319,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   const bridge = phoneBridge();
   // The computer's own supervisor is reached the same way (its link to this node), for the sync between the two.
   const localBridge = phoneBridge();
-  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, apps: () => apps(), forgetApp: id => { write(appsFile, apps().filter(item => item.id !== id)); relayHost?.sync(); ui.dropApp(id); log('Um celular (app) foi esquecido.'); }, link: () => ({ path: phonePath }), sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => { const made = startPairing(directory, server.address().port, advertise, { relay, appPort: plainServer.address().port }); relayHost?.sync(); return made; }, apps: () => apps().map(({ secret, ...rest }) => rest), phones: () => read(phonesFile, []).filter(item => !item.local), network: () => ({ tailscale: advertise().some(tailscaleAddress) }), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
+  const ui = createUi({ port: uiPort, phone: bridge, local: () => own, sync: () => sync, apps: () => apps(), forgetApp: id => { write(appsFile, apps().filter(item => item.id !== id)); relayHost?.sync(); ui.dropApp(id); log('Um celular (app) foi esquecido.'); }, link: () => ({ path: phonePath }), sourceFile: join(directory, 'ui-source.json'), log, browser: { watch, input: (botId, input) => personInput(botId, input, true) }, dictation, tokenFile: join(directory, 'ui-token'), pairing: () => { const made = startPairing(directory, server.address().port, advertise, { relay, appPort: plainServer.address().port }); relayHost?.sync(); return made; }, apps: () => apps().map(({ secret, ...rest }) => rest), phones: () => read(phonesFile, []).filter(item => !item.local), ...(uiRoot ? { root: uiRoot } : {}), ...(downloads ? { downloads } : {}) });
 
   sockets.on('connection', (ws, request) => {
     const nonce = randomBytes(32).toString('base64url');
@@ -336,7 +335,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (!phone.local) { bridge.attach(ws); phonePath = pathOf(request.socket.remoteAddress); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
       else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
-      send({ type: 'ready', id: me.id, name: me.name, desktop: hasDesktopControl(), ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, tailscale: phone.local ? false : advertise().some(tailscaleAddress), ...current });
+      send({ type: 'ready', id: me.id, name: me.name, desktop: hasDesktopControl(), ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
     const tunnel = () => proxy ||= new Promise((resolve, reject) => {

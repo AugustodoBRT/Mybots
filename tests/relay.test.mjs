@@ -104,7 +104,7 @@ test('a relay cannot pose as the computer: the pinned certificate refuses anothe
 test('the way two devices reach each other is named for the connection screen', () => {
   assert.equal(pathOf(undefined), 'relay'); assert.equal(pathOf('127.0.0.1'), 'local'); assert.equal(pathOf('::1'), 'local'); assert.equal(pathOf('::ffff:127.0.0.1'), 'local');
   assert.equal(pathOf('192.168.0.103'), 'lan'); assert.equal(pathOf('10.0.0.5'), 'lan'); assert.equal(pathOf('::ffff:192.168.1.2'), 'lan');
-  assert.equal(pathOf('100.70.166.116'), 'tailscale'); assert.equal(pathOf('200.128.150.13'), 'internet');
+  assert.equal(pathOf('100.70.166.116'), 'internet'); assert.equal(pathOf('200.128.150.13'), 'internet');
 });
 
 test('without a relay configured nothing changes: the node does not dial out and the QR has no relay', async t => {

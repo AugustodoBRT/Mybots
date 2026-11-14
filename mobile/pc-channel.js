@@ -8,7 +8,7 @@ import { concatBytes, utf8ToBytes, randomBytes as nobleRandom } from '@noble/has
 /**
  * The secure channel between the MyBots app (phone, no Termux) and the computer's node.
  *
- * It runs over any pipe of bytes: a WebSocket straight to the computer (home network, Tailscale) or through the relay.
+ * It runs over any pipe of bytes: a WebSocket straight to the computer (home network) or through the relay.
  * It does not rely on TLS (React Native cannot pin a self-signed certificate), so everything is protected here:
  *
  *  - Pairing: the QR carries a one-use code (96 bits). Both sides derive a key from it; the phone proves it holds the code,

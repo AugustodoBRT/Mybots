@@ -8,7 +8,7 @@ import { createServer } from 'node:net';
 import { createSupervisor } from '../supervisor/index.mjs';
 import { createNode } from '../pc/server.mjs';
 import { createSocket } from 'node:dgram';
-import { discover, broadcastTargets, privateAddress, tailscaleAddress } from '../supervisor/discovery.mjs';
+import { discover, broadcastTargets, privateAddress } from '../supervisor/discovery.mjs';
 import { discoveryHandler } from '../pc/discovery.mjs';
 import { parsePairing } from '../supervisor/link.mjs';
 
@@ -182,7 +182,7 @@ test('the MyBots window on the computer: page only on localhost, checked origin,
   if (/[?&]r=/.test(node.pairing().link)) { const iphone = await client.call('desktop.pair', { iphone: true }); assert.match(iphone.text, /^https:\/\/.+#p=mybots%3A%2F%2Fcomputador/); assert.match(iphone.svg, /^<svg/); }
   else await assert.rejects(client.call('desktop.pair', { iphone: true }), /relé/);
   const disconnected = await client.call('desktop.status');
-  assert.equal(disconnected.lastPaired, null); assert.equal(disconnected.tailscale, false); assert.ok(disconnected.offlineSince);
+  assert.equal(disconnected.lastPaired, null); assert.equal('tailscale' in disconnected, false); assert.ok(disconnected.offlineSince);
   await app.rpc('computer.pair', { link: node.pairing().link });
   await until(() => app.state().computer.state === 'online');
   await until(async () => (await client.call('desktop.status')).phone);
@@ -268,7 +268,7 @@ test('local discovery restores a paired PC with an obsolete address and preserve
   const saved = f.app.link.saved();
   assert.equal(saved.addresses[0], '127.0.0.1'); assert.equal(saved.port, f.node.port);
   assert.equal(saved.secret, target.secret); assert.equal(saved.fingerprint, target.fingerprint);
-  assert.equal(f.app.state().computer.tailscale, false);
+  assert.equal('tailscale' in f.app.state().computer, false);
   // Foreground discovery is throttled, and no old socket callback can overwrite the new connection.
   const last = f.app.link.lastDiscovery; f.app.link.kick(); assert.equal(f.app.link.lastDiscovery, last);
 });
@@ -284,7 +284,8 @@ test('discovery only answers private senders for its identity, bounds packets an
   assert.equal(replies[0][1], 12345); assert.equal(replies[0][2], '192.168.1.20');
   time = 2000; handler(question, { address: '192.168.1.20', port: 12345 }); assert.equal(replies.length, 2);
   assert.equal(privateAddress('172.31.1.2'), true); assert.equal(privateAddress('172.32.1.2'), false);
-  assert.equal(tailscaleAddress('100.64.1.2'), true); assert.equal(tailscaleAddress('100.128.1.2'), false);
+  // VPN ranges (100.64.0.0/10) are not the home network: away from home the phone uses the relay.
+  assert.equal(privateAddress('100.64.1.2'), false);
   assert.deepEqual(broadcastTargets({ wlan: [{ family: 'IPv4', internal: false, address: '192.168.4.7', netmask: '255.255.255.0' }], lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1', netmask: '255.0.0.0' }] }), ['255.255.255.255', '192.168.4.255']);
   // The actual UDP socket also ignores an incorrect id.
   const f = await setup(t);
@@ -323,7 +324,7 @@ test('missing discovery explains reachability and foreground retries are throttl
   await lostAddress(f);
   f.app.link.discoveryTargets = []; f.app.link.discoveryTimeout = 20;
   await f.app.link.connect();
-  assert.match(f.app.link.error, /Não achei o computador neste Wi-Fi.*Tailscale/);
+  assert.match(f.app.link.error, /Não achei o computador\. Confira se ele está ligado/);
   const last = f.app.link.lastDiscovery;
   f.app.link.kick(); await until(() => !f.app.link.connecting);
   assert.equal(f.app.link.lastDiscovery, last); assert.equal(f.app.link.status().paired, true);

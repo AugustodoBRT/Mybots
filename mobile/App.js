@@ -6,7 +6,7 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import { useColorScheme, View, BackHandler, Linking, AppState, Alert, useWindowDimensions, StatusBar, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { styles } from './styles';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, ModeSheet, TermuxLogModal } from './components/shared';
+import { DEFAULT_API_URL, nativeMessage, formatTermuxLog, shareText, DesktopNetwork, Avatar, PrimaryButton, DesktopPair, RoomSheet, ModelSettings, FallbackSettings, SheetHeader, PersonName, ThemeChoice, ScreenOff, ComputerPanel, WidgetRow, PhoneAccess, PhoneControlAccess, WalletPanel, UpdateCard, ApprovalCard, ItemsByDeadline, ShareSheet, ShareTargets, TermuxLogModal } from './components/shared';
 import { Splash } from './components/Splash';
 import { decisionHandler } from './components/Message';
 import { SearchSheet } from './components/Search';
@@ -158,7 +158,6 @@ function AppMain() {
   const [createVisible, setCreateVisible] = useState(false);
   const [profileId, setProfileId] = useState(null); const [profileTab, setProfileTab] = useState(null);
   const [approvalBusy, setApprovalBusy] = useState(null);
-  const [modeVisible, setModeVisible] = useState(false);
   const [maintenanceVisible, setMaintenanceVisible] = useState(false);
   const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [maintenanceText, setMaintenanceText] = useState('Backups ficam guardados neste celular, dentro do MyBots.');
@@ -638,46 +637,6 @@ function AppMain() {
     const bot = await api('/api/bots', payload, apiToken, apiBase);
     await refreshComputer(); setSelected(bot.id); setDraft(''); setCreateVisible(false);
   };
-  const changeMode = async nextMode => {
-    setModeVisible(false);
-    if (nextMode === mode) return;
-    if (data?.active?.length || sending || savingSettings || maintenanceBusy) { setLoadError('Aguarde a resposta atual terminar antes de trocar o modo.'); return; }
-    setLoadError(''); setTermuxLog(null); setConnectionBusy(true);
-    if (nextMode === 'phone') {
-      setMode('phone'); setData(null);
-      try {
-        let saved = canStore ? (await readLocalStore()) || emptyLocalStore() : emptyLocalStore();
-        if (apiToken && apiBase) {
-          try {
-            const remote = await api('/api/state', undefined, apiToken, apiBase);
-            saved = { ...saved, bots: mergeBotLists(saved.bots, [...remote.bots, ...(remote.deletedBots || [])].map(({ codexSessionId, ...bot }) => bot)) };
-          } catch { /* The phone can use its saved conversations while the PC is unavailable. */ }
-        }
-        saved = { ...saved, mode: 'phone' };
-        await writeLocalStore(saved); setLocalCache(saved);
-        await refreshPhone(saved);
-        if (saved.supervisorMigrated) {
-          // The phone's saved copy is only a cache of what the supervisor already has: if it cannot be merged, the app still
-          // opens with the supervisor's data and the reason stays in the details.
-          await supervisor.current.call('bots.merge', { bots: saved.bots })
-            .catch(error => setTermuxLog({ operation: 'merge', startedAt: new Date().toISOString(), nativeMessage: 'Cópia salva no celular não foi juntada: ' + (error?.message || String(error)) }));
-          await loadSupervisorState();
-        }
-      } catch (error) { setLoadError(error.message); setTermuxLog(old => old || { operation: 'open', startedAt: new Date().toISOString(), nativeMessage: (error?.message || String(error)) + (error?.stack ? '\n' + String(error.stack).slice(0, 1500) : '') }); }
-      finally { setConnectionBusy(false); }
-      return;
-    }
-    try {
-      if (supervisor.current.authenticated) await loadSupervisorState();
-      const saved = canStore ? await readLocalStore() : localCache;
-      if (!apiToken || !apiBase) throw new Error('Abra o QR code do computador para conectar ao modo Celular + computador.');
-      if (saved?.bots?.length) await api('/api/sync', { bots: saved.bots }, apiToken, apiBase);
-      const remote = await api('/api/state', undefined, apiToken, apiBase);
-      setMode('computer'); setData(remote); setLocalCache({ ...saved, mode: 'computer' });
-      if (canStore) await writeLocalStore({ ...saved, mode: 'computer' });
-    } catch (error) { setLoadError(error.message); }
-    finally { setConnectionBusy(false); }
-  };
   // Where this phone's MyBots lives. Without Termux it is the computer's (paired by its QR); with Termux, a supervisor of its own that
   // syncs with the computer. Switching never deletes anything: the data stays where it was.
   const saveChoice = async (patch) => {
@@ -859,7 +818,7 @@ function AppMain() {
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
   const chatView = data && bot && !room ? <ChatScreen onResume={async sessionId => { try { await supervisor.current.call('bot.resumeSession', { botId: bot.id, sessionId }); visitStarted.current = true; await loadSupervisorState(); } catch (error) { setLoadError(nativeMessage(error)); } }} savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
-          onBack={desktop || bot.isChief ? null : goHome} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onMode={() => setModeVisible(true)} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
+          onBack={desktop || bot.isChief ? null : goHome} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
           passwordAsk={passwordAsk} onPasswordAnswer={async scope => { await passwordOfferAnswer(scope).catch(error => setLoadError(nativeMessage(error))); setPasswordAsk(null); }}
           onBrowserControl={async who => { await supervisor.current.call('browser.control', { botId: bot.id, who }); await loadSupervisorState(); }} browserCall={(method, params) => supervisor.current.call(method, params)} onCancel={() => { const task = data.tasks?.find(item => item.bot_id === bot.id && ['queued','running','waiting_approval'].includes(item.state)); if (task) cancelTask(task.id); }}
@@ -891,7 +850,7 @@ function AppMain() {
   const canCreateChief = mode === 'phone' && !chiefId;
   const startChief = () => setCreateVisible('chief');
   const teamView = data && <HomeScreen tabs={!desktop} onCanvas={!desktop ? () => setDeskPage('canvas') : null} onWeekly={mode === 'phone' ? () => supervisor.current.call('chief.weekly', {}).then(() => loadSupervisorState?.()).catch(error => setLoadError?.(error.message)) : null} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} team={team} onHome={goHome} onCreateChief={canCreateChief ? startChief : null} remote={backend === 'pc'} onSearch={() => setSearchVisible(true)} data={data} error={loadError} onRetry={() => refresh().catch(error => setLoadError(error.message))} onLogs={openLogs}
-            onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onMode={() => setModeVisible(true)} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
+            onCreate={() => setCreateVisible(true)} onOpen={openDesktopBot} onConnection={checkConnection} mode={mode} onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onMaintenance={() => setMaintenanceVisible(true)} onWallet={termuxAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onActivity={() => setActivityVisible(true)}
             update={update} onUpdate={installUpdate} onUpdateDismiss={() => setUpdate(old => ({ ...old, dismissed: true }))}
             onRoom={openDesktopRoom} onNewRoom={() => setRoomSheet({})} />;
   // On the computer these are whole pages beside the icon bar instead of sheets.
@@ -938,7 +897,7 @@ function AppMain() {
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data && setup ? <SetupScreen onScanned={pairPc} onEmbedded={embeddedSupported() ? enableEmbedded : null} busy={setupBusy} error={setupError} />
-      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{openLogs ? <Pressable accessibilityRole="button" onPress={openLogs} style={styles.changeModeButton}><Text style={styles.changeModeText}>Ver detalhes do erro</Text></Pressable> : null}{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => setModeVisible(true)} style={styles.changeModeButton}><Text style={styles.changeModeText}>Trocar modo de conexão</Text></Pressable>}</View>
+      : !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'orange', avatar: 'cat' }} size={96} state="waiting" /><Text style={styles.loadingTitle}>Não consegui conectar</Text><Text style={styles.loadingText}>{loadError}</Text><PrimaryButton icon="refresh" title={connectionBusy ? 'Conectando…' : 'Tentar novamente'} disabled={connectionBusy} onPress={() => refresh().catch(error => setLoadError(error.message))} style={{ alignSelf: 'stretch' }} />{openLogs ? <Pressable accessibilityRole="button" onPress={openLogs} style={styles.changeModeButton}><Text style={styles.changeModeText}>Ver detalhes do erro</Text></Pressable> : null}{desktop ? <DesktopPair compact call={(method, params) => supervisor.current.call(method, params)} /> : <Pressable accessibilityRole="button" onPress={() => { setLoadError(''); setSetup(true); }} style={styles.changeModeButton}><Text style={styles.changeModeText}>Conectar de outro jeito</Text></Pressable>}</View>
       : desktop ? <DesktopShell onSendTo={canvasSend} fileKey={fileSheet} onFile={openConversationFile} profileOpen={Boolean(profileId)} profilePanel={profileSheet} onProfileClose={() => { setCreateVisible(false); setProfileId(null); }} onBrowserControl={async (botId, who) => { await supervisor.current.call('browser.control', { botId, who }); await loadSupervisorState(); }} onSend={send} fileOpen={Boolean(fileSheet)} onFileClose={() => { setFileSheet(null); setFileNote(''); }}
           filePanel={fileSheet ? <FilePreview file={fileSheet} call={(method, params) => supervisor.current.call(method, params)} onClose={() => { setFileSheet(null); setFileNote(''); }} onAction={fileAct} busy={fileBusy} note={fileNote} /> : null} page={deskPage} onPage={setDeskPage} pages={deskPages} data={data} error={loadError} selected={room ? null : selected} roomId={roomId} onConnection={checkConnection}
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
@@ -1020,7 +979,6 @@ function AppMain() {
       </View></View>
     </Modal>
     {data && !share?.botId ? <ShareSheet share={share} bots={data.bots || []} phone={mode === 'phone'} onPick={pickShare} onClose={() => setShare(null)} /> : null}
-    <ModeSheet visible={modeVisible} mode={mode} onClose={() => setModeVisible(false)} onSelect={changeMode} />
     <TermuxLogModal visible={logsVisible} log={termuxLog} copied={logsCopied} onClose={() => setLogsVisible(false)} onCopy={copyLogs} />
     <WhatsNew ready={!initialLoading && Boolean(data)} />
     {desktop ? null : <Splash bot={data?.bots?.find(item => item.isChief && !item.deletedAt) || null} ready={!initialLoading && !String(data?.connection?.message || '').startsWith('Preparando')} note={String(data?.connection?.message || '').startsWith('Preparando') ? data.connection.message : ''} />}

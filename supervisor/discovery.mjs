@@ -3,16 +3,14 @@ import { networkInterfaces } from 'node:os';
 import { isIP } from 'node:net';
 
 export const DISCOVERY_PORT = Number(process.env.MYBOTS_PC_DISCOVERY_PORT) || 3234;
-export const tailscaleAddress = address => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address) && isIP(address) === 4;
 export function privateAddress(address) {
-  return isIP(address) === 4 && (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address) || tailscaleAddress(address));
+  return isIP(address) === 4 && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address);
 }
-/** How a peer was reached, for the connection screen: loopback, the home network, Tailscale, the internet, or the relay (no address). */
+/** How a peer was reached: loopback, the home network (found by itself), the internet, or the relay (no address). */
 export function pathOf(address) {
   if (!address) return 'relay';
   const plain = String(address).replace(/^::ffff:/, '');
   if (/^127\./.test(plain) || plain === '::1') return 'local';
-  if (tailscaleAddress(plain)) return 'tailscale';
   return privateAddress(plain) ? 'lan' : 'internet';
 }
 export function broadcastTargets(interfaces = networkInterfaces()) {

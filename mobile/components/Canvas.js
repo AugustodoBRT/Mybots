@@ -4,7 +4,7 @@
 // own (yellow) that the bots read. Drag the background to move, pinch or use the wheel to zoom, drag a card by its title bar,
 // resize it by the corner, tap it to open it. At the bottom, a box to write to the Chefe or to any other bot.
 import { createElement, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, BackHandler, Image, Modal, PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, BackHandler, Image, Modal, PanResponder, PixelRatio, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Defs, Path, Pattern, Rect, Text as SvgText } from 'react-native-svg';
 import { C, F, Icon, themed } from '../theme';
 import { TOP } from '../styles';
@@ -17,11 +17,14 @@ import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';
 import { NODE_W, NODE_H, areaBoxes, bounds, cord, fitView, hit, sandboxed, stacked, teamCords, teamSpots, zoomAround } from '../state/canvas-layout';
 import { botHues } from '../screens/memory-look';
+import { budgetScale, contains, grow, intersect, visibleRect } from '../state/svg-budget';
+
 
 // The app tells the canvas when it changed (canvas.changed) and when a bot's browser took a new step (browser.step).
 const listeners = new Set();
 export const canvasEvent = (event, data) => { for (const fn of listeners) fn(event, data); };
 const web = Platform.OS === 'web';
+const density = web ? 1 : PixelRatio?.get?.() || 1;
 const KIND = { note: 'Nota', table: 'Tabela', chart: 'Gráfico', html: 'Página', image: 'Imagem', video: 'Vídeo', browser: 'Navegador' };
 const ICON = { note: 'edit', table: 'list', chart: 'activity', html: 'apps', image: 'file', video: 'file', browser: 'search' };
 
@@ -209,23 +212,36 @@ export default function Canvas({ data: shell, call, onSend, onOpenBot, onOpenBro
   const order = useMemo(() => stacked(cards, moving?.id), [cards, moving?.id]);
   const box = useMemo(() => bounds(cards, spots) || { x: 0, y: 0, w: 1, h: 1 }, [cards, spots]);
   const byId = useMemo(() => new Map(cards.map(card => [card.id, card])), [cards]);
+  // The cords' <Svg>: on Android it is painted into one bitmap of its size (see svg-budget.js), so there it covers only the
+  // board around what is on screen (half a screen more on each side), redrawn when the view leaves it, at a resolution
+  // that fits the budget. On the computer it covers the whole board.
+  const cordRegion = useRef(null);
+  const seen = visibleRect(v, size.width, size.height), tierK = 2 ** (Math.round(Math.log2(v.k) * 2) / 2);
+  if (!web && size.width && (!cordRegion.current || cordRegion.current.k !== tierK || !contains(cordRegion.current.cover, seen))) cordRegion.current = { k: tierK, cover: grow(seen, 0.5) };
+  const cordArea = useMemo(() => {
+    const all = { x: box.x - 200, y: box.y - 200, w: box.w + 400, h: box.h + 400 };
+    if (web) return { ...all, scale: 1 };
+    const rect = cordRegion.current && intersect(all, cordRegion.current.cover);
+    return rect && { ...rect, scale: budgetScale(rect.w, rect.h, Math.min(2, cordRegion.current.k), density) };
+  }, [box, cordRegion.current]);
   // Seen from far, the cords are drawn thicker so they do not vanish (in steps, so a zoom does not redraw the board all the time).
   const thick = Math.min(3, Math.max(1, Math.round(0.9 / v.k * 2) / 2));
   // The board itself: areas, links, cards and bots. Moving the view only changes the transform around it.
   const board = useMemo(() => <>
     {areaBoxes(cards).map(area => <View key={'a' + area.name} pointerEvents="none" style={[s.area, { left: area.x, top: area.y, width: area.w, height: area.h }]}><Text numberOfLines={1} style={s.areaName}>{area.name}</Text></View>)}
-    <Svg pointerEvents="none" style={{ position: 'absolute', left: box.x - 200, top: box.y - 200 }} width={box.w + 400} height={box.h + 400}>
+    {cordArea ? <Svg pointerEvents="none" style={{ position: 'absolute', left: cordArea.x, top: cordArea.y, width: cordArea.w * cordArea.scale, height: cordArea.h * cordArea.scale, transformOrigin: '0px 0px', transform: [{ scale: 1 / cordArea.scale }] }}
+      width={cordArea.w * cordArea.scale} height={cordArea.h * cordArea.scale} viewBox={`${cordArea.x} ${cordArea.y} ${cordArea.w} ${cordArea.h}`}>
       {/* The team's cords: the Chefe to each bot (quiet), each bot to what it made (in its colour; the one it is on now is solid). */}
-      {teamCords(bots, cards, spots, state.at, realChief).map(line => <Path key={line.key} d={line.d} transform={`translate(${200 - box.x},${200 - box.y})`} fill="none" stroke={line.kind === 'team' ? C.muted : hues.get(line.botId) || C.muted}
+      {teamCords(bots, cards, spots, state.at, realChief).map(line => <Path key={line.key} d={line.d} fill="none" stroke={line.kind === 'team' ? C.muted : hues.get(line.botId) || C.muted}
         strokeOpacity={line.kind === 'team' ? 0.45 : line.live ? 0.95 : 0.7} strokeWidth={(line.live ? 2.4 : 1.8) * thick} strokeDasharray={line.live ? undefined : line.kind === 'team' ? `${3 * thick} ${7 * thick}` : `${7 * thick} ${6 * thick}`} strokeLinecap="round" />)}
-      {state.links.map(link => { const a = byId.get(link.from), b = byId.get(link.to); if (!a || !b) return null; const l = cord(a, b), ox = 200 - box.x, oy = 200 - box.y;
-        return [<Path key={link.id} d={l.d} transform={`translate(${ox},${oy})`} fill="none" stroke={C.accent} strokeOpacity={0.75} strokeWidth={2 * thick} strokeDasharray={`${6 * thick} ${5 * thick}`} strokeLinecap="round" />,
-          <Circle key={link.id + 'a'} cx={l.x1 + ox} cy={l.y1 + oy} r={3.5} fill={C.accent} />, <Circle key={link.id + 'b'} cx={l.x2 + ox} cy={l.y2 + oy} r={3.5} fill={C.accent} />,
-          link.label ? <SvgText key={link.id + 't'} x={l.mx + ox} y={l.my + oy - 7} fill={C.text2} fontSize={12.5} fontWeight="600" textAnchor="middle" stroke={C.bg} strokeWidth={4} paintOrder="stroke">{link.label}</SvgText> : null]; })}
-    </Svg>
+      {state.links.map(link => { const a = byId.get(link.from), b = byId.get(link.to); if (!a || !b) return null; const l = cord(a, b);
+        return [<Path key={link.id} d={l.d} fill="none" stroke={C.accent} strokeOpacity={0.75} strokeWidth={2 * thick} strokeDasharray={`${6 * thick} ${5 * thick}`} strokeLinecap="round" />,
+          <Circle key={link.id + 'a'} cx={l.x1} cy={l.y1} r={3.5} fill={C.accent} />, <Circle key={link.id + 'b'} cx={l.x2} cy={l.y2} r={3.5} fill={C.accent} />,
+          link.label ? <SvgText key={link.id + 't'} x={l.mx} y={l.my - 7} fill={C.text2} fontSize={12.5} fontWeight="600" textAnchor="middle" stroke={C.bg} strokeWidth={4} paintOrder="stroke">{link.label}</SvgText> : null]; })}
+    </Svg> : null}
     {order.map(card => <Card key={card.id} card={card} bot={names.get(card.botId)} hue={hues.get(card.botId)} call={call} browserVersion={browserVersion[card.botId] || 0} lifted={moving?.id === card.id} />)}
     {bots.map(bot => spots[bot.id] ? <Walker key={bot.id} bot={bot} spot={spots[bot.id]} data={data} selected={bot.id === target?.id} hue={hues.get(bot.id)} /> : null)}
-  </>, [cards, state.links, spots, browserVersion, moving?.id, data, target?.id, hues, thick]);
+  </>, [cards, state.links, spots, browserVersion, moving?.id, data, target?.id, hues, thick, cordArea]);
 
   const send = async () => {
     const text = draft.trim(); if (!text || !target || sending) return;

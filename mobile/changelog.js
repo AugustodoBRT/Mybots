@@ -2,6 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.15', date: '2026-11-13', items: [
+    ['correcao', 'No celular, abrir o Canvas ou tocar no grafo da Memória podia fechar o app na hora, quando havia muitas notas ou cartões espalhados.'],
+    ['correcao', 'Arrastar uma nota com muitas ligações no grafo da Memória ficava travando no celular. Agora o celular desenha só a parte que está na tela.']
+  ] },
   { version: '0.94.14', date: '2026-11-13', items: [
     ['correcao', 'Quando um site copia algo (como o código no Google Stitch), o bot agora recebe o texto como arquivo, em vez de o site dizer que falhou. A sua área de transferência não é tocada.'],
     ['correcao', 'Downloads de sites que abrem a janela "Salvar como" (como o ZIP do Google Stitch) agora chegam aos arquivos do bot.'],

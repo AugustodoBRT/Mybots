@@ -39,6 +39,7 @@ async function loadMobile(file, extra = {}) {
     return React.createElement(tag, attrs, children);
   };
   const Pressable = props => host('button')({ ...props, children: props.children });
+  const budget = await import('../mobile/state/svg-budget.js');
   const layout = await import('../mobile/state/graph-layout.js'), view = await import('../mobile/state/note-view.js'), markdown = await import('../mobile/markdown.js');
   const LOOK = new Proxy({}, { get: (_, key) => '#' + String(key) });
   const deps = { react: React, 'react/jsx-runtime': require('react/jsx-runtime'),
@@ -46,7 +47,7 @@ async function loadMobile(file, extra = {}) {
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Linking: { openURL() {} }, Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 400, height: 800 }),
       PanResponder: { create: config => { Object.assign(gestures, config); return { panHandlers: {} }; } } },
     'react-native-svg': { __esModule: true, default: host('svg'), G: host('g'), Circle: host('circle'), Path: host('path'), Text: host('text') },
-    '../state/graph-layout': layout, '../markdown': markdown, '../RichMessage': { Chart: () => null },
+    '../state/graph-layout': layout, '../state/svg-budget': budget, '../markdown': markdown, '../RichMessage': { Chart: () => null },
     './memory-look': { look: () => LOOK, botHues: bots => new Map(bots.map((bot, i) => [bot.id, '#hue' + i])), kindHues: () => ({ chefe: '#chefe', entrega: '#entrega', arquivo: '#arquivo' }), KIND_NAMES: { chefe: 'Chefe', entrega: 'Entregas', arquivo: 'Arquivo' } },
     '../components/shared': { Avatar: () => null, IconButton: ({ label }) => React.createElement('button', { 'aria-label': label }) },
     '../state/note-view': view, '../styles': { TOP: 0 }, '../components/HistoryImport': { HistoryImport: () => null },

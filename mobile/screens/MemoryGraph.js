@@ -1,10 +1,13 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { PanResponder, PixelRatio, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { LAYOUT, PERSON_PATH, createLayout, fitBox, graphModel, hitTest, labelIds } from '../state/graph-layout';
 import { F, themed } from '../theme';
 import { KIND_NAMES, botHues, kindHues, look } from './memory-look';
+import { budgetScale, contains, grow, visibleRect } from '../state/svg-budget';
 
+const native = Platform.OS !== 'web';
+const density = native ? PixelRatio?.get?.() || 1 : 1;
 // Kept while the app is open, so coming back to the map (or out of a note) finds the drawing, zoom and settings as they were.
 // Roomier than the layout's defaults, so titles have space between the dots, like Obsidian's map.
 const DEFAULTS = { ghosts: true, orphans: true, colorBy: 'bot', nodeSize: 1, lineWidth: 1, text: 0, center: 0.06, repel: 360, link: LAYOUT.linkStrength, distance: 110 };
@@ -277,21 +280,35 @@ export function GraphCanvas({ model, positions, matches, colorOf, onOpen, fitKey
   const held = focus && model.byId.get(focus);
   // The drawing is rasterized once per zoom half-step, at that resolution, and panning or zooming only moves and scales
   // that layer (composited by the GPU, like Obsidian's canvas). Bounds leave room for the titles around the dots.
+  // Android paints the whole layer into one bitmap (see svg-budget.js), so there it covers only what is on screen plus
+  // half a screen around it, redrawn when the view leaves it; while a node is dragged (redrawn every frame), just the screen.
+  const region = useRef(null);
+  if (native && width && height) {
+    const seen = visibleRect(v, width, height), live = Boolean(dragged), old = region.current;
+    if (!old || old.tier !== tier || old.live !== live || !contains(old.rect, seen)) region.current = { tier, live, rect: grow(seen, live ? 0 : 0.5) };
+  }
+  const area = native ? region.current : null;
   const frameBox = useMemo(() => {
+    if (area) { const { x, y, w, h } = area.rect; return { x, y, w, h, scale: budgetScale(w, h, tier, density) }; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of placed) { x0 = Math.min(x0, p.x - p.r); y0 = Math.min(y0, p.y - p.r); x1 = Math.max(x1, p.x + p.r); y1 = Math.max(y1, p.y + p.r); }
     if (!placed.length) { x0 = y0 = -1; x1 = y1 = 1; }
     const pad = 40 + 160 / tier, w = x1 - x0 + 2 * pad, h = y1 - y0 + 2 * pad;
-    return { x: x0 - pad, y: y0 - pad, w, h, scale: Math.max(0.05, Math.min(tier, 4096 / Math.max(w, h))) };
-  }, [placed, tier]);
-  const drawing = useMemo(() => <Svg width={frameBox.w * frameBox.scale} height={frameBox.h * frameBox.scale} viewBox={`${frameBox.x} ${frameBox.y} ${frameBox.w} ${frameBox.h}`}>
-    <G>
-      <EdgeLayer d={edges.plain} color={L.line} width={display.lineWidth / tier} opacity={dim} />
-      <EdgeLayer d={edges.lit} color={L.accent} width={display.lineWidth * 1.6 / tier} opacity={1} />
-      <NodeLayer items={items} />
-      <LabelLayer items={labels} color={L.muted} strong={L.text} />
-    </G>
-  </Svg>, [frameBox, edges, items, labels, L, display.lineWidth, dim, tier]);
+    return { x: x0 - pad, y: y0 - pad, w, h, scale: native ? budgetScale(w, h, tier, density) : Math.max(0.05, Math.min(tier, 4096 / Math.max(w, h))) };
+  }, [placed, tier, area]);
+  const drawing = useMemo(() => {
+    // Only part of the map is drawn on Android: dots and titles far outside it are left out.
+    const pad = 220 / tier, x0 = frameBox.x - pad, y0 = frameBox.y - pad, x1 = frameBox.x + frameBox.w + pad, y1 = frameBox.y + frameBox.h + pad;
+    const near = item => !area || (item.x > x0 && item.x < x1 && item.y > y0 && item.y < y1);
+    return <Svg width={frameBox.w * frameBox.scale} height={frameBox.h * frameBox.scale} viewBox={`${frameBox.x} ${frameBox.y} ${frameBox.w} ${frameBox.h}`}>
+      <G>
+        <EdgeLayer d={edges.plain} color={L.line} width={display.lineWidth / tier} opacity={dim} />
+        <EdgeLayer d={edges.lit} color={L.accent} width={display.lineWidth * 1.6 / tier} opacity={1} />
+        <NodeLayer items={area ? items.filter(near) : items} />
+        <LabelLayer items={area ? labels.filter(near) : labels} color={L.muted} strong={L.text} />
+      </G>
+    </Svg>;
+  }, [frameBox, edges, items, labels, L, display.lineWidth, dim, tier, area]);
   // Scale about the layer's centre (React Native's transform origin), placing the box's corner where the view puts it.
   const layerW = frameBox.w * frameBox.scale, layerH = frameBox.h * frameBox.scale, shrink = v.k / frameBox.scale;
   const layer = { width: layerW, height: layerH, transform: [

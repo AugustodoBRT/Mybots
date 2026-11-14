@@ -27,7 +27,7 @@ test('PAN detection on the PC and its serialized page code requires a known bran
 });
 
 test('Android accessibility executes the same PAN cases without marking a telephone as a card', { skip: !existsSync('/opt/intellij-idea-ultimate-edition/plugins/Kotlin/kotlinc/bin/kotlinc') }, () => {
-  const file = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/MyBotsAccess.kt', import.meta.url), 'utf8');
+  const file = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/MyBotsAccess.kt', import.meta.url), 'utf8');
   const card = file.split('internal object CardProtection {')[1].split('\n}\n')[0];
   const dir = mkdtempSync(join(tmpdir(), 'mybots-card-kotlin-'));
   try {

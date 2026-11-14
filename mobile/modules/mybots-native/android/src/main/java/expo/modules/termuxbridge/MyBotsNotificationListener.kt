@@ -72,8 +72,8 @@ class MyBotsNotificationListener : NotificationListenerService() {
         try { requestRebind(component) } catch (_: Exception) {}
     }
 
-    // MyBots itself, and Termux/Termux:API (bot notifications and the supervisor's own status) would loop back.
-    private val IGNORED = setOf("com.mybots.app", "com.termux", "com.termux.api")
+    // MyBots itself (bot notifications and the supervisor's own status) would loop back.
+    private val IGNORED = setOf("com.mybots.app")
   }
 }
 
@@ -122,8 +122,8 @@ internal object NotificationForwarder {
 
 
 /**
- * Shows the bots' notifications as MyBots (not as Termux:API). The system keeps this listener bound, so the
- * long-poll runs with the app closed; the supervisor falls back to Termux:API when nobody picks a notice up.
+ * Shows the bots' notifications as MyBots. The system keeps this listener bound, so the
+ * long-poll runs with the app closed; the supervisor shows it through DeviceApi when nobody picks a notice up.
  */
 internal object BotNotifier {
   private const val CHANNEL = "mybots_bots"

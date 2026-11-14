@@ -53,7 +53,7 @@ Você vai implementar a **Fase 1** do plano `docs/PLANO-BOT-CHEFE.md` (leia o ar
 - Não altere o comportamento de `memory_*`, `task_*` nem nada fora do escopo.
 - Rode `npm test` ao final e corrija o que quebrar. Se algum teste já falhava antes das suas mudanças, diga quais, sem consertar o que não é seu.
 - **Não faça commit, push, release, build do desktop nem do APK.** Deixe as mudanças no diretório de trabalho para revisão. Não use `scripts/build-desktop.sh`.
-- **Feche o Java ao terminar.** Se você (ou algum teste ou script) iniciou Gradle, Java ou o daemon do Kotlin, encerre antes de entregar o relatório: rode `./gradlew --stop` na pasta onde tiver iniciado (por exemplo `mobile/android` ou `mobile/modules/termux-bridge/android`) e confira com `pgrep -a java`. Encerre só os processos que você iniciou, nunca os que já estavam abertos antes (o editor da pessoa, por exemplo). Deixe também nenhum servidor, emulador ou processo `node` de teste rodando. Informe no relatório que fez essa verificação.
+- **Feche o Java ao terminar.** Se você (ou algum teste ou script) iniciou Gradle, Java ou o daemon do Kotlin, encerre antes de entregar o relatório: rode `./gradlew --stop` na pasta onde tiver iniciado (por exemplo `mobile/android` ou `mobile/modules/mybots-native/android`) e confira com `pgrep -a java`. Encerre só os processos que você iniciou, nunca os que já estavam abertos antes (o editor da pessoa, por exemplo). Deixe também nenhum servidor, emulador ou processo `node` de teste rodando. Informe no relatório que fez essa verificação.
 - Se uma decisão de design não estiver no plano e for importante, escolha a opção mais simples e anote no relatório final.
 
 ## Relatório final

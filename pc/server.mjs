@@ -279,8 +279,8 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   const phonesFile = join(directory, 'phones.json');
   const server = createHttps({ key: me.key, cert: me.cert, minVersion: 'TLSv1.3' }, (request, response) => response.writeHead(404).end());
   const sockets = new WebSocketServer({ server, maxPayload: MAX_FRAME });
-  // The phone app without Termux: its own secure channel (mobile/pc-channel.js), over a WebSocket straight to this port or
-  // through the relay. Its devices are kept apart from the Termux phones (apps.json), with the same kind of secret.
+  // The phone app that uses this computer's MyBots: its own secure channel (mobile/pc-channel.js), over a WebSocket straight to this
+  // port or through the relay. Its devices are kept apart from the phones with their own MyBots (apps.json), with the same kind of secret.
   const appsFile = join(directory, 'apps.json');
   const apps = () => read(appsFile, []);
   const plainServer = createHttp((request, response) => response.writeHead(404).end());
@@ -300,7 +300,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   };
   function app(stream) { acceptApp(stream, appContext, (socket, device) => { log(`${device.name} (app) conectado.`); ui.serve(socket, { remote: true, device }); }); }
   // The relay hands over streams of bytes for both kinds of phone: told apart by the first byte (0x16 is a TLS hello from a
-  // phone with Termux; "M" is the app's own channel). On a socket straight from the network the two use separate ports.
+  // phone's own MyBots; "M" is the app's own channel). On a socket straight from the network the two use separate ports.
   const routeStream = stream => {
     stream.on('error', () => {});
     stream.once('data', first => {

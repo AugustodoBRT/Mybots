@@ -102,7 +102,7 @@ export class Browser {
     if (!this.available()) return Promise.reject(new Error('Ler e criar PDF usa o app MyBots, que não está ativo agora. Peça à pessoa para abrir o MyBots.'));
     return this.queue({ botId: null, op, args });
   }
-  /** With everything inside the app there is no Termux:API: the same commands are answered by the app itself (DeviceApi.kt). */
+  /** The phone's data (SMS, contacts, calls, location, battery, notices) is answered by the app itself (DeviceApi.kt). */
   async deviceApi(command, args = [], { input = '', notice } = {}) {
     if (!this.available()) throw new Error('O app MyBots não está ativo agora. Peça à pessoa para abrir o MyBots.');
     return (await this.queue({ botId: null, op: 'deviceApi', args: { command, args, input, ...(notice ? { notice } : {}) } })).output || '';

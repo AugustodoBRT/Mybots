@@ -7,7 +7,7 @@ Notas para quem quer mexer no código. Para **usar** o app, veja o [README](../R
 | Pasta | O que tem |
 |---|---|
 | `mobile/` | O app (React Native + Expo SDK 57): telas, janela do computador (a mesma interface exportada como web), módulos nativos Android em `mobile/modules` (navegador dos bots, Linux embutido, API do aparelho) e o web app do iPhone (`mobile/pwa`) |
-| `supervisor/` | O supervisor (Node + SQLite): fila de tarefas, rotinas, pendências, memória, permissões, ferramentas dos bots por MCP, sincronização e relé. É o mesmo código no celular (dentro do Linux embutido ou no Termux) e no computador |
+| `supervisor/` | O supervisor (Node + SQLite): fila de tarefas, rotinas, pendências, memória, permissões, ferramentas dos bots por MCP, sincronização e relé. É o mesmo código no celular (dentro do Linux embutido do app) e no computador |
 | `pc/` | O nó do computador: executa as IAs, o navegador (Chrome) dos bots, o controle de tela e o pareamento |
 | `desktop/` | A janela do computador (Electron) |
 | `packaging/` | Empacotamento dos instaladores (electron-builder) |

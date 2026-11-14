@@ -1,6 +1,6 @@
 # Linux embutido do MyBots
 
-É o que permite o celular rodar o MyBots sem Termux e sem computador. O APK leva um Alpine mínimo com Node e o PRoot; o mesmo supervisor e os mesmos CLIs das IAs rodam dentro dele. O código nativo está em `EmbeddedRuntime.kt`.
+É o que permite o celular rodar o MyBots sem computador. O APK leva um Alpine mínimo com Node e o PRoot; o mesmo supervisor e os mesmos CLIs das IAs rodam dentro dele. O código nativo está em `EmbeddedRuntime.kt`.
 
 | Arquivo | O que faz |
 |---|---|
@@ -15,8 +15,8 @@
 
 - `files/runtime/rootfs` é substituído quando o APK traz outro Alpine. `files/runtime/home` é o `/root` de dentro (dados do supervisor, IAs e logins) e nunca é substituído.
 - O Android só deixa executar arquivos de `nativeLibraryDir`, por isso `libproot.so` e `expo.useLegacyPackaging=true`.
-- Os scripts `mybots-*.sh` são os mesmos do Termux; `EmbeddedRuntime` só troca quem os executa. `MYBOTS_EMBEDDED=1` marca o modo.
-- O PRoot informa o código de saída do último processo a terminar; por isso o `timeout` dos comandos do Termux é feito pelo timer em Kotlin.
+- Os scripts `mybots-pair.sh` e `mybots-restart.sh` (assets do app) iniciam o supervisor; `EmbeddedRuntime` os executa. `MYBOTS_EMBEDDED=1` marca o modo.
+- O PRoot informa o código de saída do último processo a terminar; por isso o `timeout` dos comandos é feito pelo timer em Kotlin.
 
 ## Emulador
 

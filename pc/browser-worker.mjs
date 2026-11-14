@@ -17,8 +17,8 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 // The WebView reads the same function from this bundled asset.
-export const CARD_FIELD_SOURCE = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8').trim();
-const CARD_FILL_SOURCE = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-fill.js', import.meta.url), 'utf8').trim().replace('__MYBOTS_CARD_FIELD__', CARD_FIELD_SOURCE);
+export const CARD_FIELD_SOURCE = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-field.js', import.meta.url), 'utf8').trim();
+const CARD_FILL_SOURCE = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-fill.js', import.meta.url), 'utf8').trim().replace('__MYBOTS_CARD_FIELD__', CARD_FIELD_SOURCE);
 // Payment processors whose card frames may receive the card, besides the checkout's own site (same list as the phone).
 const PROCESSORS = ['stripe.com', 'stripe.network', 'mercadopago.com', 'mercadopago.com.br', 'mercadolibre.com', 'adyen.com', 'pagseguro.uol.com.br', 'pagbank.com.br', 'paypal.com', 'braintreegateway.com', 'cielo.com.br', 'getnet.com.br', 'pagar.me', 'checkout.com', 'ebanx.com', 'iugu.com', 'vindi.com.br', 'asaas.com'];
 const cardFrame = (frameUrl, pageHost) => { try { const url = new URL(frameUrl); return url.protocol === 'https:' && (url.hostname === pageHost || PROCESSORS.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))); } catch { return frameUrl === 'about:srcdoc' || frameUrl === 'about:blank'; } };

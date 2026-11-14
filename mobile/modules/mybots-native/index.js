@@ -1,7 +1,7 @@
 import { requireNativeModule } from 'expo-modules-core';
 
 let module;
-try { module = requireNativeModule('TermuxBridge'); } catch { /* Expo Go does not contain the MyBots native bridge. */ }
+try { module = requireNativeModule('MyBotsNative'); } catch { /* Expo Go does not contain the MyBots native bridge. */ }
 
 export const available = Boolean(module);
 export const readStore = () => module.readStore();

@@ -6,7 +6,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes, utf8ToBytes, randomBytes as nobleRandom } from '@noble/hashes/utils.js';
 
 /**
- * The secure channel between the MyBots app (phone, no Termux) and the computer's node.
+ * The secure channel between the MyBots app (a phone using the computer's MyBots) and the computer's node.
  *
  * It runs over any pipe of bytes: a WebSocket straight to the computer (home network) or through the relay.
  * It does not rely on TLS (React Native cannot pin a self-signed certificate), so everything is protected here:

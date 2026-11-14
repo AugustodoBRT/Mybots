@@ -69,7 +69,7 @@ async function setup(t, access, { device = true } = {}) {
 
 test('links to this phone, other schemes and credentials in the URL are refused before reaching the browser', () => {
   assert.equal(safeUrl('https://sigaa.ufmg.br/x?a=1'), 'https://sigaa.ufmg.br/x?a=1');
-  for (const bad of ['http://127.0.0.1:3219/health', 'http://localhost/', 'http://[::1]/', 'http://0.0.0.0/', 'http://169.254.1.1/', 'file:///data/data/com.termux/files/home/.mybots/token', 'javascript:alert(1)', 'intent://x', 'https://user:pw@site.com/', 'site.com'])
+  for (const bad of ['http://127.0.0.1:3219/health', 'http://localhost/', 'http://[::1]/', 'http://0.0.0.0/', 'http://169.254.1.1/', 'file:///root/.mybots/token', 'javascript:alert(1)', 'intent://x', 'https://user:pw@site.com/', 'site.com'])
     assert.throws(() => safeUrl(bad), bad);
 });
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
-import { copyText } from '../termux';
+import { copyText } from '../native';
 import { PrimaryButton, PROVIDER_NAMES } from './shared';
 import { DEFAULT_ACCOUNT } from '../ai-accounts';
 

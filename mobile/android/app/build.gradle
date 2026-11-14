@@ -92,8 +92,8 @@ android {
         applicationId 'com.mybots.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 208
-        versionName "0.94.16"
+        versionCode 209
+        versionName "0.94.17"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -119,6 +119,8 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
+            // Only scripts/emulator/install.sh passes it: adb run-as then reads the app's own Linux. Never on a published APK.
+            debuggable((findProperty('mybotsEmulator') ?: 'false').toBoolean())
         }
     }
     packagingOptions {

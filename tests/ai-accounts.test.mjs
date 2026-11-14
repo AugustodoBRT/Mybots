@@ -124,17 +124,6 @@ test('the supervisor lists the accounts, adds one with its login command, sees t
   assert.equal(existsSync(accounts.dir('codex', 'faculdade')), false);
 });
 
-test('on the phone the Claude wrapper shares the account folder with proot and carries its variable, and only for an extra account', async t => {
-  const { spawnSync } = await import('node:child_process');
-  const dir = await mkdtemp(join(tmpdir(), 'mybots-acc-wrap-')); t.after(() => rm(dir, { recursive: true, force: true }));
-  const prefix = join(dir, 'prefix'); await mkdir(join(prefix, 'var/lib/proot-distro/containers/deb/rootfs/root/.local/bin'), { recursive: true });
-  await writeFile(join(prefix, 'var/lib/proot-distro/containers/deb/rootfs/root/.local/bin/claude'), ''); await mkdir(join(dir, 'bin')); await mkdir(join(dir, 'home'));
-  await writeFile(join(dir, 'bin/proot-distro'), '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o700 });
-  const run = extra => spawnSync('bash', [new URL('../supervisor/claude-wrapper.sh', import.meta.url).pathname, '--oi'], { encoding: 'utf8', env: { HOME: join(dir, 'home'), PATH: `${join(dir, 'bin')}:/usr/bin:/bin`, PREFIX: prefix, ...extra } }).stdout.trim().split('\n');
-  assert.deepEqual(run({ MYBOTS_ACCOUNT_DIR: '/c/acc', CLAUDE_CONFIG_DIR: '/c/acc' }), ['login', 'deb', '--bind', '/c/acc:/c/acc', '--', 'env', 'CLAUDE_CONFIG_DIR=/c/acc', '/root/.local/bin/claude', '--oi']);
-  assert.deepEqual(run({}), ['login', 'deb', '--', '/root/.local/bin/claude', '--oi']);
-});
-
 test('a connected Claude with no usage numbers gets them on its own, once, and the sidebar data carries both windows', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'mybots-claude-limits-'));
   let asked = 0;

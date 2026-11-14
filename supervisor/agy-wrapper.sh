@@ -1,19 +1,4 @@
-# Antigravity (agy) has no Termux package: use a native `agy` if present, else the one installed in a proot-distro container.
+# Runs the `agy` installed in this device's PATH (on the phone, the one MyBots installed inside its Linux: Ajustes → IAs e contas).
 if bash -lc 'command -v agy' >/dev/null 2>&1; then exec bash -lc 'cd -- "$1"; shift; agy "$@"' mybots "$PWD" "$@"; fi
-prefix=${PREFIX:-/data/data/com.termux/files/usr}
-state="$prefix/var/lib/proot-distro"
-home=${MYBOTS_HOME:-$HOME/.mybots}
-# proot-distro starts a clean login: the run's token and address go in by `env`, and MyBots' own folder is shared so the
-# container can start the tools bridge (node, inside the container) from the same path.
-carry=(); for name in MYBOTS_RUN_TOKEN MYBOTS_RUN_ENDPOINT; do [ -n "${!name:-}" ] && carry+=("$name=${!name}"); done
-# An extra account (lib/accounts.mjs) keeps its login under its own HOME: share that folder and carry the variable.
-extra=(); if [ -n "${MYBOTS_ACCOUNT_DIR:-}" ]; then carry+=("HOME=$MYBOTS_ACCOUNT_DIR"); extra+=(--bind "$MYBOTS_ACCOUNT_DIR:$MYBOTS_ACCOUNT_DIR"); fi
-# proot-distro 5 keeps containers/<name>/rootfs; older releases used installed-rootfs/<name>.
-for rootfs in "$state"/containers/*/rootfs "$state"/installed-rootfs/*; do
-  bin="$rootfs/root/.local/bin/agy"
-  [ -L "$bin" ] || [ -f "$bin" ] || continue
-  name=${rootfs%/rootfs}; name=${name##*/}
-  exec proot-distro login "$name" --bind "$home:$home" "${extra[@]}" -- env "${carry[@]}" /root/.local/bin/agy "$@"
-done
-printf 'Antigravity (agy) não encontrado. Veja docs/agy-opencode-termux.md.\n' >&2
+printf 'Antigravity (agy) não encontrado. Instale em Ajustes → IAs e contas.\n' >&2
 exit 127

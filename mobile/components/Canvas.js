@@ -11,7 +11,7 @@ import { TOP } from '../styles';
 import { Avatar, IconButton, botLine, latestOf } from './shared';
 import { Chart, RichText } from '../RichMessage';
 import { readImage } from '../attachment-images';
-import { HtmlCardView } from '../termux';
+import { HtmlCardView } from '../native';
 import { useKeyboardPad } from '../keyboard';
 import { useStore } from '../state/useStore';
 import { selectHome } from '../state/store';

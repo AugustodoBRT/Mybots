@@ -19,7 +19,7 @@ async function until(check, ms = 5000) { const end = Date.now() + ms; while (Dat
 async function setup(t, { codexFails = false } = {}) {
   const calls = [];
   const execute = async (bot, prompt, options) => {
-    calls.push({ provider: bot.provider || 'codex', prompt, session: bot.codexSessionId, tools: Boolean(options.tools), termux: options.tools?.termux, computer: options.tools?.computer });
+    calls.push({ provider: bot.provider || 'codex', prompt, session: bot.codexSessionId, tools: Boolean(options.tools), phoneShell: options.tools?.phoneShell, computer: options.tools?.computer });
     await options.onSession?.(SESSION);
     if (bot.provider === 'claude') throw Object.assign(new Error('O limite de uso da sua conta Claude foi atingido ou o serviço está ocupado. Tente novamente mais tarde.'), { codexSessionId: SESSION });
     if (codexFails) throw new Error('O Codex não conseguiu concluir a resposta.');
@@ -66,7 +66,7 @@ test('the reserve cannot widen what the bot may do: same full access and phone-c
   const sent = await f.send('oi');
   await until(() => f.app.db.task(sent.taskId).state === 'failed');
   assert.equal(f.app.db.bot(f.bot.id).access, 'full');
-  assert.ok(f.calls.every(call => call.termux && !call.computer), 'nenhum acesso extra ao celular ou computador');
+  assert.ok(f.calls.every(call => call.phoneShell && !call.computer), 'nenhum acesso extra ao celular ou computador');
   assert.match(f.app.db.message(sent.messageId).error, /Codex/);
   assert.equal(f.calls[1].session, undefined, 'a reserva nunca retoma nem grava a sessão do Claude');
 });

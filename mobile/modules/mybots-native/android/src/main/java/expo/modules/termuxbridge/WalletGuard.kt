@@ -15,7 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
 
-/** Private copy of the person's rules, inaccessible to the Termux process. Payments must fail closed until integrated. */
+/** Private copy of the person's rules, inaccessible to the phone's Linux (where the supervisor runs). Payments must fail closed until integrated. */
 internal object WalletGuard {
   private fun prefs(context: Context) = context.getSharedPreferences("mybots_wallet", Context.MODE_PRIVATE)
   @Synchronized fun rules(context: Context): JSONObject = try {

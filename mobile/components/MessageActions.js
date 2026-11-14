@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Modal, View, Pressable, Text } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon } from '../theme';
-import { copyText } from '../termux';
+import { copyText } from '../native';
 import { useLiveCallback } from './shared';
 
 /** A row of the conversation that opens the message actions when held; pinned messages carry a small mark. */

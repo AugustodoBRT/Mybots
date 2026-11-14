@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, Linking } from 'react-native';
 import { C } from '../theme';
 import { styles } from '../styles';
 import { PrimaryButton } from './shared';
-import { onRuntimeTerminal, terminalStart, terminalStop, terminalWrite } from '../termux';
+import { onRuntimeTerminal, terminalStart, terminalStop, terminalWrite } from '../native';
 
 const AIS = [['claude', 'Claude Code', 'Com a sua conta Claude'], ['codex', 'Codex', 'Com a sua conta ChatGPT'], ['agy', 'Antigravity', 'Com a sua conta Google']];
 const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[=>()][0-9A-Za-z]?|\r/g;

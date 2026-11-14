@@ -4,7 +4,7 @@ import { touchPoint, zoomAt } from './browser-coordinates';
 import { browserMode, ownAccountBrowser } from './local';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PixelRatio, Image, PanResponder, TextInput, Modal, StatusBar, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
-import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, termuxAvailable, walletRules, walletFreeze } from './termux';
+import { BotBrowserView, BotFrameView, browserAction, browserInfo, browserPresentation, browserInput, nativeAvailable, walletRules, walletFreeze } from './native';
 import { C, F, Icon, themed } from './theme';
 
 // The bot's request for help with its browser (login, password, CAPTCHA), shown in the conversation.
@@ -75,7 +75,7 @@ export function TabStrip({ tabs, enabled, onSwitch, onClose, onNew, max = 5 }) {
 /** Congelar carteira next to the live page while the wallet can pay: one tap, and the card leaves the checkout at once. */
 function WalletFreeze() {
   const [open, setOpen] = useState(false); const [note, setNote] = useState('');
-  useEffect(() => { if (termuxAvailable) walletRules().then(rules => setOpen(rules.frozen === false)).catch(() => {}); }, []);
+  useEffect(() => { if (nativeAvailable) walletRules().then(rules => setOpen(rules.frozen === false)).catch(() => {}); }, []);
   if (!open) return note ? <Text style={styles.hint}>{note}</Text> : null;
   return <Pressable accessibilityRole="button" onPress={() => walletFreeze().then(() => { setOpen(false); setNote('Carteira congelada. Nenhum bot paga até você descongelar em Ajustes → Carteira.'); }).catch(error => setNote(String(error?.message || error)))} style={styles.key}>
     <Icon name="stop" size={13} color={C.amber} /><Text style={[styles.keyText, { color: C.amber }]}>Congelar carteira</Text>

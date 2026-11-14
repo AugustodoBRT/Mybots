@@ -16,7 +16,7 @@ try {
   for (const file of ['isolate-accounts.mjs','supervisor.test.mjs','tools.test.mjs','claude.test.mjs','routines.test.mjs','apps.test.mjs','access.test.mjs','default-access.test.mjs']) cpSync(join(root,'tests',file), join(temporary,'tests',file));
   writeFileSync(join(temporary,'package.json'), JSON.stringify({ type: 'module' }));
   // Explicit file lists exclude app data, credentials, signing keys and development caches.
-  const asset = join(root, 'mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz');
+  const asset = join(root, 'mobile/modules/mybots-native/android/src/main/assets/mybots-supervisor.tgz');
   execFileSync('tar', ['--sort=name','--mtime=@0','--owner=0','--group=0','--numeric-owner','-czf',asset,'-C',temporary,'.']);
   const bytes = readFileSync(asset);
   // Above 60 KB the app stages the package in parts (pairPart); keep it bounded for slow first installs.

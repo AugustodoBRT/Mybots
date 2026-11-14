@@ -3,7 +3,7 @@ import { Modal, View, Text, TextInput, Pressable, Image, Platform, ScrollView } 
 import { styles } from '../styles';
 import { C, F, Icon } from '../theme';
 import { desktop } from '../desktop';
-import { pickFile, shrinkImage } from '../termux';
+import { pickFile, shrinkImage } from '../native';
 import { APP_VERSION } from '../changelog';
 import { SheetHeader, PrimaryButton } from './shared';
 

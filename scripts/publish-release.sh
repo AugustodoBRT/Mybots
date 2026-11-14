@@ -7,6 +7,11 @@ version=${1:?Informe o número da versão (versionCode).}; notes=${2:?Informe as
 apk="$project/dist/apk/mybots-v$version.apk"
 [ -f "$apk" ] && [ -f "$apk.sha256" ] || { echo "Faltam $apk e $apk.sha256." >&2; exit 1; }
 [ "$(cut -d' ' -f1 "$apk.sha256")" = "$(sha256sum "$apk" | cut -d' ' -f1)" ] || { echo "O .sha256 não confere com o APK." >&2; exit 1; }
+# The emulator's build is debuggable (scripts/emulator/install.sh); it must never reach the phones.
+aapt2=$(ls -d "$project"/.build-tools/android-sdk/build-tools/*/aapt2 2>/dev/null | tail -1)
+if [ -n "$aapt2" ] && "$aapt2" dump xmltree "$apk" --file AndroidManifest.xml | grep -Eq 'android:debuggable.*(=true|0xffffffff)'; then
+  echo "Este APK é a versão depurável do emulador. Gere o do celular com scripts/build-apk.sh." >&2; exit 1
+fi
 # What the APK carries under GPL/LGPL goes with it, every time (scripts/runtime/build-sources.sh).
 sources="$project/.build-tools/runtime/mybots-fontes-gpl.tar.gz"
 [ -f "$sources" ] || { echo "Falta $sources: rode scripts/runtime/build-sources.sh." >&2; exit 1; }

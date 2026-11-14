@@ -13,7 +13,7 @@ import { startFakeImap } from './fake-imap.mjs';
 const selection = { model: 'test', reasoningEffort: 'low' };
 const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }] };
 const ADDRESS = 'pessoa@example.com', PASSWORD = 'abcd efgh ijkl mnop';
-const asset = new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-connectors.bin', import.meta.url);
+const asset = new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-connectors.bin', import.meta.url);
 const qp = text => Buffer.from(text, 'utf8').toString('latin1').replace(/[^\x20-\x7e\n]|=/g, c => '=' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')).replace(/\n/g, '\r\n');
 const b64 = (text, encoding) => Buffer.from(text, encoding).toString('base64');
 // Deliberately unrelated topics: the connector must not know what any bot is looking for.
@@ -113,7 +113,7 @@ test('offline server and HTML conversion are reported without leaking server tex
 });
 
 test('the app opens the same connector asset the build writes, under a name Android keeps intact', async () => {
-  const kotlin = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/TermuxBridgeModule.kt', import.meta.url), 'utf8');
+  const kotlin = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/MyBotsNativeModule.kt', import.meta.url), 'utf8');
   const name = kotlin.match(/assets\.open\("(mybots-connectors[^"]*)"\)/)[1];
   // Android's asset merger decompresses *.gz files and strips the extension.
   assert.ok(!name.endsWith('.gz')); assert.equal(name, asset.pathname.split('/').at(-1));

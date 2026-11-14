@@ -76,13 +76,13 @@ export const TOOL_DEFINITIONS = [
   // The team: bots making bots, opening rooms, adding and removing members. No approval cards; one switch turns it all off.
   { name: 'team', label: 'Equipe de bots', description: 'Criar outros bots, abrir salas, pôr e tirar bots delas, sair sozinho e chamar os outros para trabalhar (@Nome), tudo sem perguntar. Um bot nunca cria outro com mais acesso do que o próprio. Desligado em Pouco acesso, a menos que você ligue.', defaultAllowed: true },
   { name: 'browser', label: 'Navegador', description: 'Abre sites no navegador do bot (dentro do MyBots), lê, clica e preenche. Por padrão é o navegador compartilhado: o bot age logado nas contas em que você entrou nele. Senhas só você digita, pelo botão Assumir.', readOnly: true },
-  // Only on the Livre level: the other apps of the phone (MyBotsAccess) and Termux's whole shell.
+  // Only on the Livre level: the other apps of the phone (MyBotsAccess) and the whole terminal of the phone's Linux.
   { name: 'phone', label: 'Controlar o celular', description: 'Vê a tela, toca, digita, rola e abre apps no celular pelo serviço de acessibilidade do MyBots, com um botão Parar sempre visível. Senhas aparecem mascaradas; códigos de verificação vão direto para o campo, sem o bot ver.' },
-  { name: 'termux', label: 'Terminal do Termux', description: 'Quando o bot responde pelo celular: o shell completo do Termux para instalar pacotes, rodar scripts e usar o Termux:API.' }
+  { name: 'shell', label: 'Terminal do celular', description: 'Quando o bot responde pelo celular: o terminal completo do Linux do MyBots para instalar pacotes e rodar scripts.' }
 ];
 // What still asks on the Livre level: the person edits this list in the app; the model never sees a way to change it.
 export const FREE_ASK_OPTIONS = [
-  ['risky', 'Comandos perigosos', 'sudo, apagar pastas inteiras e git push, no computador ou no Termux.', true],
+  ['risky', 'Comandos perigosos', 'sudo, apagar pastas inteiras e git push, no computador ou no celular.', true],
   ['skill.propose', 'Instalar habilidades', 'Programas que o bot escreve para rodar sozinhos no celular.', true],
   ['browser/upload', 'Anexar arquivos em sites', 'Mandar um arquivo seu para um site.', true],
   ['sms.send', 'Enviar SMS', 'Pelo seu chip.', true],
@@ -90,7 +90,7 @@ export const FREE_ASK_OPTIONS = [
   ['browser/submit', 'Enviar formulários no navegador', 'Botões de enviar, confirmar e arrastar.', false],
   ['browser/login', 'Entrar com senha salva', 'O bot nunca vê a senha, mas entra na sua conta.', false],
   ['phone.fill_code', 'Preencher códigos de verificação', 'Mesmo com o remetente e o site certos.', false],
-  ['termux', 'Comandos no Termux', 'Qualquer comando no terminal do celular.', false],
+  ['shell', 'Comandos no celular', 'Qualquer comando no terminal do celular.', false],
   ['computer/shell', 'Comandos no computador', 'Qualquer comando no terminal do PC.', false],
   ['account.connectors/write', 'Agir nos apps da conta', 'Gmail, Agenda, Drive e outros: enviar, criar, apagar.', false],
   ['desktop', 'Controlar a tela do computador', 'Cliques e teclas no PC (a permissão própria continua valendo).', false],

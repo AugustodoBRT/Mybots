@@ -2,16 +2,16 @@ import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core
 import { currentTheme } from './theme';
 
 let native;
-try { native = requireNativeModule('TermuxBridge'); } catch { /* Expo Go uses only the computer backend. */ }
+try { native = requireNativeModule('MyBotsNative'); } catch { /* Expo Go uses only the computer backend. */ }
 
-export const termuxAvailable = Boolean(native);
-// The link to the computer, for the phone without Termux (kept encrypted by the native side), and secure random bytes.
+export const nativeAvailable = Boolean(native);
+// The link to the computer (kept encrypted by the native side), and secure random bytes.
 // In the browser (the iPhone's web app) there is no native side: the pairing and the small cache live in the page's own storage.
 const webStore = !native && typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
 const webRead = key => { try { return webStore?.getItem(key) ?? null; } catch { return null; } };
 const webWrite = (key, value) => { try { if (value == null) webStore?.removeItem(key); else webStore?.setItem(key, value); } catch {} };
 if (webStore) { try { globalThis.navigator?.storage?.persist?.(); } catch {} }
-// The link to the computer, for the phone without Termux (kept encrypted by the native side), and secure random bytes.
+// The link to the computer (kept encrypted by the native side), and secure random bytes.
 export const readPcLink = async () => { const raw = native ? await native.readPcLink() : webRead('mybots.pcLink'); if (!raw) return null; try { return JSON.parse(raw); } catch { return null; } };
 export const savePcLink = value => native ? native.savePcLink(JSON.stringify(value)) : webWrite('mybots.pcLink', JSON.stringify(value));
 export const clearPcLink = () => native ? native.clearPcLink() : webWrite('mybots.pcLink', null);
@@ -102,12 +102,12 @@ export const freeGuard = () => native ? native.freeGuard() : Promise.resolve(nul
 export const freeGuardSet = (botId, on) => native?.freeGuardSet(botId, on);
 export const freeGuardAsk = value => native?.freeGuardAsk(value);
 // Each bot's own browser: the live WebView for the chat panel, and the person's back/reload after "Assumir".
-export const BotBrowserView = native ? requireNativeViewManager('TermuxBridge', 'BotBrowserView') : null;
+export const BotBrowserView = native ? requireNativeViewManager('MyBotsNative', 'BotBrowserView') : null;
 let frameView;
-try { frameView = native ? requireNativeViewManager('TermuxBridge', 'BotFrameView') : null; } catch {}
+try { frameView = native ? requireNativeViewManager('MyBotsNative', 'BotFrameView') : null; } catch {}
 export const BotFrameView = frameView;
 let mimoView;
-try { mimoView = native ? requireNativeViewManager('TermuxBridge', 'MimoView') : null; } catch {}
+try { mimoView = native ? requireNativeViewManager('MyBotsNative', 'MimoView') : null; } catch {}
 export const MimoView = mimoView;
 // 3D bots on the phone (see Avatar3d.kt). An APK from before this existed has no such function: the flat face stays.
 export const avatar3dAvailable = () => { try { return typeof native?.avatar3dAvailable === 'function' && Boolean(native.avatar3dAvailable()) && typeof native.avatar3dRender === 'function'; } catch { return false; } };
@@ -119,11 +119,11 @@ export const releaseAvatars = () => { openGate?.(); openGate = null; };
 export const avatar3dRender = json => splashGate.then(() => native.avatar3dRender(json));
 // A live 3D bot drawn at the screen's frame rate (Bot3dView.kt); an APK from before it has none.
 let bot3dView = null;
-try { bot3dView = native ? requireNativeViewManager('TermuxBridge', 'Bot3dView') : null; } catch {}
+try { bot3dView = native ? requireNativeViewManager('MyBotsNative', 'Bot3dView') : null; } catch {}
 export const Bot3dView = bot3dView;
 // A bot's HTML page on the canvas, isolated (HtmlCardView.kt); an APK from before it has none and the card says so.
 let htmlCardView = null;
-try { htmlCardView = native ? requireNativeViewManager('TermuxBridge', 'HtmlCardView') : null; } catch {}
+try { htmlCardView = native ? requireNativeViewManager('MyBotsNative', 'HtmlCardView') : null; } catch {}
 export const HtmlCardView = htmlCardView;
 // The opening screen's 3D bot (Splash3d.kt); an APK from before it has none and the opening screen draws its own bot.
 export const splash3dAvailable = () => { try { return avatar3dAvailable() && typeof native.splash3dShow === 'function'; } catch { return false; } };
@@ -136,8 +136,8 @@ export const browserInfo = () => native.browserInfo();
 export const browserAction = (botId, action) => native.browserAction(botId, action);
 export const fileStage = (id, name, chunk, append) => native.fileStage(id, name, chunk, append);
 export const fileAction = (id, name, mime, action) => native.fileAction(id, name, mime, action);
-export const copyTermuxText = value => native?.copyText(value);
-// The phone's own MyBots inside the app (no Termux): see EmbeddedRuntime.kt.
+export const copyLogText = value => native?.copyText(value);
+// The phone's own MyBots inside the app: see EmbeddedRuntime.kt.
 export const embeddedSupported = () => { try { return Boolean(native?.embeddedSupported?.()); } catch { return false; } };
 export const embeddedEnabled = () => { try { return Boolean(native?.embeddedEnabled?.()); } catch { return false; } };
 export const setEmbedded = on => native?.embeddedSet?.(on);
@@ -145,8 +145,8 @@ export const terminalStart = kind => native.terminalStart(kind);
 export const terminalWrite = text => native?.terminalWrite?.(text);
 export const terminalStop = () => native?.terminalStop?.();
 export const onRuntimeTerminal = listener => native.addListener('onRuntimeTerminal', listener);
-export const runTermux = (operation, payload = {}) => {
-  if (!native) throw new Error('A conexão com o Termux exige instalar o APK próprio do MyBots. No Expo Go, use o modo computador.');
+export const runNative = (operation, payload = {}) => {
+  if (!native) throw new Error('O MyBots deste celular exige o APK próprio do MyBots.');
   return native.runCodex(operation, payload);
 };
 

@@ -36,7 +36,7 @@ for (let index = 0; index < roomCount; index++) {
   const who = index % 3; const message = { id: randomUUID(), role: who === 0 ? 'user' : 'assistant', status: 'complete', createdAt: at(chatCount + index) };
   rows.room.push(who === 0 ? { ...message, text: `@Histórico longo e @Sala parceiro, item ${index}?` } : { ...message, botId: who === 1 ? bot.id : other.id, text: text(index, who === 1 ? 'Histórico longo' : 'Sala parceiro'), ...file(index) });
 }
-// Runs in Termux with its own Node: one transaction, the same tables the supervisor uses.
+// Runs inside the app's Linux with its Node: one transaction, the same tables the supervisor uses.
 const program = `
 const { DatabaseSync } = require('node:sqlite'); const fs = require('node:fs');
 const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -48,9 +48,10 @@ const stamp = new Date().toISOString(); const body = JSON.parse(db.prepare('SELE
 db.prepare('UPDATE rooms SET body=?, updated_at=? WHERE id=?').run(JSON.stringify({ ...body, updatedAt: stamp }), stamp, ${JSON.stringify(room.id)});
 db.exec('COMMIT');
 console.log(JSON.stringify({ chat: db.prepare('SELECT count(*) c FROM messages WHERE bot_id=?').get(${JSON.stringify(bot.id)}).c, room: db.prepare('SELECT count(*) c FROM room_messages WHERE room_id=?').get(${JSON.stringify(room.id)}).c }));`;
-const adb = new URL('../../.build-tools/android-sdk/platform-tools/adb', import.meta.url).pathname; const home = '/data/data/com.termux/files';
-const push = (name, content) => { const result = spawnSync(adb, ['shell', `run-as com.termux sh -c 'cat > ${home}/usr/tmp/${name}'`], { input: content }); if (result.status) throw new Error(String(result.stderr)); };
+// Inside the app's own Linux (emulator build from install.sh): /root is files/runtime/home.
+const adb = new URL('../../.build-tools/android-sdk/platform-tools/adb', import.meta.url).pathname;
+const push = (name, content) => { const result = spawnSync(adb, ['shell', `run-as com.mybots.app sh -c 'cat > files/runtime/home/${name}'`], { input: content }); if (result.status) throw new Error(String(result.stderr)); };
 push('seed-long.json', JSON.stringify(rows)); push('seed-long.cjs', program);
-const result = spawnSync(adb, ['shell', `run-as com.termux ${home}/usr/bin/env -i HOME=${home}/home PREFIX=${home}/usr PATH=${home}/usr/bin TMPDIR=${home}/usr/tmp LD_PRELOAD=${home}/usr/lib/libtermux-exec-ld-preload.so ${home}/usr/bin/node ${home}/usr/tmp/seed-long.cjs ${home}/usr/tmp/seed-long.json`], { encoding: 'utf8' });
+const result = spawnSync(new URL('./runtime-shell.sh', import.meta.url).pathname, { input: 'node /root/seed-long.cjs /root/seed-long.json', encoding: 'utf8', maxBuffer: 1 << 24 });
 process.stdout.write(`Bot ${bot.id} · sala ${room.id}\n${result.stdout}${result.stderr}`);
-spawnSync(adb, ['shell', `run-as com.termux rm -f ${home}/usr/tmp/seed-long.json ${home}/usr/tmp/seed-long.cjs`]);
+spawnSync(adb, ['shell', 'run-as com.mybots.app rm -f files/runtime/home/seed-long.json files/runtime/home/seed-long.cjs']);

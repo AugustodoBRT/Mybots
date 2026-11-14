@@ -136,27 +136,24 @@ test('HTTP MCP endpoint is bound to one run, one session and the same grants and
   cap.close(); assert.equal((await post({ jsonrpc: '2.0', id: 5, method: 'tools/list' }, { session })).status, 403);
 });
 
-test('Claude wrapper finds proot-distro 5 and legacy rootfs layouts and passes empty and JSON arguments intact', async t => {
-  const { mkdir, symlink, chmod } = await import('node:fs/promises');
-  const { execFile } = await import('node:child_process');
-  const wrapperSource = await readFile(new URL('../supervisor/claude-wrapper.sh', import.meta.url), 'utf8');
-  const { execFileSync } = await import('node:child_process'); const { dirname } = await import('node:path');
-  // Termux has no /usr/bin or /bin: keep only the directory of this device's bash next to the fake proot-distro.
+test('the AI wrappers run the CLI on the PATH with arguments and environment intact, and say when it is missing (127)', async t => {
+  const { mkdir, chmod } = await import('node:fs/promises');
+  const { execFile, execFileSync } = await import('node:child_process');
   const bash = execFileSync('sh', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim();
-  const run = (prefix, bin, args) => new Promise(resolve => execFile(bash, ['-c', wrapperSource, 'claude-wrapper', ...args], { env: { HOME: prefix, PREFIX: prefix, PATH: `${bin}:${dirname(bash)}` } }, (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr })));
   const directory = await mkdtemp(join(tmpdir(), 'mybots-wrapper-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const bin = join(directory, 'bin'); await mkdir(bin);
-  await writeFile(join(bin, 'proot-distro'), `#!${process.execPath}\nconsole.log(JSON.stringify(process.argv.slice(2)));`); await chmod(join(bin, 'proot-distro'), 0o700);
+  const { symlink } = await import('node:fs/promises'); await symlink(bash, join(bin, 'bash'));
   const args = ['-p', '--tools', '', '--mcp-config', JSON.stringify({ mcpServers: { a: { headers: { Authorization: 'Bearer x y' } } } })];
-  const empty = join(directory, 'empty'); await mkdir(empty);
-  assert.equal((await run(empty, bin, args)).code, 127);
-  for (const [layout, name] of [['containers/debian/rootfs', 'debian'], ['installed-rootfs/ubuntu', 'ubuntu']]) {
-    const prefix = join(directory, name); const local = join(prefix, 'var/lib/proot-distro', layout, 'root/.local/bin');
-    await mkdir(local, { recursive: true });
-    // The official installer leaves a symlink whose absolute target only exists inside the container.
-    await symlink('/root/.local/share/claude/versions/2.1.303', join(local, 'claude'));
-    const result = await run(prefix, bin, args);
-    assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), ['login', name, '--', '/root/.local/bin/claude', ...args]);
+  for (const name of ['claude', 'agy', 'opencode']) {
+    // A login shell (bash -l) reads /etc/profile, which may put this computer's real CLI on the PATH.
+    const source = (await readFile(new URL(`../supervisor/${name}-wrapper.sh`, import.meta.url), 'utf8')).replaceAll('bash -lc', 'bash -c');
+    const run = env => new Promise(resolve => execFile(bash, ['-c', source, 'wrapper', ...args], { cwd: directory, env: { PATH: bin, ...env } }, (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr })));
+    const missing = await run({});
+    assert.equal(missing.code, 127); assert.match(missing.stderr, /Ajustes → IAs e contas/);
+    await writeFile(join(bin, name), `#!${process.execPath}\nconsole.log(JSON.stringify({ args: process.argv.slice(2), dir: process.env.CLAUDE_CONFIG_DIR || null, cwd: process.cwd() }));`); await chmod(join(bin, name), 0o700);
+    const found = await run({ CLAUDE_CONFIG_DIR: '/c/acc' });
+    assert.equal(found.code, 0, found.stderr);
+    assert.deepEqual(JSON.parse(found.stdout), { args, dir: '/c/acc', cwd: directory });
   }
 });
+

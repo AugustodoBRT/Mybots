@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image, View } from 'react-native';
-import { avatar3dRender, Bot3dView } from './termux';
+import { avatar3dRender, Bot3dView } from './native';
 
 // The 3D bot on the phone: a picture asked of the hidden WebView (Avatar3d.kt) and shown as an image. Still bots are drawn once and
 // kept; the few that move are asked again about nine times a second. Until the first picture arrives, or if it never does, `fallback`

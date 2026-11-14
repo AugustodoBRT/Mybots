@@ -64,16 +64,24 @@ async function setup(t, access = 'free', options = {}) {
 
 test('full access supersedes old levels; only the phone control switch can restrict the phone tools', async t => {
   const f = await setup(t);
-  assert.equal(f.app.tools.policy(f.bot.id, 'termux'), 'allow');
+  assert.equal(f.app.tools.policy(f.bot.id, 'shell'), 'allow');
   assert.equal(f.app.tools.policy(f.bot.id, 'phone'), 'allow');
   const bot = f.app.db.requireBot(f.bot.id);
   assert.equal(f.app.tools.gate(bot, 'sms.send', { freeKey: 'sms.send' }).ask, false);
-  await f.app.rpc('free.set', { ask: ['browser/submit', 'termux'] });
+  await f.app.rpc('free.set', { ask: ['browser/submit', 'shell'] });
   assert.equal(f.app.tools.gate(bot, 'browser', { freeKey: 'browser/submit' }).ask, false);
   await f.app.rpc('bot.phoneControl', { botId: bot.id, on: false });
   assert.equal(f.app.tools.policy(bot.id, 'phone'), 'deny');
   assert.ok(!f.open().names().includes('phone_screen'));
-  assert.equal(f.app.tools.policy(bot.id, 'termux'), 'allow');
+  assert.equal(f.app.tools.policy(bot.id, 'shell'), 'allow');
+});
+
+test('a list saved before 0.94.17 with "termux" keeps asking for the phone\'s commands, now named shell', async t => {
+  const f = await setup(t);
+  f.app.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(['termux']));
+  const options = f.app.tools.freeSettings().options;
+  assert.equal(options.find(item => item.key === 'shell').ask, true);
+  assert.equal(options.some(item => item.key === 'termux'), false);
 });
 
 test('the wallet approval is enabled once for an existing Livre list and respects a later choice', async t => {
@@ -224,12 +232,12 @@ test('the terminal is available by default; supervisor files, keys and app secre
   const f = await setup(t, 'full'), run = f.open('phone');
   const permission = (tool_name, input) => run.call('permission', { tool_name, input });
   assert.equal((await permission('Bash', { command: 'pkg install -y jq' })).behavior, 'allow');
-  assert.equal((await permission('Read', { file_path: '/data/data/com.termux/files/home/.mybots/secrets/key' })).behavior, 'deny');
+  assert.equal((await permission('Read', { file_path: '/root/.mybots/secrets/key' })).behavior, 'deny');
   assert.equal((await permission('Read', { file_path: '/home/p/.ssh/id_rsa' })).behavior, 'deny');
   assert.equal(f.app.state().approvals.length, 0);
-  const codexArgs = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x', termux: true });
+  const codexArgs = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x', phoneShell: true });
   assert.ok(codexArgs.includes('danger-full-access'));
-  const claudeArgs = claudeRunner.claudeArguments(selection, randomUUID(), { token: 't', endpoint: 'http://x', termux: true });
+  const claudeArgs = claudeRunner.claudeArguments(selection, randomUUID(), { token: 't', endpoint: 'http://x', phoneShell: true });
   assert.equal(claudeArgs[claudeArgs.indexOf('--tools') + 1], 'Bash,Read,Write,Edit,Glob,Grep');
   assert.ok(claudeArgs.includes('mcp__mybots-tools__permission'));
 });

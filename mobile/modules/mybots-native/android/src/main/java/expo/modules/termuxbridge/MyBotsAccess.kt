@@ -85,7 +85,7 @@ class MyBotsAccess : AccessibilityService() {
 }
 
 /**
- * Which bots the person put on the Livre level and the "sempre perguntar" list, kept by the app itself (Termux, where a
+ * Which bots the person put on the Livre level and the "sempre perguntar" list, kept by the app itself (the phone's Linux, where a
  * Livre bot has a shell, cannot write here). The phone's other apps only obey bots listed here, and the app checks the
  * supervisor's copy against this one.
  */

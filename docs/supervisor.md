@@ -1,6 +1,6 @@
 # Supervisor — etapa 1
 
-> **Registro histórico.** Escrito na etapa 1 (v9), quando o supervisor só rodava no Termux. Hoje o mesmo supervisor roda no Linux embutido do app, no Termux e no computador; a instalação e o uso estão em [celular.md](celular.md) e [computador.md](computador.md). O protocolo, a recuperação e os dados abaixo continuam valendo.
+> **Registro histórico.** Escrito na etapa 1 (v9), quando o supervisor só rodava no Termux. Hoje o mesmo supervisor roda no Linux embutido do app e no computador (o Termux saiu na 0.94.17); a instalação e o uso estão em [celular.md](celular.md) e [computador.md](computador.md). O protocolo, a recuperação e os dados abaixo continuam valendo.
 
 ## Instalação e primeira abertura
 

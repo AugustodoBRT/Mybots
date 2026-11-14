@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { styles } from '../styles';
 import { C, F, Icon } from '../theme';
-import { pickFile } from '../termux';
+import { pickFile } from '../native';
 import { createId } from '../local';
 import { SheetHeader, PrimaryButton } from './shared';
 

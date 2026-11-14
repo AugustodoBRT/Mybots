@@ -7,7 +7,7 @@ import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
 import { useState, useEffect, useRef } from 'react';
-import { termuxAvailable, pickFile } from '../termux';
+import { nativeAvailable, pickFile } from '../native';
 import { reportOpen } from '../components/Report';
 import { desktop, pwa, desktopBus, readingColumn, pendingBrowser } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
@@ -73,7 +73,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
   const remote = presence?.where === 'pc' || (bot.home === 'pc' && !presence?.online);
   const own = remote ? (presence?.online ? computer?.connections?.[selection?.provider || 'codex'] || { loggedIn: false, message: 'Esta IA não está conectada no computador.' } : null) : data.connections?.[selection?.provider || 'codex'];
   const status = error || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
-  const phone = mode === 'phone' && termuxAvailable;
+  const phone = mode === 'phone' && nativeAvailable;
   // A bot answering from the computer browses in its own Chrome there, shown live here and in the computer's window.
   const pcBrowser = Boolean(desktop) || remote || data.browser?.pages?.[bot.id]?.where === 'pc';
   const browsing = phone || (desktop && pcBrowser);

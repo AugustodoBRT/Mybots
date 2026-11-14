@@ -55,6 +55,6 @@ async function main() {
     if (status?.release === release) { deliver(current); return; }
     await sleep(100);
   }
-  throw new Error('O supervisor não respondeu. Confira o ambiente e o diagnóstico no Termux.');
+  throw new Error('O supervisor não respondeu. Confira o diagnóstico em Ajustes → Backup e diagnóstico.');
 }
-main().catch(() => { console.error('Não consegui iniciar o supervisor. Verifique ~/.mybots/supervisor.log no Termux.'); process.exitCode = 1; });
+main().catch(() => { console.error('Não consegui iniciar o supervisor. Veja o diagnóstico em Ajustes → Backup e diagnóstico.'); process.exitCode = 1; });

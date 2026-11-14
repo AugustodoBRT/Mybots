@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, View, Text, useWindowDimensions, PixelRatio, Platform } from 'react-native';
-import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide, holdAvatars, releaseAvatars } from '../termux';
+import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide, holdAvatars, releaseAvatars } from '../native';
 import { faces3d } from '../faces3d';
 import { C, F } from '../theme';
 
-// The opening screen, covering the app until it is ready (the first start after an update can take a while: the core is prepared in
-// Termux), so the person never sees the half-loaded screens underneath. On Android with 3D bots, one 3D bot (Splash3d.kt) drops in and
+// The opening screen, covering the app until it is ready (the first start after an update can take a while: the core is prepared inside
+// the app), so the person never sees the half-loaded screens underneath. On Android with 3D bots, one 3D bot (Splash3d.kt) drops in and
 // hops while it loads, gives a last spinning jump when the app is ready, and everything fades out. Without 3D, one flat bot walks.
 const COLORS = ['#A78BFA', '#FB923C', '#4ADE80', '#60A5FA', '#F472B6', '#22D3EE'];
 const LINES = ['Acordando seu time…', 'Arrumando a mesa dos bots…', 'Reunindo as memórias…', 'Quase lá…'];

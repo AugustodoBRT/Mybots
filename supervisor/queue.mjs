@@ -67,7 +67,7 @@ const tooBig = load => load.estimate > CONTEXT_LIMIT || load.turns > CONTEXT_TUR
 const why = load => `cerca de ${load.estimate > CONTEXT_LIMIT ? `${Math.round(load.estimate / 1000)} mil tokens por chamada` : `${load.turns} respostas na anterior`}`;
 
 // How many turns may run together on each device ("lane"): a bot working for a long time must not keep the person
-// from talking to the others. Small on the phone, whose Termux has little memory.
+// from talking to the others. Small on the phone, which has little memory.
 // The computer runs as many as it comfortably holds (about 1.5 GB of memory per turn, never more than its cores or 10);
 // MYBOTS_PC_PARALLEL sets it by hand.
 export const pcParallel = (memory = os.totalmem(), cores = os.cpus().length, env = process.env.MYBOTS_PC_PARALLEL) => {
@@ -190,8 +190,8 @@ export class Queue extends EventEmitter {
           tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', github: next.lane === 'pc' && this.tools.policy(runBot.id, 'github') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
             computer: next.lane === 'pc' && this.tools.policy(runBot.id, 'computer') !== 'deny' ? { folders: Array.isArray(runBot.folders) ? runBot.folders : [], full: ['full', 'free'].includes(runBot.access) } : false,
-            // Livre on the phone: Termux's whole shell. Codex cannot ask command by command, so "Comandos no Termux" on the list keeps it without one.
-            termux: next.lane === 'phone' && this.tools.policy(runBot.id, 'termux') === 'allow' && (runBot.provider === 'claude' || !this.tools.freeAsk('termux')),
+            // Livre on the phone: the whole terminal of its Linux. Codex cannot ask command by command, so "Comandos no celular" on the list keeps it without one.
+            phoneShell: next.lane === 'phone' && this.tools.policy(runBot.id, 'shell') === 'allow' && (runBot.provider === 'claude' || !this.tools.freeAsk('shell')),
             phone: this.tools.policy(runBot.id, 'phone') === 'allow' } : undefined,
           // The reserve model's session is never kept: the bot's own CLI could not resume it.
           onSession: async id => { if (spare || quiet) return; if (turn) this.db.setRoomSession(turn.room_id, bot.id, id); else this.db.session(bot.id, id); this.db.run('DELETE FROM metadata WHERE key=?', compactKey); if (handoff) this.db.setHandoff(bot.id, turn?.room_id || null, null); },

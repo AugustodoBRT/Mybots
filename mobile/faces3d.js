@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
-import { avatar3dAvailable, prefGet, prefSet } from './termux';
+import { avatar3dAvailable, prefGet, prefSet } from './native';
 
 // The computer's window (and the iPhone web app) shows every bot as the Escritório's 3D body by default, with a switch for
 // the flat particle face. Kept on this device only; the Android app draws faces natively and has no 3D yet.

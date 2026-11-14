@@ -1,7 +1,7 @@
-import { passwordsSyncState, passwordsSyncMerge } from './termux';
+import { passwordsSyncState, passwordsSyncMerge } from './native';
 
 /**
- * The phone without Termux: its saved logins (in the app's Keystore) and the computer's vault become one. The app sends its own,
+ * The phone using the computer's MyBots: its saved logins (in the app's Keystore) and the computer's vault become one. The app sends its own,
  * the computer merges them into its vault (newest change per site and user wins; deletions travel too) and answers with the whole,
  * which the app merges back. They travel only over the encrypted channel to the paired computer, never to a bot.
  */

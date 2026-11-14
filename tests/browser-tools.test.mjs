@@ -78,7 +78,7 @@ test('Chrome: hover, scroll, drag, find, same-origin frames, marks, popup tabs a
 test('Android embeds the browser reader and inspection with additional card protection', async () => {
   const { readFile } = await import('node:fs/promises');
   const { readPage, inspectPoint, markPage } = await import('../supervisor/browser-page.mjs');
-  const native = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
+  const native = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
   for (const [name, fn] of [['READ_PAGE', readPage], ['POINT_JS', inspectPoint], ['MARK_JS', markPage]]) {
     let embedded = native.split(`private val ${name} = """`)[1].split('""".trimIndent()')[0].replaceAll("${'$'}", () => '$');
     if (name === 'READ_PAGE') {
@@ -99,7 +99,7 @@ test('Android embeds the browser reader and inspection with additional card prot
   assert.match(JSON.parse(runInNewContext(`(${action})({ action: 'click', x: 10, y: 10 })`, { document })).error, /só quando o bot responde pelo computador/);
   const click = native.split('private val CLICK_JS = """')[1].split('""".trimIndent()')[0].replace('$FIND', 'const el = document.elementFromPoint(0, 0);');
   assert.match(JSON.parse(runInNewContext(`(${click})(1)`, { document })).error, /só quando o bot responde pelo computador/);
-  const card = (await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8')).trim();
+  const card = (await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-field.js', import.meta.url), 'utf8')).trim();
   const { CARD_FIELD_SOURCE } = await import('../pc/browser-worker.mjs');
   assert.equal(CARD_FIELD_SOURCE, card);
   assert.match(native, /context\.assets\.open\("card-field\.js"\)/);
@@ -116,7 +116,7 @@ test('Android and PC share conservative card fields and mask frames only on chec
   const { readFile } = await import('node:fs/promises');
   const { runInNewContext } = await import('node:vm');
   const { CARD_FIELD_SOURCE } = await import('../pc/browser-worker.mjs');
-  const native = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
+  const native = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
   const card = runInNewContext(`(${CARD_FIELD_SOURCE})`);
   const element = (id = '', autocomplete = '', value = '') => ({ tagName: 'INPUT', id, name: '', placeholder: '', value, getAttribute: key => key === 'autocomplete' ? autocomplete : '' });
   for (const id of ['cardapio-busca', 'discard-reason', 'scorecard', 'credit-simulator', 'gift-card-code', 'billing-name', 'billing-address']) assert.equal(card(element(id)), '', id);

@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, AccessibilityInfo, Platform } from 'react-native';
-import { MimoView } from './termux';
+import { MimoView } from './native';
 import { Mimo, specFromFace, particleCount, moodFor, airyMinR } from '../lib/mimo.mjs';
 import { paintFrame } from '../lib/mimo-canvas.mjs';
 import { currentTheme } from './theme';

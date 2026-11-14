@@ -104,7 +104,7 @@ internal object BotBrowser {
     thread = Thread({ loop(app) }, "mybots-browser").apply { isDaemon = true; start() }
   }
 
-  /** Same rules as the supervisor: http(s) only, never this phone (the supervisor and Termux listen on loopback). */
+  /** Same rules as the supervisor: http(s) only, never this phone (the supervisor listens on loopback). */
   fun allowed(uri: Uri): Boolean {
     if (uri.scheme !in setOf("http", "https")) return false
     val host = (uri.host ?: return false).lowercase().trim('[', ']')

@@ -17,7 +17,7 @@ O MyBots acha os programas pelo `PATH` do usuário e entende os atalhos `.cmd` q
 ## O que funciona e o que não
 | | Windows |
 |---|---|
-| Janela, bots, conversas, rotinas, sincronização, relé, celular pareado (pelo QR, com o app sozinho ou com Termux) | Sim |
+| Janela, bots, conversas, rotinas, sincronização, relé, celular pareado (pelo QR) | Sim |
 | Codex | Só leitura e sem terminal (não há isolamento no Windows) |
 | Claude Code | Comandos e escrita fora da pasta do bot pedem **cartão de aprovação** |
 | Navegador dos bots | Usa o Chrome (ou o Edge) instalado; o navegador da janela é próprio |

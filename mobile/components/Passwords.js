@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, SectionList, Alert } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
-import { passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete } from '../termux';
+import { passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete } from '../native';
 import { nativeMessage, PrimaryButton } from './shared';
 import { groupPasswords } from '../password-groups.js';
 

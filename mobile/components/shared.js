@@ -7,13 +7,12 @@ import { PermissionsAndroid, Pressable, Text, Animated, Easing, View, ActivityIn
 import { styles } from '../styles';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { formatSize, RichText, FileChip } from '../RichMessage';
-import { embeddedEnabled, copyText, publishShareTargets, termuxAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../termux';
+import { embeddedEnabled, copyText, publishShareTargets, nativeAvailable, notificationAccess, openNotificationAccess, botNotificationStatus, notificationPermission, openNotificationSettings, openAppSettings, passwordsList, passwordSave, passwordDelete, passwordImport, passwordImportDelete, walletCards, walletCardBots, cardEditor, cardDelete, walletRules, walletFreeze, walletRulesEditor, walletPurchases, walletDismiss, widgetStatus, requestWidget, keepAliveStatus, openPowerSettings, setKeepAlive, phoneAccess, openAccessibility, onSpeech, stopListening, microphonePermission, startListening } from '../native';
 import { SvgXml, Svg, Defs, LinearGradient, Stop, Rect as SvgRect, Circle as SvgCircle, Text as SvgText } from 'react-native-svg';
 import { useCameraPermissions, CameraView } from 'expo-camera';
 import { desktop, pwa } from '../desktop';
 import { accountChoices, DEFAULT_ACCOUNT } from '../ai-accounts';
 
-export const DEFAULT_API_URL = (process.env.EXPO_PUBLIC_MYBOTS_API_URL || '').replace(/\/$/, '');
 
 export const COLORS = HUES;
 
@@ -21,7 +20,7 @@ export const COLOR_NAMES = { green: 'Verde', blue: 'Azul', purple: 'Lilás', ora
 
 export const EFFORT_NAMES = { none: 'Sem raciocínio', minimal: 'Mínimo', low: 'Baixo', medium: 'Médio', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo', ultra: 'Ultra' };
 
-export const TERMUX_COMMANDS = { status: 'codex login status', models: 'catálogo de modelos do Codex', reply: 'codex exec / resume (mensagem pela entrada padrão)', recover: 'recuperação da resposta salva', merge: 'juntar as conversas salvas no celular', open: 'abrir o MyBots' };
+export const RUN_COMMANDS = { pair: 'iniciar o MyBots deste celular', merge: 'juntar as conversas salvas no celular', open: 'abrir o MyBots' };
 
 export const nativeMessage = error => String(error?.message || error).split(/Exception: /).pop().trim();
 
@@ -34,11 +33,11 @@ export function safeLog(value) {
     .slice(-12000);
 }
 
-export function formatTermuxLog(log) {
+export function formatRunLog(log) {
   const lines = [
     'MyBots · diagnóstico do celular',
     `Operação: ${log.operation || 'desconhecida'}`,
-    `Comando: ${TERMUX_COMMANDS[log.operation] || log.operation || 'desconhecido'}`,
+    `Comando: ${RUN_COMMANDS[log.operation] || log.operation || 'desconhecido'}`,
     `Horário: ${log.startedAt ? new Date(log.startedAt).toLocaleString('pt-BR') : 'indisponível'}`
   ];
   if (log.exitCode !== undefined) lines.push(`Código de saída: ${log.exitCode}`);
@@ -140,7 +139,7 @@ export function Notice({ text, onRetry, onLogs, loading = false }) {
   </View>;
 }
 
-export function TermuxLogModal({ visible, log, copied, onClose, onCopy }) {
+export function RunLogModal({ visible, log, copied, onClose, onCopy }) {
   if (!log) return null;
   return <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
     <Pressable style={styles.sheetBackdrop} onPress={onClose}>
@@ -151,7 +150,7 @@ export function TermuxLogModal({ visible, log, copied, onClose, onCopy }) {
           <Pressable accessibilityRole="button" accessibilityLabel="Fechar logs" onPress={onClose} style={styles.modalClose}><Text style={styles.modalCloseText}>×</Text></Pressable>
         </View>
         <ScrollView style={styles.logsScroll} contentContainerStyle={styles.logsContent}>
-          <Text selectable style={styles.logsText}>{formatTermuxLog(log)}</Text>
+          <Text selectable style={styles.logsText}>{formatRunLog(log)}</Text>
         </ScrollView>
         <Text style={styles.logsPrivacy}>Chaves e tokens reconhecidos são ocultados. Confira o texto antes de enviar.</Text>
         <PrimaryButton title={copied ? 'Logs copiados ✓' : 'Copiar logs'} onPress={onCopy} />
@@ -996,6 +995,6 @@ export function useLiveCallback(handler) {
 export function ShareTargets() {
   const targets = useStore(selectShareTargets); const key = JSON.stringify(targets);
   // Each shortcut's icon is a still frame of the bot's face, made here and painted natively.
-  useEffect(() => { if (termuxAvailable) publishShareTargets(targets.map(bot => ({ ...bot, still: stillOf(bot, 'idle', { px: 192, dp: 52 }) })))?.catch(() => {}); }, [key]);
+  useEffect(() => { if (nativeAvailable) publishShareTargets(targets.map(bot => ({ ...bot, still: stillOf(bot, 'idle', { px: 192, dp: 52 }) })))?.catch(() => {}); }, [key]);
   return null;
 }

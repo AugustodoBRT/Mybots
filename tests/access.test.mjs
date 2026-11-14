@@ -16,7 +16,7 @@ async function setup(t, access) {
   const sent = [];
   const directory = await mkdtemp(join(tmpdir(), 'mybots-access-'));
   const app = await createSupervisor({ directory, port: 0, codex, approvalMs: 2000, notify: async args => { sent.push(args); return { notified: true }; } });
-  app.tools.device = new Device(app.db, { run: async (command, args, options) => { sent.push({ command, input: options?.input }); return command === 'termux-sms-list' ? '[]' : ''; } });
+  app.tools.device = new Device(app.db, { run: async (command, args, options) => { sent.push({ command, input: options?.input }); return command === 'sms-list' ? '[]' : ''; } });
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const bot = await app.rpc('bot.create', { name: 'Lua', access, ...selection });
   const open = () => {
@@ -42,7 +42,7 @@ test('old per-tool switches and the retired Médio level do not restrict total a
   await run.call('notifications_recent', {});
   await run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
   assert.equal(f.approvals().length, 0);
-  assert.ok(f.sent.some(item => item.command === 'termux-sms-send'));
+  assert.ok(f.sent.some(item => item.command === 'sms-send'));
 });
 
 test('"Acesso total" runs everything without asking, including notifications and SMS', async t => {
@@ -51,7 +51,7 @@ test('"Acesso total" runs everything without asking, including notifications and
   await run.call('sms_send', { number: '+5531999990000', text: 'Oi' });
   await run.call('notifications_recent', {});
   assert.equal(f.approvals().length, 0);
-  assert.ok(f.sent.some(item => item.title === 'Oi') && f.sent.some(item => item.command === 'termux-sms-send'));
+  assert.ok(f.sent.some(item => item.title === 'Oi') && f.sent.some(item => item.command === 'sms-send'));
 });
 
 test('account connector requests direct every bot to its browser', async t => {
@@ -63,7 +63,7 @@ test('account connector requests direct every bot to its browser', async t => {
   }
 });
 
-test('bot notifications go to the MyBots app when it is polling, and fall back to Termux:API otherwise', async t => {
+test('bot notifications go to the MyBots app when it is polling, and are shown directly otherwise', async t => {
   const f = await setup(t, 'full'); const run = f.open();
   const get = path => fetch(`http://127.0.0.1:${f.app.port}${path}`, { headers: { Authorization: 'Bearer ' + f.app.token } });
   // Nobody polled: straight to the fallback.
@@ -77,7 +77,7 @@ test('bot notifications go to the MyBots app when it is polling, and fall back t
   assert.equal(items.length, 1); assert.equal(items[0].title, 'Lua'); assert.equal(items[0].text, 'Prova: Cálculo sexta'); assert.equal(items[0].botId, f.bot.id);
   await fetch(`http://127.0.0.1:${f.app.port}/device/outbox/ack`, { method: 'POST', headers: { Authorization: 'Bearer ' + f.app.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [items[0].id] }) });
   assert.deepEqual(await sent, { notified: true, via: 'MyBots' });
-  assert.equal(f.sent.filter(item => item.title === 'Prova').length, 0, 'não duplicou pelo Termux:API');
+  assert.equal(f.sent.filter(item => item.title === 'Prova').length, 0, 'não duplicou');
 });
 
 test('an approval reaches the notification with Aprovar/Recusar, once and only for what is safe to decide there', async t => {
@@ -94,9 +94,9 @@ test('an approval reaches the notification with Aprovar/Recusar, once and only f
   assert.ok(item.approvalId && item.actionHash && item.text.includes('Oi')); assert.equal(item.canReply, undefined);
   await fetch(url('/device/outbox/ack'), { method: 'POST', headers: auth, body: JSON.stringify({ ids: [item.id] }) });
   assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: 'errado' })).status, 400, 'hash diferente: nada executa');
-  assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 0);
+  assert.equal(f.sent.filter(entry => entry.command === 'sms-send').length, 0);
   assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: item.actionHash })).status, 200);
-  await sms; assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
+  await sms; assert.equal(f.sent.filter(entry => entry.command === 'sms-send').length, 1);
   assert.equal((await act({ type: 'approve', approvalId: item.approvalId, actionHash: item.actionHash })).status, 400, 'não vale duas vezes');
   // Recusar leaves the action undone, and the card is dismissed on the phone.
   const second = f.app.tools.ask(context, 'sms.send', { number: '+5531999990000', text: 'Outro' }, 'second-action', null, null);
@@ -104,7 +104,7 @@ test('an approval reaches the notification with Aprovar/Recusar, once and only f
   for (let i = 0; i < 6 && !next; i++) { for (const entry of await take()) { if (entry.approvalId) next = entry; if (entry.dismiss) dismissed.push(entry); } }
   assert.ok(next, 'o segundo cartão chegou');
   assert.equal((await act({ type: 'reject', approvalId: next.approvalId, actionHash: next.actionHash })).status, 200);
-  assert.equal(await second, false); assert.equal(f.sent.filter(entry => entry.command === 'termux-sms-send').length, 1);
+  assert.equal(await second, false); assert.equal(f.sent.filter(entry => entry.command === 'sms-send').length, 1);
   for (let i = 0; i < 6 && !dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId); i++) dismissed.push(...(await take()).filter(entry => entry.dismiss));
   assert.ok(dismissed.some(entry => entry.tag === 'mybots-approval-' + next.approvalId), 'o aviso sai da tela');
 });
@@ -112,7 +112,7 @@ test('an approval reaches the notification with Aprovar/Recusar, once and only f
 test('payment, password and code approvals never take a button on the notification', async t => {
   const f = await setup(t, 'ask');
   const { noticeable } = await import('../supervisor/tools.mjs');
-  for (const tool of ['wallet/pay', 'browser/login', 'phone.fill_code', 'phone/act', 'termux', 'skill.propose', 'browser/upload', 'desktop/type', 'negotiation_close']) assert.equal(noticeable(tool, 'x'), false, tool);
+  for (const tool of ['wallet/pay', 'browser/login', 'phone.fill_code', 'phone/act', 'shell', 'skill.propose', 'browser/upload', 'desktop/type', 'negotiation_close']) assert.equal(noticeable(tool, 'x'), false, tool);
   assert.equal(noticeable('sms.send', 'x'), true); assert.equal(noticeable('x.y', '', { a: 1 }), false, 'argumentos que o aviso não mostra abrem o app'); assert.equal(noticeable('notifications.recent', '', {}), true); assert.equal(noticeable('sms.send', 'x'.repeat(601)), false, 'texto longo abre o app');
   // Even with a valid hash, the endpoint refuses what only the app may decide.
   const id = randomUUID();

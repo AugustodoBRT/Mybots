@@ -84,7 +84,7 @@ test('bots keep responding without a PC, move automatically when it connects, an
   await f.app.rpc('bot.update', { botId: bot.id, googleAccount: 'faculdade@example.com' });
   const first = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Veja meus e-mails' });
   await until(() => f.app.db.task(first.taskId).state === 'done');
-  assert.equal(f.turns[0].tools.connectors, false); assert.equal(f.turns[0].tools.termux, true);
+  assert.equal(f.turns[0].tools.connectors, false); assert.equal(f.turns[0].tools.phoneShell, true);
   assert.match(f.turns[0].prompt, /faculdade@example.com/); assert.match(f.turns[0].prompt, /browser_open/);
   f.app.nodes.connect({ id: 'pc', connections: { codex: { loggedIn: true } }, execute: f.execute });
   const second = await f.app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Continue' });

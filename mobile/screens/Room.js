@@ -4,7 +4,7 @@ import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
 import { useLiveCallback, useStickyScroll, nativeMessage, IconButton, RoomFaces, Dots, EarlierButton, ApprovalCard, Avatar, offline, HUE_OF, ToEndButton, Composer } from '../components/shared';
 import { useEffect, useRef, useState } from 'react';
-import { pickFile } from '../termux';
+import { pickFile } from '../native';
 import { reportOpen } from '../components/Report';
 import { FlatList, View, Text, ScrollView, Pressable } from 'react-native';
 import { styles } from '../styles';

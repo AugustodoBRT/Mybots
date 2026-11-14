@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserSession } from '../pc/browser-worker.mjs';
 
-const field = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-field.js', import.meta.url), 'utf8');
-const fill = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-fill.js', import.meta.url), 'utf8').trim().replace('__MYBOTS_CARD_FIELD__', field.trim());
-const observer = readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/card-observer.js', import.meta.url), 'utf8').replace('__MYBOTS_CARD_FIELD__', field).replace('__MYBOTS_CARD_FILL__', fill);
+const field = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-field.js', import.meta.url), 'utf8');
+const fill = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-fill.js', import.meta.url), 'utf8').trim().replace('__MYBOTS_CARD_FIELD__', field.trim());
+const observer = readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/card-observer.js', import.meta.url), 'utf8').replace('__MYBOTS_CARD_FIELD__', field).replace('__MYBOTS_CARD_FILL__', fill);
 
 test('WebView card observer remembers true fields through edits/removal and ignores ordinary inputs', { skip: !existsSync('/usr/bin/google-chrome-stable') }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mybots-card-observer-'));

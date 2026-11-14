@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, View, ScrollView, Text, Pressable, TextInput, Switch, useWindowDimensions } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
-import { embeddedEnabled, embeddedSupported, termuxAvailable, passwordsList } from '../termux';
+import { embeddedEnabled, embeddedSupported, nativeAvailable, passwordsList } from '../native';
 import { desktop } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
@@ -92,8 +92,8 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
   const { data, mode } = a; const phone = mode === 'phone';
   const [page, setPage] = useState(null); const [query, setQuery] = useState(''); const [passwords, setPasswords] = useState(null);
   useEffect(() => { if (!visible) { setPage(null); setQuery(''); } }, [visible]);
-  useEffect(() => { if (visible && (termuxAvailable || desktop)) passwordsList().then(setPasswords).catch(() => setPasswords(null)); }, [visible, page]);
-  const remote = a.backend === 'pc';   // the phone without Termux: the computer's MyBots is the backend
+  useEffect(() => { if (visible && (nativeAvailable || desktop)) passwordsList().then(setPasswords).catch(() => setPasswords(null)); }, [visible, page]);
+  const remote = a.backend === 'pc';   // the phone uses the computer's MyBots as its backend
   const bots = (data?.bots || []).filter(bot => !bot.deletedAt);
   const computers = data?.nodes?.filter(node => node.online)?.length || 0;
   const solid = useFaces3d();
@@ -106,7 +106,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'qr'] }] : []),
     // Asks the supervisor where it really runs: the switch alone can be on while the app is still connecting.
     ...(!desktop && embeddedSupported() && data?.device !== 'Neste celular' ? [{ key: 'embedded', icon: 'phone', title: 'Usar só neste celular', summary: 'Tudo dentro do app, sem depender do computador', keywords: ['sozinho', 'sem computador', 'celular', 'offline'] }] : []),
-    ...(termuxAvailable || desktop ? [{ key: 'secrets', icon: 'key', title: desktop ? 'Senhas' : 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : desktop ? 'Senhas de sites, as mesmas do celular' : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
+    ...(nativeAvailable || desktop ? [{ key: 'secrets', icon: 'key', title: desktop ? 'Senhas' : 'Senhas e carteira', summary: passwords ? passwordSummary(passwords, bots) : desktop ? 'Senhas de sites, as mesmas do celular' : 'Senhas de sites e cartões', keywords: ['cartão', 'cartões', 'pagamento', 'compras', 'limites', 'cofre', 'login', 'importar'] }] : []),
     ...(!desktop && !remote ? [{ key: 'backup', icon: 'download', title: 'Backup e diagnóstico', summary: 'Cópias do estado e informações do aparelho', keywords: ['restaurar', 'salvar', 'diagnóstico', 'copiar'] }] : []),
     { key: 'report', icon: 'alert', title: 'Reportar', summary: 'Conte um problema ou peça uma melhoria', keywords: ['problema', 'bug', 'erro', 'defeito', 'sugestão', 'melhoria', 'ideia', 'pedido', 'feedback', 'relato', 'foto', 'print'] },
     { key: 'about', icon: 'info', title: 'Sobre', summary: `MyBots ${a.update?.info?.currentName || ''}${a.update?.info?.available ? ' · atualização disponível' : ''}`.trim(), keywords: ['versão', 'atualização', 'atualizar', 'novidades', 'privacidade'] }
@@ -138,7 +138,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     if (key === 'phone') return desktop ? <><DesktopPair call={a.call} />
       <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>
       : remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, use Ajustes → Usar só neste celular.</Text></View>
-      : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{termuxAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
+      : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{nativeAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
     if (key === 'computer' && remote) return <><RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />{computers ? <PcUpdate call={a.call} /> : null}</>;
     if (key === 'controls') return <ControlsPage call={a.call} reload={a.reload} bots={bots} budgets={data?.budgets || {}} usage={data?.usage} />;
     if (key === 'embedded') return <>
@@ -178,7 +178,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     </>;
     if (key === 'about') return <>
       {desktop ? <DesktopUpdate full /> : null}
-      {termuxAvailable ? (a.update?.info?.available ? <UpdateCard compact update={a.update} onInstall={a.installUpdate} />
+      {nativeAvailable ? (a.update?.info?.available ? <UpdateCard compact update={a.update} onInstall={a.installUpdate} />
         : <View style={[styles.modeOption, styles.rowOption]}>
           <View style={styles.rowIcon}><Icon name="check" size={19} color={C.good} /></View>
           <View style={{ flex: 1 }}><Text style={styles.optionLabel}>MyBots {a.update?.info?.currentName || ''}</Text>

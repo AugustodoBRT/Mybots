@@ -26,7 +26,7 @@ export async function pdfRead({ data, firstPage = 1, maxPages = 20 } = {}) {
         text.push({ page: number, text: content.items.map(item => (item.str ?? '') + (item.hasEOL ? '\n' : '')).join('').replace(/[ \t]+\n/g, '\n').trim() });
         page.cleanup();
       }
-      if (text.every(item => !item.text)) throw new Error('Este PDF não tem texto selecionável (parece escaneado, só imagens). No computador ainda não consigo ver as páginas como imagem: peça à pessoa o conteúdo em texto, ou para abrir o PDF no celular com o Termux ativado.');
+      if (text.every(item => !item.text)) throw new Error('Este PDF não tem texto selecionável (parece escaneado, só imagens). No computador ainda não consigo ver as páginas como imagem: peça à pessoa o conteúdo em texto, ou para abrir o PDF com um bot que rode no celular.');
       return { pages, text, images: [] };
     } finally { try { await pdf.destroy(); } catch {} }
   })();
@@ -37,5 +37,5 @@ export async function pdfRead({ data, firstPage = 1, maxPages = 20 } = {}) {
 
 /** Creating a PDF needs a browser to print the page; the computer does not do it yet, and says what to do instead. */
 export async function pdfCreate() {
-  throw new Error('Criar PDF ainda não está disponível no computador. Crie o arquivo em outro formato (Word, planilha ou HTML) ou peça pelo app do celular com o Termux ativado.');
+  throw new Error('Criar PDF ainda não está disponível no computador. Crie o arquivo em outro formato (Word, planilha ou HTML) ou peça a um bot que rode no celular.');
 }

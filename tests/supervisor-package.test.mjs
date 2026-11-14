@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { generateKeyPairSync, privateDecrypt, createHash } from 'node:crypto';
 
-test('packaged bootstrap runs its own tests and returns only an encrypted pairing token', async t => {
+test('packaged bootstrap starts the supervisor and returns only an encrypted pairing token', async t => {
   const home = await mkdtemp(join(tmpdir(), 'mybots-bootstrap-'));
   const root = join(home, '.mybots'); let credentials;
   t.after(async () => {
@@ -19,14 +19,13 @@ test('packaged bootstrap runs its own tests and returns only an encrypted pairin
     }
     await rm(home, { recursive: true, force: true });
   });
-  const archive = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz', import.meta.url));
+  const archive = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-supervisor.tgz', import.meta.url));
   const hash = createHash('sha256').update(archive).digest('hex');
-  const script = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-pair.sh', import.meta.url), 'utf8');
+  const script = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-pair.sh', import.meta.url), 'utf8');
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const publicText = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
-  await writeFile(join(home, 'codex'), '#!/bin/sh\nprintf "codex test help\\n"\n', { mode: 0o700 });
-  // Packages above one RUN_COMMAND are staged with the app's real part script (taken from the Kotlin source), then joined by the pair script.
-  const kotlin = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/TermuxBridgeModule.kt', import.meta.url), 'utf8');
+  // Large packages are staged with the app's real part script (taken from the Kotlin source), then joined by the pair script.
+  const kotlin = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/MyBotsNativeModule.kt', import.meta.url), 'utf8');
   const partScript = kotlin.split('PAIR_PART_SCRIPT = """')[1].split('""".trimIndent()')[0].split('\n').map(line => line.replace(/^ {6}/, '')).join('\n').replaceAll("${'$'}", '$');
   const PART = Number(kotlin.match(/PAIR_PART = ([0-9_]+)/)[1].replaceAll('_', ''));
   const runBash = (args, input) => new Promise((resolve, reject) => {
@@ -58,7 +57,7 @@ test('packaged bootstrap runs its own tests and returns only an encrypted pairin
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => stdout += chunk); child.stderr.on('data', chunk => stderr += chunk);
     child.on('error', reject); child.on('close', code => resolve({ code, stdout, stderr }));
-    // Like Termux without a stdin extra: the pipe stays open, so reading it would hang.
+    // Nothing is sent on stdin and the pipe stays open, so reading it would hang.
     child.on('close', () => child.stdin.destroy());
   });
   assert.equal(result.code, 0, result.stderr);
@@ -70,14 +69,12 @@ test('packaged bootstrap runs its own tests and returns only an encrypted pairin
   assert.equal(token, await readFile(join(root, 'token'), 'utf8'));
   assert.ok(!result.stdout.includes(token)); assert.ok(!result.stderr.includes(token));
   assert.equal(envelope.token, undefined);
-  const testReport = await readFile(join(root, 'testes-supervisor.txt'), 'utf8');
-  assert.match(testReport, /pass [1-9][0-9]*/); assert.match(testReport, /fail 0/);
   assert.ok((await readFile(join(root, 'ambiente-supervisor.txt'), 'utf8')).includes('SQLite nativo disponível'));
-  // The keep-alive service restarts a stopped supervisor with the installed release, without stdin (like Termux) or a new install.
+  // The keep-alive service restarts a stopped supervisor with the installed release, without stdin or a new install.
   await fetch(`http://127.0.0.1:${credentials.port}/shutdown`, { method: 'POST', headers: { Authorization: `Bearer ${credentials.token}` } });
   for (let i = 0; i < 200; i++) { try { await readFile(join(root, 'supervisor.lock')); } catch { break; } await new Promise(resolve => setTimeout(resolve, 20)); }
   await assert.rejects(fetch(`http://127.0.0.1:${credentials.port}/health`));
-  const restartScript = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-restart.sh', import.meta.url), 'utf8');
+  const restartScript = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-restart.sh', import.meta.url), 'utf8');
   const restart = (release, env = {}) => new Promise((resolve, reject) => {
     const child = spawn('/bin/bash', ['-c', restartScript, 'mybots', release, publicText, 'sha256'], { env: { ...environment, HOME: home, MYBOTS_PORT: '0', PATH: `${home}:${process.env.PATH}`, ...env } });
     let stdout = '', stderr = '';
@@ -108,8 +105,8 @@ test('missing SQLite and failed runtime preparation never migrate or overwrite t
   t.after(() => rm(home, { recursive: true, force: true }));
   const original = join(home, 'mybots-local.json'); const bytes = '{"schema":1,"bots":[]}'; await writeFile(original, bytes);
   for (const binary of ['node','pkg']) await writeFile(join(home, binary), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
-  const script = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-pair.sh', import.meta.url), 'utf8');
-  const archive = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz', import.meta.url));
+  const script = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-pair.sh', import.meta.url), 'utf8');
+  const archive = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/assets/mybots-supervisor.tgz', import.meta.url));
   const { NODE_TEST_CONTEXT, ...environment } = process.env;
   const code = await new Promise((resolve, reject) => {
     const child = spawn('/bin/bash', ['-c', script, 'mybots', createHash('sha256').update(archive).digest('hex'), '', 'unused', 'sha256'], {

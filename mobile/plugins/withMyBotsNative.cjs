@@ -1,12 +1,9 @@
 const { withAndroidManifest } = require('expo/config-plugins');
 
-module.exports = function withTermuxBridge(config) {
+module.exports = function withMyBotsNative(config) {
   return withAndroidManifest(config, config => {
     const manifest = config.modResults.manifest;
     manifest['uses-permission'] ||= [];
-    if (!manifest['uses-permission'].some(item => item.$['android:name'] === 'com.termux.permission.RUN_COMMAND')) {
-      manifest['uses-permission'].push({ $: { 'android:name': 'com.termux.permission.RUN_COMMAND' } });
-    }
     // Screen-off work: foreground service, exact alarms for routines, restart after boot, wake lock while a bot works.
     for (const [name, extra] of [['android.permission.ACCESS_NETWORK_STATE'], ['android.permission.FOREGROUND_SERVICE'], ['android.permission.FOREGROUND_SERVICE_SPECIAL_USE'], ['android.permission.WAKE_LOCK'],
       ['android.permission.RECEIVE_BOOT_COMPLETED'], ['android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'], ['android.permission.USE_EXACT_ALARM'],
@@ -20,10 +17,6 @@ module.exports = function withTermuxBridge(config) {
     if (!queries) {
       queries = {};
       manifest.queries.push(queries);
-    }
-    queries.package ||= [];
-    if (!queries.package.some(entry => entry.$['android:name'] === 'com.termux')) {
-      queries.package.push({ $: { 'android:name': 'com.termux' } });
     }
     // Lets notification events name the app ("Gmail") instead of its package on Android 11+.
     queries.intent ||= [];
@@ -49,13 +42,6 @@ module.exports = function withTermuxBridge(config) {
     delete application.$['android:usesCleartextTraffic'];
     application.$['android:networkSecurityConfig'] = '@xml/network_security_config';
     application.receiver ||= [];
-    if (!application.receiver.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.TermuxResultReceiver')) {
-      application.receiver.push({ $: {
-        'android:name': 'expo.modules.termuxbridge.TermuxResultReceiver',
-        'android:enabled': 'true',
-        'android:exported': 'false'
-      } });
-    }
     application.service ||= [];
     // Forwards every notification to the supervisor once the person grants notification access.
     if (!application.service.some(item => item.$['android:name'] === 'expo.modules.termuxbridge.MyBotsNotificationListener')) {

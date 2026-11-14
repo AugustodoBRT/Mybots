@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Seus bots pessoais, começando por uma conversa.",
   "scripts": {
-    "start": "node server.mjs",
+    "start": "node pc/node.mjs",
     "test": "node scripts/package-connectors.mjs && node scripts/package-supervisor.mjs && node scripts/mimo-data.mjs && node --test tests/*.test.mjs"
   },
   "engines": { "node": ">=22.13" }

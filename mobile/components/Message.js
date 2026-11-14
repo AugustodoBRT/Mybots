@@ -8,7 +8,7 @@ import { claudeName, findModel, EFFORT_NAMES, Avatar, tokensLabel } from './shar
 import { FileChip, FileCard, RichText } from '../RichMessage';
 import { ImageBubble } from './ImageBubble';
 import { isPicture } from '../attachment-images';
-import { copyText } from '../termux';
+import { copyText } from '../native';
 
 /** On the computer, a quiet button that copies the message; it shows while the pointer is over the message. */
 function CopyButton({ text }) {

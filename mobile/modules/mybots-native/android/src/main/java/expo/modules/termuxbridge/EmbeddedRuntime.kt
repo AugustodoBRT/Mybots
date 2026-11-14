@@ -15,9 +15,9 @@ import java.util.zip.GZIPInputStream
 import kotlin.concurrent.thread
 
 /**
- * The phone's own MyBots without Termux: the APK carries a small Linux (Alpine, assets/mybots-runtime.tgz) and PRoot, and the same
+ * The phone's own MyBots: the APK carries a small Linux (Alpine, assets/mybots-runtime.tgz) and PRoot, and the same
  * supervisor and AI command-line tools run inside it. Android only lets an app execute files from its nativeLibraryDir, which is
- * why PRoot travels as lib*.so. What the app answers to the JS side has the exact shape of a Termux RUN_COMMAND result.
+ * why PRoot travels as lib*.so. What the app answers to the JS side is { exitCode, stdout, stderr }.
  *
  * rootfs/ is replaced when the APK brings a new one; home/ (the supervisor's data, the AIs and their logins, /root inside) never is.
  */
@@ -95,12 +95,11 @@ internal object EmbeddedRuntime {
     "PROOT_TMP_DIR" to File(base(context), "tmp").path,
     "HOME" to "/root", "PATH" to PATH, "LANG" to "C.UTF-8", "TMPDIR" to "/tmp", "TERM" to "xterm-256color",
     "TZ" to TimeZone.getDefault().id, "MYBOTS_EMBEDDED" to "1", "MYBOTS_DEVICE_KIND" to "phone",
-    // A Termux supervisor on this phone keeps 3219: loopback is shared between apps.
+    // Loopback is shared between apps: 3229 stays clear of the port other tools commonly take (3219).
     "MYBOTS_PORT" to "3229"
   )
 
-  /** Termux's programs, as the shared command builders name them, become the ones inside the embedded Linux. */
-  private fun inside(value: String) = if (value == TERMUX_BASH) "/bin/bash" else value
+  private fun inside(value: String) = value
 
   /**
    * Runs one command in the embedded Linux and answers once. With [detach], the answer comes as soon as the command prints its JSON line:
@@ -117,8 +116,8 @@ internal object EmbeddedRuntime {
       try {
         installRootfs(context)
         writeResolver(context)
-        // Termux's commands come wrapped in `timeout <limit>`; here the timer below does that, and PRoot reports the exit code of whichever process ended last.
-        val wrapped = program == TERMUX_TIMEOUT
+        // Commands come wrapped in `timeout <limit>`; the timer below does that, and PRoot reports the exit code of whichever process ended last.
+        val wrapped = program == RUNTIME_TIMEOUT
         val runner = if (wrapped) args[1] else program
         val rest = (if (wrapped) args.drop(2) else args.toList()).map(::inside)
         val builder = ProcessBuilder(command(context, inside(runner), rest))

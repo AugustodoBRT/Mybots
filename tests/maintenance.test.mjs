@@ -5,8 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { deleteLocalBot, mergeBotLists, validateBackup } from '../mobile/local.js';
-import { createTermuxBackup } from '../mobile/backup.js';
-import { readTermuxJson } from '../mobile/termux-data.js';
 const ID = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const MESSAGE = '0199a213-81c0-7800-8aa1-bbab2a035a54';
 const now = '2026-10-19T12:00:00.000Z';
@@ -43,27 +41,3 @@ test('backup validation accepts skills that are folders of the computer', () => 
   assert.throws(() => validateBackup({ schema: 1, bots: [{ ...bot(), skills: ['nao-e-id'] }] }), /Perfil inválido/);
 });
 
-test('Termux backup is private, date named and restores long Unicode text byte for byte', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'mybots-backup-'));
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const script = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-maintenance.sh', import.meta.url), 'utf8');
-  const run = (operation, payload = {}) => new Promise((resolve, reject) => {
-    const args = operation === 'backupPart' ? [payload.requestId, String(payload.index)] : operation === 'backupFinish' ? [payload.requestId, String(payload.count)] : operation === 'backupRead' ? [payload.name, String(payload.offset)] : [];
-    const child = spawn('/bin/bash', ['-c', script, 'mybots', operation, ...args], { env: { ...process.env, HOME: directory, LC_ALL: 'C.UTF-8' } });
-    let stdout = '', stderr = '';
-    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-    child.stdout.on('data', chunk => stdout += chunk);
-    child.stderr.on('data', chunk => stderr += chunk);
-    child.on('error', reject);
-    child.on('close', exitCode => resolve({ exitCode, stdout, stderr }));
-    child.stdin.end(payload.chunk || '');
-  });
-  const original = { schema: 1, mode: 'phone', bots: [bot()] };
-  const backup = await createTermuxBackup(run, original);
-  assert.match(backup.name, /^mybots-\d{8}T\d{6}Z-/);
-  assert.equal((await stat(backup.path)).mode & 0o777, 0o600);
-  assert.deepEqual(JSON.parse((await run('backupList')).stdout), [backup.name]);
-  const restored = validateBackup(await readTermuxJson(run, 'backupRead', { name: backup.name }));
-  assert.deepEqual(restored, original);
-  assert.equal((await run('backupRead', { name: '../escape.json', offset: 0 })).exitCode, 1);
-});

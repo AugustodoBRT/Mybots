@@ -167,10 +167,10 @@ test('computer: the checkout\'s own total, the card in the page and in the proce
 });
 
 test('the card-fill code is one file for the computer and the phone, and the phone\'s frames fill only through the app', async () => {
-  const assets = new URL('../mobile/modules/termux-bridge/android/src/main/assets/', import.meta.url);
+  const assets = new URL('../mobile/modules/mybots-native/android/src/main/assets/', import.meta.url);
   const observer = await readFile(new URL('card-observer.js', assets), 'utf8');
   assert.match(observer, /__MYBOTS_CARD_FILL__/); assert.match(observer, /window !== window\.top/);
-  const native = await readFile(new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
+  const native = await readFile(new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/BotBrowser.kt', import.meta.url), 'utf8');
   assert.match(native, /asset\(context, "card-fill\.js"\)/); assert.match(native, /asset\(context, "checkout-total\.js"\)/);
   assert.match(native, /WalletPay\.authorize\(/);
   // The card is known to the redaction before it is typed, and the rules are checked again just before and after.

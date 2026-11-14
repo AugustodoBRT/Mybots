@@ -1,6 +1,5 @@
 package expo.modules.termuxbridge
 
-import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -26,39 +25,17 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
-private data class TermuxCommand(val path: String, val args: Array<String>, val stdin: String?, val timeoutMs: Long)
+private data class RuntimeCommand(val path: String, val args: Array<String>, val stdin: String?, val timeoutMs: Long)
 
-internal const val TERMUX_PACKAGE = "com.termux"
-internal const val RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND"
-private const val TERMUX_PREFIX = "/data/data/com.termux/files/usr"
-internal const val TERMUX_BASH = "$TERMUX_PREFIX/bin/bash"
-internal const val TERMUX_TIMEOUT = "$TERMUX_PREFIX/bin/timeout"
+// How the command builders name the programs of the phone's own Linux (EmbeddedRuntime runs them).
+internal const val RUNTIME_BASH = "/bin/bash"
+// A command wrapped in `timeout <limit>`: EmbeddedRuntime enforces the limit with its own timer.
+internal const val RUNTIME_TIMEOUT = "timeout"
 
-internal fun runCommandIntent(path: String, args: Array<String>, stdin: String?, result: PendingIntent, label: String) = Intent().apply {
-  component = ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
-  action = "com.termux.RUN_COMMAND"
-  putExtra("com.termux.RUN_COMMAND_PATH", path)
-  putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args)
-  putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-  putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-  putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0")
-  putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", result)
-  putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", label)
-  stdin?.let { putExtra("com.termux.RUN_COMMAND_STDIN", it) }
-}
-
-// A plain startService is refused while MyBots is in the background (screen off, app minimized);
-// Termux's RunCommandService promotes itself to the foreground, as its docs require for this call.
-internal fun startTermux(context: Context, intent: Intent) {
-  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
-}
-
-class TermuxBridgeModule : Module() {
+class MyBotsNativeModule : Module() {
   override fun definition() = ModuleDefinition {
-    Name("TermuxBridge")
+    Name("MyBotsNative")
     Events("onSpeech", "onOpenBot", "onShare", "onUpdate", "onPasswordOffer", "onRuntimeTerminal")
 
     // Tapping a bot notification opens MyBots on that bot; the app may be closed (launch intent) or running (new intent).
@@ -164,7 +141,7 @@ class TermuxBridgeModule : Module() {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       try { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) } catch (_: Exception) { false }
     }
-    // Only for the app talking to the computer over the encrypted channel (no Termux): the vault's whole state out, the computer's in.
+    // Only for the app talking to the computer over the encrypted channel: the vault's whole state out, the computer's in.
     AsyncFunction("passwordsSyncState") { PasswordVault.syncState(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")).toString() }
     AsyncFunction("passwordsSyncMerge") { json: String -> PasswordVault.syncMerge(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), org.json.JSONObject(json)).toString() }
     AsyncFunction("passwordDelete") { id: String -> PasswordVault.delete(appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto."), id) }
@@ -317,7 +294,7 @@ class TermuxBridgeModule : Module() {
       mapOf("port" to port, "token" to token, "release" to release)
     }
 
-    // The link to the computer for a phone that uses the app without Termux: where it is, its id and the pairing secret.
+    // The link to the computer for a phone that uses the computer's MyBots: where it is, its id and the pairing secret.
     // Kept in the same encrypted store as the supervisor's pairing (Android Keystore), and left out of backups.
     AsyncFunction("readPcLink") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
@@ -343,7 +320,7 @@ class TermuxBridgeModule : Module() {
     }
 
     // Key for the supervisor's encrypted secrets. It never leaves the app except over the authenticated
-    // local WebSocket, so a Termux file alone cannot reveal the e-mail password.
+    // local WebSocket, so a file of the phone's Linux alone cannot reveal the e-mail password.
     AsyncFunction("secretsKey") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       val saved = pairingPreferences(context)
@@ -583,7 +560,7 @@ class TermuxBridgeModule : Module() {
       PhoneControl.immediate(context.applicationContext, org.json.JSONObject().put("op", "phoneStop").put("args", org.json.JSONObject()))
       true
     }
-    // Who is on the Livre level, kept by the app (out of Termux's reach) and compared with the supervisor's copy.
+    // Who is on the Livre level, kept by the app (out of the phone's Linux reach) and compared with the supervisor's copy.
     AsyncFunction("freeGuard") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       mapOf("bots" to FreeGuard.bots(context).toList(), "ask" to FreeGuard.ask(context), "warned" to FreeGuard.warned(context))
@@ -607,26 +584,12 @@ class TermuxBridgeModule : Module() {
 
     AsyncFunction("deviceInfo") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
-      @Suppress("DEPRECATION")
-      val termux = context.packageManager.getPackageInfo(TERMUX_PACKAGE, 0)
-      "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\nSistema: ${Build.VERSION.INCREMENTAL}\nTermux: ${termux.versionName}"
-    }
-
-    // termux-api commands hang (no error) when the Termux:API app is missing or signed by another source
-    // than Termux (F-Droid vs GitHub/Play): Android only lets the two talk when the signatures match.
-    AsyncFunction("termuxApiStatus") {
-      val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
-      val manager = context.packageManager
-      val api = try { @Suppress("DEPRECATION") manager.getPackageInfo("com.termux.api", 0) } catch (_: Exception) { null }
-      if (api == null) mapOf("installed" to false) else mapOf(
-        "installed" to true, "version" to (api.versionName ?: ""),
-        "sameSigner" to (manager.checkSignatures(TERMUX_PACKAGE, "com.termux.api") == PackageManager.SIGNATURE_MATCH),
-        "enabled" to (api.applicationInfo?.enabled != false))
+      "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\nSistema: ${Build.VERSION.INCREMENTAL}"
     }
 
     AsyncFunction("openAppSettings") { packageName: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
-      if (packageName !in setOf(TERMUX_PACKAGE, "com.termux.api", context.packageName)) throw IllegalArgumentException("App inválido.")
+      if (packageName != context.packageName) throw IllegalArgumentException("App inválido.")
       context.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
       true
     }
@@ -655,7 +618,7 @@ class TermuxBridgeModule : Module() {
       if (value.length > 50_000) throw IllegalArgumentException("Os logs são grandes demais para copiar de uma vez.")
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
       val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-      clipboard.setPrimaryClip(ClipData.newPlainText("MyBots · logs do Termux", value))
+      clipboard.setPrimaryClip(ClipData.newPlainText("MyBots", value))
       true
     }
 
@@ -695,17 +658,17 @@ class TermuxBridgeModule : Module() {
   private fun submit(context: Context, operation: String, payload: Map<String, Any?>, promise: Promise) {
     if (EmbeddedRuntime.enabled(context)) {
       val embedded = try { commandFor(context, operation, payload) } catch (error: Exception) {
-        promise.reject("TERMUX_REQUEST", error.message ?: "Não foi possível preparar o pedido.", error)
+        promise.reject("RUNTIME_REQUEST", error.message ?: "Não foi possível preparar o pedido.", error)
         return
       }
       EmbeddedRuntime.run(context, embedded.path, embedded.args, embedded.stdin, embedded.timeoutMs, operation == "pair") { result -> mainHandler.post { promise.resolve(result) } }
       return
     }
-    // Termux is no longer used: the phone's own MyBots runs inside the app (EmbeddedRuntime) or the computer's is used.
+    // The phone's own MyBots runs inside the app (EmbeddedRuntime); without it, the computer's is used.
     promise.reject("EMBEDDED_OFF", "Ative \"Usar só neste celular\" em Ajustes ou conecte o computador.", null)
   }
 
-  private fun commandFor(context: Context, operation: String, payload: Map<String, Any?>): TermuxCommand {
+  private fun commandFor(context: Context, operation: String, payload: Map<String, Any?>): RuntimeCommand {
     return when (operation) {
       "pair" -> {
         val script = context.assets.open("mybots-pair.sh").bufferedReader().use { it.readText() }
@@ -718,7 +681,7 @@ class TermuxBridgeModule : Module() {
         // Pairing replaces the supervisor; the keep-alive service must not restart the old one meanwhile.
         KeepAlive.holdRestarts(context, 300_000)
         val staged = archive.size > PAIR_PART
-        TermuxCommand(TIMEOUT, arrayOf("240s", BASH, "-lc", script, "mybots", release, backup, key, digest, if (staged) "staged" else "inline"), if (staged) null else Base64.encodeToString(archive, Base64.NO_WRAP), 245_000)
+        RuntimeCommand(TIMEOUT, arrayOf("240s", BASH, "-lc", script, "mybots", release, backup, key, digest, if (staged) "staged" else "inline"), if (staged) null else Base64.encodeToString(archive, Base64.NO_WRAP), 245_000)
       }
       "pairPart" -> {
         val release = context.assets.open("mybots-supervisor.sha256").bufferedReader().use { it.readText().trim() }
@@ -727,74 +690,13 @@ class TermuxBridgeModule : Module() {
         if (index < 0 || index * PAIR_PART >= archive.size) throw IllegalArgumentException("Parte do pacote inválida.")
         val part = archive.copyOfRange(index * PAIR_PART, minOf(archive.size, (index + 1) * PAIR_PART))
         KeepAlive.holdRestarts(context, 300_000)
-        TermuxCommand(TIMEOUT, arrayOf("30s", BASH, "-lc", PAIR_PART_SCRIPT, "mybots", release, index.toString()), Base64.encodeToString(part, Base64.NO_WRAP), 35_000)
+        RuntimeCommand(TIMEOUT, arrayOf("30s", BASH, "-lc", PAIR_PART_SCRIPT, "mybots", release, index.toString()), Base64.encodeToString(part, Base64.NO_WRAP), 35_000)
       }
-      "status" -> TermuxCommand(TIMEOUT, arrayOf("20s", BASH, "-lc", "codex login status"), null, 25_000)
-      "models" -> TermuxCommand(TIMEOUT, arrayOf("35s", BASH, "-lc", MODEL_LIST_SCRIPT), null, 40_000)
-      "reply" -> {
-        val model = payload["model"] as? String ?: throw IllegalArgumentException("Escolha um modelo.")
-        if (!model.matches(Regex("[A-Za-z0-9._/-]{1,120}"))) throw IllegalArgumentException("O modelo escolhido é inválido.")
-        val effort = payload["reasoningEffort"] as? String ?: ""
-        if (effort.isNotEmpty() && effort !in EFFORTS) throw IllegalArgumentException("O nível de raciocínio escolhido é inválido.")
-        val prompt = payload["prompt"] as? String ?: throw IllegalArgumentException("Escreva uma mensagem.")
-        if (prompt.isBlank() || prompt.length > 100_000) throw IllegalArgumentException("A conversa está grande demais para enviar.")
-        val id = validRequestId(payload["requestId"])
-        val session = (payload["codexSessionId"] as? String)?.let { validRequestId(it) } ?: ""
-        val script = context.assets.open("mybots-termux.sh").bufferedReader().use { it.readText() }
-        TermuxCommand(BASH, arrayOf("-lc", script, "mybots", "reply", id, model, effort, session), prompt,
-          if (effort in setOf("max", "ultra")) 680_000 else 260_000)
-      }
-      "recover" -> {
-        val id = validRequestId(payload["requestId"])
-        val offset = (payload["offset"] as? Number)?.toInt() ?: 0
-        if (offset !in 0..20_000_000) throw IllegalArgumentException("Trecho de resposta inválido.")
-        val script = context.assets.open("mybots-termux.sh").bufferedReader().use { it.readText() }
-        TermuxCommand(TIMEOUT, arrayOf("15s", BASH, "-lc", script, "mybots", "recover", id, offset.toString()), null, 20_000)
-      }
-      "backupPart", "backupFinish", "backupList", "backupRead", "environment" -> {
-        val script = context.assets.open("mybots-maintenance.sh").bufferedReader().use { it.readText() }
-        val args = mutableListOf("50s", BASH, "-lc", script, "mybots", operation)
-        var input: String? = null
-        when (operation) {
-          "backupPart", "backupFinish" -> {
-            args.add(validRequestId(payload["requestId"]))
-            if (operation == "backupPart") {
-              input = payload["chunk"] as? String ?: throw IllegalArgumentException("Trecho de backup vazio.")
-              if (input.length > 12_000) throw IllegalArgumentException("Trecho de backup grande demais.")
-              val index = (payload["index"] as? Number)?.toInt() ?: -1
-              if (index !in 0..1999) throw IllegalArgumentException("Índice inválido.")
-              args.add(index.toString())
-            } else {
-              val count = (payload["count"] as? Number)?.toInt() ?: 0
-              if (count !in 1..2000) throw IllegalArgumentException("Quantidade inválida.")
-              args.add(count.toString())
-            }
-          }
-          "backupRead" -> {
-            val name = payload["name"] as? String ?: throw IllegalArgumentException("Escolha um backup.")
-            if (!name.matches(Regex("mybots-[0-9]{8}T[0-9]{6}Z-[0-9a-fA-F-]{36}\\.json"))) throw IllegalArgumentException("Nome de backup inválido.")
-            val offset = (payload["offset"] as? Number)?.toInt() ?: 0
-            if (offset !in 0..20_000_000) throw IllegalArgumentException("Trecho inválido.")
-            args.add(name); args.add(offset.toString())
-          }
-        }
-        TermuxCommand(TIMEOUT, args.toTypedArray(), input, 55_000)
-      }
-      else -> throw IllegalArgumentException("Operação do Termux não permitida.")
+      else -> throw IllegalArgumentException("Operação não permitida.")
     }
-  }
-
-  @Suppress("DEPRECATION")
-  private fun validRequestId(value: Any?): String {
-    val id = value as? String ?: throw IllegalArgumentException("Pedido sem identificador.")
-    if (!id.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) {
-      throw IllegalArgumentException("Identificador de pedido inválido.")
-    }
-    return id
   }
 
   companion object {
-    private const val REQUEST_ID = "mybots.requestId"
     private const val PAIR_PART = 60_000
     private var speech: SpeechRecognizer? = null
     @Volatile private var dictating = false
@@ -819,64 +721,10 @@ class TermuxBridgeModule : Module() {
       base64 -d > "${'$'}dir/${'$'}part.tmp"; mv "${'$'}dir/${'$'}part.tmp" "${'$'}dir/${'$'}part"
       printf '{}\n'
     """.trimIndent()
-    private const val TIMEOUT = TERMUX_TIMEOUT
-    private const val BASH = TERMUX_BASH
-    private val EFFORTS = setOf("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
-    private val requestCodes = AtomicInteger()
-    private val pending = ConcurrentHashMap<String, Promise>()
+    private const val TIMEOUT = RUNTIME_TIMEOUT
+    private const val BASH = RUNTIME_BASH
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    @JvmStatic
-    fun finish(id: String, result: Map<String, Any?>) {
-      mainHandler.post { pending.remove(id)?.resolve(result) }
-    }
 
-    private val MODEL_LIST_SCRIPT = """
-      set -u
-      args=(app-server --listen stdio://)
-      for feature in apps plugins hooks browser_use computer_use multi_agent code_mode_host; do args+=(-c "features.${'$'}feature=false"); done
-      app_pid=""
-      cleanup() { if [ -n "${'$'}app_pid" ]; then kill "${'$'}app_pid" 2>/dev/null || true; wait "${'$'}app_pid" 2>/dev/null || true; fi; }
-      trap cleanup EXIT
-      coproc APP { codex "${'$'}{args[@]}"; }
-      app_in="${'$'}{APP[1]}"
-      app_out="${'$'}{APP[0]}"
-      app_pid="${'$'}APP_PID"
-      printf '%s\n' '{"id":1,"method":"initialize","params":{"clientInfo":{"name":"mybots","title":"MyBots","version":"0.1.0"}}}' >&"${'$'}app_in"
-      id=1
-      while IFS= read -r -t 30 -u "${'$'}app_out" line; do
-        id_pattern="\"id\"[[:space:]]*:[[:space:]]*${'$'}id([,}])"
-        if [[ "${'$'}line" =~ ${'$'}id_pattern ]]; then break; fi
-      done
-      if [[ -z "${'$'}{line:-}" ]] || ! [[ "${'$'}line" =~ ${'$'}id_pattern ]]; then printf '%s\n' 'Codex não respondeu à inicialização do catálogo.' >&2; exit 1; fi
-      if [[ "${'$'}line" == *'"error"'* ]]; then printf '%s\n' 'Codex recusou a inicialização do catálogo.' >&2; exit 1; fi
-      printf '%s\n' '{"method":"initialized","params":{}}' >&"${'$'}app_in"
-      id=2
-      cursor=""
-      page=0
-      while [ "${'$'}page" -lt 20 ]; do
-        if [ -n "${'$'}cursor" ]; then
-          escaped_cursor="${'$'}{cursor//\\/\\\\}"
-          escaped_cursor="${'$'}{escaped_cursor//\"/\\\"}"
-          printf '{"id":%s,"method":"model/list","params":{"limit":100,"includeHidden":false,"cursor":"%s"}}\n' "${'$'}id" "${'$'}escaped_cursor" >&"${'$'}app_in"
-        else
-          printf '{"id":%s,"method":"model/list","params":{"limit":100,"includeHidden":false}}\n' "${'$'}id" >&"${'$'}app_in"
-        fi
-        line=""
-        while IFS= read -r -t 30 -u "${'$'}app_out" line; do
-          id_pattern="\"id\"[[:space:]]*:[[:space:]]*${'$'}id([,}])"
-          if [[ "${'$'}line" =~ ${'$'}id_pattern ]]; then break; fi
-        done
-        if [[ -z "${'$'}{line:-}" ]] || ! [[ "${'$'}line" =~ ${'$'}id_pattern ]]; then printf '%s\n' 'Codex não respondeu à lista de modelos.' >&2; exit 1; fi
-        if [[ "${'$'}line" == *'"error"'* ]] || [[ "${'$'}line" != *'"data"'* ]]; then printf '%s\n' 'Codex não conseguiu carregar os modelos.' >&2; exit 1; fi
-        printf '%s\n' "${'$'}line"
-        if [[ "${'$'}line" != *'"nextCursor"'* ]] || [[ "${'$'}line" =~ \"nextCursor\"[[:space:]]*:[[:space:]]*null ]]; then exit 0; fi
-        if [[ "${'$'}line" =~ \"nextCursor\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then cursor="${'$'}{BASH_REMATCH[1]}"; else printf '%s\n' 'A próxima página do catálogo veio inválida.' >&2; exit 1; fi
-        id=${'$'}((id + 1))
-        page=${'$'}((page + 1))
-      done
-      printf '%s\n' 'O catálogo de modelos excedeu o limite de páginas.' >&2
-      exit 1
-    """.trimIndent()
   }
 }

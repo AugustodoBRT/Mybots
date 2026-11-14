@@ -118,7 +118,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     // `browser` exists by the time a bot asks for anything.
     const device = deviceOption || new Device(db, process.env.MYBOTS_EMBEDDED ? { run: (command, args, options) => browser.deviceApi(command, args, options) } : undefined);
     // Bot notifications go to the MyBots app (its notification listener long-polls /device/outbox) so they
-    // show as MyBots; when the app has not polled recently or does not confirm in time, Termux:API shows them.
+    // show as MyBots; when the app has not polled recently or does not confirm in time, the app shows them directly (DeviceApi).
     const outbox = new Map(); const pollers = new Set(); let lastPoll = 0;
     const flushOutbox = () => {
       if (!outbox.size) return;
@@ -137,7 +137,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       // An open app shows it right away; the listener's long-poll covers the app being closed.
       broadcast('bot.notify', item);
     });
-    const fallback = notify || (process.env.MYBOTS_EMBEDDED ? async ({ title, body }, { id, botId }) => { await browser.deviceApi('termux-notification', [], { notice: { id, title, text: body, ...(botId ? { botId } : {}) } }); return { notified: true }; } : notifyUser);
+    const fallback = notify || (process.env.MYBOTS_EMBEDDED ? async ({ title, body }, { id, botId }) => { await browser.deviceApi('notification', [], { notice: { id, title, text: body, ...(botId ? { botId } : {}) } }); return { notified: true }; } : notifyUser);
     // Notifications show plain text: the bots' replies use Markdown (**bold**, `code`, # titles).
     const plain = value => String(value || '').replace(/\*\*|__|`/g, '').replace(/^#{1,6}\s+/gm, '');
     const deliver = async (raw, options = {}) => {
@@ -333,7 +333,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       answer: async (botId, text) => { try { await refresh(); const bot = db.requireBot(botId); if (statusFor(bot)?.loggedIn) { const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot)); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } } catch {} } }); tools.negotiations = negotiations;
     const nextWake = () => [routines.nextDue(), items.next()].filter(Boolean).sort()[0] || null;
     // A gap in the heartbeats is an interruption: a new instance means the supervisor stopped and started again;
-    // the same instance means the phone suspended Termux (screen off, Doze) and the timers stopped meanwhile.
+    // the same instance means the phone suspended the app (screen off, Doze) and the timers stopped meanwhile.
     let beats = 0;
     const format = value => new Intl.DateTimeFormat('pt-BR', { timeZone: routines.timeZone(), dateStyle: 'short', timeStyle: 'short' }).format(value);
     const heartbeat = () => {
@@ -487,7 +487,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         heartbeat: db.get('SELECT created_at FROM heartbeats ORDER BY id DESC LIMIT 1')?.created_at, lastWake, nextRoutineAt: nextWake(),
         interruptions: db.all("SELECT id,kind,detail,created_at FROM activity WHERE kind IN ('heartbeat_late','supervisor_restarted') ORDER BY id DESC LIMIT 20"),
         email: email.status(), connectors: bundle.status(), secretsLocked: vault.locked, notifications: notificationStats(db),
-        computer: link.status(), sync: syncInfo(), deviceKind: kind, instanceId, release, supervisorConnected: true, device: process.env.MYBOTS_EMBEDDED ? 'Neste celular' : 'Supervisor no Termux' };
+        computer: link.status(), sync: syncInfo(), deviceKind: kind, instanceId, release, supervisorConnected: true, device: process.env.MYBOTS_EMBEDDED ? 'Neste celular' : 'Neste computador' };
     };
     // What the bot's profile screen shows besides the bot itself.
     const profile = botId => {

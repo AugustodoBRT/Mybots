@@ -239,14 +239,12 @@ internal object DeviceFiles {
     when (action) {
       "open" -> {
         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        // Termux accepts any file (to copy it into its home); it is never the app that should open a bot's file.
+        // MyBots itself is never the app that should open a bot's file.
         @Suppress("DEPRECATION")
-        val viewers = context.packageManager.queryIntentActivities(intent, 0).filter { it.activityInfo.packageName !in setOf(TERMUX_PACKAGE, context.packageName) }
+        val viewers = context.packageManager.queryIntentActivities(intent, 0).filter { it.activityInfo.packageName != context.packageName }
         if (viewers.isEmpty()) throw IllegalStateException("Nenhum app deste celular abre este tipo de arquivo. Use Compartilhar ou Salvar.")
         if (viewers.size == 1) context.startActivity(intent.setClassName(viewers[0].activityInfo.packageName, viewers[0].activityInfo.name))
-        else context.startActivity(Intent.createChooser(intent, name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-          .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, context.packageManager.queryIntentActivities(intent, 0).filter { it.activityInfo.packageName == TERMUX_PACKAGE }
-            .map { android.content.ComponentName(it.activityInfo.packageName, it.activityInfo.name) }.toTypedArray()))
+        else context.startActivity(Intent.createChooser(intent, name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION))
       }
       "share" -> {
         val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

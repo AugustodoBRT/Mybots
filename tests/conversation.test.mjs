@@ -6,11 +6,9 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { Codex, chatArguments } from '../lib/codex.mjs';
 import { promptFor } from '../mobile/local.js';
-import { activePhoneBots, createPhoneClient } from '../mobile/phone.js';
 
 const SESSION = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const REQUEST = '0199a213-81c0-7800-8aa1-bbab2a035a54';
-const asset = new URL('../mobile/modules/termux-bridge/android/src/main/assets/mybots-termux.sh', import.meta.url);
 const settings = { model: 'test-model', reasoningEffort: 'low' };
 
 async function fakeCLI(t, replyText = 'Lembro: abacaxi.') {
@@ -64,94 +62,3 @@ test('ten turns use one persistent session and send only the new message on resu
   assert.ok(!chatArguments('/tmp/out', bot).includes('--ephemeral'));
 });
 
-test('Termux Bash resumes ten turns, pages long Unicode replies and ignores duplicate requests', async t => {
-  const expected = 'Aspas " \\ $(comando) `texto` 😀\n\t'.repeat(1000);
-  const { directory } = await fakeCLI(t, expected);
-  const script = await readFile(asset, 'utf8');
-  const raw = (operation, requestId, session, offset = 0, input = '') => new Promise((resolve, reject) => {
-    const child = spawn('/bin/bash', ['-c', script, 'mybots', operation, requestId, operation === 'recover' ? String(offset) : settings.model, settings.reasoningEffort, session], {
-      env: { ...process.env, HOME: directory, PATH: `${directory}:${process.env.PATH}`, LC_ALL: 'C.UTF-8' }
-    });
-    let stdout = '', stderr = '';
-    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-    child.stdout.on('data', chunk => stdout += chunk);
-    child.stderr.on('data', chunk => stderr += chunk);
-    child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve(JSON.parse(stdout)) : reject(new Error(stderr)));
-    child.stdin.end(input);
-  });
-  for (let turn = 0; turn < 10; turn++) {
-    const id = REQUEST.slice(0, -2) + String(turn).padStart(2, '0');
-    await raw('reply', id, turn ? SESSION : '', 0, turn ? `Turno ${turn}` : 'Lembre abacaxi.');
-    let offset = 0, serialized = '';
-    do {
-      const page = await raw('recover', id, '', offset);
-      assert.ok(page.chunk.length < 24001);
-      serialized += page.chunk;
-      offset = page.nextOffset;
-    } while (offset !== null);
-    const response = JSON.parse(serialized);
-    assert.equal(response.text, expected);
-    assert.equal(response.codexSessionId, SESSION);
-    assert.equal(response.status, 'complete');
-    assert.equal((await stat(join(directory, '.mybots', 'responses', `${id}.json`))).mode & 0o777, 0o600);
-    await raw('reply', id, '', 0, 'Duplicada');
-  }
-  assert.equal(JSON.parse(await readFile(join(directory, 'calls.json'), 'utf8')).length, 10);
-  assert.match(await readFile(join(directory, '.mybots', 'environment.txt'), 'utf8'), /codex-test/);
-  const orphan = REQUEST.slice(0, -2) + '99';
-  await writeFile(join(directory, '.mybots', 'responses', `${orphan}.json`), JSON.stringify({ requestId: orphan, status: 'running', pid: 2147483647, deadline: 0 }));
-  await writeFile(join(directory, '.mybots', 'responses', `${orphan}.json.session`), SESSION);
-  const recovered = await raw('recover', orphan, '');
-  const failure = JSON.parse(recovered.chunk);
-  assert.equal(failure.status, 'error');
-  assert.equal(failure.codexSessionId, SESSION);
-});
-
-function phoneFixture(run, write = async () => {}) {
-  let store = { schema: 1, mode: 'phone', bots: [{ id: 'bot', name: 'Lua', instructions: '', ...settings, messages: [] }] };
-  const pagedRun = async (operation, payload) => {
-    const result = await run(operation, payload);
-    return operation === 'recover' ? { ...result, stdout: JSON.stringify({ chunk: result.stdout, nextOffset: null }) } : result;
-  };
-  const dependencies = { read: async () => structuredClone(store), write: async next => { await write(next); store = structuredClone(next); }, run: pagedRun };
-  return { client: createPhoneClient(dependencies), reopen: () => createPhoneClient(dependencies), store: () => store };
-}
-
-test('closing the app mid-reply recovers exactly one response and the same session', async () => {
-  let finish, request;
-  const f = phoneFixture(async (operation, payload) => {
-    if (operation === 'reply') { request = payload; return new Promise(resolve => { finish = resolve; }); }
-    return { exitCode: 0, stdout: JSON.stringify({ requestId: payload.requestId, status: 'complete', text: 'abacaxi', codexSessionId: SESSION, ...settings }) };
-  });
-  const sending = f.client.send('bot', 'Lembre abacaxi.', settings);
-  while (!finish) await new Promise(resolve => setTimeout(resolve, 1));
-  assert.equal(f.store().bots[0].messages[0].requestId, request.requestId);
-  assert.deepEqual(activePhoneBots(f.store()), ['bot']);
-  await f.reopen().recover();
-  await f.reopen().recover();
-  finish({ exitCode: 0 }); await sending;
-  assert.equal(f.store().bots[0].messages.length, 2);
-  assert.equal(f.store().bots[0].codexSessionId, SESSION);
-  assert.deepEqual(activePhoneBots(f.store()), []);
-});
-
-test('failed persistence never invokes Termux', async () => {
-  let called = false;
-  const f = phoneFixture(async () => { called = true; }, async () => { throw new Error('Disco cheio'); });
-  await assert.rejects(f.client.send('bot', 'Oi', settings), /Disco cheio/);
-  assert.equal(called, false);
-});
-
-test('callback timeout is visible, blocks duplicate sending, and still recovers', async () => {
-  const f = phoneFixture(async (operation, payload) => {
-    if (operation === 'reply') throw Object.assign(new Error('Tempo esgotado'), { code: 'TERMUX_TIMEOUT' });
-    return { exitCode: 0, stdout: JSON.stringify({ requestId: payload.requestId, status: 'complete', text: 'Chegou', codexSessionId: SESSION }) };
-  });
-  await assert.rejects(f.client.send('bot', 'Oi', settings), /esgotado/);
-  assert.equal(f.store().bots[0].messages[0].status, 'error');
-  await assert.rejects(f.client.send('bot', 'Duplicada', settings), /Aguarde/);
-  await f.reopen().recover();
-  assert.equal(f.store().bots[0].messages[0].status, 'complete');
-  assert.equal(f.store().bots[0].messages[1].text, 'Chegou');
-});

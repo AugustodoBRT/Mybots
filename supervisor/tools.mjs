@@ -2,7 +2,6 @@ import { VIEWPORTS } from './canvas.mjs';
 import { localDevUrl } from './browser.mjs';
 import { noteTool } from './notes.mjs';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { now, uuid } from './database.mjs';
@@ -33,20 +32,20 @@ const COMPUTER_TOOLS = { Bash: 'shell', Read: 'read', Glob: 'read', Grep: 'read'
 // Commands that change the system or leave the computer: the person always decides, even on Acesso total.
 const RISKY = /(^|[;&|(\s])(sudo|su|doas|pkexec|mkfs\S*|dd|shutdown|reboot|poweroff|systemctl|passwd|chown|crontab)(\s|$)|\brm\s+(-\S*\s+)*(\/|~|\$HOME)(\s|\/?\*?\s*$|$)|\bgit\s+push\b|\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b|>\s*\/dev\/sd/i;
 
-// On the phone's Termux (Livre): the supervisor's own data and code, where a bot's level and the "sempre perguntar" list live.
-const PHONE_PROTECTED = /(^|[\s/~'"=])\.mybots(\/|\s|$|['"])|mybots-supervisor|\.termux\/(boot|termux\.properties)|user_version|grants\b/i;
+// On the phone's Linux (Livre): the supervisor's own data and code, where a bot's level and the "sempre perguntar" list live.
+const PHONE_PROTECTED = /(^|[\s/~'"=])\.mybots(\/|\s|$|['"])|mybots-supervisor|user_version|grants\b/i;
 
 const APPROVAL_TITLES = { 'memory.write': 'Guardar uma lembrança', 'memory.delete': 'Apagar uma lembrança', 'task.create_item': 'Criar uma pendência', 'notify.user': 'Enviar uma notificação', 'sms.send': 'Enviar um SMS',
   'routine.create': 'Criar uma rotina', 'routine.update': 'Alterar uma rotina',
   'computer/shell': 'Rodar um comando no computador', 'computer/write': 'Mexer num arquivo fora da pasta do bot', 'computer/read': 'Ler um arquivo fora da pasta do bot', 'browser/submit': 'Enviar um formulário no navegador', 'browser/upload': 'Enviar um arquivo para um site', 'browser/login': 'Entrar com uma senha salva', 'wallet/pay': 'Pagar com a carteira',
-  'termux': 'Rodar um comando no Termux', 'phone/act': 'Mexer em outro app do celular', 'phone.open_app': 'Abrir um app no celular', 'phone.fill_code': 'Preencher um código de verificação' };
+  'shell': 'Rodar um comando no celular', 'phone/act': 'Mexer em outro app do celular', 'phone.open_app': 'Abrir um app no celular', 'phone.fill_code': 'Preencher um código de verificação' };
 const money = cents => `R$ ${Math.floor(cents / 100).toLocaleString('pt-BR')},${String(cents % 100).padStart(2, '0')}`;
 const BROWSER_LABELS = { 'browser.act': 'Navegador: agir na página', 'browser.tabs': 'Navegador: abas', 'browser.find': 'Navegador: localizar elemento', 'browser.open': 'Navegador: abrir site', 'browser.read': 'Navegador: ler página', 'browser.click': 'Navegador: clicar', 'browser.type': 'Navegador: preencher', 'browser.upload': 'Navegador: anexar arquivo', 'browser.login': 'Navegador: entrar com senha salva', 'browser.pay': 'Navegador: pagar com a carteira',
   'browser.wait': 'Navegador: esperar', 'browser.screenshot': 'Navegador: ver tela', 'browser.ask_user': 'Navegador: pedir ajuda', 'browser.viewport': 'Navegador: mudar o tamanho da página' };
 // What the approval card shows: the concrete effect, in words, without raw JSON for known tools.
 // Decisions that never take a button on a notification: money, passwords and codes, code that gets installed, the shell and
 // files leaving the phone. They open the app, where the whole card is read before deciding. A long summary does too.
-const APP_ONLY = /^(wallet\/|browser\/login|browser\/upload|browser\/chrome|browser\/mine\/|phone[./]|termux|skill\.propose|team\.install_skill|desktop\/|negotiation)/;
+const APP_ONLY = /^(wallet\/|browser\/login|browser\/upload|browser\/chrome|browser\/mine\/|phone[./]|shell$|skill\.propose|team\.install_skill|desktop\/|negotiation)/;
 // A decision with arguments the notice would not show (no summary) opens the app too.
 export const noticeable = (tool, summary = '', args = {}) => !APP_ONLY.test(tool) && String(summary).length <= 600 && (Boolean(summary) || !Object.keys(args || {}).length);
 
@@ -63,22 +62,15 @@ function approvalText(tool, args, app) {
   if (tool === 'wallet/pay') return { title: `Pagar ${money(args.total)} com a carteira`, summary: [`Loja: ${args.store}`, `Itens: ${args.items.join(', ')}`, `Categoria: ${args.category}`, args.card && `Cartão final ${args.card}`, args.page && `Página: ${args.page}`, 'O app confere suas regras e o total da página e preenche o cartão; o bot não vê o cartão.'].filter(Boolean).join('\n') };
   if (tool === 'browser/upload') return { title: APPROVAL_TITLES[tool], summary: [`Arquivo: ${args.name} (${Math.max(1, Math.round(args.size / 1024))} KB)`, args.label && `Campo: ${args.label}`, args.page && `Site: ${args.page}`].filter(Boolean).join('\n') };
   if (tool === 'skill.propose') return { title: 'Instalar uma habilidade no celular', summary: args.summary };
-  if (tool === 'phone/act' || tool === 'phone.open_app' || tool === 'phone.fill_code' || tool === 'termux') return { title: APPROVAL_TITLES[tool], summary: args.summary };
+  if (tool === 'phone/act' || tool === 'phone.open_app' || tool === 'phone.fill_code' || tool === 'shell') return { title: APPROVAL_TITLES[tool], summary: args.summary };
   if (BROWSER_TOOLS.includes(tool)) return { title: 'Usar o navegador', summary: args.url || args.reason || BROWSER_LABELS[tool] };
   // First use of a tool on the Médio level: the card names the tool ("Buscar e-mails"), not a generic action.
   return { title: APPROVAL_TITLES[tool] || TOOL_DEFINITIONS.find(item => item.name === tool)?.label || 'Executar uma ação', summary: Object.values(args).filter(value => typeof value === 'string' && value).join('\n') };
 }
 
-export function notifyUser({ title, body }, { id, botId }) {
-  return new Promise((resolve, reject) => {
-    // Arguments are passed directly to the executable; user text never becomes a shell command. The tap action
-    // only carries a validated bot id, and high priority makes the notice drop down on screen.
-    const open = ['am', 'start', '-n', 'com.mybots.app/.MainActivity', ...(uuid(botId) ? ['--es', 'mybotsBotId', botId] : [])].join(' ');
-    const child = spawn('termux-notification', ['--id', id, '--title', title, '--content', body, '--priority', 'high', '--action', open], { stdio: 'ignore' });
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('O Termux:API não respondeu. No MyBots, abra Ajustes → Notificações do celular → Termux:API e siga o que aparecer (app instalado da mesma fonte do Termux, início automático, notificações).')); }, 10000);
-    child.on('error', () => { clearTimeout(timer); reject(new Error('Instale o Termux:API e o pacote termux-api para receber notificações.')); });
-    child.on('close', code => { clearTimeout(timer); code === 0 ? resolve({ notified: true }) : reject(new Error('O Termux não conseguiu mostrar a notificação. Confira o Termux:API e a permissão de notificações.')); });
-  });
+/** Where nothing else shows notifications (no MyBots app answering): say so instead of failing silently. */
+export function notifyUser() {
+  return Promise.reject(new Error('Não consegui mostrar a notificação: o app MyBots não está ativo neste aparelho.'));
 }
 
 const DEVICE_CALLS = { 'notifications.recent': 'notifications', 'sms.search': 'smsSearch', 'sms.send': 'smsSend', 'contacts.search': 'contactsSearch',
@@ -187,7 +179,8 @@ export class Tools {
     const saved = this.db.get("SELECT value FROM metadata WHERE key='free.ask'")?.value;
     let list;
     try { list = saved === undefined ? [...FREE_ASK_DEFAULT] : JSON.parse(saved); } catch { list = [...FREE_ASK_DEFAULT]; }
-    if (Array.isArray(list)) list = list.filter(key => !FREE_ASK_RETIRED.includes(key));
+    // "termux" was the phone's terminal before it ran inside the app.
+    if (Array.isArray(list)) list = list.map(key => key === 'termux' ? 'shell' : key).filter(key => !FREE_ASK_RETIRED.includes(key));
     if (!validFreeAsk(list)) list = [...FREE_ASK_DEFAULT];
     // Existing choices predate the wallet. Enable its new default once, without undoing later choices.
     if (!this.db.get("SELECT value FROM metadata WHERE key='free.wallet_default'")) {
@@ -202,7 +195,8 @@ export class Tools {
   freeAsk(key) { return false; }
   freeSettings() { const list = this.freeList(); return { options: FREE_ASK_OPTIONS.map(([key, label, detail]) => ({ key, label, detail, ask: list.includes(key) })) }; }
   setFreeList(list) {
-    if (Array.isArray(list)) list = list.filter(key => !FREE_ASK_RETIRED.includes(key));
+    // "termux" was the phone's terminal before it ran inside the app.
+    if (Array.isArray(list)) list = list.map(key => key === 'termux' ? 'shell' : key).filter(key => !FREE_ASK_RETIRED.includes(key));
     if (!validFreeAsk(list)) throw new Error('Lista inválida.');
     const before = this.freeList(); const after = FREE_ASK_OPTIONS.map(item => item[0]).filter(key => list.includes(key));
     this.db.run("INSERT INTO metadata VALUES('free.ask',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(after));
@@ -515,7 +509,7 @@ export class Tools {
   async computerPermission(run, name, input) {
     const deny = message => ({ behavior: 'deny', message });
     const kind = COMPUTER_TOOLS[name]; const bot = this.db.requireBot(run.botId);
-    if (run.lane !== 'pc') return this.termuxPermission(run, bot, kind, name, input);
+    if (run.lane !== 'pc') return this.phoneShellPermission(run, bot, kind, name, input);
     if (this.policy(run.botId, 'computer') === 'deny') return deny('Este bot não pode mexer no computador. A pessoa pode liberar em Acesso, no perfil dele.');
     const target = String(kind === 'shell' ? input.command || '' : input.file_path || input.notebook_path || input.path || input.pattern || '').slice(0, 2000);
     if (SENSITIVE.test(target)) { this.db.record('tool_denied', `Computador: ${target.slice(0, 120)} bloqueado (senhas e chaves).`, run.botId, run.taskId); this.changed('activity.new'); return deny('Esse caminho guarda senhas ou chaves e fica fora do alcance dos bots.'); }
@@ -540,23 +534,23 @@ export class Tools {
     return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
   }
   /**
-   * Termux's whole shell, on the phone and only on the Livre level. Keys and the supervisor's own files (where the
+   * The whole terminal of the phone's Linux, only on the Livre level. Keys and the supervisor's own files (where the
    * level and the "sempre perguntar" list live) are refused; risky commands and, if listed, every command ask.
    */
-  async termuxPermission(run, bot, kind, name, input) {
+  async phoneShellPermission(run, bot, kind, name, input) {
     const deny = message => ({ behavior: 'deny', message });
-    if (this.policy(run.botId, 'termux') === 'deny') return deny('O terminal do Termux só existe no nível Livre. A pessoa escolhe o nível no perfil do bot.');
+    if (this.policy(run.botId, 'shell') === 'deny') return deny('O terminal do celular só existe no nível Livre. A pessoa escolhe o nível no perfil do bot.');
     const target = String(kind === 'shell' ? input.command || '' : input.file_path || input.notebook_path || input.path || input.pattern || '').slice(0, 2000);
-    if (SENSITIVE.test(target) || PHONE_PROTECTED.test(target)) { this.db.record('tool_denied', `Termux: ${target.slice(0, 120)} bloqueado (supervisor, senhas e chaves).`, run.botId, run.taskId); this.changed('activity.new'); return deny('Esse caminho guarda o supervisor do MyBots, senhas ou chaves e fica fora do alcance dos bots, mesmo no nível Livre.'); }
+    if (SENSITIVE.test(target) || PHONE_PROTECTED.test(target)) { this.db.record('tool_denied', `Celular: ${target.slice(0, 120)} bloqueado (supervisor, senhas e chaves).`, run.botId, run.taskId); this.changed('activity.new'); return deny('Esse caminho guarda o supervisor do MyBots, senhas ou chaves e fica fora do alcance dos bots, mesmo no nível Livre.'); }
     const risky = kind === 'shell' && RISKY.test(target);
     const label = kind === 'shell' ? `comando ${target.slice(0, 160)}` : `${kind === 'read' ? 'ler' : 'salvar'} ${target.slice(0, 160)}`;
-    if (risky ? this.freeAsk('risky') : kind === 'shell' && this.freeAsk('termux')) {
+    if (risky ? this.freeAsk('risky') : kind === 'shell' && this.freeAsk('shell')) {
       const hash = createHash('sha256').update(JSON.stringify({ botId: run.botId, taskId: run.taskId, name, input })).digest('hex');
-      const approved = await this.ask(run, 'termux', { summary: kind === 'shell' ? target : `${label}` }, hash, null, null);
-      this.db.record(approved ? 'tool_done' : 'tool_denied', `Termux: ${label} ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
+      const approved = await this.ask(run, 'shell', { summary: kind === 'shell' ? target : `${label}` }, hash, null, null);
+      this.db.record(approved ? 'tool_done' : 'tool_denied', `Celular: ${label} ${approved ? 'autorizado' : 'não autorizado'}.`, run.botId, run.taskId); this.changed('activity.new');
       return approved ? { behavior: 'allow', updatedInput: input } : deny('A pessoa recusou ou não respondeu. Nada foi executado; não tente de novo sem ela pedir.');
     }
-    this.db.record('tool_done', `Termux: ${label}.`, run.botId, run.taskId); this.changed('activity.new');
+    this.db.record('tool_done', `Celular: ${label}.`, run.botId, run.taskId); this.changed('activity.new');
     return { behavior: 'allow', updatedInput: input };
   }
   /** Team tools never ask: the switch (Permissões → Equipe de bots) is the person's decision. */
@@ -980,17 +974,17 @@ export class Tools {
   }
   /** The files a turn sent, handed to its reply once (and forgotten). */
   /**
-   * A file the bot made on the phone, to send to the person by its path: from the bot's own work folder, or (with the Termux permission) from
-   * Termux's folder without hidden folders (where the app's own data and keys live). Returns what `Attachments.adopt` takes.
+   * A file the bot made on the phone, to send to the person by its path: from the bot's own work folder, or (with the terminal permission) from
+   * the home folder of the phone's Linux without hidden folders (where the app's own data and keys live). Returns what `Attachments.adopt` takes.
    */
   sendablePath(run, input) {
     const workspace = realpathSync(join(this.db.directory, 'workspaces', run.botId));
-    let real; try { real = realpathSync(isAbsolute(input) ? input : resolve(workspace, input)); } catch { throw new Error('Não achei esse arquivo. O caminho é no celular (sua pasta de trabalho ou a do Termux); arquivos do computador ainda não podem ser mandados por caminho.'); }
+    let real; try { real = realpathSync(isAbsolute(input) ? input : resolve(workspace, input)); } catch { throw new Error('Não achei esse arquivo. O caminho é no celular (sua pasta de trabalho ou a pasta do terminal do celular); arquivos do computador ainda não podem ser mandados por caminho.'); }
     const inside = base => { const rel = relative(base, real); return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel); };
     let home = null; try { home = process.env.HOME ? realpathSync(process.env.HOME) : null; } catch {}
     const hidden = base => relative(base, real).split(sep).some(part => part.startsWith('.'));
-    const allowed = inside(workspace) || (home && inside(home) && !hidden(home) && this.policy(run.botId, 'termux') === 'allow');
-    if (!allowed) throw new Error('Só posso mandar arquivos da sua pasta de trabalho ou, com a permissão de Termux, da pasta do Termux (sem pastas ocultas).');
+    const allowed = inside(workspace) || (home && inside(home) && !hidden(home) && this.policy(run.botId, 'shell') === 'allow');
+    if (!allowed) throw new Error('Só posso mandar arquivos da sua pasta de trabalho ou, com a permissão do terminal do celular, da pasta do terminal (sem pastas ocultas).');
     const info = statSync(real);
     if (!info.isFile()) throw new Error('Isso não é um arquivo.');
     return [real, info.size];

@@ -11,7 +11,7 @@ work="$root/.build-tools/runtime/proot"; mkdir -p "$work/dl"
 for abi in "$@"; do
   case "$abi" in arm64-v8a) target=aarch64-linux-android ;; x86_64) target=x86_64-linux-android ;; *) echo "ABI inválida: $abi" >&2; exit 2 ;; esac
   cc="$bin/$target$api-clang"; strip="$bin/llvm-strip"; ar="$bin/llvm-ar"
-  out="$root/mobile/modules/termux-bridge/android/src/main/jniLibs/$abi"
+  out="$root/mobile/modules/mybots-native/android/src/main/jniLibs/$abi"
   b="$work/$abi"; rm -rf "$b"; mkdir -p "$b/src" "$b/obj/loader" "$out"
   while read -r name version url sum; do
     case "$name" in ''|'#'*) continue ;; esac

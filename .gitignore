@@ -19,20 +19,20 @@ mobile/android/app/build/
 mobile/android/app/.cxx/
 mobile/android/.kotlin/
 mobile/android/local.properties
-mobile/modules/termux-bridge/android/build/
+mobile/modules/mybots-native/android/build/
 supervisor/connectors/node_modules/
 *.keystore
 *.jks
 *.p12
 .env
-mobile/modules/termux-bridge/android/src/main/assets/mybots-connectors.bin
-mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.tgz
-mobile/modules/termux-bridge/android/src/main/assets/mybots-supervisor.sha256
+mobile/modules/mybots-native/android/src/main/assets/mybots-connectors.bin
+mobile/modules/mybots-native/android/src/main/assets/mybots-supervisor.tgz
+mobile/modules/mybots-native/android/src/main/assets/mybots-supervisor.sha256
 pc/ui/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 
 # Instaladores do PC
 packaging/node_modules/
-mobile/modules/termux-bridge/android/src/main/assets/mybots-runtime.tgz
-mobile/modules/termux-bridge/android/src/main/assets/mybots-runtime.tgz.sha256
+mobile/modules/mybots-native/android/src/main/assets/mybots-runtime.tgz
+mobile/modules/mybots-native/android/src/main/assets/mybots-runtime.tgz.sha256

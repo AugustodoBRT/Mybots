@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["expo.modules.termuxbridge.TermuxBridgeModule"]
+    "modules": ["expo.modules.termuxbridge.MyBotsNativeModule"]
   }
 }

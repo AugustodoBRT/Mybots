@@ -1,9 +1,9 @@
 import { setRandom } from './pc-channel.js';
 import { pairWithComputer, remoteSocketClass } from './pc-client.js';
-import { readPcLink, savePcLink, clearPcLink, randomBytesNative } from './termux.js';
+import { readPcLink, savePcLink, clearPcLink, randomBytesNative } from './native.js';
 
 /**
- * The phone app without Termux: the computer's MyBots is the backend. This keeps the pairing (encrypted by the native side),
+ * The phone app using the computer's MyBots as its backend. This keeps the pairing (encrypted by the native side),
  * hands the app's SupervisorClient a socket that goes to the computer, and learns the computer's addresses on every connection.
  * Needs the computer on: nothing is stored on the phone except the pairing and the cache of open conversations.
  */
@@ -36,7 +36,7 @@ const learn = info => {
   if (changed) { link = { ...link, target }; savePcLink(link).catch(() => {}); }
 };
 
-/** The class the app's SupervisorClient opens instead of a WebSocket to Termux. */
+/** The class the app's SupervisorClient opens instead of a WebSocket to the phone's own supervisor. */
 export const RemoteSocket = class {
   constructor(url) {
     ensureRandom();

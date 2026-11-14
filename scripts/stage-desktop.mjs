@@ -15,7 +15,7 @@ const copy = (from, to = from) => cpSync(join(root, from), join(out, to), { recu
 for (const item of ['pc', 'supervisor', 'lib', 'relay', 'desktop/electron', 'desktop/loader']) copy(item);
 for (const file of ['local.js', 'routine-text.js', 'markdown.js', 'file-references.js', 'pc-channel.js']) copy(`mobile/${file}`);
 copy('mobile/node_modules/@noble');
-for (const file of ['card-field.js', 'card-fill.js']) copy(`mobile/modules/termux-bridge/android/src/main/assets/${file}`);
+for (const file of ['card-field.js', 'card-fill.js']) copy(`mobile/modules/mybots-native/android/src/main/assets/${file}`);
 // the Electron window's own manifest at the root of the app (electron-builder reads name, version and main from here)
 const version = JSON.parse(readFileSync(join(root, 'mobile', 'app.json'), 'utf8')).expo.version;
 writeFileSync(join(out, 'package.json'), JSON.stringify({ name: 'mybots', productName: 'MyBots', version, description: 'Seus bots pessoais: o computador executa, o celular é a tela.', author: 'MyBots', homepage: 'https://github.com/AugustodoBRT/Mybots', license: 'UNLICENSED', main: 'desktop/electron/main.js', type: 'commonjs', dependencies: { 'electron-updater': '6.8.11' } }, null, 2));

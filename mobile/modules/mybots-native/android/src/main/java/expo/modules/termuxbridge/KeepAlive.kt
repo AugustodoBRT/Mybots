@@ -128,16 +128,16 @@ internal object KeepAlive {
       try {
         val script = context.assets.open("mybots-restart.sh").bufferedReader().use { it.readText() }
         val release = context.assets.open("mybots-supervisor.sha256").bufferedReader().use { it.readText().trim() }
-        EmbeddedRuntime.run(context, TERMUX_TIMEOUT, arrayOf("120s", TERMUX_BASH, "-lc", script, "mybots", release, transportPublicKey(), transportDigest()), null, 125_000, true) { restartFinished(context.applicationContext, it) }
+        EmbeddedRuntime.run(context, RUNTIME_TIMEOUT, arrayOf("120s", RUNTIME_BASH, "-lc", script, "mybots", release, transportPublicKey(), transportDigest()), null, 125_000, true) { restartFinished(context.applicationContext, it) }
         p.edit().putString("restartMessage", "Reiniciando…").apply()
       } catch (error: Exception) { p.edit().putString("restartMessage", "Não consegui reiniciar (${error.javaClass.simpleName}).").apply() }
       return
     }
-    // Termux is no longer used: only the phone's own MyBots inside the app is restarted from here.
+    // Only the phone's own MyBots inside the app is restarted from here (the computer's restarts itself).
     p.edit().putString("restartMessage", "Abra o MyBots e ative \"Usar só neste celular\".").apply()
   }
 
-  /** Termux's answer to a restart: the same encrypted envelope as pairing, saved so the app and the service keep working. */
+  /** The answer to a restart: the same encrypted envelope as pairing, saved so the app and the service keep working. */
   fun restartFinished(context: Context, result: Map<String, Any?>) {
     val p = prefs(context)
     val exit = result["exitCode"] as? Int ?: -1
@@ -208,16 +208,16 @@ internal object KeepAlive {
 
   /** Opens the screen that lifts one restriction; falls back to the app's own settings page. Returns which one opened. */
   fun openSettings(context: Context, target: String): String {
-    val pkg = if (target.startsWith("termux")) TERMUX_PACKAGE else context.packageName
-    val label = if (pkg == TERMUX_PACKAGE) "Termux" else "MyBots"
+    val pkg = context.packageName
+    val label = "MyBots"
     val direct = when (target) {
       "battery" -> listOf(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")))
       // HyperOS/MIUI keep their own battery saver ("Sem restrições") and autostart lists besides Android's.
-      "hyperosBattery", "termuxBattery" -> listOf(Intent().setComponent(ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"))
+      "hyperosBattery" -> listOf(Intent().setComponent(ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"))
         .putExtra("package_name", pkg).putExtra("package_label", label))
-      "autostart", "termuxAutostart" -> listOf(Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")))
+      "autostart" -> listOf(Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")))
       "exactAlarm" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) listOf(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$pkg"))) else emptyList()
-      "details", "termuxDetails" -> emptyList()
+      "details" -> emptyList()
       else -> throw IllegalArgumentException("Ajuste inválido.")
     }
     for (intent in direct) {

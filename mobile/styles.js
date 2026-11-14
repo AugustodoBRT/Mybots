@@ -287,7 +287,7 @@ export const styles = themed(() => ({
   timelineDot: { position: 'absolute', left: -5, top: 4, width: 9, height: 9, borderRadius: 5, backgroundColor: C.faint, borderWidth: 2, borderColor: C.bg2 },
   timelineText: { color: C.text2, fontFamily: F.m, fontSize: 13.5, lineHeight: 19 },
   timelineMeta: { color: C.faint, fontFamily: F.m, fontSize: 11.5, marginTop: 2 },
-  // Termux log
+  // The log of what failed starting the phone's MyBots
   logsSheet: { maxHeight: '88%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 24, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: C.bg2, borderTopWidth: 1, borderColor: C.line2 },
   logsHeading: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 }, logsHeadingCopy: { flex: 1 },
   logsHint: { color: C.muted, fontFamily: F.m, fontSize: 13, marginTop: 3 },

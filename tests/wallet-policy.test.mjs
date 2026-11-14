@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { BrowserSession } from '../pc/browser-worker.mjs';
 
 const kotlinCompiler = '/opt/intellij-idea-ultimate-edition/plugins/Kotlin/kotlinc/bin/kotlinc';
-const policy = new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/WalletPolicy.kt', import.meta.url);
+const policy = new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/WalletPolicy.kt', import.meta.url);
 
 // The rules are enforced by the app (WalletPolicy.kt), never by the supervisor or the model: compiled and run here.
 test('carteira no app: loja, categoria, total da página e limites por compra, dia e mês, sem esperar relógio real', { skip: !existsSync(kotlinCompiler) }, () => {
@@ -72,7 +72,7 @@ test('checkout lido no Chrome: total único visível é obrigatório', { skip: !
   await browser.page.setContent('<div>Subtotal</div><div>R$ 35,00</div><div>Total do pedido</div><div>R$ 40,00</div><iframe srcdoc="<input autocomplete=cc-number>"></iframe>');
   assert.deepEqual(await browser.page.evaluate(readCheckoutTotal), { total: 4000 });
   // The phone's browser reads the total with the very same code.
-  assert.equal(readFileSync(new URL('../mobile/modules/termux-bridge/android/src/main/assets/checkout-total.js', import.meta.url), 'utf8').trim(), readCheckoutTotal.toString());
+  assert.equal(readFileSync(new URL('../mobile/modules/mybots-native/android/src/main/assets/checkout-total.js', import.meta.url), 'utf8').trim(), readCheckoutTotal.toString());
   await browser.page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div>Total</div><div>R$ 41,00</div>'));
   assert.deepEqual(await browser.page.evaluate(readCheckoutTotal), { total: null });
   await browser.page.setContent('<div>Total</div><div style="display:none">R$ 40,00</div>');

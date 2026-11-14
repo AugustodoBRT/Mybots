@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * What the bots read and do on the phone when everything runs inside the app: the same commands and answers as Termux:API,
- * so supervisor/device.mjs does not change. Each one needs the permission the person gave in Ajustes.
+ * What the bots read and do on the phone when everything runs inside the app (commands of supervisor/device.mjs, answered
+ * in the same JSON the supervisor reads). Each one needs the permission the person gave in Ajustes.
  */
 internal object DeviceApi {
   private val date = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -40,13 +40,13 @@ internal object DeviceApi {
     val option = { name: String -> (0 until args.length()).firstOrNull { args.optString(it) == name }?.let { args.optString(it + 1) } }
     val limit = (option("-l")?.toIntOrNull() ?: 200).coerceIn(1, 1000)
     val output: Any = when (input.getString("command")) {
-      "termux-sms-list" -> sms(context, limit)
-      "termux-sms-send" -> { send(context, option("-n").orEmpty(), input.optString("input")); "" }
-      "termux-contact-list" -> contacts(context)
-      "termux-call-log" -> calls(context, limit)
-      "termux-location" -> location(context, option("-p") ?: "network")
-      "termux-battery-status" -> battery(context)
-      "termux-notification" -> { notice(context, input); "" }
+      "sms-list" -> sms(context, limit)
+      "sms-send" -> { send(context, option("-n").orEmpty(), input.optString("input")); "" }
+      "contact-list" -> contacts(context)
+      "call-log" -> calls(context, limit)
+      "location" -> location(context, option("-p") ?: "network")
+      "battery-status" -> battery(context)
+      "notification" -> { notice(context, input); "" }
       else -> throw IllegalArgumentException("Pedido do celular desconhecido.")
     }
     return JSONObject().put("output", output.toString())

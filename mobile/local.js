@@ -142,16 +142,6 @@ O JSON abaixo contém a conversa em ordem. Responda apenas à última mensagem d
 ${JSON.stringify(recent)}`;
 }
 
-export function friendlyTermuxError(result) {
-  const output = `${result?.stderr || ''}\n${result?.errorMessage || ''}`;
-  if (/external apps are disabled|allow-external-apps|RUN_COMMAND_PERMISSION|permission.RUN_COMMAND/i.test(output)) return 'No Termux, habilite a permissão para apps externos e permita que o MyBots execute comandos.';
-  if (/401|unauthorized|not logged in|sign in|not authenticated/i.test(output)) return 'Abra o Termux e confira se o Codex ainda está conectado à sua conta.';
-  if (/usage.limit|quota|rate.limit|limit reached/i.test(output)) return 'O limite de uso da conta foi atingido. Confira os limites do Codex antes de tentar novamente.';
-  if (/model.*not.*(support|available|exist)|unsupported.*(model|reasoning)|reasoning.*not.*support|invalid.*reasoning/i.test(output)) return 'A conta recusou este modelo ou raciocínio. Escolha outra combinação e tente novamente.';
-  if (/network|connection|dns|resolve|request failed|stream disconnected/i.test(output)) return 'O Codex não conseguiu se conectar à internet pelo celular.';
-  if (/not found|no such file|cannot execute/i.test(output)) return 'Não encontrei o Codex no Termux. Confira se ele continua instalado.';
-  return 'O Codex no Termux não conseguiu concluir a resposta. Tente novamente.';
-}
 
 
 export function deleteLocalBot(store, id) {

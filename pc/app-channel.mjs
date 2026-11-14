@@ -4,7 +4,7 @@ import { serverChannel } from '../mobile/pc-channel.js';
 const IDLE_MS = 70000;
 
 /**
- * The computer's end of the phone app's secure channel (mobile/pc-channel.js). A phone with no Termux connects here
+ * The computer's end of the phone app's secure channel (mobile/pc-channel.js). A phone that uses this computer's MyBots connects here
  * (straight to the node's port, or through the relay), proves it knows its secret, and then speaks to the computer's own MyBots
  * exactly like the window does. `duplex` is any byte stream: a socket, or a WebSocket made into a stream.
  * Calls `onReady(socket, device)` with a WebSocket-shaped object (send, on('message'), on('close'), bufferedAmount, close).

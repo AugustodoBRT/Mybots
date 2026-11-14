@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Bundles the 3D bot (mobile/office/avatar3d-entry.js with three.js and the bot code) into the one HTML file the Android app loads in
-// its hidden WebView. The result is committed (mobile/modules/termux-bridge/android/src/main/assets/avatar3d.html), so building the APK
+// its hidden WebView. The result is committed (mobile/modules/mybots-native/android/src/main/assets/avatar3d.html), so building the APK
 // needs no network; run this again only when the bot's 3D code changes. Usage: node scripts/build-avatar3d.mjs [path to esbuild]
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // The pages: the hidden one that draws the bots' pictures, the opening screen's (splash3d-entry.js) and the live bot's (live3d-entry.js).
-const assets = join(root, 'mobile/modules/termux-bridge/android/src/main/assets');
+const assets = join(root, 'mobile/modules/mybots-native/android/src/main/assets');
 const dir = mkdtempSync(join(tmpdir(), 'avatar3d-'));
 try {
   const bin = process.argv[2] || 'esbuild';

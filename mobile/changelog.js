@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.17', date: '2026-11-13', items: [
+    ['melhoria', 'O Termux saiu de vez do MyBots: o MyBots do celular roda sempre dentro do app. Quem ainda estava no Termux passa sozinho para o MyBots do app, e o que está no computador volta pela sincronização.'],
+    ['melhoria', 'A permissão "Comandos no Termux" agora se chama "Comandos no celular" (o terminal do Linux que vem dentro do app). Quem tinha escolhido pedir antes continua sendo perguntado.'],
+    ['melhoria', 'O modo antigo "Celular + computador" por link, de antes do pareamento por QR, saiu. Para usar os bots do computador, leia o QR em Ajustes → Computador.'],
+    ['correcao', 'Em Backup e diagnóstico, ler as informações do aparelho dava erro quando o Termux não estava instalado. Agora mostra normalmente.']
+  ] },
   { version: '0.94.16', date: '2026-11-13', items: [
     ['melhoria', 'O Tailscale saiu do MyBots: o celular e o computador se acham sozinhos em casa e, fora de casa, pelo relé do MyBots. Não precisa instalar nada.'],
     ['melhoria', 'As telas de conexão ficaram mais simples: mostram só se está conectado, sem falar de Wi-Fi ou rede local.'],

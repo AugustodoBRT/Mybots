@@ -4,6 +4,6 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd); abi=$1
 built="$root/.build-tools/runtime/rootfs-$abi.tgz"
 [ "$built" -nt "$here/build-rootfs.sh" ] && [ -f "$built" ] || "$here/build-rootfs.sh" "$abi"
-assets="$root/mobile/modules/termux-bridge/android/src/main/assets"
+assets="$root/mobile/modules/mybots-native/android/src/main/assets"
 cp "$built" "$assets/mybots-runtime.tgz"
 sha256sum "$built" | cut -d' ' -f1 > "$assets/mybots-runtime.tgz.sha256"

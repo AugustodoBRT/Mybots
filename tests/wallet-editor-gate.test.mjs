@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const kotlinCompiler = '/opt/intellij-idea-ultimate-edition/plugins/Kotlin/kotlinc/bin/kotlinc';
-const base = new URL('../mobile/modules/termux-bridge/android/src/main/java/expo/modules/termuxbridge/', import.meta.url);
+const base = new URL('../mobile/modules/mybots-native/android/src/main/java/expo/modules/termuxbridge/', import.meta.url);
 
 test('wallet editor invalidates in-flight commands and waits for in-flight gestures', { skip: !existsSync(kotlinCompiler) }, () => {
   const source = readFileSync(new URL('WalletEditorGate.kt', base), 'utf8');

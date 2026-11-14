@@ -151,36 +151,6 @@ test('every IA turn hides the logins of the other IAs and keeps its own', async 
   assert.deepEqual(hidden('opencode'), ['.claude', '.codex', '.gemini']);
 });
 
-test('Termux wrappers find agy and opencode in a proot-distro container and carry the run token in by env', async t => {
-  const { mkdir, symlink, chmod } = await import('node:fs/promises');
-  const { execFile, execFileSync } = await import('node:child_process');
-  const bash = execFileSync('sh', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim();
-  const directory = await mkdtemp(join(tmpdir(), 'mybots-wrapper-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  // Only a bash and the fake proot-distro are on the PATH, like Termux (this computer's own /usr/bin has a real agy).
-  const bin = join(directory, 'bin'); await mkdir(bin); await symlink(bash, join(bin, 'bash'));
-  await writeFile(join(bin, 'proot-distro'), `#!${process.execPath}\nconsole.log(JSON.stringify(process.argv.slice(2)));`); await chmod(join(bin, 'proot-distro'), 0o700);
-  const run = async (file, prefix, args, env = {}) => new Promise(resolve => execFile(bash, ['-c', file, 'wrapper', ...args], { env: { HOME: prefix, PREFIX: prefix, MYBOTS_HOME: join(prefix, '.mybots'), PATH: bin, ...env } }, (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr })));
-  // A login shell (bash -l) reads /etc/profile, which puts this computer's real agy on the PATH; Termux has no /etc/profile.
-  const source = async name => (await readFile(new URL(`../supervisor/${name}-wrapper.sh`, import.meta.url), 'utf8')).replaceAll('bash -lc', 'bash -c');
-  const [agy, opencode] = [await source('agy'), await source('opencode')];
-  const empty = join(directory, 'empty'); await mkdir(empty);
-  assert.equal((await run(agy, empty, ['models'])).code, 127);
-  assert.equal((await run(opencode, empty, ['models'])).code, 127);
-  const prefix = join(directory, 'phone'); const rootfs = join(prefix, 'var/lib/proot-distro/containers/debian/rootfs');
-  await mkdir(join(rootfs, 'root/.local/bin'), { recursive: true }); await mkdir(join(rootfs, 'root/.opencode/bin'), { recursive: true });
-  await symlink('/root/.local/share/agy/versions/1.0.0', join(rootfs, 'root/.local/bin/agy'));
-  await writeFile(join(rootfs, 'root/.opencode/bin/opencode'), '');
-  const a = await run(agy, prefix, ['-p=oi', '--output-format', 'stream-json'], { MYBOTS_RUN_TOKEN: 'tok', MYBOTS_RUN_ENDPOINT: 'http://127.0.0.1:9' });
-  assert.equal(a.code, 0, a.stderr);
-  assert.deepEqual(JSON.parse(a.stdout), ['login', 'debian', '--bind', `${join(prefix, '.mybots')}:${join(prefix, '.mybots')}`, '--', 'env', 'MYBOTS_RUN_TOKEN=tok', 'MYBOTS_RUN_ENDPOINT=http://127.0.0.1:9', '/root/.local/bin/agy', '-p=oi', '--output-format', 'stream-json']);
-  const b = await run(opencode, prefix, ['run', '--format', 'json', '--', 'oi'], { OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"allow"}}' });
-  assert.equal(b.code, 0, b.stderr);
-  assert.deepEqual(JSON.parse(b.stdout), ['login', 'debian', '--', 'env', 'OPENCODE_CONFIG_CONTENT={"permission":{"*":"allow"}}', '/root/.opencode/bin/opencode', 'run', '--format', 'json', '--', 'oi']);
-  // Without any token in the environment, nothing is carried in.
-  const plain = await run(opencode, prefix, ['models']);
-  assert.deepEqual(JSON.parse(plain.stdout), ['login', 'debian', '--', 'env', '/root/.opencode/bin/opencode', 'models']);
-});
-
 test('a wrapper that finds no agy or opencode (exit 127) reads as not installed, not as a login problem', async t => {
   const { Agy } = await import('../lib/agy.mjs'); const { Opencode } = await import('../lib/opencode.mjs');
   const missing = await fake(t, 'wrapper', 'process.exit(127);');

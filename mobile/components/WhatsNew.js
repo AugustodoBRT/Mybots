@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, View, Text, ScrollView, Platform } from 'react-native';
 import { styles } from '../styles';
 import { C, F } from '../theme';
-import { prefGet, prefSet } from '../termux';
+import { prefGet, prefSet } from '../native';
 import { CHANGELOG, KIND_LABEL, unseenVersions } from '../changelog';
 import { SheetHeader, PrimaryButton } from './shared';
 

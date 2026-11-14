@@ -7,7 +7,7 @@ import Svg, { Rect, Line, Polyline, Circle, Path, Text as SvgText } from 'react-
 import { parseBlocks, parseInline } from './markdown';
 import { fileReference, referenceRuns, previewKind } from './file-references';
 import { C, F, Icon, themed } from './theme';
-import { copyText } from './termux';
+import { copyText } from './native';
 
 // Bot replies: Markdown with tables and charts, drawn with the same reader the supervisor uses for files.
 const chartColors = () => [C.sky, C.peach, C.accent, '#F58AB0', C.lilac, '#62CFD9'];

@@ -4,7 +4,7 @@ import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { clientChannel, b64 } from './pc-channel.js';
 
 /**
- * The phone app's way to the computer when there is no Termux: the computer's MyBots is the whole backend. Everything here
+ * The phone app's way to the computer when it uses the computer's MyBots as its whole backend. Everything here
  * is plain JavaScript on top of WebSocket, so it runs in React Native and in the tests alike (`WebSocketClass` is the global
  * WebSocket in the app and the `ws` package in tests). Security is in the channel (pc-channel.js), not in the transport.
  */

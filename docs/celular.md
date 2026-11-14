@@ -4,9 +4,9 @@ O app precisa de **Android 14 ou mais novo** e de um celular **ARM64**. Ele aind
 
 ## Dois jeitos de usar
 
-**1. Usar só neste celular (recomendado).** Na primeira tela, toque em **Usar neste celular** (ou, depois, em Ajustes → **Usar só neste celular**). Os bots, as conversas, as rotinas e as IAs rodam **dentro do app**, num Linux embutido (Alpine com Node e PRoot). Não precisa de computador nem de Termux. Na primeira vez a preparação leva alguns minutos; depois é rápida.
+**1. Usar só neste celular (recomendado).** Na primeira tela, toque em **Usar neste celular** (ou, depois, em Ajustes → **Usar só neste celular**). Os bots, as conversas, as rotinas e as IAs rodam **dentro do app**, num Linux embutido (Alpine com Node e PRoot). Não precisa de computador. Na primeira vez a preparação leva alguns minutos; depois é rápida.
 
-Depois conecte uma IA em **Ajustes → IAs e contas**: toque em **Conectar** no Claude Code, no Codex ou no Antigravity, abra a página de login que aparece, entre na sua conta e, se o app pedir, cole o código de volta. O app instala a IA e mostra "conectado". Você escolhe a IA de cada bot no perfil dele. O opencode ainda não está disponível neste modo (só no computador e no Termux).
+Depois conecte uma IA em **Ajustes → IAs e contas**: toque em **Conectar** no Claude Code, no Codex ou no Antigravity, abra a página de login que aparece, entre na sua conta e, se o app pedir, cole o código de volta. O app instala a IA e mostra "conectado". Você escolhe a IA de cada bot no perfil dele. O opencode ainda não está disponível neste modo (só no computador).
 
 Para usar mais de uma conta de uma mesma IA, adicione outra em Ajustes → IAs e contas; cada bot escolhe a conta no próprio perfil.
 
@@ -16,7 +16,7 @@ Com os dois ligados e pareados, celular e computador **se sincronizam** (bots, c
 
 ## Permissões
 
-Em **Ajustes → Celular** o app pede cada permissão quando você liga o recurso: notificações, SMS, contatos, chamadas, localização, bateria e acesso às notificações dos outros apps. Tudo é nativo do app, sem Termux:API. O controle dos outros apps é a opção **Controlar o celular**, por bot (perfil do bot → Acesso); enquanto um bot controla o celular, uma barra com **Parar** fica na tela. Senhas, cartões e códigos de verificação não passam pela IA.
+Em **Ajustes → Celular** o app pede cada permissão quando você liga o recurso: notificações, SMS, contatos, chamadas, localização, bateria e acesso às notificações dos outros apps. Tudo é nativo do app. O controle dos outros apps é a opção **Controlar o celular**, por bot (perfil do bot → Acesso); enquanto um bot controla o celular, uma barra com **Parar** fica na tela. Senhas, cartões e códigos de verificação não passam pela IA.
 
 ## Para funcionar com a tela apagada
 
@@ -37,10 +37,6 @@ Os nomes dos menus mudam de aparelho para aparelho e o Android pode adiar rede e
 ## Contas Google
 
 Gmail, Agenda e Drive abrem direto nos sites, pelo navegador do MyBots: veja [conectar-gmail.md](conectar-gmail.md).
-
-## Termux (avançado, opcional)
-
-Quem já usa o Termux pode continuar: em **Ajustes → Termux (avançado)** o app traz o tutorial completo (liberar `allow-external-apps`, a permissão de executar comandos no Termux e a preparação do supervisor). Nesse modo, o Codex vem do pacote do Termux, e o Claude Code, o Antigravity e o opencode rodam num Debian do `proot-distro` dentro dele (o MyBots acha os programas por `~/.mybots/claude-wrapper`, `agy-wrapper` e `opencode-wrapper`). Os dados do Termux não são migrados sozinhos para o modo embutido ainda.
 
 ## Se algo não funcionar
 

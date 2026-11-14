@@ -47,7 +47,7 @@ test('the QR is read the way the computer wrote it, and rooms match the relay\'s
   for (const secret of ['abc', randomBytes(32).toString('base64url')]) assert.equal(relayRoom(secret), roomFor(secret));
 });
 
-test('a phone with no Termux pairs by the QR, then the real app client reads and writes the computer\'s MyBots', async t => {
+test('a phone using the computer\'s MyBots pairs by the QR, then the real app client reads and writes the computer\'s MyBots', async t => {
   const f = await setup(t);
   const { target } = await f.pair();
   assert.equal(target.id, f.node.id); assert.ok(target.secret); assert.equal(target.relay, f.url);
@@ -56,10 +56,10 @@ test('a phone with no Termux pairs by the QR, then the real app client reads and
   const { client, events } = await f.app(target);
   const state = await client.call('state.get');
   assert.equal(state.source, 'local'); assert.equal(state.models.length > 0, true);
-  const bot = await client.call('bot.create', { name: 'Do celular sem Termux', instructions: 'Ajuda.', access: 'ask', ...selection });
+  const bot = await client.call('bot.create', { name: 'Do celular pelo PC', instructions: 'Ajuda.', access: 'ask', ...selection });
   const sent = await client.call('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'oi do celular' });
   const page = await until(async () => { const found = await client.call('chat.page', { botId: bot.id }); return found.messages.some(message => message.role === 'assistant' && message.status === 'complete') ? found : null; });
-  assert.equal(page.messages.at(-1).text, 'Do celular sem Termux respondeu pelo computador'); assert.ok(sent.taskId); assert.equal(f.turns.length, 1);
+  assert.equal(page.messages.at(-1).text, 'Do celular pelo PC respondeu pelo computador'); assert.ok(sent.taskId); assert.equal(f.turns.length, 1);
   assert.ok(events.some(([event]) => event === 'message.added'), 'the events of the computer arrive');
 });
 
@@ -105,7 +105,7 @@ test('strangers get nothing: a wrong secret, an unknown phone, a spent code and 
   assert.ok(['aberto', 'erro'].includes(response));
 });
 
-test('the window and a phone app use the same computer at once, and the Termux link on the same port still works', async t => {
+test('the window and a phone app use the same computer at once, and the link of a phone\'s own MyBots on the same port still works', async t => {
   const f = await setup(t);
   const { target } = await f.pair(); const { client } = await f.app(target);
   const made = await client.call('bot.create', { name: 'Compartilhado', instructions: '', access: 'ask', ...selection });

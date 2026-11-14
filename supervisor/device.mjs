@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { now } from './database.mjs';
 
@@ -47,21 +46,8 @@ export function notificationStats(db) {
   return { last24h: day.count, lastAt: day.last };
 }
 
-// Termux:API commands, called with fixed argument lists (never through a shell). Options verified in
-// termux/termux-api-package scripts: sms-list -l/-t, sms-send -n + stdin, call-log -l, location -p/-r.
-export function runTermuxApi(command, args = [], { input, timeout = 30000 } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', size = 0;
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('O Termux:API não respondeu. No MyBots, abra Ajustes → Notificações do celular → Termux:API e siga o que aparecer (app instalado da mesma fonte do Termux, início automático, permissões).')); }, timeout);
-    child.stdout.on('data', chunk => { size += chunk.length; if (size > 4_000_000) child.kill('SIGKILL'); else stdout += chunk; });
-    child.stderr.resume();
-    child.on('error', () => { clearTimeout(timer); reject(new Error('Instale o app Termux:API e o pacote termux-api (pkg install termux-api) para usar esta capacidade.')); });
-    child.on('close', code => { clearTimeout(timer); code === 0 ? resolve(stdout) : reject(new Error('O Termux:API recusou o pedido. Na primeira vez, o Android pede permissão: abra o Termux:API e libere SMS, contatos, chamadas ou localização.')); });
-    child.stdin.on('error', () => {});
-    child.stdin.end(input || '');
-  });
-}
+// Without the MyBots app answering (the computer, tests), the phone's own data cannot be read.
+const unavailable = () => Promise.reject(new Error('Isso só funciona no celular, com o MyBots aberto.'));
 
 const json = text => {
   try { return JSON.parse(text); } catch { throw new Error('O celular devolveu uma resposta inesperada. Confira as permissões.'); }
@@ -69,26 +55,26 @@ const json = text => {
 const matches = (needle, ...values) => !needle || values.some(value => String(value ?? '').toLowerCase().includes(needle.toLowerCase()));
 
 export class Device {
-  constructor(db, { run = runTermuxApi } = {}) { this.db = db; this.run = run; }
+  constructor(db, { run = unavailable } = {}) { this.db = db; this.run = run; }
   notifications(args) { return recentNotifications(this.db, args); }
   async smsSearch({ query = '', number = '', limit = 30 }) {
-    const items = json(await this.run('termux-sms-list', ['-l', '300', '-t', 'all']));
+    const items = json(await this.run('sms-list', ['-l', '300', '-t', 'all']));
     const found = (Array.isArray(items) ? items : []).filter(item => matches(number, item.number, item.address) && matches(query, item.body, item.number, item.address)).slice(0, limit)
       .map(item => ({ ...item, body: maskCodes(item.body) }));
     return { untrusted: true, notice: DEVICE_NOTICE, messages: found };
   }
   async smsSend({ number, text }) {
-    await this.run('termux-sms-send', ['-n', number], { input: text });
+    await this.run('sms-send', ['-n', number], { input: text });
     return { sent: true, number };
   }
   async contactsSearch({ query, limit = 20 }) {
-    const items = json(await this.run('termux-contact-list'));
+    const items = json(await this.run('contact-list'));
     return { untrusted: true, notice: DEVICE_NOTICE, contacts: (Array.isArray(items) ? items : []).filter(item => matches(query, item.name, item.number)).slice(0, limit) };
   }
   async callLog({ query = '', limit = 30 }) {
-    const items = json(await this.run('termux-call-log', ['-l', '200']));
+    const items = json(await this.run('call-log', ['-l', '200']));
     return { untrusted: true, notice: DEVICE_NOTICE, calls: (Array.isArray(items) ? items : []).filter(item => matches(query, item.name, item.phone_number)).slice(0, limit) };
   }
-  async location({ provider = 'network' }) { return json(await this.run('termux-location', ['-p', provider, '-r', 'once'], { timeout: 45000 })); }
-  async status() { return { battery: json(await this.run('termux-battery-status')), checkedAt: now() }; }
+  async location({ provider = 'network' }) { return json(await this.run('location', ['-p', provider, '-r', 'once'], { timeout: 45000 })); }
+  async status() { return { battery: json(await this.run('battery-status')), checkedAt: now() }; }
 }

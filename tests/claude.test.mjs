@@ -49,13 +49,14 @@ test('Claude catalog and selection keep providers apart and every model offers a
   for (const model of claudeRunner.CLAUDE_MODELS) assert.deepEqual(model.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
 });
 
-test('Claude arguments remove every built-in tool, ignore user settings and only allow mybots-tools', () => {
+test('Claude arguments remove shell/file built-in tools when shell is off, ignore user settings and allow mybots-tools + WebSearch/WebFetch', () => {
   const session = randomUUID();
   const args = claudeRunner.claudeArguments({ model: 'opus', reasoningEffort: 'high' }, session, { endpoint: 'http://127.0.0.1:9', token: 'a'.repeat(64) });
   const after = flag => args[args.indexOf(flag) + 1];
-  assert.equal(after('--tools'), ''); assert.equal(after('--setting-sources'), ''); assert.equal(after('--session-id'), session);
+  assert.equal(after('--tools'), 'WebSearch,WebFetch'); assert.equal(after('--setting-sources'), ''); assert.equal(after('--session-id'), session);
   assert.ok(args.includes('--strict-mcp-config') && args.includes('--disable-slash-commands') && !args.includes('--resume'));
-  assert.equal(after('--allowedTools'), 'mcp__mybots-tools'); assert.equal(after('--permission-prompts'), 'none');
+  assert.equal(after('--allowedTools'), 'mcp__mybots-tools,WebSearch,WebFetch'); assert.equal(after('--permission-prompts'), 'none');
+  assert.ok(args.includes('--disallowedTools') && args.includes('WebFetch(http://localhost:*)') && args.includes('WebFetch(http://127.*)'));
   assert.ok(!args.some(item => /bypassPermissions|dangerously/.test(item)));
   assert.deepEqual(JSON.parse(after('--mcp-config')).mcpServers['mybots-tools'].url, 'http://127.0.0.1:9/mcp');
   assert.equal(after('--model'), 'opus'); assert.equal(after('--effort'), 'high');

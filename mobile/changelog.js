@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.19', date: '2026-11-15', items: [
+    ['melhoria', 'O Antigravity (Gemini) ficou muito mais rápido: o MyBots mantém um servidor dele sempre aberto por bot, em vez de abrir tudo do zero a cada mensagem, e envia os anexos direto para a conversa.'],
+    ['novo', 'Os bots de computador já vêm de fábrica com as habilidades de documentos (PDF, Word, Excel e PowerPoint), usando só quando você pede, sem misturar habilidades pessoais de outras ferramentas do seu PC.'],
+    ['melhoria', 'Quando o Chefe cria outros bots para a equipe, ele já cria direto nos modelos rápidos e econômicos padrão de cada IA conectada (Claude Haiku 5.5, GPT-6-Luna ou Gemini 4 Hydrogen, todos em esforço médio), sem parar para perguntar qual modelo escolher.'],
+    ['melhoria', 'O Claude, o Codex e o Antigravity usam suas próprias ferramentas nativas de busca na web, subtarefas em paralelo, leitura de páginas e geração de imagens, com andamento ao vivo na conversa.']
+  ] },
   { version: '0.94.18', date: '2026-11-14', items: [
     ['correcao', 'No Windows, uma janela preta (terminal) piscava de tempos em tempos. Era o atualizador automático do Antigravity abrindo uma janela. Agora o MyBots desliga esse atualizador quando usa o Antigravity; para atualizá-lo, use Ajustes → IAs e contas.']
   ] },

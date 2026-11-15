@@ -10,7 +10,7 @@ import codex from '../lib/codex-runner.cjs';
 import { sandboxFor, computerFor } from '../pc/server.mjs';
 import { createSupervisor } from '../supervisor/index.mjs';
 
-const { discover, enabledFor, skillGuidance, commandInside, insideSkill, frontmatter } = skills;
+const { discover, defaultSkills, enabledFor, activeSkills, skillGuidance, commandInside, insideSkill, frontmatter } = skills;
 const selection = { model: 'test', reasoningEffort: 'low' };
 const fakeCodex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ ...selection, displayName: 'Test', isDefault: true, efforts: ['low'], defaultEffort: 'low' }], limits: async () => null };
 
@@ -161,3 +161,25 @@ test('on Médio, the computer asks for everything except the skill turned on: no
   assert.equal((await permission('Read', { file_path: '/home/p/outro/arquivo.txt' })).behavior, 'allow');
   assert.equal(app.state().approvals.length, 0);
 });
+
+test('bundled default document skills come on by default on any PC without loading personal skills from home', async t => {
+  const home = await homeWithSkills(t);
+  await mkdir(join(home, '.gemini/config/skills/impeccable'), { recursive: true });
+  await writeFile(join(home, '.gemini/config/skills/impeccable/SKILL.md'), '---\nname: impeccable\ndescription: Personal design skill\n---\n');
+  const defaults = defaultSkills();
+  assert.deepEqual(defaults.map(item => item.name).sort(), ['docx', 'pdf', 'powerpoint', 'xlsx']);
+  assert.ok(defaults.every(item => item.builtin === true && item.write === false));
+
+  const found = discover(undefined, home);
+  assert.ok(found.some(item => item.name === 'impeccable'), 'personal skill exists on disk');
+  const active = activeSkills({}, found, defaults);
+  assert.deepEqual(active.map(item => item.name).sort(), ['docx', 'pdf', 'powerpoint', 'xlsx'], 'personal skills stay off by default');
+  assert.match(skillGuidance(active), /Não leia nem chame nenhuma skill em mensagens normais: apenas quando o pedido realmente precisar de uma delas, leia o SKILL\.md dela antes de qualquer outra coisa/);
+
+  // Inside bwrap, the AI's own personal skill folders (~/.gemini/config/skills, ~/.agents/skills, ~/.codex/skills) are hidden with --tmpfs.
+  const agyWrap = sandboxFor('agy', home, '/usr/bin/bwrap', undefined, { skills: active });
+  assert.ok(agyWrap.includes(join(home, '.gemini/config/skills')) && agyWrap.includes(join(home, '.agents/skills')));
+  assert.ok(!agyWrap.includes(join(home, '.gemini/config/skills/impeccable')));
+  for (const item of defaults) assert.ok(agyWrap.some((arg, i) => arg === '--ro-bind' && agyWrap[i + 1] === item.path));
+});
+

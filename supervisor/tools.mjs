@@ -16,10 +16,10 @@ import { MCP_TOOLS, MCP_NAMES } from './mcp/catalog.mjs';
 import { describeTrigger, routineArguments } from '../mobile/routine-text.js';
 import { skillProposal, SKILL_NOTICE } from './skills.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
-const { commandInside, insideSkill, githubSource, validSkills } = agentSkills;
+const { defaultSkills, commandInside, insideSkill, githubSource, validSkills } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
-const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close']);
+const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close', 'user.decide', 'user.decisions']);
 
 // Connector actions whose names only read. Anything that also mentions a change goes to the person.
 const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view|download)([_.\-]|$)/i;
@@ -422,6 +422,12 @@ export class Tools {
    */
   async connectorPermission(run, { tool_name: name, input }) {
     const deny = message => ({ behavior: 'deny', message });
+    if (name === 'WebSearch') return { behavior: 'allow', updatedInput: input };
+    if (name === 'WebFetch') {
+      const url = String(input?.url || '');
+      if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|\[::1\])/i.test(url)) return deny('Endereços locais ou privados não podem ser abertos pelo WebFetch.');
+      return { behavior: 'allow', updatedInput: input };
+    }
     if (name.startsWith('mcp__claude-in-chrome__')) return this.chromePermission(run, name, input);
     if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
     return deny('Use o serviço diretamente pelo navegador do MyBots. Não é necessário conectar apps na conta da IA.');
@@ -516,7 +522,8 @@ export class Tools {
     const risky = kind === 'shell' && RISKY.test(target);
     // Reading a skill turned on for the bot, running its scripts and (if the person allowed improving it) saving into it
     // never ask: the person chose the skill, and the rest of the disk and the keys stay behind the usual rules.
-    if (!risky && Array.isArray(bot.skills) && bot.skills.length && (kind === 'shell' ? commandInside(bot.skills, target) : kind === 'read' ? insideSkill(bot.skills, target) : insideSkill(bot.skills.filter(item => item.write), target, true))) {
+    const activeSkills = [...defaultSkills(), ...(Array.isArray(bot.skills) ? bot.skills : [])];
+    if (!risky && activeSkills.length && (kind === 'shell' ? commandInside(activeSkills, target) : kind === 'read' ? insideSkill(activeSkills, target) : insideSkill(activeSkills.filter(item => item.write), target, true))) {
       this.db.record('tool_done', `Skill: ${kind === 'shell' ? 'comando ' : kind === 'read' ? 'ler ' : 'salvar '}${target.slice(0, 160)}.`, run.botId, run.taskId); this.changed('activity.new');
       return { behavior: 'allow', updatedInput: input };
     }

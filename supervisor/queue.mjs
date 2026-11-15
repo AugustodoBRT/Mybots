@@ -175,19 +175,20 @@ export class Queue extends EventEmitter {
         const bot = turn ? { ...owner, codexSessionId: this.db.roomSession(turn.room_id, owner.id) } : owner;
         // Account apps: only the ones picked for this bot; the rest of the account's connectors are blocked.
         const connectors = false, connectorDeny = [];
-        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId), maxChars: compact, handoff }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools), maxChars: compact, handoff });
+        const personNote = this.db.get("SELECT body FROM notes WHERE path='chefe/voce.md'")?.body?.trim();
+        const prompt = turn ? this.rooms.prompt(bot, task.id, { tools: Boolean(this.tools), resumed: Boolean(bot.codexSessionId), maxChars: compact, handoff }) : promptFor(this.chat(bot, task.message_id), task.message_id, { tools: Boolean(this.tools), maxChars: compact, handoff, personNote });
         // The reply as it is being written: the owner of the draft is the room (with the bot) or the private chat.
         const draftOf = text => { this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), text }); };
         // One try of the turn with `runBot`: the bot itself, or its reserve model when the subscription limit ended.
         // The pictures of the person's message go straight to a Codex bot that runs here on the phone (a bot on the computer, or Claude, reads them with attachment_read).
         const pictures = next.lane === 'phone' && this.tools?.attachments ? (this.db.message(task.message_id)?.attachments || []).filter(file => /^image\/(png|jpe?g|webp|gif)$/i.test(file.mime || '') && file.size <= 10 * 1024 * 1024).slice(0, 4).map(file => this.tools.attachments.path(file.id)) : [];
-        // `quiet` (the handoff): nothing it writes reaches the conversation, and the session stays the same.
-        const attempt = (runBot, runPrompt, spare, quiet = null) => execute(runBot, (this.tools ? browserAccountGuidance(runBot) + '\n\n' : '') + runPrompt, {
+        // `quiet` (the handoff or title): nothing it writes reaches the conversation, and the session stays the same.
+        const attempt = (runBot, runPrompt, spare, quiet = null) => execute(runBot, (this.tools && !quiet?.noTools ? browserAccountGuidance(runBot) + '\n\n' : '') + runPrompt, {
           signal: quiet?.signal || controller.signal,
           ...(!quiet && (!runBot.provider || runBot.provider === 'codex') && pictures.length ? { images: pictures } : {}),
           onDelta: quiet ? undefined : text => { if (!controller.signal.aborted) draftOf(text); },
           workspace: capability?.workspace,
-          tools: capability ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', github: next.lane === 'pc' && this.tools.policy(runBot.id, 'github') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
+          tools: capability && !quiet?.noTools ? { token: capability.token, taskId: task.id, desktop: next.lane === 'pc' && this.tools.policy(runBot.id, 'desktop') === 'allow', github: next.lane === 'pc' && this.tools.policy(runBot.id, 'github') === 'allow', browser: this.tools.policy(runBot.id, 'browser') !== 'deny', endpoint: this.toolEndpoint, entry: fileURLToPath(new URL('./mcp/index.mjs', import.meta.url)), connectors, connectorDeny, connectorWrites: ['full', 'free'].includes(bot.access),
             // On the computer the IA may use its files and terminal, each step decided by the bot's level.
             computer: next.lane === 'pc' && this.tools.policy(runBot.id, 'computer') !== 'deny' ? { folders: Array.isArray(runBot.folders) ? runBot.folders : [], full: ['full', 'free'].includes(runBot.access) } : false,
             // Livre on the phone: the whole terminal of its Linux. Codex cannot ask command by command, so "Comandos no celular" on the list keeps it without one.
@@ -217,7 +218,7 @@ export class Queue extends EventEmitter {
             this.db.record('session_reset', 'A sessão guardada da IA não existe mais; a conversa continua numa sessão nova, com o histórico.', owner.id, task.id);
             capability?.close(); capability = this.tools?.open(task, controller.signal, next.lane);
             const fresh = { ...bot, codexSessionId: undefined };
-            reply = await attempt(fresh, turn ? this.rooms.prompt(fresh, task.id, { tools: Boolean(this.tools), resumed: false }) : promptFor(this.chat(fresh, task.message_id), task.message_id, { tools: Boolean(this.tools) }), false);
+            reply = await attempt(fresh, turn ? this.rooms.prompt(fresh, task.id, { tools: Boolean(this.tools), resumed: false }) : promptFor(this.chat(fresh, task.message_id), task.message_id, { tools: Boolean(this.tools), personNote }), false);
           }
         }
         catch (error) {
@@ -227,7 +228,7 @@ export class Queue extends EventEmitter {
           capability?.close(); capability = this.tools?.open(task, controller.signal, next.lane);
           const spare = { ...owner, ...reserve, codexSessionId: undefined, ...(browserMode(owner) === 'claude' ? { browserMode: 'shared' } : {}) };
           this.db.record('model_fallback', `Limite do ${PROVIDER_NAMES[owner.provider] || 'Codex'} atingido; respondendo com o ${PROVIDER_NAMES[reserve.provider] || 'Codex'}.`, owner.id, task.id);
-          try { reply = await attempt(spare, promptFor(this.chat(spare, task.message_id), task.message_id, { tools: Boolean(this.tools) }), true); }
+          try { reply = await attempt(spare, promptFor(this.chat(spare, task.message_id), task.message_id, { tools: Boolean(this.tools), personNote }), true); }
           catch (second) { delete second.codexSessionId; throw second; }
           // Its session is the other CLI's: drop the bot's own so its next turn starts fresh from the saved history.
           reply = { ...reply, codexSessionId: undefined, fallback: true, provider: reserve.provider };
@@ -290,7 +291,7 @@ export class Queue extends EventEmitter {
       if (!owner || !key || this.db.get("SELECT 1 FROM messages WHERE bot_id=? AND json_extract(body,'$.session')=? AND json_extract(body,'$.title') IS NOT NULL LIMIT 1", owner.id, key)) return;
       const asked = this.db.message(task.message_id);
       if (!asked || asked.role !== 'user' || asked.origin) return;
-      const reply = await attempt({ ...owner, codexSessionId: undefined }, TITLE_PROMPT + JSON.stringify(String(asked.text || '').slice(0, 1200)), false, { signal: AbortSignal.any([stop, AbortSignal.timeout(40000)]) });
+      const reply = await attempt({ ...owner, codexSessionId: undefined }, TITLE_PROMPT + JSON.stringify(String(asked.text || '').slice(0, 1200)), false, { signal: AbortSignal.any([stop, AbortSignal.timeout(40000)]), noTools: true });
       const title = String(reply?.text || '').split('\n').map(line => line.trim()).find(Boolean)?.replace(/^["“”'«»*#\s]+|["“”'«»*.\s]+$/g, '').slice(0, 60);
       if (title && title.length >= 3 && this.db.sessionTitle(owner.id, key, title)) this.emit('changed', { event: 'bot.updated', botId: owner.id });
     } catch {}

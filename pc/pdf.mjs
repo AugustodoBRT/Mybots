@@ -35,7 +35,7 @@ export async function pdfRead({ data, firstPage = 1, maxPages = 20 } = {}) {
   try { return await Promise.race([work, limit]); } finally { clearTimeout(timer); work.catch(() => {}); }
 }
 
-/** Creating a PDF needs a browser to print the page; the computer does not do it yet, and says what to do instead. */
+/** Creating a PDF needs a browser to print the page; on the computer, bots have the bundled `pdf` skill (pdf_create.py + file_send). */
 export async function pdfCreate() {
-  throw new Error('Criar PDF ainda não está disponível no computador. Crie o arquivo em outro formato (Word, planilha ou HTML) ou peça a um bot que rode no celular.');
+  throw new Error('Criar PDF ainda não está disponível no computador por file_create. Use a skill padrão pdf no terminal (pdf_create.py) e envie com file_send, crie o arquivo em outro formato (Word, planilha ou HTML) ou peça a um bot que rode no celular.');
 }

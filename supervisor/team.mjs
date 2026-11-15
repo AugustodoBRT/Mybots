@@ -17,6 +17,14 @@ const speedOf = (speeds, provider, model) => {
 };
 const short = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
 
+// Default lightweight models when the Chief (or another bot) creates a new bot: fast, economical, medium effort.
+export const DEFAULT_TEAM_MODELS = {
+  claude: { model: 'haiku', effort: 'medium' },
+  codex: { model: 'gpt-6-luna', effort: 'medium' },
+  agy: { model: 'gemini-4-hydrogen', effort: 'medium' }
+};
+const IMAGE_ROLE = /\b(?:gerar?\s+imag\w*|gera(?:r|ção)\s+de\s+imag\w*|desenh\w+|ilustr\w+|criar?\s+(?:arte|banner|logo|capa|foto))\b/i;
+
 /**
  * What a bot may do about the team without asking the person: make bots, open rooms, put bots in and take them out,
  * leave, close and call members. A bot never makes another one stronger than itself (the level of access is capped by
@@ -52,12 +60,36 @@ export class Team {
   }
   roomsOf(run) { return { rooms: this.rooms.list().filter(room => room.botIds.includes(run.botId) || room.createdBy === run.botId).map(room => this.describeRoom(room)) }; }
 
-  // Which IA the new bots use is the person's choice: one question for every bot the maker is about to create (never one per bot),
-  // with the maker's recommendation first and other connected IAs after. The question and its options live in the metadata
-  // (team.choice.<decision>) so team_create_bot finds the answer.
-  pick(value) {
+  pick(value = {}) {
     const selection = pickModel(this.catalog(), { provider: value.provider, ...(value.model ? { model: value.model } : {}), ...(value.effort ? { reasoningEffort: value.effort } : {}) });
     return { provider: selection.provider || value.provider, model: selection.model, reasoningEffort: selection.reasoningEffort };
+  }
+  /**
+   * Default selection for a new bot: when the maker does not pass a specific model, uses the provider's lightweight default
+   * (Claude Haiku 5.5 · medium, Codex GPT-6-Luna · medium, Antigravity Gemini 4 Hydrogen · medium). When no provider is given,
+   * picks an image-capable IA (agy/codex) for image roles or balances across connected IAs.
+   */
+  defaultSelection(value = {}, args = {}) {
+    const catalog = this.catalog();
+    const providers = [...new Set(catalog.map(item => item.provider || 'codex'))];
+    let provider = value.provider;
+    if (!provider && providers.length) {
+      const imagePool = IMAGE_ROLE.test(`${args.name || ''} ${args.instructions || ''}`) ? providers.filter(p => p === 'agy' || p === 'codex') : [];
+      const candidates = imagePool.length ? imagePool : providers;
+      const counts = new Map(candidates.map(p => [p, 0]));
+      for (const bot of this.live()) { const p = bot.provider || 'codex'; if (counts.has(p)) counts.set(p, counts.get(p) + 1); }
+      provider = [...counts.entries()].sort((a, b) => a[1] - b[1])[0][0];
+    }
+    if (value.model) return this.pick({ provider, model: value.model, effort: value.effort });
+    const pref = DEFAULT_TEAM_MODELS[provider || 'codex'];
+    if (pref) {
+      const entry = catalog.find(item => (item.provider || 'codex') === (provider || 'codex') && (item.model === pref.model || item.modelId === pref.model));
+      if (entry) {
+        const effort = value.effort || (entry.efforts?.includes(pref.effort) ? pref.effort : entry.defaultEffort);
+        return this.pick({ provider: entry.provider || provider, model: entry.model, effort });
+      }
+    }
+    return this.pick({ provider, effort: value.effort });
   }
   label(selection, recommended) {
     const item = this.catalog().find(entry => (entry.provider || 'codex') === selection.provider && entry.model === selection.model);
@@ -85,7 +117,7 @@ export class Team {
     if (open) throw new Error('Você já perguntou qual IA usar e a pessoa ainda não respondeu. Espere a resposta; ponha todos os bots numa pergunta só.');
     const names = [...new Set(args.bots.map(name => name.trim()))];
     const options = [], seen = new Set();
-    const add = (value, recommended) => { if (options.length >= 5) return; const selection = this.pick(value); const key = selection.provider + '|' + selection.model + '|' + selection.reasoningEffort; if (seen.has(key)) return; seen.add(key); options.push(selection); };
+    const add = (value, recommended) => { if (options.length >= 5) return; const selection = this.defaultSelection(value); const key = selection.provider + '|' + selection.model + '|' + selection.reasoningEffort; if (seen.has(key)) return; seen.add(key); options.push(selection); };
     add(args.recommended, true);
     for (const item of args.alternatives) { try { add(item); } catch {} }
     // Other connected IAs, each with its default model, so the person can vary the IA even when the maker did not offer it.
@@ -96,19 +128,20 @@ export class Team {
     this.db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'team.choice.' + asked.id, JSON.stringify({ botId: caller.id, names, options: options.map((item, index) => ({ ...item, label: labels[index] })), at: new Date().toISOString() }));
     return { asked: true, options: labels, note: 'A pessoa vê uma pergunta só, com estas opções e "Escrever minha resposta". Termine esta resposta; quando a escolha chegar como mensagem, crie os bots com team_create_bot usando os mesmos nomes.' };
   }
-  /** The IA a new bot gets: the person's answer to the one question about it, or what the maker passes when the person wrote it out. */
+  /** The IA a new bot gets: the default lightweight model of the chosen IA (or the person's answer if team_choose_models was asked). */
   chosenSelection(caller, args) {
     const decisions = this.decisions();
     const mine = this.choices(caller.id).filter(item => item.names.some(name => fold(name) === fold(args.name))).sort((a, b) => b.at.localeCompare(a.at));
-    if (!mine.length || !decisions) throw new Error(`Antes de criar, pergunte à pessoa qual IA usar com team_choose_models: uma pergunta só, com o nome de todos os bots que vai criar agora (inclua ${args.name}).`);
-    const decision = (() => { try { return decisions.get(mine[0].id); } catch { return null; } })();
-    if (!decision || decision.state === 'open') throw new Error('A pessoa ainda não escolheu a IA destes bots. Espere a resposta à pergunta antes de criar.');
-    if (decision.state !== 'answered') throw new Error('A pergunta sobre a IA expirou ou foi cancelada. Pergunte de novo com team_choose_models.');
-    const option = mine[0].options.find(item => item.label === decision.answer);
-    if (option) return { provider: option.provider, model: option.model, reasoningEffort: option.reasoningEffort };
-    // She wrote her own answer: the maker reads it and passes the IA she asked for.
-    if (!args.provider) throw new Error(`A pessoa escreveu: "${String(decision.answer).slice(0, 200)}". Passe provider (e model e effort, se ela disse) conforme o que ela pediu; veja as opções em team_models.`);
-    return this.pick({ provider: args.provider, model: args.model, effort: args.effort });
+    if (mine.length && decisions) {
+      const decision = (() => { try { return decisions.get(mine[0].id); } catch { return null; } })();
+      if (!decision || decision.state === 'open') throw new Error('A pessoa ainda não escolheu a IA destes bots. Espere a resposta à pergunta antes de criar.');
+      if (decision.state !== 'answered') throw new Error('A pergunta sobre a IA expirou ou foi cancelada. Pergunte de novo com team_choose_models.');
+      const option = mine[0].options.find(item => item.label === decision.answer);
+      if (option) return { provider: option.provider, model: option.model, reasoningEffort: option.reasoningEffort };
+      if (!args.provider) throw new Error(`A pessoa escreveu: "${String(decision.answer).slice(0, 200)}". Passe provider (e model e effort, se ela disse) conforme o que ela pediu; veja as opções em team_models.`);
+      return this.defaultSelection({ provider: args.provider, model: args.model, effort: args.effort }, args);
+    }
+    return this.defaultSelection({ provider: args.provider, model: args.model, effort: args.effort }, args);
   }
   create(run, args, caller) {
     if (this.live().length >= LIMITS.bots) throw new Error(`O MyBots já tem ${LIMITS.bots} bots. Reaproveite um existente (team_bots).`);
@@ -120,8 +153,7 @@ export class Team {
     if (level === 'free') throw new Error('Só a pessoa põe um bot no nível Livre, pelo app.');
     if (level && caller.access !== undefined && RANK[level] > RANK[caller.access]) throw new Error('Você não pode criar um bot com mais acesso do que o seu. Escolha o mesmo nível ou menor.');
     if (level && !ACCESS_LEVELS.includes(level)) throw new Error('Nível de acesso inválido.');
-    const chosen = this.chosenSelection(caller, args);
-    const selection = this.pick({ provider: chosen.provider, model: chosen.model, effort: chosen.reasoningEffort });
+    const selection = this.chosenSelection(caller, args);
     const bot = this.createBot({ name: args.name, instructions: args.instructions || '', ...(args.color ? { color: args.color } : {}), ...(args.avatar ? { avatar: args.avatar } : {}),
       autonomy: caller.autonomy || 'ask', ...(level ? { access: level } : {}), home: args.home || caller.home || 'phone' }, selection);
     this.made.set(run.taskId, (this.made.get(run.taskId) || 0) + 1);

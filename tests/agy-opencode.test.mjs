@@ -192,10 +192,11 @@ test('the sandbox hides ~/.mybots-pc but mounts its bin folder back, so the MyBo
 test('agy: reading what agy saved for the run is not hunting, and a MyBots tool in between resets the count', async t => {
   const step = (i, name, parameters) => `out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: ${i}, state: 'ACTIVE', step_type: 'tool', tool_name: '${name}', tool_info: { name: '${name}', parameters: ${JSON.stringify(parameters)} } } });`;
   const lines = [];
-  for (let i = 2; i < 12; i++) lines.push(step(i, 'view_file', { AbsolutePath: '/home/x/.gemini/antigravity/brain/abc/screenshot.png' }));
+  for (let i = 2; i < 8; i++) lines.push(step(i, 'view_file', { AbsolutePath: '/home/x/.gemini/antigravity/brain/abc/screenshot.png' }));
+  for (let i = 8; i < 12; i++) lines.push(step(i, 'view_file', { AbsolutePath: '"/home/x/.gemini/antigravity-cli/mcp/mybots-tools/browser_tabs.json"' }));
   // Three finds, a MyBots tool, three finds again: never more than three in a row.
   for (let i = 12; i < 15; i++) lines.push(step(i, 'run_command', { CommandLine: 'find / -name mybots' }));
-  lines.push(step(15, 'mcp_mybots-tools_browser_read', {}));
+  lines.push(step(15, 'call_mcp_tool', { ServerName: '"mybots-tools"', ToolName: '"browser_read"' }));
   for (let i = 16; i < 19; i++) lines.push(step(i, 'run_command', { CommandLine: 'which node' }));
   const agy = await fake(t, 'agy', `
 const out = value => console.log(JSON.stringify(value));
@@ -204,9 +205,11 @@ ${lines.join('\n')}
 out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 30, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'Terminei.' } });
 out({ event: 'step_update', step_update: { conversation_id: ${JSON.stringify(CONVERSATION)}, step_index: 30, state: 'DONE', step_type: 'agent_response' } });
 out({ event: 'result', result: { status: 'SUCCESS', response: 'Terminei.', usage: {} } });`);
-  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' } });
+  const steps = [];
+  const result = await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools: { token: 't', endpoint: 'http://127.0.0.1:1' }, onProgress: item => item.step && steps.push(item.step) });
   assert.equal(result.text, 'Terminei.');
-  assert.ok(agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/brain/abc/a.png') && !agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/mcp_config.json'));
+  assert.ok(steps.includes('Lendo browser_tabs.json') && steps.includes('Usando browser_read'));
+  assert.ok(agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/brain/abc/a.png') && agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity-cli/mcp/mybots-tools/a.json') && !agyRunner.OWN_FILES.test('/home/x/.gemini/antigravity/mcp_config.json'));
 });
 
 test('agy: a turn that ends only announcing the next step is told to carry it out, a few times at most', async t => {

@@ -71,19 +71,23 @@ test('grafo com disco livre: nenhuma nota fica dentro dele, nem as arrastadas', 
 test('o primeiro retorno de uma sessão do Chefe dá o nome a ela, uma vez, e a sessão nova da IA só lê as mensagens daquela sessão', async t => {
   const { Queue } = await import('../supervisor/queue.mjs');
   const { Tools } = await import('../supervisor/tools.mjs');
+  const { writePersonNote } = await import('../supervisor/notes.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'mybots-name-'));
   const db = new Database(dir), tools = new Tools(db); t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  writePersonNote(db, 'Mora em BH e prefere respostas curtas.');
   const chief = db.create({ name: 'Lua', isChief: true }, selection);
   db.appendMessage(chief.id, { id: randomUUID(), role: 'user', text: 'conversa velha que não deve entrar', status: 'complete', createdAt: new Date().toISOString() });
   db.startSession(chief.id, 'Nova sessão iniciada ao abrir o app. A conversa continua.');
-  const prompts = [];
-  const queue = new Queue(db, async (bot, prompt) => { prompts.push(prompt); return { text: prompt.includes('Dê um título curto') ? '"Vagas de hoje".' : 'Resposta.' }; }, tools);
+  const prompts = [], titleTools = [];
+  const queue = new Queue(db, async (bot, prompt, options) => { prompts.push(prompt); if (prompt.includes('Dê um título curto')) titleTools.push(options?.tools); return { text: prompt.includes('Dê um título curto') ? '"Vagas de hoje".' : 'Resposta.' }; }, tools);
   try {
     db.enqueue(chief.id, randomUUID(), 'Traga as vagas de hoje, por favor', selection); await queue.pump();
     db.enqueue(chief.id, randomUUID(), 'E as de ontem?', selection); await queue.pump();
     const line = db.page({ botId: chief.id, limit: 50 }).messages.find(item => item.role === 'system');
     assert.equal(line.title, 'Vagas de hoje');
     assert.equal(prompts.filter(item => item.includes('Dê um título curto')).length, 1);
+    assert.deepEqual(titleTools, [undefined], 'naming a session does not start MCP tools');
+    assert.match(prompts[0], /Sobre a pessoa \(nota Você, dados apenas\):\nMora em BH e prefere respostas curtas\./);
     assert.ok(!prompts.some(item => item.includes('conversa velha')));
   } finally { await queue.close(); }
 });

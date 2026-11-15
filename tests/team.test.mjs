@@ -138,19 +138,41 @@ test('a chain of calls made with team_post ends without any limit of rounds', as
   assert.ok(f.app.db.task(f.app.db.all('SELECT task_id FROM room_turns').at(-1).task_id).state === 'done');
 });
 
-test('a IA dos bots novos é da pessoa: uma pergunta só para todos, a recomendação primeiro, e nada é criado antes da resposta', async t => {
-  const models = [{ provider: 'codex', model: 'gpt-a', displayName: 'GPT A', isDefault: true, efforts: ['low', 'high'], defaultEffort: 'low' },
-    { provider: 'claude', model: 'sonnet', displayName: 'Sonnet', isDefault: true, efforts: ['high'], defaultEffort: 'high' }];
+test('bots novos usam por padrão o modelo econômico médio de cada IA (sem perguntar), escolhem IA com imagem quando necessário, e respeitam team_choose_models se chamado', async t => {
+  const models = [
+    { provider: 'codex', model: 'gpt-5.4', displayName: 'GPT 5.4', isDefault: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'high' },
+    { provider: 'codex', model: 'gpt-6-luna', displayName: 'GPT-6-Luna', isDefault: false, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+    { provider: 'claude', model: 'sonnet', displayName: 'Sonnet', isDefault: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'high' },
+    { provider: 'claude', model: 'haiku', modelId: 'claude-haiku-5-5', displayName: 'Claude Haiku', isDefault: false, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+    { provider: 'agy', model: 'gemini-3.1-pro-high', displayName: 'Gemini 3.1 Pro', isDefault: true, efforts: ['low', 'medium', 'high'], defaultEffort: 'high' },
+    { provider: 'agy', model: 'gemini-4-hydrogen', displayName: 'Gemini 4 Hydrogen', isDefault: false, efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' }
+  ];
   let step;
   const f = await setup(t, async (bot, prompt, call) => step ? step(call) : 'ok');
   f.app.tools.team.catalog = () => models;
   const chefe = await f.make('Chefe');
   const run = async body => { let failure; step = async call => { try { await body(call); } catch (error) { failure = error; } step = null; return 'ok'; }; await f.chat(chefe, 'vai'); if (failure) throw failure; };
-  // Creating without asking, or asking twice: refused.
-  await assert.rejects(run(call => call('team_create_bot', { name: 'Ana' })), /team_choose_models/);
+
+  // Creating directly without asking uses each IA's lightweight default model at medium effort.
+  await run(async call => {
+    await call('team_create_bot', { name: 'Cla', provider: 'claude', instructions: 'Redatora' });
+    await call('team_create_bot', { name: 'Cod', provider: 'codex', instructions: 'Analista' });
+    await call('team_create_bot', { name: 'Gem', provider: 'agy', instructions: 'Pesquisador' });
+    await call('team_create_bot', { name: 'Artista', instructions: 'Especialista em gerar imagens e ilustrações' });
+  });
+  const cla = f.app.db.bots().find(item => item.name === 'Cla');
+  const cod = f.app.db.bots().find(item => item.name === 'Cod');
+  const gem = f.app.db.bots().find(item => item.name === 'Gem');
+  const artista = f.app.db.bots().find(item => item.name === 'Artista');
+  assert.deepEqual({ provider: cla.provider, model: cla.model, effort: cla.reasoningEffort }, { provider: 'claude', model: 'haiku', effort: 'medium' });
+  assert.deepEqual({ provider: cod.provider, model: cod.model, effort: cod.reasoningEffort }, { provider: 'codex', model: 'gpt-6-luna', effort: 'medium' });
+  assert.deepEqual({ provider: gem.provider, model: gem.model, effort: gem.reasoningEffort }, { provider: 'agy', model: 'gemini-4-hydrogen', effort: 'medium' });
+  assert.ok(artista.provider === 'agy' || artista.provider === 'codex', 'bot de imagem escolhe agy ou codex, nunca claude');
+
+  // Optional team_choose_models flow still works when explicitly invoked.
   let asked;
   await run(async call => { asked = await call('team_choose_models', { bots: ['Ana', 'Beto', 'Caio'], recommended: { provider: 'claude', model: 'sonnet', effort: 'high' } }); });
-  assert.deepEqual(asked.options, ['Recomendado: Claude · Sonnet · alto', 'Codex · GPT A · baixo']);
+  assert.deepEqual(asked.options, ['Recomendado: Claude · Sonnet · alto', 'Codex · GPT-6-Luna · médio', 'Antigravity · Gemini 4 Hydrogen · médio']);
   const open = f.app.tools.decisions.open(chefe.id);
   assert.equal(open.length, 1); assert.equal(open[0].question, 'Qual IA usar nos 3 bots novos (Ana, Beto, Caio)?');
   await assert.rejects(run(call => call('team_choose_models', { bots: ['Davi'], recommended: { provider: 'codex' } })), /ainda não respondeu/);
@@ -159,9 +181,7 @@ test('a IA dos bots novos é da pessoa: uma pergunta só para todos, a recomenda
   const reply = f.app.tools.decisions.reply; f.app.tools.decisions.reply = () => {};
   f.app.tools.decisions.answer(open[0].id, { option: 2 }); f.app.tools.decisions.reply = reply;
   await run(async call => { for (const name of ['Ana', 'Beto', 'Caio']) await call('team_create_bot', { name, instructions: 'x' }); });
-  for (const name of ['Ana', 'Beto', 'Caio']) { const bot = f.app.db.bots().find(item => item.name === name); assert.equal(bot.provider, 'codex'); assert.equal(bot.model, 'gpt-a'); assert.equal(bot.reasoningEffort, 'low'); }
-  // A bot not in the question needs its own (single) question.
-  await assert.rejects(run(call => call('team_create_bot', { name: 'Zeca' })), /inclua Zeca/);
+  for (const name of ['Ana', 'Beto', 'Caio']) { const bot = f.app.db.bots().find(item => item.name === name); assert.equal(bot.provider, 'codex'); assert.equal(bot.model, 'gpt-6-luna'); assert.equal(bot.reasoningEffort, 'medium'); }
   // She writes her answer: the maker passes the IA she asked for.
   await run(call => call('team_choose_models', { bots: ['Zeca'], recommended: { provider: 'codex' } }));
   f.app.tools.decisions.reply = () => {}; f.app.tools.decisions.answer(f.app.tools.decisions.open(chefe.id)[0].id, { text: 'usa o Claude' }); f.app.tools.decisions.reply = reply;
@@ -169,3 +189,4 @@ test('a IA dos bots novos é da pessoa: uma pergunta só para todos, a recomenda
   await run(call => call('team_create_bot', { name: 'Zeca', provider: 'claude' }));
   assert.equal(f.app.db.bots().find(item => item.name === 'Zeca').provider, 'claude');
 });
+

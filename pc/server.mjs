@@ -19,7 +19,7 @@ import { Claude } from '../lib/claude.mjs';
 import { Agy } from '../lib/agy.mjs';
 import { Opencode } from '../lib/opencode.mjs';
 import agentSkills from '../lib/agent-skills.cjs';
-const { discover, enabledFor, githubSource, installFromGithub } = agentSkills;
+const { ROOTS, discover, enabledFor, activeSkills, githubSource, installFromGithub } = agentSkills;
 import { TUNNEL_PATHS, proof, pairingLink, MAX_FRAME } from '../supervisor/link.mjs';
 import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
 import { SENSITIVE, browserMode, browserSlot } from '../supervisor/tool-policy.mjs';
@@ -131,7 +131,9 @@ const OTHER_LOGINS = [['codex', '.codex'], ['claude', '.claude'], ['agy', '.gemi
 export function sandboxFor(provider, home = homedir(), bwrap = ['/usr/bin/bwrap', '/bin/bwrap'].find(path => existsSync(path)), directory = join(home, '.mybots-pc'), { skills = [], gpu = false, dev = '/dev', accountDir = null, accountsRoot = accounts.root(), github = false } = {}) {
   if (!bwrap) return null;
   const ownLogin = accountDir ? [] : [provider || 'codex'];   // an extra account hides the default login of its own IA too
-  const hidden = [...new Set([...HIDDEN.filter(path => !(github && path === '.config/gh')), ...OTHER_LOGINS.filter(([key]) => !ownLogin.includes(key)).map(([, path]) => path)].map(path => join(home, path)).concat(directory, accountsRoot))].filter(path => existsSync(path) && statSync(path).isDirectory());
+  const otherLoginDirs = OTHER_LOGINS.filter(([key]) => !ownLogin.includes(key)).map(([, path]) => path);
+  const skillRoots = ROOTS.filter(root => !otherLoginDirs.some(dir => root === dir || root.startsWith(dir + '/')));
+  const hidden = [...new Set([...HIDDEN.filter(path => !(github && path === '.config/gh')), ...otherLoginDirs, ...skillRoots].map(path => join(home, path)).concat(directory, accountsRoot))].filter(path => existsSync(path) && statSync(path).isDirectory());
   // Desktop access only through the MCP executor, including for bots with terminal access. A private /proc
   // prevents reaching the host's sockets and browser profiles through another process's root directory.
   const desktop = [process.env.XDG_RUNTIME_DIR, '/tmp/hypr', '/tmp/.X11-unix'].filter(path => path?.startsWith('/') && existsSync(path) && statSync(path).isDirectory());
@@ -484,7 +486,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         const bot = message.bot || {}; configureBrowser(bot);
         const workspace = workspaceFor(directory, projects, bot);
         const endpoint = message.tools ? `http://127.0.0.1:${(await tunnel()).address().port}` : null;
-        const enabledSkills = enabledFor(bot, discover());
+        const enabledSkills = message.tools?.computer ? activeSkills(bot, discover()) : enabledFor(bot, discover());
         const wrap = sandboxFor(bot.provider, homedir(), undefined, directory, { skills: enabledSkills, gpu: bot.gpu === true, accountDir: accounts.folder(bot.provider || 'codex', bot.aiAccount), github: Boolean(message.tools?.github) });
         // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it and, as the owner chose
         // (12/11/2026), a bot allowed to use the computer has a free terminal there with every IA (Codex, Claude and Antigravity).

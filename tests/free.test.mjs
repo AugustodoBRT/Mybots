@@ -238,6 +238,6 @@ test('the terminal is available by default; supervisor files, keys and app secre
   const codexArgs = codexRunner.chatArguments('/tmp/x', selection, { token: 't', entry: '/x', endpoint: 'http://x', phoneShell: true });
   assert.ok(codexArgs.includes('danger-full-access'));
   const claudeArgs = claudeRunner.claudeArguments(selection, randomUUID(), { token: 't', endpoint: 'http://x', phoneShell: true });
-  assert.equal(claudeArgs[claudeArgs.indexOf('--tools') + 1], 'Bash,Read,Write,Edit,Glob,Grep');
+  assert.equal(claudeArgs[claudeArgs.indexOf('--tools') + 1], 'Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch');
   assert.ok(claudeArgs.includes('mcp__mybots-tools__permission'));
 });

@@ -21,6 +21,10 @@ const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 test('canvas: cartões ao vivo, página isolada, arrastar, zoom, trocar de bot e mandar mensagem', { skip: !existsSync(browserPath), timeout: 600000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'mybots-canvas-win-')); const ui = join(directory, 'ui');
   await run('npx', ['expo', 'export', '--platform', 'web', '--output-dir', ui], { cwd: new URL('../mobile', import.meta.url).pathname, timeout: 400000, maxBuffer: 1 << 26 });
+  // The outside world: a real server the isolated page must never reach. (Playwright's `request` event is no judge of this: in a check on
+  // 14/11/2026 it fired for requests the policy blocked, and did NOT fire for 10 of 10 that really reached a server once the policy was loosened.)
+  const reached = []; const outside = createServer((request, response) => { reached.push(request.url); response.writeHead(200, { 'content-type': 'image/png' }); response.end(); });
+  await new Promise(resolve => outside.listen(0, '127.0.0.1', resolve)); t.after(() => outside.close());
   const app = await createSupervisor({ directory: join(directory, 'sup'), port: 0, codex, execute: async bot => ({ text: `Pronto, sou ${bot.name}.`, ...selection }) });
   await app.rpc('state.get');
   const chief = await app.rpc('bot.create', { name: 'Chefe', isChief: true, instructions: 'Chefe.', ...selection });
@@ -28,7 +32,7 @@ test('canvas: cartões ao vivo, página isolada, arrastar, zoom, trocar de bot e
   app.tools.tables.add(vagas.id, { table: 'candidaturas', row: { empresa: 'Acme', status: 'enviada' } });
   const table = app.tools.canvas.add(vagas.id, { kind: 'table', title: 'Candidaturas', area: 'Vagas', table: 'candidaturas' });
   app.tools.canvas.add(vagas.id, { kind: 'note', title: 'Resumo', area: 'Vagas', text: '**1 enviada**', near: table.id, label: 'detalhes' });
-  app.tools.canvas.add(chief.id, { kind: 'html', title: 'Painel', area: 'Equipe', html: '<p id=p>0</p><script>p.textContent=6*7</script><img src="https://example.com/x.png">' });
+  app.tools.canvas.add(chief.id, { kind: 'html', title: 'Painel', area: 'Equipe', html: `<p id=p>0</p><script>p.textContent=6*7</script><img src="http://127.0.0.1:${outside.address().port}/x.png">` });
   const web = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://x').pathname);
     let file = normalize(join(ui, path === '/' ? 'index.html' : path));
@@ -46,8 +50,7 @@ test('canvas: cartões ao vivo, página isolada, arrastar, zoom, trocar de bot e
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   // The news window after an update would cover the screen: here the current version counts as already seen.
   await page.addInitScript(version => { try { localStorage.setItem('mybots.seenVersion', version); } catch {} }, APP_VERSION);
-  const errors = [], outside = []; page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => { if (/example\.com/.test(request.url())) outside.push(request.url()); });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${web.address().port}/`);
   await page.getByRole('button', { name: 'Canvas', exact: true }).first().click({ timeout: 60000 });
   await page.getByText('Candidaturas').first().waitFor({ timeout: 30000 });
@@ -75,5 +78,5 @@ test('canvas: cartões ao vivo, página isolada, arrastar, zoom, trocar de bot e
   await page.getByRole('button', { name: 'Tirar do canvas' }).click();
   await page.waitForFunction(() => !document.body.innerText.includes('Nova nota'), null, { timeout: 10000 });
   assert.equal((await app.rpc('canvas.state')).cards.length, 3);
-  assert.deepEqual(outside, []); assert.deepEqual(errors, []);
+  assert.deepEqual(reached, [], 'a página isolada não pode alcançar nada de fora'); assert.deepEqual(errors, []);
 });

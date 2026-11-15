@@ -39,7 +39,7 @@ Também existem e hoje ficam fora: gerar imagem (Codex `image_generation`, agy `
 - **Navegador e tela próprios das IAs** (`browser_use`, `computer_use`, `browser_subagent`, `--chrome`): o MyBots tem o navegador de cada bot, com login, aprovações e o botão Assumir. Ligar o das IAs abriria um segundo caminho sem essas regras.
 - **Apps e plugins da conta** (`apps`, `plugins`, conectores do claude.ai): Gmail, Agenda e Drive abrem pelo navegador do bot.
 - **Memória própria da IA** (`memories`, "brain"): a memória do bot é a da aba Memória do MyBots, que o dono vê e edita.
-- **O nível de acesso decide o terminal**: o terminal livre no PC e no celular continua por nível e com cartão. Mudar isso é decisão do dono.
+- **Terminal: o dono disse que o acesso pode ser igual ao do terminal.** Hoje, no Acesso total e no Livre, o terminal já roda sem pedir nada; só os comandos perigosos (`sudo`, apagar pastas inteiras, `git push`) pedem cartão, numa lista que o dono edita no app. Ficam como estão, a menos que o dono diga que quer tirar esses cartões também.
 
 ## Etapas, da mais fácil à mais complicada
 
@@ -68,18 +68,42 @@ Cada etapa vale para o celular e para o PC. No celular o opencode não existe (o
 - O dono toca numa opção na conversa (ou na notificação) e a resposta volta para o bot, que continua de onde parou.
 - Primeiro, testar se alguma das nativas funciona no modo sem tela; se funcionar, usar a nativa nessa IA.
 
-### 4. Skills prontas: PDF, Word, Excel, PowerPoint e gráficos (médio, 2 entregas)
+### 4. Skills prontas: o que elas acrescentam ao que já existe (médio, 2 a 3 entregas)
 
-- Todas as quatro IAs leem skills. O MyBots já entrega skills a todos os bots (`lib/agent-skills.cjs`, pastas passadas por `--add-dir` e `skillDirs`). O trabalho é **empacotar as skills de documentos** no formato que cada IA lê e religar a descoberta de skills onde está desligada (`--disable-slash-commands` no Claude, `skip_host_skill_discovery` e `skill_mcp_dependency_install` no Codex).
+**O que os bots já fazem hoje.** A ferramenta `file_create` do MyBots (igual em todas as IAs) cria PDF, Word (`.docx`), planilha (`.xlsx`, cada tabela vira uma aba), CSV, Markdown, texto ou HTML **a partir de um texto em Markdown** (títulos, negrito, listas, tabelas e gráficos simples de barra, linha e pizza). E `attachment_read` lê texto, imagens e PDF com texto. É uma conversão de uma vez só. Pelo código, **no PC criar PDF hoje não funciona** (`pc/pdf.mjs` responde que não está disponível); só o celular cria, pela tela do app.
+
+**O que as skills acrescentam**, e que `file_create` não faz:
+- **Mexer num arquivo que já existe:** o dono manda um `.docx`, `.xlsx`, `.pptx` ou PDF e o bot edita, em vez de só criar um novo.
+- **PowerPoint:** não existe hoje.
+- **Excel de verdade:** fórmulas que recalculam, formatação, vários gráficos, formatos de número.
+- **Word de verdade:** estilos, modelos, índice, comentários e alterações rastreadas.
+- **PDF de verdade:** preencher formulário, juntar e dividir, marca d'água, extrair tabelas, ler PDF escaneado (OCR) e criar PDF também no PC.
+- **Capricho:** instruções de como fazer bem feito, em vez de um visual genérico.
+
+**Quais skills.** As quatro de documentos são só o começo:
+1. **PDF e planilhas** (entrega 1).
+2. **Word e PowerPoint** (entrega 2).
+3. **Gráficos bonitos, pesquisa com fontes e páginas bonitas** (entrega 3). A pesquisa depende das etapas 1 e 7; o design de páginas serve aos cartões HTML do Canvas e à etapa 5.
+4. **As do próprio dono** (vídeo explicativo e anúncios em vídeo): pesadas (navegador com GPU, narração, ffmpeg), então só no PC.
+
+O formato `SKILL.md` é o mesmo nas quatro IAs (o MyBots já entrega skills do Antigravity a todos os bots), então uma skill empacotada vale para todas. Falta decidir onde cada uma roda:
 - **PC:** usam o Python do computador.
 - **Celular:** o Linux do app precisa de Python e das bibliotecas de documentos. Aumenta o APK (estimativa de 30 a 60 MB), então baixar só quando o primeiro bot usar.
-- **Entrega 1:** PDF e planilhas. **Entrega 2:** Word, PowerPoint e gráficos.
+- Religar a descoberta de skills onde está desligada (`--disable-slash-commands` no Claude, `skip_host_skill_discovery` e `skill_mcp_dependency_install` no Codex).
 
 ### 5. Publicar páginas com link (médio, 1 a 2 entregas)
 
-- Esta é do MyBots para todos (nenhuma IA publica páginas): o bot transforma um cartão HTML do Canvas numa página com link próprio, servida pela VM do relé (a mesma do web app do iPhone).
-- Endereço aleatório e difícil de adivinhar; o dono pode tirar o link do ar quando quiser.
-- Por padrão, publicar pede aprovação, porque o conteúdo sai do aparelho.
+**Como funciona.** É do MyBots para todos (nenhuma IA publica páginas). O bot pede para publicar um cartão HTML do Canvas; o dono aprova (por padrão pede aprovação, porque o conteúdo sai do aparelho); o supervisor manda o HTML pelo canal seguro que já liga o aparelho ao relé; a VM guarda como arquivo (`/var/www/p/<código aleatório>/index.html`) e devolve um link. O Caddy, que já serve o web app do iPhone, serve esses arquivos como arquivos estáticos.
+
+**Pesa no relé? Não, porque quem serve é o Caddy, não o relé.** Medido na VM em 15/11/2026: 2 processadores, **954 MB de memória (uns 500 MB livres)**, carga 0,00, 111 dias ligada, 4 conexões abertas, disco com 40 GB livres de 45. O relé (Node) usa uns 60 MB e o Caddy uns 26 MB; o web app inteiro ocupa 4,6 MB. Servir uma página de poucos centenas de KB é quase nada para o Caddy. O recurso apertado é a **memória**, então a publicação grava direto no disco, sem carregar a página na memória do relé, e recusa arquivos grandes.
+
+**O que precisa de cuidado de verdade (não é desempenho):**
+- **Segurança:** as páginas ficariam no mesmo endereço do web app do iPhone, que guarda o pareamento no próprio navegador. Uma página de bot com script poderia tentar lê-lo. Por isso cada página sai com o cabeçalho `Content-Security-Policy: sandbox` (origem isolada, sem acesso ao armazenamento do web app), ou num endereço separado.
+- **Abuso:** qualquer pessoa com o link poderia abrir à vontade, ou alguém publicar lixo ou golpe no nosso domínio. Limites: só aparelho pareado publica; até ~2 MB por página; poucas páginas por aparelho (ex.: 20) e teto total de disco (ex.: 500 MB); validade automática (ex.: 30 dias); limite de pedidos por minuto no Caddy.
+- **Privacidade:** o código do link é aleatório e longo (impossível adivinhar), e o dono vê no app a lista do que está publicado, com um botão "Tirar do ar" que apaga o arquivo na hora.
+- **Banda:** uma página que viraliza gasta a banda da VM; o limite gratuito da Oracle é alto, mas não conferi o número atual.
+
+**Alternativas se o dono não quiser usar a VM:** um serviço de hospedagem estática de terceiros (conta e chave à parte) ou servir do próprio PC pelo relé (o PC precisa estar ligado e todo o tráfego passaria pelo relé, o que sim pesaria). A VM com arquivos estáticos é a mais leve e a mais simples.
 
 ### 6. Esperar sem gastar: tarefas em segundo plano (médio a difícil, 2 entregas)
 
@@ -107,4 +131,6 @@ Etapas 1 e 2 juntas na primeira entrega: são as que mais mudam o dia a dia e as
 
 - **Etapa 1:** busca do Codex `live` ou `cached`? E a regra para endereços da rede local nas ferramentas que buscam a partir do aparelho.
 - **Etapa 7:** quantos ajudantes ao mesmo tempo e qual o teto de gasto por pedido.
-- **Fora do plano, por enquanto:** navegador e tela próprios das IAs, memória própria da IA e terminal livre.
+- **Etapa 5:** os limites de publicação (tamanho por página, quantas por aparelho, validade) e se publicar pede aprovação sempre ou só na primeira vez.
+- **Terminal:** manter os cartões só dos comandos perigosos (como hoje) ou tirar também.
+- **Fora do plano, por enquanto:** navegador e tela próprios das IAs e memória própria da IA.

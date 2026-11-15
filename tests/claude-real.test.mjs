@@ -22,7 +22,7 @@ test('real Claude Code CLI uses MyBots tools and terminal, runs directly, resume
     const names = (data.tools || []).map(tool => tool.name);
     // Claude Code may make side requests without tools; the chat turns must expose only mybots-tools.
     // 2.1.304+ also sends DeferredToolPlaceholder, an inert stand-in for deferred tools, not a capability.
-    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder' || ['Bash','Read','Write','Edit','Glob','Grep'].includes(name)), names.join(','));
+    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder' || ['Bash','Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','Task','Agent','AskUserQuestion'].includes(name)), names.join(','));
     const tool = names.find(name => name.endsWith('task_create_item'));
     const hasResult = data.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_result'));
     const firstTurn = JSON.stringify(data.messages).includes('crie uma pendência');

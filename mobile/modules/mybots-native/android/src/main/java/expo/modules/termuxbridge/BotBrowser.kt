@@ -731,7 +731,7 @@ internal object BotBrowser {
   }""".trimIndent()
 
   // The scripts below run inside the page. Elements get a stable data-mybots-id until the page changes.
-  private val READ_PAGE = """function readPage({ query = '', limit = 5, main = false, maxChars = 20000 } = {}) {
+  private val READ_PAGE = """function readPage({ query = '', limit = 5, main = false, maxChars = 6000 } = {}) {
   const elements = [], texts = [];
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const normalize = value => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -750,7 +750,7 @@ internal object BotBrowser {
       const kind = el.type === 'password' || ($CARD_JS)(el) ? 'password' : el.type === 'file' ? 'file' : el.type === 'submit' || el.type === 'image' || el.tagName === 'BUTTON' && el.type !== 'button' && el.form ? 'submit' : el.tagName.toLowerCase();
       const label = clean(el.getAttribute('aria-label') || (el.labels?.[0]?.innerText) || el.getAttribute('placeholder') || el.textContent || el.title || el.name || el.getAttribute('href'));
       const item = { id: Number(el.dataset.mybotsId), kind, label };
-      if (visible && r.bottom > 0 && r.right > 0 && r.top < win.innerHeight && r.left < win.innerWidth) item.box = { x: r.x + ox, y: r.y + oy, w: r.width, h: r.height };
+      if (visible && r.bottom > 0 && r.right > 0 && r.top < win.innerHeight && r.left < win.innerWidth) item.box = { x: Math.round(r.x + ox), y: Math.round(r.y + oy), w: Math.round(r.width), h: Math.round(r.height) };
       if (parentFrame) item.frame = parentFrame;
       if (el.tagName === 'SELECT') item.options = [...el.options].map(o => clean(o.text)).slice(0, 50);
       if (query) {

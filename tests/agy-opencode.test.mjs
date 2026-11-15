@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MCP_TOOLS } from '../supervisor/mcp/catalog.mjs';
 import agyRunner from '../lib/agy-runner.cjs';
 import opencodeRunner from '../lib/opencode-runner.cjs';
 import { selectionFor, PROVIDERS, PROVIDER_NAMES } from '../lib/models.mjs';
@@ -16,7 +17,8 @@ async function fake(t, name, script) {
   const directory = await mkdtemp(join(tmpdir(), `mybots-${name}-fake-`));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const binary = join(directory, name);
-  await writeFile(binary, `#!${process.execPath}\nconst fs = require('node:fs');\nconst args = process.argv.slice(2);\nconst calls = ${JSON.stringify(join(directory, 'calls.json'))};\nconst log = fs.existsSync(calls) ? JSON.parse(fs.readFileSync(calls, 'utf8')) : [];\nlog.push({ args, env: { token: process.env.MYBOTS_RUN_TOKEN || null, config: process.env.OPENCODE_CONFIG_CONTENT || null } }); fs.writeFileSync(calls, JSON.stringify(log));\n${script}`, { mode: 0o700 });
+  // Fake CLIs sometimes exit immediately after printing. Flush their protocol lines before exit.
+  await writeFile(binary, `#!${process.execPath}\nconst fs = require('node:fs');\nconsole.log = line => fs.writeSync(1, String(line) + '\\n');\nconst args = process.argv.slice(2);\nconst calls = ${JSON.stringify(join(directory, 'calls.json'))};\nconst log = fs.existsSync(calls) ? JSON.parse(fs.readFileSync(calls, 'utf8')) : [];\nlog.push({ args, env: { token: process.env.MYBOTS_RUN_TOKEN || null, config: process.env.OPENCODE_CONFIG_CONTENT || null } }); fs.writeFileSync(calls, JSON.stringify(log));\n${script}`, { mode: 0o700 });
   return { binary, calls: async () => JSON.parse(await readFile(join(directory, 'calls.json'), 'utf8')) };
 }
 
@@ -84,19 +86,58 @@ test('agy: another conversation than the saved one, a failed turn and a bad id a
 });
 
 test('agy: the MyBots tools are registered once as an MCP server that gets the run token from the environment', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'mybots-agy-home-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const dir = join(home, '.gemini', 'config');
+  await mkdir(dir, { recursive: true });
+  const env = { HOME: home, MCP_FILE: join(dir, 'mcp_config.json') };
   const agy = await fake(t, 'agy', `
 if (args[0] === 'mcp' && args[1] === 'list') { console.log('NAME TYPE STATUS COMMAND/URL'); process.exit(0); }
-if (args[0] === 'mcp') process.exit(0);
+if (args[0] === 'mcp') {
+  fs.writeFileSync(process.env.MCP_FILE, JSON.stringify({mcpServers:{'mybots-tools':{command:args[3],args:args.slice(4)}}}));
+  process.exit(0);
+}
 console.log(JSON.stringify({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} }));
 console.log(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'ok', usage: {} } }));`);
   const tools = { token: 'a'.repeat(64), endpoint: 'http://127.0.0.1:9', entry: '/x/mcp/index.mjs', computer: false };
-  await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools });
-  await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools });
+  await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools, env });
+  await agyRunner.runReply({ model: 'm' }, 'oi', { binary: agy.binary, tools, env });
+  const config = JSON.parse(await readFile(env.MCP_FILE, 'utf8'));
+  assert.deepEqual(config.mcpServers['mybots-tools'].tools, Object.fromEntries(MCP_TOOLS.map(({ name }) => [name, { eager: true }])));
   const calls = await agy.calls();
   assert.deepEqual(calls.filter(call => call.args[0] === 'mcp').map(call => call.args.slice(0, 3).join(' ')), ['mcp list', 'mcp add mybots-tools']);
   const runs = calls.filter(call => call.args[0] !== 'mcp');
   assert.equal(runs.length, 2); assert.equal(runs[0].env.token, tools.token);
   assert.match(runs[0].args.find(item => item.startsWith('-p=')), /Instruções do MyBots/);
+});
+
+test('agy: repairs legacy config before listing and mounts only MyBots in the isolated config', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'mybots-agy-migrate-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const dir = join(home, '.gemini', 'config'), file = join(dir, 'mcp_config.json');
+  await mkdir(dir, { recursive: true });
+  const other = { command: 'other' }, env = { HOME: home, MCP_FILE: file };
+  await writeFile(file, JSON.stringify({ mcpServers: { other, 'mybots-tools': {
+    command: 'old', args: ['old'], tools: { eager: true, browser_read: { custom: 1 } }
+  } } }));
+  const agy = await fake(t, 'agy', `
+const server = JSON.parse(fs.readFileSync(process.env.MCP_FILE)).mcpServers['mybots-tools'];
+if (args[1] !== 'list' || server.tools.eager || !server.tools.team_routines.eager) process.exit(1);
+console.log('mybots-tools  stdio  enabled  ' + server.command + ' ' + server.args[0]);`);
+  const wrap = await fake(t, 'bwrap', `
+fs.copyFileSync(args[args.indexOf('--ro-bind') + 1], process.env.HOME + '/mounted.json');
+console.log(JSON.stringify({ event: 'init', conversation_id: ${JSON.stringify(CONVERSATION)}, init: {} }));
+console.log(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'ok', usage: {} } }));`);
+  const tools = { entry: '/x/mcp/index.mjs' };
+  await agyRunner.runReply({}, 'oi', { binary: agy.binary, tools, env, wrap: [wrap.binary] });
+  const mounted = JSON.parse(await readFile(join(home, 'mounted.json'), 'utf8')).mcpServers;
+  const saved = JSON.parse(await readFile(file, 'utf8')).mcpServers;
+  const expected = Object.fromEntries(MCP_TOOLS.map(({ name }) => [name, { eager: true }]));
+  assert.deepEqual(Object.keys(mounted), ['mybots-tools']);
+  assert.deepEqual(mounted['mybots-tools'].tools, expected);
+  assert.deepEqual(saved.other, other);
+  assert.deepEqual(saved['mybots-tools'].tools, { ...expected, browser_read: { eager: true, custom: 1 } });
+  assert.equal((await agy.calls()).length, 1);
 });
 
 test('opencode: runs with the provider/model and variant, resumes the session, shows steps and keeps the last text', async t => {
@@ -306,4 +347,14 @@ out({ event: 'result', result: { status: 'SUCCESS', response: 'ok', usage: resum
   assert.deepEqual(turn(first), { input: 17000, cached: 0, output: 5 });
   assert.deepEqual(turn(second), { input: 17000, cached: 15000, output: 5 }, 'only what the second turn added');
   db.close?.();
+});
+
+// Gemini rejects the entire eager catalog when any array omits its item schema.
+test('agy: every array in the eager MCP catalog declares its items', () => {
+  function check(value, path) {
+    if (!value || typeof value !== 'object') return;
+    if (value.type === 'array') assert.ok(value.items, path + ' is missing items');
+    for (const [key, child] of Object.entries(value)) check(child, path + '.' + key);
+  }
+  for (const tool of MCP_TOOLS) check(tool.inputSchema, tool.name);
 });

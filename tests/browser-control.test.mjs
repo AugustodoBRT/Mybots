@@ -151,6 +151,8 @@ test('card read redacts the value present during the read even if it changed aft
 test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for filled tokens or disappearance', real, async t => {
   const { captchaState } = await import('../supervisor/browser-page.mjs');
   const s = await session(t), events = []; s.frame = f => events.push(f);
+  // Test detection from markup without contacting live CAPTCHA providers.
+  await s.page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
   for (const url of ['https://challenges.cloudflare.com/turnstile/test','https://www.google.com/recaptcha/api2/anchor','https://newassets.hcaptcha.com/captcha/test']) {
     await s.page.setContent(`<iframe style="width:300px;height:200px" src="${url}"></iframe><textarea name="g-recaptcha-response"></textarea>`, { waitUntil:'domcontentloaded' });
     const state = await s.page.evaluate(captchaState); assert.equal(state.present,true); assert.equal(state.solved,false); assert.equal(state.rect.width,304);
@@ -187,6 +189,8 @@ test('CAPTCHA detector recognizes vendor iframes and reports only a boolean for 
 
 test('an image challenge opened beside the checkbox turns the tab desktop while open, without saving it for the site', real, async t => {
   const s = await session(t), events = []; s.frame = f => events.push(f);
+  // Test detection from markup without contacting live CAPTCHA providers.
+  await s.page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
   await s.page.setContent('<meta name="viewport" content="width=device-width"><iframe style="width:304px;height:78px;border:0" src="https://www.google.com/recaptcha/api2/anchor"></iframe><div id="popup" style="position:absolute;left:439px;top:0;visibility:hidden"><iframe style="width:400px;height:580px;border:0" src="https://www.google.com/recaptcha/api2/bframe"></iframe></div>', { waitUntil: 'domcontentloaded' });
   await s.input({ type: 'viewport', width: 360, height: 640, deviceScaleFactor: 2 });
   await s.checkChallenge(); assert.equal(s.desktop, false);

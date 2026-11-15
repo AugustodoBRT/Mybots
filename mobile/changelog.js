@@ -2,6 +2,9 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.20', date: '2026-11-15', items: [
+    ['correcao', 'O MyBots corrige automaticamente a configuração que impedia o Antigravity (Gemini) de reconhecer as ferramentas dos bots.']
+  ] },
   { version: '0.94.19', date: '2026-11-15', items: [
     ['melhoria', 'O Antigravity (Gemini) ficou muito mais rápido: o MyBots mantém um servidor dele sempre aberto por bot, em vez de abrir tudo do zero a cada mensagem, e envia os anexos direto para a conversa.'],
     ['novo', 'Os bots de computador já vêm de fábrica com as habilidades de documentos (PDF, Word, Excel e PowerPoint), usando só quando você pede, sem misturar habilidades pessoais de outras ferramentas do seu PC.'],

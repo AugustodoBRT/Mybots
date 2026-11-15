@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const { resolveCommand, prepare } = createRequire(import.meta.url)('../lib/cli-bin.cjs');
+const { resolveCommand, prepare, agyEnvironment } = createRequire(import.meta.url)('../lib/cli-bin.cjs');
 
 // What npm writes for a global package on Windows (cmd-shim), as of npm 7 and later.
 const SHIM = tool => `@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\${tool}" %*\r\n`;
@@ -69,4 +69,26 @@ test('Windows: npm\'s Codex runs its own codex.exe directly, so no console windo
   assert.deepEqual(resolveCommand('codex', options), { command: exe, args: [], env: { CODEX_MANAGED_PACKAGE_ROOT: root, CODEX_MANAGED_BY_NPM: '1' } });
   const run = prepare('codex', ['exec'], {});
   assert.equal(run.options.windowsHide, true);
+});
+
+test('Windows: the agy updater that blinked a console window is turned off for every agy call except `agy update`', () => {
+  const quiet = { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' };   // only the exact value "true" works; "1" does not
+  for (const binary of ['agy', 'agy.exe', 'C:\\Users\\Ana\\AppData\\Local\\agy\\bin\\agy.exe', 'agy.cmd']) assert.deepEqual(agyEnvironment(binary, ['models'], 'win32'), quiet, binary);
+  assert.deepEqual(agyEnvironment('agy', ['-p', '/usage'], 'win32'), quiet);
+  assert.equal(agyEnvironment('agy', ['update'], 'win32'), null, 'MyBots updates agy on purpose: that must keep working');
+  for (const binary of ['codex', 'claude', 'opencode.cmd', 'agy-wrapper', 'magy', 'C:\\Tools\\notagy.exe']) assert.equal(agyEnvironment(binary, ['models'], 'win32'), null, binary);
+  for (const platform of ['linux', 'darwin']) assert.equal(agyEnvironment('agy', ['models'], platform), null, platform);
+});
+
+test('prepare hands agy the quiet-updater variable on Windows, next to the rest of the environment, and leaves other programs alone', () => {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    const run = prepare('agy', ['models'], { env: { PATH: 'C:\\x', ANTES: '1' } });
+    assert.equal(run.options.env.AGY_CLI_DISABLE_AUTO_UPDATE, 'true'); assert.equal(run.options.env.ANTES, '1'); assert.equal(run.options.windowsHide, true);
+    assert.equal(prepare('agy', ['models'], {}).options.env.AGY_CLI_DISABLE_AUTO_UPDATE, 'true', 'without an environment of its own, the process one is kept');
+    assert.equal(prepare('agy', ['update'], { env: { ANTES: '1' } }).options.env.AGY_CLI_DISABLE_AUTO_UPDATE, undefined);
+    assert.equal(prepare('codex', ['exec'], { env: { ANTES: '1' } }).options.env.AGY_CLI_DISABLE_AUTO_UPDATE, undefined);
+  } finally { Object.defineProperty(process, 'platform', original); }
+  assert.equal(prepare('agy', ['models'], { env: { ANTES: '1' } }).options.env.AGY_CLI_DISABLE_AUTO_UPDATE, undefined, 'not on Linux');
 });

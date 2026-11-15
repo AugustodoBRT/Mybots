@@ -8,8 +8,8 @@
 #
 # Uso: windows-vm.sh status | start [--tela] | stop | marcar-instalada | snapshot [nome] | restore [nome]
 #                    | run <programa> [args…]   (roda dentro do Windows, como o usuário mybots)
-#                    | copiar <arquivo-daqui> <pasta-no-windows>
-#                    | pegar <arquivo-no-windows> <pasta-daqui>
+#                    | copiar <arquivo-daqui> <caminho-completo-no-windows>     (ex.: copiar a.exe 'C:\teste\a.exe')
+#                    | pegar <caminho-completo-no-windows> <arquivo-daqui>
 #                    | tela <arquivo.png>
 set -euo pipefail
 VM=mybots-windows
@@ -19,15 +19,26 @@ USUARIO=mybots
 SNAPSHOT_PADRAO=limpa
 estado() { VBoxManage showvminfo "$VM" --machinereadable | sed -n 's/^VMState="\(.*\)"/\1/p'; }
 instalada() { [ "$(VBoxManage getextradata "$VM" mybots/instalada 2>/dev/null | sed -n 's/^Value: //p')" = sim ]; }
-guest() { VBoxManage guestcontrol "$VM" "$@" --username "$USUARIO" --passwordfile "$SENHA"; }
+# guest <subcomando> <opções…> [-- programa args…]: o usuário e a senha entram logo depois do subcomando (depois do "--" seriam argumentos do
+# programa). O arquivo da senha termina com quebra de linha e o VBoxManage a conta como parte da senha: usa-se uma cópia sem ela, só do dono.
+guest() {
+  local sub=$1 temp rc=0; shift
+  temp=$(mktemp); printf %s "$(cat "$SENHA")" > "$temp"
+  VBoxManage guestcontrol "$VM" "$sub" --username "$USUARIO" --passwordfile "$temp" "$@" || rc=$?
+  rm -f "$temp"; return $rc
+}
 
 # O DVD de instalação nunca pode ficar plugado depois de instalada, e o boot é só pelo disco.
 travar_boot() {
-  if VBoxManage showvminfo "$VM" --machinereadable | grep -q '^"SATA-1-0"="[^n]'; then
+  if VBoxManage showvminfo "$VM" --machinereadable | grep -q '^"SATA-1-0"="/'; then   # um caminho de arquivo = há mídia plugada
     VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --medium emptydrive --forceunmount
     echo "Tirei o DVD de instalação da VM."
   fi
-  VBoxManage modifyvm "$VM" --boot1 disk --boot2 none --boot3 none --boot4 none
+  # O VirtualBox só deixa mudar o boot com a VM desligada; o `start` sempre passa por aqui antes de ligar.
+  case "$(estado)" in
+    poweroff|aborted|saved|aborted-saved) VBoxManage modifyvm "$VM" --boot1 disk --boot2 none --boot3 none --boot4 none ;;
+    *) echo "(a VM está ligada: o boot só pelo disco será fixado no próximo start)" ;;
+  esac
 }
 
 case "${1:-status}" in
@@ -62,9 +73,9 @@ case "${1:-status}" in
     shift; prog=$1; shift
     guest run --exe "$prog" --wait-stdout --wait-stderr -- "$prog" "$@" ;;
   copiar)
-    guest copyto --target-directory "$3" "$2" ;;
+    guest copyto "$2" "$3" ;;
   pegar)
-    guest copyfrom --target-directory "$3" "$2" ;;
+    guest copyfrom "$2" "$3" ;;
   tela)
     VBoxManage controlvm "$VM" screenshotpng "${2:-/tmp/vm.png}" ;;
   *) sed -n 2,16p "$0"; exit 2 ;;

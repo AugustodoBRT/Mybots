@@ -2,6 +2,9 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.18', date: '2026-11-14', items: [
+    ['correcao', 'No Windows, uma janela preta (terminal) piscava de tempos em tempos. Era o atualizador automático do Antigravity abrindo uma janela. Agora o MyBots desliga esse atualizador quando usa o Antigravity; para atualizá-lo, use Ajustes → IAs e contas.']
+  ] },
   { version: '0.94.17', date: '2026-11-13', items: [
     ['melhoria', 'O Termux saiu de vez do MyBots: o MyBots do celular roda sempre dentro do app. Quem ainda estava no Termux passa sozinho para o MyBots do app, e o que está no computador volta pela sincronização.'],
     ['melhoria', 'A permissão "Comandos no Termux" agora se chama "Comandos no celular" (o terminal do Linux que vem dentro do app). Quem tinha escolhido pedir antes continua sendo perguntado.'],

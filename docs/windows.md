@@ -39,3 +39,8 @@ Dados: `%APPDATA%\MyBots`. Os arquivos secretos não têm o modo 600 do Linux; f
 8. **Reinício**: reinicie o Windows e veja se o MyBots volta sozinho para a bandeja.
 9. **Fechar**: fechar a janela só esconde (a bandeja continua); "Fechar" na bandeja encerra tudo (confira no Gerenciador de Tarefas que não sobra processo).
 10. **Janelas piscando**: durante o uso não deve aparecer nenhuma janela preta de console.
+
+## VM de teste (VirtualBox)
+
+Para reproduzir problemas do Windows sem usar o PC de casa: VM Windows 11 `mybots-windows`, controlada por `scripts/windows-vm.sh`. **Use sempre o script, nunca `VBoxManage startvm`**: a VM nasceu de um instalador autônomo que apaga o disco, e ligar com ele plugado reinstala o Windows (aconteceu em 14/11/2026). O script só liga a VM marcada como instalada, tira o DVD e fixa o boot só pelo disco; `snapshot` e `restore` guardam e voltam a VM limpa em segundos.
+

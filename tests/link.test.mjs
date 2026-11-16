@@ -354,3 +354,25 @@ test('file_send of a path on the computer: only what the bot may reach there, in
     assert.throws(() => botFilePart(false, 'capa.png'), /não pode mexer/);
   } finally { await rm(home, { recursive: true, force: true }); }
 });
+
+test('restricted Android networkInterfaces (errno 13) and discovery failures fall back cleanly without crashing the supervisor', async t => {
+  const denied = Object.assign(new Error('uv_interface_addresses returned Unknown system error 13'), { code: 'ERR_SYSTEM_ERROR', errno: 13 });
+  assert.deepEqual(broadcastTargets(undefined, () => { throw denied; }), ['255.255.255.255']);
+  assert.deepEqual(broadcastTargets(null), ['255.255.255.255']);
+  const controller = new AbortController(); controller.abort();
+  assert.deepEqual(await discover('pc-test', { signal: controller.signal }), []);
+
+  const f = await setup(t);
+  await f.app.rpc('computer.pair', { link: f.node.pairing().link });
+  await until(() => f.app.link.state === 'online');
+  await lostAddress(f);
+  await f.node.close();
+  Object.defineProperty(f.app.link, 'discoveryTargets', { configurable: true, get() { throw denied; } });
+  await f.app.link.connect();
+  assert.equal(f.app.link.state, 'offline');
+  assert.equal(f.app.link.connecting, false);
+  assert.match(f.app.link.error, /Não achei o computador/);
+  assert.ok(f.app.db.all("SELECT detail FROM activity WHERE kind='computer_discovery_error'").some(row => row.detail.includes('ERR_SYSTEM_ERROR')));
+  assert.ok(f.app.link.timer);
+});
+

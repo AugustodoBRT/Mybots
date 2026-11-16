@@ -13,9 +13,14 @@ export function pathOf(address) {
   if (/^127\./.test(plain) || plain === '::1') return 'local';
   return privateAddress(plain) ? 'lan' : 'internet';
 }
-export function broadcastTargets(interfaces = networkInterfaces()) {
+/** Android restricts netlink interface enumeration (errno 13); fall back to global broadcast when it throws. */
+export function broadcastTargets(interfaces, read = networkInterfaces) {
+  let resolved = interfaces;
+  if (resolved === undefined) {
+    try { resolved = read(); } catch { resolved = {}; }
+  }
   const targets = new Set(['255.255.255.255']);
-  for (const item of Object.values(interfaces).flat()) {
+  for (const item of Object.values(resolved || {}).flat()) {
     if (!item || item.internal || item.family !== 'IPv4' || isIP(item.address) !== 4 || isIP(item.netmask) !== 4) continue;
     const mask = item.netmask.split('.').map(Number);
     if (mask.every(byte => byte === 255)) continue;
@@ -27,14 +32,16 @@ export function broadcastTargets(interfaces = networkInterfaces()) {
 /** Discovery is only a hint: the link must still verify its pinned TLS certificate. */
 export function discover(id, { targets = broadcastTargets(), port = DISCOVERY_PORT, timeout = 2000, signal, onError = () => {} } = {}) {
   return new Promise(resolve => {
-    const socket = createSocket('udp4'); const found = []; const seen = new Set(); let done = false;
+    if (signal?.aborted) { resolve([]); return; }
+    let socket;
+    try { socket = createSocket('udp4'); } catch (error) { onError(error); resolve([]); return; }
+    const found = []; const seen = new Set(); let done = false;
     const finish = () => {
       if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener('abort', finish);
       try { socket.close(); } catch {} resolve(found);
     };
     const timer = setTimeout(finish, timeout);
     signal?.addEventListener('abort', finish, { once: true });
-    if (signal?.aborted) { finish(); return; }
     // Loopback is accepted only when explicitly configured for isolated tests.
     const allowed = address => privateAddress(address) || targets.includes(address) && /^127\./.test(address);
     socket.on('error', error => { onError(error); finish(); });
@@ -46,11 +53,16 @@ export function discover(id, { targets = broadcastTargets(), port = DISCOVERY_PO
       const key = value.port + ':' + addresses.join(',');
       if (!seen.has(key) && found.length < 16) { seen.add(key); found.push({ port: value.port, addresses }); }
     });
-    socket.bind(0, '0.0.0.0', () => {
-      if (done) return;
-      try { socket.setBroadcast(true); } catch (error) { onError(error); finish(); return; }
-      const bytes = Buffer.from(JSON.stringify({ t: 'mybots?', id }));
-      for (const target of targets) socket.send(bytes, port, target, error => { if (error) onError(error); });
-    });
+    try {
+      socket.bind(0, '0.0.0.0', () => {
+        if (done) return;
+        try { socket.setBroadcast(true); } catch (error) { onError(error); finish(); return; }
+        const bytes = Buffer.from(JSON.stringify({ t: 'mybots?', id }));
+        for (const target of targets) {
+          try { socket.send(bytes, port, target, error => { if (error) onError(error); }); }
+          catch (error) { onError(error); }
+        }
+      });
+    } catch (error) { onError(error); finish(); }
   });
 }

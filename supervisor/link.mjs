@@ -76,23 +76,37 @@ export class Link {
     return saved ? { paired: true, id: saved.id, name: saved.name, addresses: saved.addresses, relay: Boolean(saved.relay), via: this.state === 'online' ? this.via || 'direct' : null, path: this.state === 'online' ? this.path || null : null, state: this.state, error: this.error } : { paired: false, state: 'offline' };
   }
   set(state, error = '') { if (state === this.state && error === this.error) return; this.state = state; this.error = error; this.changed('connection.changed'); }
-  start() { if (this.saved() && !this.socket && !this.timer) this.connect(); }
+  start() { if (this.saved() && !this.socket && !this.timer) void this.connect().catch(() => {}); }
   /** Opens a TLS WebSocket to one address and waits for the computer's hello, refusing any other certificate. */
-  open(address, port, fingerprint, via = null) {
-    return new Promise(async (resolve, reject) => {
-      // Through the relay the same TLS runs inside the tunnel, still checked against the pinned certificate.
-      let tunnel = null;
-      if (via) try { tunnel = await dialRelay(via.relay, via.room); } catch (error) { reject(error); return; }
-      const ws = new this.WebSocketClass(via ? 'wss://relay.mybots/' : `wss://${address.includes(':') ? `[${address}]` : address}:${port}/`,
-        { rejectUnauthorized: false, handshakeTimeout: 5000, maxPayload: MAX_FRAME, ...(tunnel ? { createConnection: () => tlsConnect({ socket: tunnel, rejectUnauthorized: false, servername: 'mybots-pc', minVersion: 'TLSv1.3' }) } : {}) });
-      const fail = error => { clearTimeout(timer); ws.removeAllListeners('message'); ws.terminate(); tunnel?.destroy(); reject(error); };
+  async open(address, port, fingerprint, via = null) {
+    // Through the relay the same TLS runs inside the tunnel, still checked against the pinned certificate.
+    const tunnel = via ? await dialRelay(via.relay, via.room) : null;
+    return new Promise((resolve, reject) => {
+      let ws, settled = false;
+      const onUpgrade = response => { if (response.socket.getPeerCertificate?.()?.fingerprint256 !== fingerprint) fail(new Error('Outro aparelho respondeu no lugar do computador pareado.')); };
+      const onClose = () => fail(new Error('A conexão fechou antes da resposta.'));
+      const fail = error => {
+        if (settled) return; settled = true; clearTimeout(timer);
+        ws?.removeAllListeners('message'); ws?.off('close', onClose); ws?.off('upgrade', onUpgrade); ws?.off('error', fail);
+        ws?.on('error', () => {});
+        ws?.terminate(); tunnel?.destroy(); reject(error);
+      };
       const timer = setTimeout(() => fail(new Error('timeout')), 8000);
-      ws.on('upgrade', response => { if (response.socket.getPeerCertificate?.()?.fingerprint256 !== fingerprint) fail(new Error('Outro aparelho respondeu no lugar do computador pareado.')); });
+      try {
+        ws = new this.WebSocketClass(via ? 'wss://relay.mybots/' : `wss://${address.includes(':') ? `[${address}]` : address}:${port}/`,
+          { rejectUnauthorized: false, handshakeTimeout: 5000, maxPayload: MAX_FRAME, ...(tunnel ? { createConnection: () => tlsConnect({ socket: tunnel, rejectUnauthorized: false, servername: 'mybots-pc', minVersion: 'TLSv1.3' }) } : {}) });
+      } catch (error) { fail(error); return; }
+      ws.on('upgrade', onUpgrade);
       ws.on('error', fail);
+      ws.once('close', onClose);
       ws.once('message', raw => {
-        clearTimeout(timer);
-        try { const hello = JSON.parse(raw); if (hello.type !== 'hello' || typeof hello.nonce !== 'string') throw new Error(); ws.off('error', fail); resolve({ ws, hello }); }
-        catch { fail(new Error('O computador respondeu algo inesperado.')); }
+        if (settled) return; clearTimeout(timer);
+        try {
+          const hello = JSON.parse(raw);
+          if (hello.type !== 'hello' || typeof hello.nonce !== 'string') throw new Error();
+          settled = true; ws.off('error', fail); ws.off('close', onClose); ws.off('upgrade', onUpgrade);
+          resolve({ ws, hello });
+        } catch { fail(new Error('O computador respondeu algo inesperado.')); }
       });
     });
   }
@@ -172,11 +186,20 @@ export class Link {
     const stale = () => this.closed || this.generation !== generation || this.socket;
     this.set('connecting', this.error);
     let connection, discoveredTarget, lastError;
+    const recordDiscoveryError = error => {
+      const reason = error?.code || 'erro de rede';
+      if (!stale() && this.discoveryError !== reason) {
+        this.discoveryError = reason;
+        try { this.db.record('computer_discovery_error', `Descoberta local indisponível (${reason}). O pareamento por QR continua disponível.`); } catch {}
+      }
+    };
     const search = async () => {
       if (Date.now() - this.lastDiscovery < 15000) return;
       this.lastDiscovery = Date.now(); this.discoveryAbort = new AbortController();
-      const candidates = await discover(target.id, { targets: this.discoveryTargets, port: this.discoveryPort, timeout: this.discoveryTimeout, signal: this.discoveryAbort.signal,
-        onError: error => { const reason = error.code || 'erro de rede'; if (!stale() && this.discoveryError !== reason) { this.discoveryError = reason; this.db.record('computer_discovery_error', `Descoberta local indisponível (${reason}). O pareamento por QR continua disponível.`); } } });
+      let candidates = [];
+      try {
+        candidates = await discover(target.id, { targets: this.discoveryTargets, port: this.discoveryPort, timeout: this.discoveryTimeout, signal: this.discoveryAbort.signal, onError: recordDiscoveryError });
+      } catch (error) { recordDiscoveryError(error); return; }
       for (const candidate of candidates) {
         if (stale()) return;
         try {
@@ -201,6 +224,9 @@ export class Link {
       if (discoveredTarget) this.save({ ...target, port: discoveredTarget.port, addresses: [...new Set([...discoveredTarget.addresses, ...target.addresses])].slice(0, 8) });
       ws.send(JSON.stringify({ type: 'auth', phoneId: this.phoneId(), proof: proof(target.secret, hello.nonce) }));
       this.attach(ws);
+    } catch (error) {
+      connection?.ws?.terminate();
+      if (!stale()) this.retry(/Outro aparelho/.test(error?.message || '') ? error.message : NOT_FOUND);
     } finally {
       if (this.generation === generation) this.connecting = false;
     }
@@ -208,10 +234,10 @@ export class Link {
   retry(error) {
     this.set('offline', error);
     if (this.closed || !this.saved()) return;
-    this.timer = setTimeout(() => this.connect(), RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)]);
+    this.timer = setTimeout(() => void this.connect().catch(() => {}), RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)]);
   }
   /** Connects again right away (the app came to the foreground or the network changed). */
-  kick() { if (!this.socket && !this.connecting && !this.closed) { clearTimeout(this.timer); this.attempt = 0; this.connect(this.state === 'offline'); } }
+  kick() { if (!this.socket && !this.connecting && !this.closed) { clearTimeout(this.timer); this.attempt = 0; void this.connect(this.state === 'offline').catch(() => {}); } }
   attach(ws, pairing = null) {
     const frames = new Map();
     this.socket = ws; let leave = null, refusal = ''; ws.alive = true;

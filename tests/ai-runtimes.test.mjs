@@ -61,3 +61,47 @@ test('updating an IA: checked download, refusal of a tampered file, the new buil
   // The person's own setting (CODEX_BIN) still wins.
   process.env.CODEX_BIN = '/opt/meu/codex'; assert.equal(ai.aiBinary('codex'), '/opt/meu/codex');
 });
+
+test('codex installs codex-code-mode-host alongside codex and repairs an already-current version missing it', { skip: process.platform !== 'linux' }, async t => {
+  const home = await mkdtemp(join(tmpdir(), 'mybots-ai-host-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const saved = { XDG_DATA_HOME: process.env.XDG_DATA_HOME, CODEX_BIN: process.env.CODEX_BIN, fetch: globalThis.fetch };
+  t.after(() => { for (const key of ['XDG_DATA_HOME', 'CODEX_BIN']) if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; globalThis.fetch = saved.fetch; });
+  const root = join(home, 'data', 'mybots', 'ai');
+  process.env.XDG_DATA_HOME = join(home, 'data'); delete process.env.CODEX_BIN;
+  const arch = { x64: 'x86_64', arm64: 'aarch64' }[process.arch];
+  const tar = async (name, binName, body) => {
+    const dir = join(home, 'pack-' + name); await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, binName), body); await chmod(join(dir, binName), 0o755);
+    execFileSync('tar', ['-czf', join(home, name + '.tar.gz'), '-C', dir, binName]);
+    const bytes = await readFile(join(home, name + '.tar.gz'));
+    return { bytes, sha: createHash('sha256').update(bytes).digest('hex') };
+  };
+  const main = await tar('main', `codex-${arch}-unknown-linux-musl`, '#!/bin/sh\necho "codex-cli 0.210.0"\n');
+  const host = await tar('host', `codex-code-mode-host-${arch}-unknown-linux-musl`, '#!/bin/sh\necho "host"\n');
+  globalThis.fetch = async url => {
+    if (String(url).includes('/releases/latest')) return new Response(JSON.stringify({
+      tag_name: 'rust-v0.210.0',
+      assets: [
+        { name: `codex-${arch}-unknown-linux-musl.tar.gz`, browser_download_url: 'https://example.com/main.tgz', digest: 'sha256:' + main.sha, size: main.bytes.length },
+        { name: `codex-code-mode-host-${arch}-unknown-linux-musl.tar.gz`, browser_download_url: 'https://example.com/host.tgz', digest: 'sha256:' + host.sha, size: host.bytes.length }
+      ]
+    }), { status: 200 });
+    return new Response(String(url).includes('host.tgz') ? host.bytes : main.bytes, { status: 200 });
+  };
+  const ai = await import('../lib/ai-runtimes.mjs?' + Date.now());
+  const first = await ai.aiUpdate({ keys: ['codex'] });
+  assert.equal(first.results[0].ok, true);
+  assert.equal(ai.missingRuntimeParts(root), false);
+  const hostPath = join(root, 'codex', '0.210.0', 'codex-code-mode-host');
+  assert.match(await readFile(hostPath, 'utf8'), /host/);
+
+  // Simulate an existing phone already on 0.210.0 without codex-code-mode-host: aiUpdate repairs it without bumping version.
+  await rm(hostPath);
+  assert.equal(ai.missingRuntimeParts(root), true);
+  const repaired = await ai.aiUpdate({ keys: ['codex'] });
+  assert.equal(repaired.results[0].ok, true);
+  assert.equal(ai.missingRuntimeParts(root), false);
+  assert.match(await readFile(hostPath, 'utf8'), /host/);
+});
+

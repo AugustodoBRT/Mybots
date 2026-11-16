@@ -42,7 +42,7 @@ import { Link } from './link.mjs';
 import { localSources, claudeSessions, codexSessions, readExport, digest, botFolders } from './history-import.mjs';
 import { Tables, Decisions } from './shared-data.mjs';
 import { Canvas } from './canvas.mjs';
-import { aiStatus, aiUpdate } from '../lib/ai-runtimes.mjs';
+import { aiStatus, aiUpdate, missingRuntimeParts } from '../lib/ai-runtimes.mjs';
 import { Skills, describeResult } from './skills.mjs';
 import { create as createFile } from './creator.mjs';
 
@@ -1199,7 +1199,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       db.run('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'ai.lastAuto', new Date().toISOString());
       try { const done = await aiUpdate(); const changed = done.results.filter(item => item.ok && item.from && item.version !== item.from); if (changed.length) { db.record('ai_updated', `IAs atualizadas sozinhas: ${changed.map(item => `${item.name} ${item.version}`).join(', ')}.`.slice(0, 300), null, null); broadcast('activity.new'); } } catch {}
     };
-    if (aiUpdateMs) { aiTimer = setInterval(autoAi, aiUpdateMs); aiTimer.unref?.(); setTimeout(autoAi, 10 * 60000).unref?.(); }
+    if (aiUpdateMs) {
+      aiTimer = setInterval(autoAi, aiUpdateMs); aiTimer.unref?.(); setTimeout(autoAi, 10 * 60000).unref?.();
+      if (!process.env.NODE_TEST_CONTEXT && missingRuntimeParts()) setTimeout(() => aiUpdate({ keys: ['codex'] }).catch(() => {}), 3000).unref?.();
+    }
     return api;
   } catch (error) {
     clearInterval(timer); clearInterval(pingTimer); clearInterval(pruneTimer); clearInterval(decisionTimer); email?.stop(); routines?.stop(); link?.close();

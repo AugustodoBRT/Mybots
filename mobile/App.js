@@ -26,6 +26,7 @@ import { DesktopUpdate } from './components/DesktopUpdate';
 import { emptyLocalStore, createId, validateBackup, conversationCache, cachedConversations } from './local';
 import { embeddedEnabled, embeddedSupported, setEmbedded, nativeAvailable, passwordOffer, onPasswordOffer, runNative, readLocalStore, writeLocalStore, readSecretsKey, notificationPermission, readConnectorBundle, flushNotifications, startKeepAlive, showBotNotification, readPairing, supervisorParts, savePairing, fileStage, fileAction, copyLogText, takeLaunchBot, onOpenBot, takeShare, onShare, updateCheck, onUpdate, updateCanInstall, updateInstall, passwordOfferAnswer, readDeviceInfo, phoneStopNow } from './native';
 import { SupervisorClient } from './supervisor-client';
+import { localSupervisorRecovery, localSupervisorAlive } from './local-supervisor';
 import { browserFrames, browserEvents } from './BotBrowserPanel';
 import { decodeWindowFrame } from './window-frame';
 import { setImageReader } from './attachment-images';
@@ -302,7 +303,7 @@ function AppMain() {
       // A supervisor that restarted counts its events from zero again.
       if (connected) appStore.sequence(null);
       if (connected) prepareSupervisor().catch(error => setLoadError(error.message)).finally(() => resync().catch(error => setLoadError(error.message)));
-      else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : backendRef.current === 'pc' ? 'Sem conexão com o computador. Ele precisa estar ligado. Reconectando…' : 'O MyBots deste celular parou. Reiniciando…' } } : current);
+      else setData(current => current ? { ...current, supervisorConnected: false, connection: { available: false, loggedIn: false, message: desktop ? 'O MyBots do computador reiniciou. Reconectando…' : backendRef.current === 'pc' ? 'Sem conexão com o computador. Ele precisa estar ligado. Reconectando…' : 'A conexão com o MyBots deste celular caiu. Reconectando…' } } : current);
     }
   }), {
     // The window on the computer: a refused token means the page is older than the node's; a fresh page has the right one.
@@ -310,6 +311,7 @@ function AppMain() {
     onRefused: error => { if (desktop && /Acesso negado/.test(error?.message || '')) setTimeout(() => globalThis.location?.reload(), 1500); }
   });
 
+  const localRecovery = useRef(null);
   const refreshPhone = useCallback(async (saved = localCache) => {
     if (!nativeAvailable && !desktop && !pwa) throw new Error('O supervisor exige o APK próprio do MyBots.');
     if (phoneConnecting.current) return phoneConnecting.current;
@@ -330,30 +332,25 @@ function AppMain() {
       setChats(current => ({ ...cachedConversations(store), ...current }));
       // While reconnecting the screen keeps what it had: the old saved list in its place sent the conversation back to the start page for an instant.
       setData(current => ({ ...(current || {}), bots: current?.supervisorMigrated ? current.bots : store.bots.filter(bot => !bot.deletedAt), rooms: current?.supervisorMigrated ? current.rooms : store.rooms || [], active: current?.supervisorMigrated ? current.active : [], models: current?.models || [],
-        supervisorConnected: false, connection: { available: false, loggedIn: false, message: 'Abrindo o MyBots deste celular…' }, device: 'Neste celular' }));
-      const existing = await readPairing();
-      if (existing) {
-        try { await supervisor.current.connect(existing); return await loadSupervisorState(); }
-        catch { supervisor.current.close(); }
-      }
-      // The supervisor is not answering (Android stopped it, or it never ran): start it again. Pairing keeps a running one and
-      // its data; nothing is imported (the computer's data comes back by syncing).
-      if (!embeddedEnabled()) throw new Error('Ative "Usar só neste celular" em Ajustes ou conecte o computador.');
-      setData(current => ({ ...current, connection: { available: false, loggedIn: false, message: 'Iniciando o MyBots neste celular…' } }));
-      // Pairing returns a secret: never pass this operation through the diagnostic logger.
-      const parts = await supervisorParts();
-      for (let index = 0; index < parts; index++) {
-        const staged = await runNative('pairPart', { index });
-        if (staged.exitCode !== 0 || staged.errorMessage) throw new Error('Não consegui preparar o MyBots deste celular. Toque em conectar novamente.');
-      }
-      const result = await runNative('pair', {});
-      if (result.exitCode !== 0 || result.errorMessage) {
-        setRunLog({ operation: 'pair', startedAt: new Date().toISOString(), exitCode: result.exitCode, stderr: result.stderr, errorMessage: result.errorMessage });
-        throw new Error('Não consegui iniciar o MyBots deste celular. Toque em conectar novamente; se repetir, envie os detalhes em Ajustes → Reportar.');
-      }
-      let envelope; try { envelope = JSON.parse(result.stdout.trim().split('\n').pop()); } catch { throw new Error('O MyBots deste celular não confirmou o início.'); }
-      const credentials = await savePairing(envelope);
-      await supervisor.current.connect(credentials);
+        supervisorConnected: supervisor.current.authenticated, connection: supervisor.current.authenticated ? current?.connection : { available: false, loggedIn: false, message: 'Conectando ao MyBots deste celular…' }, device: 'Neste celular' }));
+      localRecovery.current ||= localSupervisorRecovery({ client: supervisor.current, readPairing, savePairing, isAlive: localSupervisorAlive, start: async () => {
+        if (!embeddedEnabled()) throw new Error('Ative "Usar só neste celular" em Ajustes ou conecte o computador.');
+        setData(current => ({ ...current, connection: { available: false, loggedIn: false, message: 'Iniciando o MyBots neste celular…' } }));
+        // Pairing returns a secret: never pass this operation through the diagnostic logger.
+        const parts = await supervisorParts();
+        for (let index = 0; index < parts; index++) {
+          const staged = await runNative('pairPart', { index });
+          if (staged.exitCode !== 0 || staged.errorMessage) throw new Error('Não consegui preparar o MyBots deste celular. Toque em conectar novamente.');
+        }
+        const result = await runNative('pair', {});
+        if (result.exitCode !== 0 || result.errorMessage) {
+          setRunLog({ operation: 'pair', startedAt: new Date().toISOString(), exitCode: result.exitCode, stderr: result.stderr, errorMessage: result.errorMessage });
+          throw new Error('Não consegui iniciar o MyBots deste celular. Toque em conectar novamente; se repetir, envie os detalhes em Ajustes → Reportar.');
+        }
+        let envelope; try { envelope = JSON.parse(result.stdout.trim().split('\n').pop()); } catch { throw new Error('O MyBots deste celular não confirmou o início.'); }
+        return envelope;
+      } });
+      await localRecovery.current();
       return loadSupervisorState();
     })().finally(() => { phoneConnecting.current = null; });
     return phoneConnecting.current;

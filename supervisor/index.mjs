@@ -51,7 +51,7 @@ const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const LOCK_FRESH_MS = 10000;
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
-  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000, aiUpdateMs = 6 * 3600000 } = {}) {
+  codex = new Codex(), claude = process.env.CLAUDE_BIN ? new Claude(process.env.CLAUDE_BIN) : null, agy = process.env.AGY_BIN ? new Agy(process.env.AGY_BIN) : null, opencode = process.env.OPENCODE_BIN ? new Opencode(process.env.OPENCODE_BIN) : null, execute, heartbeatMs = 60000, stateWaitMs = 1000, kind = process.env.MYBOTS_DEVICE_KIND === 'computer' ? 'computer' : 'phone', notify, approvalMs, bundle: bundleOption, imapOptions, emailPollMs, device: deviceOption, routineTickMs, clock, appFetch, pruneMs = 6 * 3600000, aiUpdateMs = 6 * 3600000 } = {}) {
   process.umask(0o077);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const lock = join(directory, 'supervisor.lock');
@@ -411,7 +411,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         if (source.opencode) catalog.push(...await source.opencode.models().catch(() => []));
         models = catalog;
         lastCheck = Date.now();
-      })().finally(() => { checking = null; broadcast('connection.changed'); });
+      })().finally(() => { lastCheck = Date.now(); checking = null; broadcast('connection.changed'); });
       return checking;
     };
     // The ChatGPT plan's usage windows: read with the catalog and after each Codex reply, at most once a minute.
@@ -518,7 +518,14 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     const rpc = async (method, params = {}, socket = null) => {
       if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Pedido inválido.');
       switch (method) {
-        case 'state.get': await refresh(); return state();
+        case 'state.get': {
+          // Local chats, settings and reconnection must not wait for a CLI's network/login check.
+          // The check keeps running; connection.changed brings its result to the app when ready.
+          let timer;
+          try { await Promise.race([refresh().catch(() => {}), new Promise(resolve => { timer = setTimeout(resolve, stateWaitMs); })]); }
+          finally { clearTimeout(timer); }
+          return state();
+        }
         case 'connection.refresh': await refresh(true); return state();
         // The extra IA accounts (two Claude, two Codex...): on this device when it runs the IAs itself (the phone's supervisor) or on the
         // computer through the link. Adding one answers with the command that logs it in, to run in a terminal of that device.

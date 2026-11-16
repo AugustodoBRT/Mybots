@@ -39,6 +39,14 @@ internal object EmbeddedRuntime {
   }
 
   private fun prefs(context: Context) = context.getSharedPreferences("mybots_runtime", Context.MODE_PRIVATE)
+  fun diagnostics(context: Context): String {
+    val p = prefs(context)
+    val started = p.getLong("supervisorStartedAt", 0)
+    val exited = p.getLong("supervisorExitedAt", 0)
+    val code = p.getInt("supervisorExitCode", 0)
+    return "Linux do app: último início=$started, última saída=$exited, código=$code"
+  }
+
   private fun base(context: Context) = File(context.filesDir, "runtime")
   private fun rootfs(context: Context) = File(base(context), "rootfs")
   private fun library(context: Context, name: String) = File(context.applicationInfo.nativeLibraryDir, name)
@@ -133,9 +141,16 @@ internal object EmbeddedRuntime {
         }
         process.inputStream.bufferedReader().forEachLine { line ->
           if (out.length < 20_000_000 && !answered.get()) out.append(line).append('\n')
-          if (detach && line.startsWith("{") && line.contains("encryptedToken")) { timer.interrupt(); answer(0) }
+          if (detach && line.startsWith("{") && line.contains("encryptedToken")) {
+            prefs(context).edit().putLong("supervisorStartedAt", System.currentTimeMillis()).apply()
+            timer.interrupt(); answer(0)
+          }
         }
         val code = process.waitFor()
+        if (detach) {
+          prefs(context).edit().putLong("supervisorExitedAt", System.currentTimeMillis()).putInt("supervisorExitCode", code).apply()
+          android.util.Log.i("MyBotsRuntime", "supervisor runtime exited: code=$code")
+        }
         timer.interrupt()
         answer(code)
       } catch (error: Exception) { answer(-1, error.message ?: error.javaClass.simpleName) }

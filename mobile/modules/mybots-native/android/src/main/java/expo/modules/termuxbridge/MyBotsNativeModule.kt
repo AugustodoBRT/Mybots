@@ -584,7 +584,7 @@ class MyBotsNativeModule : Module() {
 
     AsyncFunction("deviceInfo") {
       val context = appContext.reactContext ?: throw IllegalStateException("O MyBots não está pronto.")
-      "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\nSistema: ${Build.VERSION.INCREMENTAL}"
+      "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\nSistema: ${Build.VERSION.INCREMENTAL}\n${EmbeddedRuntime.diagnostics(context)}\nServiço: ${KeepAlive.status(context)}"
     }
 
     AsyncFunction("openAppSettings") { packageName: String ->

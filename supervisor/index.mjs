@@ -1,3 +1,4 @@
+import { diagnosticText } from '../mobile/diagnostics.js';
 import { notesRpc, pruneNotes, linkProjects } from './notes.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
@@ -1217,5 +1218,5 @@ if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
       const stop = () => { setTimeout(() => { try { unlinkSync(join(directory, 'supervisor.lock')); } catch {} process.exit(1); }, 8000).unref(); app.close().then(() => process.exit(0)); };
       process.once('SIGTERM', stop); process.once('SIGINT', stop);
     })
-    .catch(() => { console.error('Não foi possível iniciar o supervisor. Dados preservados; confira o ambiente e o diagnóstico.'); process.exitCode = 1; });
+    .catch(error => { console.error('Não foi possível iniciar o supervisor. Dados preservados; confira o ambiente e o diagnóstico.'); console.error(diagnosticText(error?.stack || error?.message || error)); process.exitCode = 1; });
 }

@@ -14,7 +14,7 @@ const skip = path => /(^|[\\/])(tests?|\.git|native-mimo|__pycache__)([\\/]|$)|\
 const copy = (from, to = from) => cpSync(join(root, from), join(out, to), { recursive: true, filter: source => !skip(source.slice(root.length)) });
 for (const item of ['pc', 'supervisor', 'lib', 'relay', 'desktop/electron', 'desktop/loader']) copy(item);
 if (existsSync(join(root, 'skills'))) cpSync(join(root, 'skills'), join(out, 'skills'), { recursive: true });
-for (const file of ['local.js', 'routine-text.js', 'markdown.js', 'file-references.js', 'pc-channel.js']) copy(`mobile/${file}`);
+for (const file of ['local.js', 'routine-text.js', 'markdown.js', 'file-references.js', 'pc-channel.js', 'diagnostics.js']) copy(`mobile/${file}`);
 copy('mobile/node_modules/@noble');
 for (const file of ['card-field.js', 'card-fill.js']) copy(`mobile/modules/mybots-native/android/src/main/assets/${file}`);
 // the Electron window's own manifest at the root of the app (electron-builder reads name, version and main from here)

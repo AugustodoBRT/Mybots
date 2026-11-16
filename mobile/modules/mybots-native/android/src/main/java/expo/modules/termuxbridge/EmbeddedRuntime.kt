@@ -1,6 +1,8 @@
 package expo.modules.termuxbridge
 
 import android.content.Context
+import android.app.ActivityManager
+import android.os.StatFs
 import android.net.ConnectivityManager
 import android.os.Build
 import android.system.Os
@@ -9,6 +11,7 @@ import java.io.DataInputStream
 import java.io.EOFException
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.net.Inet4Address
 import java.util.TimeZone
 import java.util.zip.GZIPInputStream
@@ -39,12 +42,47 @@ internal object EmbeddedRuntime {
   }
 
   private fun prefs(context: Context) = context.getSharedPreferences("mybots_runtime", Context.MODE_PRIVATE)
+  private fun redact(context: Context, value: String): String {
+    var text = value.replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]"), "")
+    val token = try { File(base(context), "home/.mybots/token").readText().trim() } catch (_: Exception) { "" }
+    if (token.length >= 16) text = text.replace(token, "[token redigido]")
+    return text.replace(Regex("Bearer\\s+[^\\s\"',;]+", RegexOption.IGNORE_CASE), "Bearer [redigido]")
+      .replace(Regex("(?:sk-|sess-|codex_)[A-Za-z0-9_-]{12,}"), "[token redigido]")
+      .replace(Regex("""((?:encryptedToken|access_token|refresh_token|client_secret|api_key|token|password|senha)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')""", RegexOption.IGNORE_CASE)) { it.groupValues[1] + "[redigido]" }
+      .replace(Regex("((?:encryptedToken|access_token|refresh_token|client_secret|api_key|token|password|senha)[\"']?\\s*[:=]\\s*[\"']?)[^\\s,\"'}]+", RegexOption.IGNORE_CASE)) { it.groupValues[1] + "[redigido]" }
+      .takeLast(18000)
+  }
+
+  private fun tail(file: File, limit: Int = 6000): String = try {
+    RandomAccessFile(file, "r").use { input ->
+      val size = minOf(input.length(), limit.toLong()).toInt()
+      input.seek(input.length() - size)
+      val bytes = ByteArray(size); input.readFully(bytes); String(bytes, Charsets.UTF_8)
+    }
+  } catch (_: Exception) { "(ainda não há registro)" }
+
   fun diagnostics(context: Context): String {
     val p = prefs(context)
-    val started = p.getLong("supervisorStartedAt", 0)
-    val exited = p.getLong("supervisorExitedAt", 0)
-    val code = p.getInt("supervisorExitCode", 0)
-    return "Linux do app: último início=$started, última saída=$exited, código=$code"
+    fun date(key: String): String = p.getLong(key, 0).takeIf { it > 0 }?.let { java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)) } ?: "não registrado"
+    val home = File(base(context), "home/.mybots")
+    val exits = if (Build.VERSION.SDK_INT >= 30) try {
+      context.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(context.packageName, 0, 3).joinToString("; ") { "motivo=" + it.reason + ", status=" + it.status + ", horário=" + java.util.Date(it.timestamp) }
+    } catch (_: Exception) { "não disponível" } else "não disponível nesta versão do Android"
+    val space = try { StatFs(context.filesDir.path).availableBytes / 1048576 } catch (_: Exception) { -1 }
+    val lines = listOf(
+      "Diagnóstico local (não depende do supervisor)",
+      "Arquiteturas: " + Build.SUPPORTED_ABIS.joinToString(", "),
+      "Linux habilitado: " + enabled(context),
+      "Espaço disponível: " + space + " MB",
+      "Saídas recentes do app registradas pelo Android: " + exits,
+      "Último início: " + date("supervisorStartedAt"),
+      "Última saída: " + date("supervisorExitedAt") + ", código=" + p.getInt("supervisorExitCode", 0),
+      "Última falha nativa: " + p.getString("supervisorFailure", "não registrada"),
+      "Erro recente do ambiente (" + date("supervisorStderrAt") + "):\n" + (p.getString("supervisorStderr", "(sem registro)") ?: "").takeLast(4000),
+      "Log do supervisor:\n" + tail(File(home, "supervisor.log")),
+      "Preparação do ambiente:\n" + tail(File(home, "ambiente-supervisor.txt"), 2000)
+    )
+    return redact(context, lines.joinToString("\n\n"))
   }
 
   private fun base(context: Context) = File(context.filesDir, "runtime")
@@ -132,7 +170,19 @@ internal object EmbeddedRuntime {
         builder.directory(base(context))
         builder.environment().apply { clear(); putAll(environment(context)) }
         val process = builder.start()
-        thread(isDaemon = true) { process.errorStream.bufferedReader().forEachLine { if (err.length < 200_000 && !answered.get()) err.append(it).append('\n') } }
+        val errors = thread(isDaemon = true) {
+          var savedAt = 0L
+          try {
+            process.errorStream.bufferedReader().forEachLine { line ->
+              synchronized(err) { err.append(line.takeLast(8000)).append('\n'); if (err.length > 12000) err.delete(0, err.length - 12000) }
+              val at = System.currentTimeMillis()
+              if (detach && at - savedAt >= 1000) {
+                prefs(context).edit().putString("supervisorStderr", redact(context, err.toString())).putLong("supervisorStderrAt", at).apply()
+                savedAt = at
+              }
+            }
+          } catch (_: Exception) { /* Process shutdown can close the pipe while its reader is waiting. */ }
+        }
         thread(isDaemon = true) {
           try { process.outputStream.use { stream -> stdin?.let { stream.write(it.toByteArray()) } } } catch (_: Exception) {}
         }
@@ -147,13 +197,17 @@ internal object EmbeddedRuntime {
           }
         }
         val code = process.waitFor()
+        errors.join(200)
         if (detach) {
-          prefs(context).edit().putLong("supervisorExitedAt", System.currentTimeMillis()).putInt("supervisorExitCode", code).apply()
+          prefs(context).edit().putLong("supervisorExitedAt", System.currentTimeMillis()).putInt("supervisorExitCode", code).putString("supervisorStderr", redact(context, err.toString())).apply()
           android.util.Log.i("MyBotsRuntime", "supervisor runtime exited: code=$code")
         }
         timer.interrupt()
         answer(code)
-      } catch (error: Exception) { answer(-1, error.message ?: error.javaClass.simpleName) }
+      } catch (error: Exception) {
+        if (detach) prefs(context).edit().putString("supervisorFailure", redact(context, error.javaClass.simpleName + ": " + (error.message ?: ""))).putLong("supervisorExitedAt", System.currentTimeMillis()).putInt("supervisorExitCode", -1).apply()
+        answer(-1, error.message ?: error.javaClass.simpleName)
+      }
     }
   }
 

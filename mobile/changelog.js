@@ -2,6 +2,9 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.22', date: '2026-11-16', items: [
+    ['correcao', 'O diagnóstico do celular agora abre mesmo com o supervisor desconectado e mostra os erros recentes do ambiente local.']
+  ] },
   { version: '0.94.21', date: '2026-11-16', items: [
     ['correcao', 'Melhora a reconexão ao MyBots deste celular e evita repetir a inicialização por falhas ao atualizar a tela.']
   ] },

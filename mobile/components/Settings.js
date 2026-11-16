@@ -15,6 +15,7 @@ import { PcUpdate } from './PcUpdate';
 import { ReportForm } from './Report';
 import { PasswordsScreen } from './Passwords';
 import { matchCategories } from '../settings-search.js';
+import { showDiagnostics } from '../diagnostics.js';
 import { passwordSummary } from '../password-groups.js';
 import { FACES_3D_AVAILABLE, setFaces3d, useFaces3d } from '../faces3d';
 
@@ -161,15 +162,13 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
         <Icon name="wallet" size={22} color={C.muted} /><View style={{ flex: 1 }}><Text style={s.rowTitle}>Carteira</Text><Text style={s.rowSummary}>Cartões, quais bots podem usar cada um, regras de gasto e extrato.</Text></View><Icon name="right" size={16} color={C.faint} /></Pressable> : null}
     </>;
     if (key === 'backup') return <>
-      <View style={styles.modeOption}><Text selectable style={styles.optionDetail}>{a.text}</Text></View>
+      <View style={styles.modeOption}><ScrollView nestedScrollEnabled style={{ maxHeight: 280 }}><Text selectable style={styles.optionDetail}>{a.text}</Text></ScrollView></View>
       <PrimaryButton icon="download" tone="ghost" title="Salvar backup agora" disabled={a.busy} onPress={() => a.maintenance(async () => { const backup = await a.saveBackup(); a.setText(`Backup salvo em ${backup.path}`); })} />
       <PrimaryButton icon="refresh" tone="ghost" title="Restaurar um backup" disabled={a.busy || Boolean(data?.active?.length)} onPress={() => a.maintenance(async () => {
         const names = await a.call('backup.list'); a.setBackupNames(names.sort().reverse()); a.setText(names.length ? 'Escolha a cópia que deseja restaurar:' : 'Nenhum backup salvo ainda.');
       })} />
       {a.backupNames.map(name => <Pressable key={name} disabled={a.busy} onPress={() => a.restoreBackup(name)} style={styles.modeOption}><Text style={styles.optionLabel}>{name.slice(13, 15)}/{name.slice(11, 13)}/{name.slice(7, 11)} · {name.slice(16, 18)}:{name.slice(18, 20)}:{name.slice(20, 22)} UTC</Text><Text style={styles.optionDetail}>Restaurar esta cópia</Text></Pressable>)}
-      <PrimaryButton icon="info" tone="ghost" title="Ver diagnóstico do aparelho" disabled={a.busy} onPress={() => a.maintenance(async () => {
-        const device = await a.readDeviceInfo(); const result = await a.call('environment.get'); a.setText(`${device}\n\n${result.report}`);
-      })} />
+      <PrimaryButton icon="info" tone="ghost" title="Ver diagnóstico do aparelho" disabled={a.busy} onPress={() => a.maintenance(() => showDiagnostics({ readDeviceInfo: a.readDeviceInfo, call: a.call, connected: Boolean(data?.supervisorConnected), publish: a.setText }))} />
       <Pressable disabled={a.busy} onPress={() => a.copyText(a.text).catch(error => a.setText(error.message))} style={styles.closeSheet}><Icon name="copy" size={16} color={C.accent} /><Text style={styles.closeSheetText}>Copiar informações</Text></Pressable>
     </>;
     if (key === 'report') return <>

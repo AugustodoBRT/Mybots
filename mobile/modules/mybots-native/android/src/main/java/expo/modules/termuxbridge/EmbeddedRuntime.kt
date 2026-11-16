@@ -15,6 +15,7 @@ import java.io.RandomAccessFile
 import java.net.Inet4Address
 import java.util.TimeZone
 import java.util.zip.GZIPInputStream
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 /**
@@ -214,7 +215,7 @@ internal object EmbeddedRuntime {
   // Installing and signing in to an AI, each by its own official installer and login. Only these can be started from the app.
   private val TERMINALS = mapOf(
     "claude" to "command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash; claude auth login",
-    "codex" to "mkdir -p ~/.local/bin; command -v codex >/dev/null || { arch=\$(uname -m); d=\$(mktemp -d); curl -fsSL \"https://github.com/openai/codex/releases/latest/download/codex-\$arch-unknown-linux-musl.tar.gz\" | tar -xz -C \"\$d\" && mv \"\$d\"/codex-* ~/.local/bin/codex && chmod 755 ~/.local/bin/codex; }; codex login",
+    "codex" to "", // Started below with the supervisor's verified runtime installer.
     // Antigravity signs in only on its own full-screen program, which needs a terminal (wide, so its link comes in one line), and it has no command that ends when the login does: signing in is confirmed by its models listing.
     "agy" to "command -v agy >/dev/null || curl -fsSL https://antigravity.google/cli/install.sh | bash; script -qfc 'stty cols 4000 rows 40; exec agy' /dev/null <&0 & p=\$!; while kill -0 \$p 2>/dev/null; do sleep 5; if agy models >/dev/null 2>&1 </dev/null; then kill \$p; exit 0; fi; done; exit 1"
   )
@@ -228,7 +229,13 @@ internal object EmbeddedRuntime {
       try {
         installRootfs(context)
         writeResolver(context)
-        val builder = ProcessBuilder(command(context, "/bin/bash", listOf("-lc", script))).redirectErrorStream(true)
+        val loginCommand = if (kind == "codex") {
+          val endpoint = JSONObject(File(base(context), "home/.mybots/endpoint.json").readText())
+          val release = endpoint.getString("release")
+          require(release.matches(Regex("[0-9a-f]{64}"))) { "Abra o MyBots para preparar o supervisor antes de conectar o Codex." }
+          command(context, "/usr/bin/node", listOf("/root/.mybots/runtime/$release/supervisor/codex-login.mjs"))
+        } else command(context, "/bin/bash", listOf("-lc", script))
+        val builder = ProcessBuilder(loginCommand).redirectErrorStream(true)
         builder.directory(base(context))
         builder.environment().apply { clear(); putAll(environment(context)); put("NO_COLOR", "1") }
         val process = builder.start(); terminal = process

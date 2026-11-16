@@ -13,7 +13,7 @@ test('real Codex CLI uses MCP directly, resumes with full access and sends no se
   try { await command(realCLI, ['--version'], { timeout: 3000 }); } catch { t.skip('Codex real não está instalado neste computador.'); return; }
   const directory = await mkdtemp(join(tmpdir(), 'mybots-real-mcp-'));
   await mkdir(join(directory, 'codex-home'));
-  const requests = []; let callSequence = 0; let phase = 0;
+  const drafts = []; const requests = []; let callSequence = 0; let phase = 0;
   const api = createServer(async (request, response) => {
     let raw = ''; for await (const chunk of request) raw += chunk;
     const data = JSON.parse(raw); requests.push(data);
@@ -36,7 +36,7 @@ test('real Codex CLI uses MCP directly, resumes with full access and sends no se
     event('response.created', { response: { id: 'resp_' + randomUUID(), object: 'response', status: 'in_progress', output: [] } });
     event('response.output_item.added', { output_index: 0, item: { ...item, status: 'in_progress', ...(item.type === 'function_call' ? { arguments: '' } : { content: [] }) } });
     if (item.type === 'function_call') event('response.function_call_arguments.delta', { item_id: item.id, output_index: 0, delta: item.arguments });
-    else event('response.output_text.delta', { item_id: item.id, output_index: 0, content_index: 0, delta: item.content[0].text });
+    else { const text = item.content[0].text; event('response.output_text.delta', { item_id: item.id, output_index: 0, content_index: 0, delta: text.slice(0, 2) }); await new Promise(resolve => setTimeout(resolve, 80)); event('response.output_text.delta', { item_id: item.id, output_index: 0, content_index: 0, delta: text.slice(2) }); }
     event('response.output_item.done', { output_index: 0, item });
     event('response.completed', { response: { id: 'resp_' + randomUUID(), object: 'response', status: 'completed', output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } }); response.end();
   });
@@ -46,7 +46,7 @@ test('real Codex CLI uses MCP directly, resumes with full access and sends no se
   await writeFile(wrapper, `#!${process.execPath}\nconst {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(realCLI)},[...process.argv.slice(2),'-c','model_provider="localtest"','-c',${JSON.stringify(config)},'--disable','enable_request_compression'],{env:{...process.env,CODEX_HOME:${JSON.stringify(join(directory, 'codex-home'))}},stdio:'inherit'});child.on('close',code=>process.exit(code??1));`, { mode: 0o700 });
   const selection = { model: 'mybots-test', reasoningEffort: 'low' };
   const codex = { status: async () => ({ available: true, loggedIn: true }), models: async () => [{ model: selection.model, displayName: 'Test', efforts: ['low'], defaultEffort: 'low' }] };
-  const app = await createSupervisor({ directory: join(directory, 'data'), port: 0, codex, execute: (bot, prompt, options) => runner.runReply(bot, prompt, { ...options, binary: wrapper }) });
+  const app = await createSupervisor({ directory: join(directory, 'data'), port: 0, codex, execute: (bot, prompt, options) => runner.runReply(bot, prompt, { ...options, binary: wrapper, onDelta: text => { drafts.push(text); options.onDelta?.(text); } }) });
   t.after(async () => { await app.close(); await new Promise(resolve => api.close(resolve)); await rm(directory, { recursive: true, force: true }); });
   const bot = app.db.create({ name: 'Lua' }, selection); app.tools.grant(bot.id, 'task.create_item', true);
   await writeFile(join(directory, 'data/secrets/account.txt'), 'SECRET_SENTINEL_DO_NOT_EXPOSE').catch(async () => { const {mkdir}=await import('node:fs/promises');await mkdir(join(directory,'data/secrets'),{recursive:true});await writeFile(join(directory, 'data/secrets/account.txt'), 'SECRET_SENTINEL_DO_NOT_EXPOSE'); });
@@ -58,6 +58,7 @@ test('real Codex CLI uses MCP directly, resumes with full access and sends no se
   const second = await app.rpc('chat.send', { botId: bot.id, requestId: randomUUID(), text: 'Continue sem ler arquivos.' });
   await until(() => ['done','failed'].includes(app.db.task(second.taskId).state));
   assert.equal(app.db.task(second.taskId).state, 'done', app.db.task(second.taskId).error); assert.equal(app.db.bot(bot.id).codexSessionId, session);
+  assert.ok(drafts.some(text => text.length === 2), "Codex emits a partial message before completing it");
   assert.ok(requests.length >= 3); assert.ok(!JSON.stringify(requests).includes('SECRET_SENTINEL_DO_NOT_EXPOSE')); assert.ok(!JSON.stringify(app.state()).includes('SECRET_SENTINEL_DO_NOT_EXPOSE'));
 });
 

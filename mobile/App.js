@@ -213,16 +213,18 @@ function AppMain() {
     return () => subscription.remove();
   }, [selected, roomId, team, chiefId, draft, deskPage, route.kind]);
 
+  const stateRequest = useRef(0);
   const loadSupervisorState = useCallback(async () => {
+    const request = ++stateRequest.current;
     const next = await supervisor.current.call('state.get');
     if (phoneMode.current !== 'phone') return next;
+    if (request !== stateRequest.current) return appStore.getSnapshot().data || next;
     lastSeq.current = typeof next.seq === 'number' ? next.seq : null;
-    appStore.catchUp(lastSeq.current);
     // The conversation on screen is being read: its new messages are not unseen.
     const seen = item => item.id === openChat.current ? { ...item, unread: 0 } : item;
-    setData({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
+    const applied = appStore.snapshot({ ...next, bots: next.bots.map(seen), rooms: (next.rooms || []).map(seen) }); setLoadError('');
 
-    return next;
+    return applied ? next : appStore.getSnapshot().data || next;
   }, []);
   // Every (re)connection hands the supervisor the secrets key and, once per release, the connector bundle.
   const prepareSupervisor = useCallback(async () => {
@@ -249,8 +251,9 @@ function AppMain() {
     const before = older ? chatsRef.current[key]?.before : undefined;
     if (older && !before) return;
     const work = (async () => {
+    const baseline = appStore.getSnapshot().chats[key]?.messages || [];
     const page = await supervisor.current.call('chat.page', { ...target, ...(before ? { before } : {}) });
-    appStore.page(key, page, older);
+    appStore.page(key, page, older, baseline);
     if (!older) setData(old => old ? { ...old, bots: old.bots?.map(bot => bot.id === key ? { ...bot, unread: 0 } : bot), rooms: old.rooms?.map(room => room.id === key ? { ...room, unread: 0 } : room) } : old);
     })().finally(() => loadingPages.current.delete(key));
     loadingPages.current.set(key, { work, older }); return work;
@@ -290,7 +293,7 @@ function AppMain() {
         const result = appStore.event(event, data, openChat.current);
         if (result.duplicate) return;
         if (result.gap) { clearTimeout(eventRefresh.current); resync().catch(error => setLoadError(error.message)); return; }
-        if (['message.added', 'message.updated', 'bot.updated'].includes(event)) return;
+        if (['message.added', 'message.updated', 'task.settled'].includes(event) || (event === 'bot.updated' && 'bot' in data)) return;
         if (event === 'chat.reset') { const key = data.botId || data.roomId; if (chatsRef.current[key]) loadChat(data.botId ? { botId: key } : { roomId: key }).catch(() => {}); return; }
         if (event === 'task.progress' && 'step' in data) return;
       }
@@ -298,6 +301,7 @@ function AppMain() {
       eventRefresh.current = setTimeout(() => { if (phoneMode.current === 'phone') loadSupervisorState().catch(error => setLoadError(error.message)); }, 150);
     },
     onConnection: connected => {
+      stateRequest.current++;
       if (connected) setNotesVersion(version => version + 1);
       if (phoneMode.current !== 'phone') return;
       // A supervisor that restarted counts its events from zero again.
@@ -331,7 +335,7 @@ function AppMain() {
       setLocalCache(store);
       setChats(current => ({ ...cachedConversations(store), ...current }));
       // While reconnecting the screen keeps what it had: the old saved list in its place sent the conversation back to the start page for an instant.
-      setData(current => ({ ...(current || {}), bots: current?.supervisorMigrated ? current.bots : store.bots.filter(bot => !bot.deletedAt), rooms: current?.supervisorMigrated ? current.rooms : store.rooms || [], active: current?.supervisorMigrated ? current.active : [], models: current?.models || [],
+      setData(current => ({ ...(current || {}), bots: current?.bots || store.bots.filter(bot => !bot.deletedAt), rooms: current?.rooms || store.rooms || [], active: current?.active || [], models: current?.models || [],
         supervisorConnected: supervisor.current.authenticated, connection: supervisor.current.authenticated ? current?.connection : { available: false, loggedIn: false, message: 'Conectando ao MyBots deste celular…' }, device: 'Neste celular' }));
       localRecovery.current ||= localSupervisorRecovery({ client: supervisor.current, readPairing, savePairing, isAlive: localSupervisorAlive, start: async () => {
         if (!embeddedEnabled()) throw new Error('Ative "Usar só neste celular" em Ajustes ou conecte o computador.');
@@ -524,7 +528,8 @@ function AppMain() {
     clearSentDraft();
     try { await supervisor.current.call('chat.send', { botId: bot.id, requestId: createId(), text: text.trim(), ...(files.length ? { attachments: await uploadWebFiles((...args) => supervisor.current.call(...args), bot.id, files) } : {}) }); }
     catch (error) { if (selectedBotRef.current === bot.id) setDraft(old => old.trim() ? old : text); setLoadError(error.message); setSending(false); return false; }
-    try { await loadSupervisorState(); } catch (error) { setLoadError(error.message); } finally { setSending(false); }
+    setSending(false);
+    loadSupervisorState().catch(error => setLoadError(error.message));
     return true;
   };
   // The canvas's box: a message to any bot, without leaving the canvas (the reply shows above the box and in the bot's chat).

@@ -6,6 +6,39 @@ import { messageMarkdown, sameMessage } from '../mobile/message-cache.js';
 const message = (id, text = id) => ({ id, text, role: 'assistant', status: 'complete', createdAt: '2026-10-27T12:00:00Z' });
 const initial = () => ({ supervisorConnected: true, seq: 10, bots: [{ id: 'a', name: 'A', messageCount: 1 }, { id: 'b', name: 'B', messageCount: 1 }], rooms: [{ id: 'r', botIds: ['a', 'b'] }], tasks: [{ id: 't', bot_id: 'a', state: 'running' }] });
 
+test('an ID-only profile notification never removes the chief or its loaded conversation', () => {
+  const store = createStore(); store.setData(initial()); store.page('a', { messages: [message('1')] });
+  const before = store.getSnapshot();
+  store.event('bot.updated', { botId: 'a' });
+  assert.equal(store.getSnapshot(), before);
+  store.event('bot.updated', { botId: 'a', bot: null });
+  assert.equal(store.getSnapshot().data.bots.some(bot => bot.id === 'a'), false);
+});
+
+test('a streamed reply becomes one final row atomically and keeps its key across resync', () => {
+  const store = createStore(); store.setData(initial()); store.page('a', { messages: [] });
+  store.draft({ botId: 'a', text: 'Olá' });
+  const key = store.getSnapshot().draftKeys.a; const snapshots = [];
+  store.subscribe(() => snapshots.push(store.getSnapshot()));
+  store.event('message.added', { botId: 'a', message: message('final', 'Olá!') });
+  assert.equal(snapshots.length, 1); assert.equal(snapshots[0].drafts.a, undefined);
+  assert.equal(snapshots[0].chats.a.messages[0].renderKey, key);
+  store.page('a', { messages: [message('final', 'Olá!')] });
+  assert.equal(store.getSnapshot().chats.a.messages[0].renderKey, key);
+});
+
+test('late snapshots and pages cannot rewind a finished task or erase a new message', () => {
+  const store = createStore(); store.snapshot({ ...initial(), active: ['a'] });
+  store.page('a', { messages: [message('1')] });
+  const baseline = store.getSnapshot().chats.a.messages;
+  store.event('message.added', { seq: 11, botId: 'a', message: message('2') });
+  store.event('task.settled', { seq: 12, taskId: 't', botId: 'a', state: 'done' });
+  assert.equal(store.snapshot({ ...initial(), active: ['a'] }), false);
+  assert.deepEqual(store.getSnapshot().data.active, []);
+  store.page('a', { messages: [message('1')] }, false, baseline);
+  assert.deepEqual(store.getSnapshot().chats.a.messages.map(m => m.id), ['1', '2']);
+});
+
 test('store applies ordered events once, detects gaps, and preserves a loaded page and other slices', () => {
   const store = createStore(); store.setData(initial()); store.sequence(10);
   store.page('a', { messages: [message('1')], more: true, before: 11 });

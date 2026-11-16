@@ -105,3 +105,48 @@ test('codex installs codex-code-mode-host alongside codex and repairs an already
   assert.match(await readFile(hostPath, 'utf8'), /host/);
 });
 
+test('embedded Codex migrates the login install even at the latest version and stops using the legacy wrapper', { skip: process.platform !== 'linux' }, async t => {
+  const home = await mkdtemp(join(tmpdir(), 'mybots-ai-phone-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const keys = ['HOME', 'XDG_DATA_HOME', 'MYBOTS_HOME', 'MYBOTS_EMBEDDED', 'CODEX_BIN', 'PATH'];
+  const saved = Object.fromEntries(keys.map(key => [key, process.env[key]])), fetch = globalThis.fetch;
+  t.after(() => { for (const key of keys) if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; globalThis.fetch = fetch; });
+  Object.assign(process.env, { HOME: home, XDG_DATA_HOME: join(home, 'data'), MYBOTS_HOME: join(home, '.mybots'), MYBOTS_EMBEDDED: '1', CODEX_BIN: join(home, '.mybots', 'codex-wrapper') });
+  const bin = join(home, '.local', 'bin');
+  await mkdir(bin, { recursive: true }); await mkdir(process.env.MYBOTS_HOME);
+  process.env.PATH = bin + ':' + saved.PATH;
+  const body = '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "codex-cli 0.210.0"; else exec "$(dirname "$0")/codex-code-mode-host"; fi\n';
+  await writeFile(join(bin, 'codex'), body); await chmod(join(bin, 'codex'), 0o755);
+  await writeFile(process.env.CODEX_BIN, `#!/bin/sh\nexec "${join(bin, 'codex')}" "$@"\n`); await chmod(process.env.CODEX_BIN, 0o755);
+  const ai = await import('../lib/ai-runtimes.mjs?phone=' + Date.now());
+  assert.throws(() => execFileSync(ai.aiBinary('codex'), ['tool-probe'], { stdio: 'pipe' }), /codex-code-mode-host/, 'the old phone install cannot start tools');
+  assert.equal(ai.missingRuntimeParts(), true, 'startup must detect the non-managed phone install too');
+
+  const arch = { x64: 'x86_64', arm64: 'aarch64' }[process.arch];
+  const asset = async (name, content) => {
+    const folder = join(home, name); await mkdir(folder);
+    await writeFile(join(folder, name), content);
+    execFileSync('tar', ['-czf', folder + '.tgz', '-C', folder, name]);
+    const bytes = await readFile(folder + '.tgz');
+    return { name: name + '.tar.gz', browser_download_url: 'https://example.com/' + name, digest: 'sha256:' + createHash('sha256').update(bytes).digest('hex'), bytes };
+  };
+  const main = await asset(`codex-${arch}-unknown-linux-musl`, body);
+  const host = await asset(`codex-code-mode-host-${arch}-unknown-linux-musl`, '#!/bin/sh\necho "phone tools work"\n');
+  globalThis.fetch = async url => String(url).includes('/releases/latest')
+    ? new Response(JSON.stringify({ tag_name: 'rust-v0.210.0', assets: [main, host] }))
+    : new Response(String(url) === main.browser_download_url ? main.bytes : host.bytes);
+  const result = await ai.aiUpdate({ keys: ['codex'] });
+  assert.equal(result.results[0].ok, true);
+  assert.equal(ai.missingRuntimeParts(), false);
+  assert.match(ai.aiBinary('codex'), /mybots\/ai\/codex\/0\.210\.0\//);
+  assert.equal(execFileSync(ai.aiBinary('codex'), ['tool-probe'], { encoding: 'utf8' }).trim(), 'phone tools work');
+  const status = (await ai.aiStatus({ check: false })).ais.find(item => item.key === 'codex');
+  assert.equal(status.source, 'mybots');
+  assert.equal(status.managed, true);
+
+  // Only the app-generated bridge gives way; explicit overrides and PC bridges still win.
+  process.env.CODEX_BIN = '/opt/custom/codex'; assert.equal(ai.aiBinary('codex'), '/opt/custom/codex');
+  process.env.CODEX_BIN = join(home, '.mybots', 'codex-wrapper'); delete process.env.MYBOTS_EMBEDDED;
+  assert.equal(ai.aiBinary('codex'), process.env.CODEX_BIN);
+});
+

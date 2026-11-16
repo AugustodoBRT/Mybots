@@ -197,6 +197,8 @@ if(args[0]==='app-server') {
   createInterface({input:process.stdin}).on('line',line=>{
     const request=JSON.parse(line);
     if(request.method==='initialize') send(request.id,{});
+    if(request.method==='thread/start' || request.method==='thread/resume') send(request.id,{thread:{id:'${session}'}});
+    if(request.method==='turn/start') send(request.id,{turn:{id:'turn'}});
     if(request.method==='model/list') send(request.id,{data:[{model:'test',isDefault:true,defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'}]}],nextCursor:null});
   });
 } else if(args[0]==='exec') {

@@ -16,11 +16,14 @@ import { desktop, pwa, readingColumn } from '../desktop';
 // Files in one message (the supervisor's attachments LIMITS.files says the same).
 const MAX_FILES = 20;
 
-function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
+function RoomView({ savedDraft, savedFiles, drafts, draftKeys, onPin, room, data, onBack, onSend, onEdit, onCancel, onRespond, approvalBusy, onFile, fileBusy, phone, call, more, onEarlier }) {
   const openFile = useLiveCallback(onFile);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null); const hold = useLiveCallback(message => setHeld(message));
-  const messages = useMemo(() => [...room.messages].reverse(), [room.messages]);
+  const messages = useMemo(() => [
+    ...Object.entries(drafts || {}).filter(([key]) => key.startsWith(room.id + ':')).map(([key, text]) => ({ id: draftKeys?.[key] || 'draft:' + key, botId: key.slice(room.id.length + 1), role: 'assistant', text, status: 'complete', streaming: true, createdAt: draftTime })),
+    ...[...room.messages].reverse()
+  ], [room.messages, room.id, drafts, draftKeys, draftTime]);
   const { scroll, toEnd, away, props: scrollProps } = useStickyScroll(); const input = useRef(null);
   const [localDraft, setLocalDraft] = useState(''); const [localFiles, setLocalFiles] = useState([]);
   const draft = savedDraft ? savedDraft.value : localDraft, setDraft = savedDraft ? savedDraft.set : setLocalDraft;
@@ -80,7 +83,7 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       <RoomFaces bots={members} size={desktop ? 30 : 40} />
       <View style={styles.chatTitleCopy}>
         <Text style={styles.chatTitle} numberOfLines={1}>{room.name}</Text>
-        {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.accent }]} numberOfLines={1}>{working.map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
+        {working.length ? <View style={styles.botWorking}><Text style={[styles.chatSubtitle, { color: C.accent }]} numberOfLines={1}>{working.filter(bot => !drafts?.[room.id + ':' + bot.id] || approvals.some(item => item.botId === bot.id)).map(bot => bot.name).join(', ')} respondendo</Text><Dots /></View>
           : <Text style={styles.chatSubtitle} numberOfLines={1}>{members.map(bot => bot.name).join(', ')}</Text>}
       </View>
       <IconButton icon="more" label="Editar sala" onPress={onEdit} size={40} />
@@ -100,8 +103,11 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       renderItem={({ item }) => item.role === 'system' ? <Text style={styles.roomGone}>{item.text}</Text> : item.role === 'user' || byId[item.botId] ? <Actionable message={item} onHold={hold}><Message group message={item} bot={byId[item.botId] || members[0]} models={data.models || []} busy={sending} onRetry={retry} onFile={openFile} fileBusy={fileBusy} /></Actionable> : <Text style={styles.roomGone}>Um bot que saiu da sala respondeu aqui.</Text>}
       ListHeaderComponent={<View style={{ gap: 16 }}>
       {approvals.map(approval => <ApprovalCard key={approval.id} approval={approval} bot={byId[approval.botId]} onRespond={onRespond} busy={approvalBusy === approval.id} />)}
-      {members.filter(bot => drafts?.[room.id + ':' + bot.id]).map(bot => <Message group key={'draft:' + bot.id} message={{ id: 'draft:' + bot.id, role: 'assistant', botId: bot.id, text: drafts[room.id + ':' + bot.id], status: 'complete', createdAt: draftTime }} bot={bot} models={data.models || []} busy onRetry={retry} onFile={openFile} fileBusy={null} />)}
-      {working.map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : offline(data, bot.id) ? 'sleeping' : 'working'} tile={false} />
+      {working.length > 1 ? working.filter(bot => drafts?.[room.id + ':' + bot.id]).map(bot => <View key={'stop:' + bot.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={styles.thinkingStep}>{bot.name} escrevendo</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Parar resposta de ${bot.name}`} onPress={() => onCancel(bot.id)} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable>
+      </View>) : null}
+      {working.filter(bot => !drafts?.[room.id + ':' + bot.id] || approvals.some(item => item.botId === bot.id)).map(bot => <View key={bot.id} style={styles.thinking}><Avatar bot={bot} size={34} state={approvals.some(item => item.botId === bot.id) ? 'waiting' : offline(data, bot.id) ? 'sleeping' : 'working'} tile={false} />
         <View style={styles.thinkingCard}><View style={styles.botWorking}><Text style={styles.thinkingText}>{bot.name} {offline(data, bot.id) ? 'responde quando o computador ligar' : data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.state === 'queued' ? 'na fila' : 'pensando'}</Text>{offline(data, bot.id) ? null : <Dots color={HUE_OF(bot)} />}</View>
           {(() => { const step = data.tasks?.find(task => room.activeTasks?.includes(task.id) && task.bot_id === bot.id)?.step; return step ? <Text style={styles.thinkingStep} numberOfLines={1}>{step}</Text> : null; })()}
           <Pressable accessibilityRole="button" onPress={() => onCancel(bot.id)} hitSlop={8} style={styles.stopButton}><Icon name="stop" size={13} color={C.muted} /><Text style={styles.stopText}>Parar</Text></Pressable></View>
@@ -117,7 +123,7 @@ function RoomView({ savedDraft, savedFiles, drafts, onPin, room, data, onBack, o
       </ScrollView>
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}
-      <Composer inputRef={input} value={draft} setValue={setDraft} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
+      <Composer inputRef={input} value={draft} setValue={setDraft} onStop={working.length === 1 ? () => onCancel(working[0].id) : null} canSend={(Boolean(draft.trim()) || files.length > 0) && !sending} phone={phone} call={call} onError={setError}
         onAttach={pwa ? attachWeb : phone ? attach : desktop ? attachWeb : null} attachDisabled={sending || files.length >= MAX_FILES}
         onSend={() => send(draft)} accessibilityLabel="Mensagem para a sala"
         placeholder={named.length ? `Só ${named.map(bot => bot.name).join(' e ')} ${named.length > 1 ? 'respondem' : 'responde'}…` : 'Sem @, todos os bots respondem…'} />
@@ -134,4 +140,4 @@ export function RoomScreen(props) {
   return slice?.room ? <RoomView key={props.room.id} {...props} {...slice} /> : null;
 }
 
-const messageKey = message => message.id;
+const messageKey = message => message.renderKey || message.id;

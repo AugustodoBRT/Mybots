@@ -895,7 +895,8 @@ export const commandsFor = text => {
   const typed = fold(text);
   return COMMANDS.filter(item => [item.name, ...item.aliases].some(name => name.startsWith(typed)));
 };
-export function Composer({ value, setValue, onSend, canSend, placeholder, editable = true, inputRef, onAttach, attachDisabled, phone, call, onError, accessibilityLabel }) {
+export function Composer({ value, setValue, onSend, onStop, canSend, placeholder, editable = true, inputRef, onAttach, attachDisabled, phone, call, onError, accessibilityLabel }) {
+  const [compact, setCompact] = useState(false);
   const dictation = useDictation({ phone, call, setValue, onError });
   const { voice } = dictation;
   const commands = voice ? [] : commandsFor(value || '');
@@ -909,9 +910,9 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
   const actions = <>{voice ? <Pressable accessibilityRole="button" accessibilityLabel="Parar ditado e colocar o texto na mensagem" disabled={voice.busy} onPress={dictation.stop} style={({ pressed }) => [styles.sendButton, voice.busy && styles.sendDisabled, pressed && styles.pressed]}><Icon name="check" size={20} color={C.accentInk} stroke={2.6} /></Pressable>
         : <>
           {dictation.available ? <Pressable accessibilityRole="button" accessibilityLabel="Ditar mensagem por voz" disabled={!editable} onPress={dictation.start} style={({ pressed }) => [styles.composerTool, !editable && styles.sendDisabled, pressed && styles.pressed]}><Icon name="mic" size={20} color={C.text} /></Pressable> : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="Enviar mensagem" disabled={!canSend} onPress={onSend} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name="send" size={19} color={canSend ? C.accentInk : C.muted} stroke={2.6} /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={onStop && !canSend ? 'Parar resposta' : 'Enviar mensagem'} disabled={!canSend && !onStop} onPress={canSend ? onSend : onStop} style={({ pressed }) => [styles.sendButton, !canSend && styles.sendIdle, pressed && styles.pressed]}><Icon name={onStop && !canSend ? 'stop' : 'send'} size={19} color={canSend ? C.accentInk : C.muted} stroke={2.6} /></Pressable>
         </>}</>;
-  return <View dataSet={desktop ? { desktopComposer: "true" } : undefined} style={[styles.composerBox, voice && styles.composerListening]}>
+  return <View onLayout={event => setCompact(event.nativeEvent.layout.width < 360)} dataSet={desktop ? { desktopComposer: "true" } : undefined} style={[styles.composerBox, voice && styles.composerListening]}>
     {commands.length ? <View accessibilityRole="menu" style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', marginBottom: 6, backgroundColor: C.surface2, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 4, zIndex: 20 }}>
       {commands.map(item => <Pressable key={item.name} accessibilityRole="menuitem" onPress={() => setValue(item.name)} style={({ pressed, hovered }) => [{ flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 8 }, (pressed || hovered) && { backgroundColor: C.accent + '16' }]}>
         <Text style={{ color: C.accent, fontFamily: F.b, fontSize: 14 }}>{item.name}</Text><Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13, flexShrink: 1 }}>{item.hint}</Text></Pressable>)}
@@ -920,8 +921,8 @@ export function Composer({ value, setValue, onSend, canSend, placeholder, editab
       <View style={styles.voiceLevels}>{[0.5, 0.8, 1, 0.7, 0.4].map((weight, index) => <View key={index} style={[styles.voiceLevel, { height: 4 + Math.round(18 * Math.max(0.15, (voice.level || 0) * weight)) }]} />)}</View>
       <Text style={[styles.voiceText, !voice.text && { color: C.muted }]} numberOfLines={4}>{dictation.label}</Text>
     </View>
-    : desktop ? null : field}
-    {desktop && !voice ? <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>{attachTool}{field}{actions}</View>
+    : desktop && !compact ? null : field}
+    {desktop && !compact && !voice ? <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>{attachTool}{field}{actions}</View>
     : <View style={styles.composerRow}>
       {attachTool}
       <View style={{ flex: 1 }} />

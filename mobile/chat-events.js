@@ -20,7 +20,7 @@ export function applyMessage(chats, event, { botId, roomId, message } = {}) {
   const key = botId || roomId; const chat = key && chats[key];
   if (!chat || !message?.id) return chats;
   const index = chat.messages.findIndex(item => item.id === message.id);
-  if (index >= 0) return { ...chats, [key]: { ...chat, messages: chat.messages.map((item, at) => at === index ? message : item) } };
+  if (index >= 0) return { ...chats, [key]: { ...chat, messages: chat.messages.map((item, at) => at === index ? { ...message, ...(item.renderKey ? { renderKey: item.renderKey } : {}) } : item) } };
   return event === 'message.added' ? { ...chats, [key]: { ...chat, messages: [...chat.messages, message] } } : chats;
 }
 
@@ -45,6 +45,7 @@ export function applyToLists(data, event, { botId, roomId, message } = {}, open 
 /** bot.updated: the bot's new profile (with its list summary); a deleted bot leaves the list. */
 export function applyBot(data, { botId, bot } = {}) {
   if (!data?.bots || !botId) return data;
+  if (bot === undefined) return data;
   const rest = data.bots.filter(item => item.id !== botId);
   if (!bot || bot.deletedAt) return { ...data, bots: rest };
   return { ...data, bots: [...rest, bot].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')) };

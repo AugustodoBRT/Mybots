@@ -48,7 +48,7 @@ import { create as createFile } from './creator.mjs';
 
 // Events the app applies by themselves, without asking for the state: each one gets the next number, so a client
 // that misses one (reconnection, a connection too far behind) sees the gap and reloads the state and open chats.
-const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'chat.reset']);
+const SEQUENCED = new Set(['message.added', 'message.updated', 'task.progress', 'task.settled', 'bot.updated', 'chat.reset']);
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const LOCK_FRESH_MS = 10000;
 export async function createSupervisor({ directory = join(homedir(), '.mybots'), port = 3219, release = 'development', importFile,
@@ -666,7 +666,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
             else db.startSession(bot.id, why);
           } else if (busy) { db.sessionNote('Nova sessão iniciada ao abrir o app. O bot estava ocupado, então a sessão da IA continua; a conversa, as memórias e as pendências também.', { botId: bot.id }); }
           else db.newSession(bot.id, why);
-          broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
+          broadcast('bot.updated', { botId: bot.id, bot: botSummary(db.requireBot(bot.id)) }); broadcast('activity.new');
           return { ok: true };
         }
         // Picking an old chat of the Chefe: it is the open one again, with the IA's memory of it.
@@ -675,7 +675,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           if (!bot.isChief || (params.sessionId !== 'base' && !uuid(params.sessionId))) throw new Error('Sessão inválida.');
           if (db.activeTasks(bot.id).some(item => ['running', 'waiting_approval'].includes(item.state))) throw new Error('Espere o bot terminar o que está fazendo para trocar de sessão.');
           const changed = db.resumeSession(bot.id, params.sessionId);
-          broadcast('bot.updated', { botId: bot.id }); broadcast('activity.new');
+          broadcast('bot.updated', { botId: bot.id, bot: botSummary(db.requireBot(bot.id)) }); broadcast('activity.new');
           return { ok: true, changed };
         }
         case 'room.newSession': {

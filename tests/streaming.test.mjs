@@ -53,7 +53,7 @@ test('Claude asks for partial messages only when someone listens, and reports th
   assert.equal(quiet.text, 'Olá, mundo');
   const reply = await claudeRunner.runReply({ model: 'sonnet', reasoningEffort: 'low' }, 'oi', { binary, onDelta: text => drafts.push(text) });
   assert.equal(reply.text, 'Olá, mundo');
-  assert.equal(drafts[0], ''); assert.ok(drafts.includes('Olá'), drafts.join('|')); assert.ok(drafts.includes('Olá, mundo')); assert.equal(drafts.at(-1), '');
+  assert.equal(drafts[0], ''); assert.ok(drafts.includes('Olá'), drafts.join('|')); assert.ok(drafts.includes('Olá, mundo')); assert.equal(drafts.at(-1), 'Olá, mundo', 'the draft stays visible until the final message replaces it');
   assert.ok(drafts.length <= 6, 'em lotes, não uma atualização por letra');
 });
 

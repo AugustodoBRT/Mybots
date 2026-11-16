@@ -240,6 +240,7 @@ export class Queue extends EventEmitter {
           const closing = this.db.bot(task.bot_id)?.isChief && !this.db.roomTurn(task.id) ? this.tools?.team?.closingNote?.(task.bot_id) : '';
           if (closing) rest.text = String(rest.text || '') + closing;
           this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] });
+          this.emit('changed', { event: 'task.settled', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), state: 'done' });
           if (!reply.fallback) await this.handOff(task, turn, attempt, controller.signal);
           if (!turn) await this.nameSession(task, attempt, controller.signal); }
       } catch (error) {
@@ -249,7 +250,8 @@ export class Queue extends EventEmitter {
         // Files already sent stay in the conversation even when the turn fails afterwards.
         this.db.finish(task.id, controller.signal.aborted && !stopped ? 'cancelled' : 'failed', { attachments: this.tools?.takeOutgoing(task.id) || [] }, detail);
       } finally {
-        capability?.close(); this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, text: '' });
+        capability?.close(); const room = this.db.roomTurn(task.id)?.room_id;
+        this.emit('changed', { event: 'message.draft', taskId: task.id, botId: task.bot_id, ...(room ? { roomId: room } : {}), text: '' });
         this.running.delete(task.id); this.steps.delete(task.id);
         this.emit('changed', { event: 'task.done', taskId: task.id });
         this.schedule();

@@ -264,7 +264,7 @@ export class Link {
       if (message.type === 'status') { this.takeLimits(message.limits); this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
-      if (message.type === 'job_done' && typeof message.botId === 'string' && message.job && typeof message.job.id === 'string') { try { this.onJob({ botId: message.botId, job: { ...message.job, label: String(message.job.label || '').slice(0, 80), note: typeof message.job.note === 'string' ? message.job.note.slice(0, 200) : undefined }, tail: String(message.tail || '').slice(-3000) }); } catch {} return; }
+      if (message.type === 'job_done' && typeof message.botId === 'string' && message.job && typeof message.job.id === 'string') { try { this.onJob({ botId: message.botId, job: { ...message.job, label: String(message.job.label || '').slice(0, 80), note: typeof message.job.note === 'string' ? message.job.note.slice(0, 200) : undefined }, tail: String(message.tail || '').slice(-3000) }); send({ type: 'job_ack', id: message.job.id }); } catch {} return; }
       if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }
       if (message.type === 'browser_frame' && typeof message.botId === 'string') { const { type, ...frame } = message; this.onFrame(frame); return; }
       const run = this.runs.get(message.id);

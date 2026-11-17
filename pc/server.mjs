@@ -230,8 +230,10 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   const DESKTOP_IDLE_MS = desktopIdleMs;
   // Background jobs of the bots (lib/job-runner.cjs): they outlive the turn that started them; the supervisor is told when each one ends,
   // or on the next connection if it was away.
-  let jobSend = null;
-  const jobs = new JobProcs({ directory: join(directory, 'jobs'), onDone: (job, tail, record) => { if (jobSend?.({ type: 'job_done', botId: record.botId, job, tail })) jobs.markReported(job.id); } });
+  // Several supervisors can be connected at once (the computer's own and the phone's): a job ends up told to the one that started it,
+  // and counts as told only when that supervisor confirms (job_ack); until then it is handed over again on its next connection.
+  const supervisors = new Map();
+  const jobs = new JobProcs({ directory: join(directory, 'jobs'), onDone: (job, tail, record) => { const to = record.owner ? supervisors.get(record.owner) : [...supervisors.values()].at(-1); to?.({ type: 'job_done', botId: record.botId, job, tail }); } });
   const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
@@ -343,8 +345,9 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (!phone.local) { bridge.attach(ws); phonePath = pathOf(request.socket.remoteAddress); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
       else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
-      jobSend = value => { if (ws.readyState !== 1) return false; ws.send(JSON.stringify(value)); return true; };
-      for (const item of jobs.unreported()) if (jobSend({ type: 'job_done', botId: item.botId, job: item.job, tail: item.tail })) jobs.markReported(item.job.id);
+      ws.supervisorKey = phone.id || (phone.local ? 'local' : phone.name);
+      ws.supervisorSend = value => { if (ws.readyState !== 1) return false; ws.send(JSON.stringify(value)); return true; }; supervisors.set(ws.supervisorKey, ws.supervisorSend);
+      for (const item of jobs.unreported(ws.supervisorKey)) ws.supervisorSend({ type: 'job_done', botId: item.botId, job: item.job, tail: item.tail });
       send({ type: 'ready', id: me.id, name: me.name, desktop: hasDesktopControl(), ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
@@ -458,6 +461,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       }
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
+      if (message.type === 'job_ack' && typeof message.id === 'string') { jobs.markReported(message.id); return; }
       if (message.type === 'pc_command' && typeof message.op === 'string' && message.op.startsWith('job.')) {
         try {
           const run = message.id ? runs.get(message.id) : null, args = message.args && typeof message.args === 'object' ? message.args : {};
@@ -465,7 +469,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
           let result;
           if (message.op === 'job.start') {
             if (!run || run.controller.signal.aborted || !run.tools?.computer || !run.workspace) throw new Error('Um job só começa durante uma resposta com o computador liberado.');
-            result = jobs.start({ botId, command: args.command, label: args.label, minutes: args.minutes, cwd: run.workspace, wrap: run.wrap });
+            result = jobs.start({ botId, command: args.command, label: args.label, minutes: args.minutes, cwd: run.workspace, wrap: run.wrap, owner: ws.supervisorKey });
           } else if (message.op === 'job.list') result = { jobs: jobs.list(botId) };
           else if (message.op === 'job.log') result = jobs.log(botId, String(args.id || ''), { bytes: args.bytes });
           else if (message.op === 'job.stop') result = jobs.stop(botId, String(args.id || ''));
@@ -543,7 +547,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       }
     });
     ws.on('close', () => {
-      clearTimeout(timer);
+      clearTimeout(timer); if (ws.supervisorKey && supervisors.get(ws.supervisorKey) === ws.supervisorSend) supervisors.delete(ws.supervisorKey);
       // The phone went away: its turns end there (it marks them interrupted) and must not keep running here.
       for (const run of runs.values()) run.controller.abort('phone_lost');
       for (const done of waiting.values()) done({ status: 502, headers: {}, body: '' });

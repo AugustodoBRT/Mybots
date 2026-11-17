@@ -2,6 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.29', date: '2026-11-17', items: [
+    ['correcao', 'Corrige o MyBots do celular, que na versão 0.94.28 podia não iniciar (faltavam arquivos das tarefas em fundo no pacote).'],
+    ['correcao', 'O aviso de que uma tarefa em fundo terminou agora chega ao MyBots que a iniciou (o do computador ou o do celular) e só some depois de confirmado; antes podia ir para o outro e o bot não acordava.']
+  ] },
   { version: '0.94.28', date: '2026-11-17', items: [
     ['novo', 'Os bots agora conseguem deixar um comando demorado rodando em segundo plano (um build, um download grande, os testes) e terminar a resposta. Quando o comando acaba, o bot recebe o resultado e continua sozinho, e o aviso aparece no chat como "Tarefa em fundo". Funciona no computador e no celular.']
   ] },

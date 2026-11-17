@@ -242,7 +242,7 @@ export class Queue extends EventEmitter {
           this.db.finish(task.id, 'done', { ...rest, attachments: this.tools?.takeOutgoing(task.id) || [] });
           this.emit('changed', { event: 'task.settled', taskId: task.id, botId: task.bot_id, ...(turn ? { roomId: turn.room_id } : {}), state: 'done' });
           if (!reply.fallback) await this.handOff(task, turn, attempt, controller.signal);
-          if (!turn) await this.nameSession(task, attempt, controller.signal); }
+          if (!turn) this.nameSession(task, attempt); }
       } catch (error) {
         if (error.codexSessionId) { const turn = this.db.roomTurn(task.id); if (turn) this.db.setRoomSession(turn.room_id, task.bot_id, error.codexSessionId); else this.db.session(task.bot_id, error.codexSessionId); }
         const stopped = controller.signal.aborted && STOPPED[controller.signal.reason];
@@ -287,13 +287,20 @@ export class Queue extends EventEmitter {
    * The first answer of a Chefe session gives it a name: the IA summarises what the person said first in a few words, like a chat title.
    * Failing or taking too long leaves the session without one (the list then shows the start of the first message).
    */
-  async nameSession(task, attempt, stop) {
+  async nameSession(task, attempt) {
     try {
       const owner = this.db.bot(task.bot_id); const key = owner?.isChief ? this.db.chatSession(owner.id) : null;
       if (!owner || !key || this.db.get("SELECT 1 FROM messages WHERE bot_id=? AND json_extract(body,'$.session')=? AND json_extract(body,'$.title') IS NOT NULL LIMIT 1", owner.id, key)) return;
       const asked = this.db.message(task.message_id);
       if (!asked || asked.role !== 'user' || asked.origin) return;
-      const reply = await attempt({ ...owner, codexSessionId: undefined }, TITLE_PROMPT + JSON.stringify(String(asked.text || '').slice(0, 1200)), false, { signal: AbortSignal.any([stop, AbortSignal.timeout(40000)]), noTools: true });
+      const text = String(asked.text || '').replace(/\s+/g, ' ').trim();
+      // A short, plain message is its own title: no second IA session just to name it.
+      if (text.length <= 40 && text.split(' ').length <= 6 && !/[\n\r]/.test(String(asked.text || ''))) {
+        const own = text.replace(/^["“”'«»*#\s]+|["“”'«»*.!?\s]+$/g, '');
+        if (own.length >= 2 && this.db.sessionTitle(owner.id, key, own.charAt(0).toUpperCase() + own.slice(1))) this.emit('changed', { event: 'bot.updated', botId: owner.id });
+        return;
+      }
+      const reply = await attempt({ ...owner, codexSessionId: undefined }, TITLE_PROMPT + JSON.stringify(String(asked.text || '').slice(0, 1200)), false, { signal: AbortSignal.timeout(40000), noTools: true });
       const title = String(reply?.text || '').split('\n').map(line => line.trim()).find(Boolean)?.replace(/^["“”'«»*#\s]+|["“”'«»*.\s]+$/g, '').slice(0, 60);
       if (title && title.length >= 3 && this.db.sessionTitle(owner.id, key, title)) this.emit('changed', { event: 'bot.updated', botId: owner.id });
     } catch {}

@@ -22,7 +22,7 @@ test('real Claude Code CLI uses MyBots tools and terminal, runs directly, resume
     const names = (data.tools || []).map(tool => tool.name);
     // Claude Code may make side requests without tools; the chat turns must expose only mybots-tools.
     // 2.1.304+ also sends DeferredToolPlaceholder, an inert stand-in for deferred tools, not a capability.
-    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder' || ['Bash','Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','Task','Agent','AskUserQuestion'].includes(name)), names.join(','));
+    assert.ok(names.every(name => name.startsWith('mcp__mybots-tools__') || name === 'DeferredToolPlaceholder' || ['Bash','Read','Write','Edit','Glob','Grep','WebSearch','WebFetch','ToolSearch','Task','Agent','AskUserQuestion'].includes(name)), names.join(','));
     const tool = names.find(name => name.endsWith('task_create_item'));
     const hasResult = data.messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_result'));
     const firstTurn = JSON.stringify(data.messages).includes('crie uma pendência');
@@ -40,7 +40,7 @@ test('real Claude Code CLI uses MyBots tools and terminal, runs directly, resume
   await new Promise(resolve => api.listen(0, '127.0.0.1', resolve));
   await mkdir(join(directory, 'claude-home'));
   const wrapper = join(directory, 'claude-test.cjs');
-  await writeFile(wrapper, `#!${process.execPath}\nconst {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(realCLI)},process.argv.slice(2),{env:{...process.env,CLAUDE_CONFIG_DIR:${JSON.stringify(join(directory, 'claude-home'))},ANTHROPIC_BASE_URL:'http://127.0.0.1:${api.address().port}',ANTHROPIC_API_KEY:'sk-mybots-test',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1'},stdio:'inherit'});child.on('close',code=>process.exit(code??1));`, { mode: 0o700 });
+  await writeFile(wrapper, `#!${process.execPath}\nconst {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(realCLI)},process.argv.slice(2),{env:{...process.env,CLAUDE_CONFIG_DIR:${JSON.stringify(join(directory, 'claude-home'))},ENABLE_TOOL_SEARCH:'false',ANTHROPIC_BASE_URL:'http://127.0.0.1:${api.address().port}',ANTHROPIC_API_KEY:'sk-mybots-test',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',DISABLE_AUTOUPDATER:'1'},stdio:'inherit'});child.on('close',code=>process.exit(code??1));`, { mode: 0o700 });
   const codex = { status: async () => ({ available: true, loggedIn: false, message: 'Sem Codex' }), models: async () => [] };
   const claude = { status: async () => ({ available: true, loggedIn: true, message: 'Claude conectado' }), models: async () => claudeRunner.CLAUDE_MODELS };
   const app = await createSupervisor({ directory: join(directory, 'data'), port: 0, codex, claude, execute: (bot, prompt, options) => claudeRunner.runReply(bot, prompt, { ...options, binary: wrapper }) });

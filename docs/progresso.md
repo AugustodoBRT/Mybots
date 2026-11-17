@@ -2436,3 +2436,10 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - Validação: conjunto focado de 39 testes passou. Conjunto ampliado teve 40/42: encontrou cancelamento concluindo antes da saída do processo e fixture antiga de recuperação que só falava `exec`. Corrigidos ambos; supervisor + Codex passaram 14/14 depois. CLI Codex real com modelo HTTP simulado validou ferramentas, retomada, ausência do segredo sentinela e entrega de trecho parcial; não usou assinatura.
 - Teste Chrome com supervisor real e IA simulada passou: primeiro envio ao Chefe sem desmontar o compositor, trecho parcial visível, ausência de Pensando durante texto, mesma bolha preservada no final, cancelamento visual encerrado. Capturas em `/tmp/mybots-chat-stream-desktop.png` e `/tmp/mybots-chat-stream-narrow.png` inspecionadas. Janela estreita é desktop web, não Android nativo.
 - Sem APK/release nova nesta etapa. Falta validação física do teclado/rolagem Android e do runtime ARM64. Não afirmar ausência de todos os bugs ou validação no aparelho da pessoa. Arquivos de arte e outros trabalhos preservados.
+
+## 17/11/2026 — Parte E do plano: E.1, E.2 e E.4 (ainda sem entrega)
+
+- E.1: `ToolSearch` entra em `--tools` e `--allowedTools` do Claude (`lib/claude-runner.cjs`); os schemas MCP deixam de ser carregados de uma vez. Os testes com modelo simulado (`claude-real`, `chrome-real`) rodam com `ENABLE_TOOL_SEARCH=false`, pois o modelo falso espera a ferramenta já listada. Falta provar com o modelo real: busca, chamada de leitura e de ação, em sessão nova e retomada.
+- E.2: o texto do Chefe (`CHIEF_TEXT`) não manda mais ler `shared_index_read` em qualquer conversa; só quando o assunto envolve projetos, entregas, pessoas ou decisões.
+- E.4: `nameSession` roda em segundo plano (não segura mais o fim da tarefa) e, para mensagem curta (até 40 caracteres e 6 palavras, uma linha), o título é a própria mensagem, sem chamar IA. Os demais continuam por IA, sem MCP.
+- Suíte: 581 passam; falha só `events carry their content…`, que já falhava antes. Nada medido ainda em tokens reais depois da mudança.

@@ -428,9 +428,33 @@ export class Tools {
       if (/^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|\[::1\])/i.test(url)) return deny('Endereços locais ou privados não podem ser abertos pelo WebFetch.');
       return { behavior: 'allow', updatedInput: input };
     }
+    if (name === 'AskUserQuestion') return this.nativeQuestions(run, input);
     if (name.startsWith('mcp__claude-in-chrome__')) return this.chromePermission(run, name, input);
     if (COMPUTER_TOOLS[name]) return this.computerPermission(run, name, input);
     return deny('Use o serviço diretamente pelo navegador do MyBots. Não é necessário conectar apps na conta da IA.');
+  }
+  /**
+   * The IA's own question tool (Claude's AskUserQuestion), which in a terminal waits at the keyboard: here each question becomes a
+   * decision card in the bot's chat (options to tap and "Escrever minha resposta") and the answer comes back as a message, so it
+   * survives the app closing. The turn is told to stop and wait for it.
+   */
+  nativeQuestions(run, input) {
+    const deny = message => ({ behavior: 'deny', message });
+    if (!this.decisions || this.policy(run.botId, 'user.decide') === 'deny') return deny('Você não pode perguntar à pessoa por aqui agora. Decida com o que você sabe e diga a suposição que fez.');
+    const questions = (Array.isArray(input?.questions) ? input.questions : []).slice(0, 4);
+    if (!questions.length) return deny('Nenhuma pergunta foi enviada.');
+    const cut = (text, max) => String(text || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const asked = [];
+    try {
+      for (const item of questions) {
+        const options = (Array.isArray(item?.options) ? item.options : []).slice(0, 6).map(option => typeof option === 'string' ? cut(option, 100) : cut(option?.description ? `${cut(option.label, 40)} — ${cut(option.description, 55)}` : option?.label, 100)).filter(Boolean);
+        const question = cut(item?.header ? `${cut(item.header, 40)}: ${cut(item.question, 340)}` : item?.question, 400);
+        if (!question || !options.length || new Set(options.map(text => text.toLowerCase())).size !== options.length) continue;
+        this.decisions.ask(run.botId, { question, options, new_topic: true }); asked.push(question);
+      }
+    } catch (error) { if (!asked.length) return deny(error.message); }
+    if (!asked.length) return deny('As perguntas precisavam de 1 a 6 opções curtas e diferentes. Refaça com opções válidas.');
+    return deny(`${asked.length > 1 ? 'As perguntas foram enviadas' : 'A pergunta foi enviada'} à pessoa no app, com botões e um campo para ela escrever. Não responda por ela nem siga sem a resposta: termine agora com uma frase curta dizendo o que você espera. A resposta chega como uma nova mensagem e você continua dali.`);
   }
   /**
    * Codex asking to step out of its sandbox (lib/codex-server.cjs), like it asks the person in their own terminal: decided by the same

@@ -187,7 +187,7 @@ internal object BotNotifier {
     if (tap != null) builder.setContentIntent(tap)
     // The bot's face (a still frame the supervisor describes) is the notification's picture.
     item.optJSONObject("face")?.let { still ->
-      try { builder.setLargeIcon(MimoStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), 128, still.optDouble("dp", 52.0), false)) } catch (_: Exception) { }
+      try { builder.setLargeIcon(BotStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), 128, still.optDouble("dp", 52.0), false)) } catch (_: Exception) { }
     }
     val notificationId = tag.hashCode()
     val approvalId = item.optString("approvalId"); val actionHash = item.optString("actionHash"); val botId = item.optString("botId")

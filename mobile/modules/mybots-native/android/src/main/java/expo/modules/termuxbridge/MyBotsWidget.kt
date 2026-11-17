@@ -20,7 +20,7 @@ import java.net.URL
 /**
  * The home-screen widget: the most recent bots with their faces alive (breathing and blinking; glancing around while
  * they work; the antenna blinking amber while they wait for the person), the latest message and the next deadline.
- * Faces are still frames described by lib/mimo.mjs in the supervisor and painted by MimoStill.
+ * Faces are still frames described by lib/mimo.mjs in the supervisor and painted by BotStill (a plain cube).
  * Data comes from the supervisor's /device/widget long-poll, so the widget follows the bots with the app closed.
  */
 class MyBotsWidget : AppWidgetProvider() {
@@ -82,7 +82,7 @@ internal object WidgetSync {
   private fun face(context: Context, views: RemoteViews, bot: JSONObject, size: Int) {
     views.removeAllViews(R.id.mybots_widget_face)
     val still = bot.optJSONObject(if (size > 150) "big" else "still") ?: return
-    val bitmap = MimoStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), size, still.optDouble("dp", 52.0), false)
+    val bitmap = BotStill.bitmap(context, still.optJSONObject("spec")?.toString() ?: "{}", still.optString("mood", "normal"), still.optInt("n", 3000), size, still.optDouble("dp", 52.0), false)
     views.addView(R.id.mybots_widget_face, RemoteViews(context.packageName, R.layout.mybots_widget_frame).apply { setImageViewBitmap(R.id.mybots_widget_frame, bitmap) })
   }
 
@@ -90,7 +90,7 @@ internal object WidgetSync {
 
   private fun list(context: Context, data: JSONObject, rows: Int): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.mybots_widget)
-    data.optJSONObject("brand")?.let { views.setImageViewBitmap(R.id.mybots_widget_logo, MimoStill.bitmap(context, it.optJSONObject("spec")?.toString() ?: "{}", it.optString("mood", "normal"), it.optInt("n", 3000), 66, it.optDouble("dp", 52.0), false)) }
+    data.optJSONObject("brand")?.let { views.setImageViewBitmap(R.id.mybots_widget_logo, BotStill.bitmap(context, it.optJSONObject("spec")?.toString() ?: "{}", it.optString("mood", "normal"), it.optInt("n", 3000), 66, it.optDouble("dp", 52.0), false)) }
     open(context, null, 0)?.let { views.setOnClickPendingIntent(R.id.mybots_widget_header, it) }
     val bots = data.optJSONArray("bots") ?: JSONArray()
     val approvals = data.optInt("approvals"); val open = data.optInt("openItems")

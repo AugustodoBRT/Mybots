@@ -72,7 +72,7 @@ internal object ShareIntake {
       val name = (bot["name"] as? String)?.take(40) ?: return@mapIndexedNotNull null
       val still = bot["still"] as? Map<*, *> ?: return@mapIndexedNotNull null
       val spec = (still["spec"] as? Map<*, *>)?.let { org.json.JSONObject(it).toString() } ?: "{}"
-      val face = MimoStill.bitmap(context, spec, still["mood"] as? String ?: "normal", (still["n"] as? Number)?.toInt() ?: 3000, 192, (still["dp"] as? Number)?.toDouble() ?: 52.0, false)
+      val face = BotStill.bitmap(context, spec, still["mood"] as? String ?: "normal", (still["n"] as? Number)?.toInt() ?: 3000, 192, (still["dp"] as? Number)?.toDouble() ?: 52.0, false)
       ShortcutInfoCompat.Builder(context, "bot-$id").setShortLabel(name).setLongLabel(name)
         .setIcon(IconCompat.createWithAdaptiveBitmap(padded(face)))
         .setIntent(Intent(launch).setAction(Intent.ACTION_VIEW).putExtra("mybotsBotId", id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

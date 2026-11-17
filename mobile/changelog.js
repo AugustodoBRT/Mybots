@@ -2,8 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
-  { version: '0.94.25', date: '2026-11-16', items: [
+  { version: '0.94.26', date: '2026-11-17', items: [
     ['melhoria', 'Os bots Claude gastam bem menos no começo de cada conversa (as ferramentas são carregadas só quando precisam), o Chefe responde uma saudação direto, sem consultar a memória, e o título de uma conversa curta sai na hora, sem chamar outra IA.'],
+  ] },
+  { version: '0.94.25', date: '2026-11-16', items: [
     ['correcao', 'A conversa permanece aberta ao iniciar uma sessão do Chefe, sem telas vazias entre atualizações. Respostas chegam progressivamente e o indicador de trabalho termina junto com a resposta, sem esperar tarefas internas.'],
     ['correcao', 'Corrige a instalação antiga do Codex no celular, que continuava sendo usada sem o executor das ferramentas. O reparo agora reconhece essa instalação, e conectar uma conta já instala o Codex completo.']
   ] },

@@ -139,7 +139,7 @@ test('events carry their content and a growing number; steps are events only; th
   await until(() => events.some(item => item.event === 'task.done'));
   const numbered = events.filter(item => typeof item.data?.seq === 'number');
   assert.deepEqual(numbered.map(item => item.data.seq), numbered.map((_, index) => state.seq + 1 + index), 'números seguidos, a partir do estado');
-  assert.deepEqual(new Set(numbered.map(item => item.event)), new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated']));
+  assert.deepEqual(new Set(numbered.map(item => item.event)), new Set(['message.added', 'message.updated', 'task.progress', 'bot.updated', 'task.settled']));
   const added = numbered.filter(item => item.event === 'message.added').map(item => item.data.message.text);
   assert.deepEqual(added, ['Faz', 'Começando.', 'Pronto.']);
   assert.equal(numbered.find(item => item.event === 'message.updated').data.message.status, 'complete');

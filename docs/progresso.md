@@ -2437,7 +2437,7 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - Teste Chrome com supervisor real e IA simulada passou: primeiro envio ao Chefe sem desmontar o compositor, trecho parcial visível, ausência de Pensando durante texto, mesma bolha preservada no final, cancelamento visual encerrado. Capturas em `/tmp/mybots-chat-stream-desktop.png` e `/tmp/mybots-chat-stream-narrow.png` inspecionadas. Janela estreita é desktop web, não Android nativo.
 - Sem APK/release nova nesta etapa. Falta validação física do teclado/rolagem Android e do runtime ARM64. Não afirmar ausência de todos os bugs ou validação no aparelho da pessoa. Arquivos de arte e outros trabalhos preservados.
 
-## 17/11/2026 — Parte E do plano: E.1, E.2 e E.4 (ainda sem entrega)
+## 17/11/2026 — 0.94.26 (versionCode 218): Parte E do plano, E.1, E.2 e E.4
 
 - E.1: `ToolSearch` entra em `--tools` e `--allowedTools` do Claude (`lib/claude-runner.cjs`); os schemas MCP deixam de ser carregados de uma vez. Os testes com modelo simulado (`claude-real`, `chrome-real`) rodam com `ENABLE_TOOL_SEARCH=false`, pois o modelo falso espera a ferramenta já listada. Falta provar com o modelo real: busca, chamada de leitura e de ação, em sessão nova e retomada.
 - E.2: o texto do Chefe (`CHIEF_TEXT`) não manda mais ler `shared_index_read` em qualquer conversa; só quando o assunto envolve projetos, entregas, pessoas ou decisões.

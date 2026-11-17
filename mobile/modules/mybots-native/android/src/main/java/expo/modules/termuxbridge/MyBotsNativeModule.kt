@@ -202,15 +202,6 @@ class MyBotsNativeModule : Module() {
       Prop("html") { view: HtmlCardView, value: String? -> view.setHtml(value) }
       Prop("interactive") { view: HtmlCardView, value: Boolean? -> view.setInteractive(value) }
     }
-    View(MimoView::class) {
-      Prop("spec") { view: MimoView, value: String? -> view.setSpec(value) }
-      Prop("mood") { view: MimoView, value: String? -> view.setMood(value) }
-      Prop("light") { view: MimoView, value: Boolean? -> view.setLight(value) }
-      Prop("energy") { view: MimoView, value: Double? -> view.setEnergy(value) }
-      Prop("count") { view: MimoView, value: Int? -> view.setCount(value) }
-      Prop("animated") { view: MimoView, value: Boolean? -> view.setAnimated(value) }
-      Prop("fps") { view: MimoView, value: Int? -> view.setFps(value) }
-    }
     // 3D bots (Avatar3d): one picture of a bot at a size and moment, as a data URL; and a few settings that survive restarts.
     AsyncFunction("avatar3dRender") { json: String, promise: Promise -> Avatar3d.render(appContext.currentActivity, json) { promise.resolve(it) } }
     Function("avatar3dAvailable") { appContext.reactContext?.let { Avatar3d.available(it) } ?: false }

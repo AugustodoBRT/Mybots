@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, View, Text, useWindowDimensions, PixelRatio, Platform } from 'react-native';
 import { splash3dAvailable, splash3dShow, splash3dFinish, splash3dHide, holdAvatars, releaseAvatars } from '../native';
-import { faces3d } from '../faces3d';
 import { C, F } from '../theme';
 
 // The opening screen, covering the app until it is ready (the first start after an update can take a while: the core is prepared inside
@@ -47,7 +46,7 @@ function Walker({ color, lane, width, seconds, delay, carry, think }) {
 /** `ready`: the app is ready to be seen. `note`: what the core is doing now, when it says so (shown instead of the rotating lines). */
 export function Splash({ ready, note = '', bot = null }) {
   const { width, height } = useWindowDimensions();
-  const [solid] = useState(() => Platform.OS === 'android' && faces3d() && splash3dAvailable());
+  const [solid] = useState(() => Platform.OS === 'android' && splash3dAvailable());
   const box = Math.round(Math.min(width * 0.86, height * 0.5, 420));
   const botRef = useRef(bot); botRef.current = bot;
   // A moment for the saved copy of the team to arrive, so the bot is the person's Chefe when there is one.

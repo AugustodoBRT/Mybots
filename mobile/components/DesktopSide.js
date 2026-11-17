@@ -170,7 +170,14 @@ function NativeFull({ bot, data, onClose, onSend, onControl }) {
   }, []);
   // The bot's face floats over the page (the window draws it above the tab); what is typed there comes back here.
   const face = bot && { id: bot.id, name: bot.name, color: bot.color, avatar: bot.avatar, face: bot.face };
-  useEffect(() => { if (face) native.overlayShow({ bot: face, working: busy }); }, [bot?.id, bot?.name, busy]);
+  // The floating bubble is a transparent view over the page where WebGL is not drawn (it blacked the window on some cards): this window
+  // draws the bot's 3D picture and sends it along.
+  useEffect(() => {
+    if (!face) return undefined; let alive = true;
+    const show = image => { if (alive) native.overlayShow({ bot: face, working: busy, ...(image ? { image } : {}) }); };
+    import('../office/avatar.js').then(({ renderStill }) => show(renderStill(face, { size: 56, mood: busy ? 'trabalhando' : 'normal' }))).catch(() => show(null));
+    return () => { alive = false; };
+  }, [bot?.id, bot?.name, bot?.face, busy]);
   useEffect(() => () => { native.overlayHide(); }, []);
   const sendRef = useRef(onSend); sendRef.current = onSend;
   useEffect(() => native.onOverlayMessage(text => sendRef.current(text)), []);

@@ -65,3 +65,9 @@ export function mountAvatar(canvas, bot, { size, mood = 'normal', animated = fal
   draw(index * 0.7); run();
   return api;
 }
+
+/** One picture (a WebP data URL) of `bot` at `size` px: for places that cannot draw WebGL themselves (the bubble floating over the bots' browser). */
+export function renderStill(bot, { size = 112, mood = 'normal' } = {}) {
+  const canvas = document.createElement('canvas'), api = mountAvatar(canvas, bot, { size, mood, animated: false, manual: true, dpr: 2 });
+  try { return canvas.toDataURL('image/webp', 0.92); } finally { api.dispose(); }
+}

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, View, Pressable, TextInput } from 'react-native';
 import { C, Icon, F, setTheme, resolveTheme } from '../theme';
-import { Avatar } from './shared';
+import { Image } from 'react-native';
+import { FacePlaceholder } from '../FaceArt';
 import { native } from '../desktop';
 import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold, PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans';
 
@@ -44,7 +45,7 @@ export function OverlayApp() {
     </Animated.View>
     <Pressable accessibilityRole="button" accessibilityLabel={open ? `Fechar a conversa com ${bot.name}` : `Falar com ${bot.name}`} onPress={() => toggle(!open)}>
       <Animated.View style={{ width: face, height: face, borderRadius: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: C.elevated, borderWidth: 1, borderColor: C.line2, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10 }}>
-        <Animated.View style={{ transform: [{ scale }] }}><Avatar bot={bot} size={BIG - 8} state={working ? 'working' : 'idle'} animated tile={false} /></Animated.View>
+        <Animated.View style={{ transform: [{ scale }] }}>{state.image ? <Image accessibilityIgnoresInvertColors source={{ uri: state.image }} style={{ width: BIG - 8, height: BIG - 8 }} /> : <FacePlaceholder bot={bot} size={BIG - 8} />}</Animated.View>
       </Animated.View>
     </Pressable>
   </View>;

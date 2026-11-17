@@ -8,7 +8,7 @@ const { join } = require('node:path');
 const { homedir } = require('node:os');
 const { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, chmodSync, createWriteStream, readdirSync, statSync } = require('node:fs');
 const { createTabs, controlServer } = require('./tabs');
-const { chooseRenderNode } = require('./gpu');
+const { chooseRenderNode, gpuSignature, softwareGlWanted, markSoftwareGl, SOFTWARE_GL_SWITCHES, webglBroken } = require('./gpu');
 const { createUpdates } = require('./updates');
 const { isOurs, PARK_RULE } = require('./hypr-core');
 
@@ -35,6 +35,9 @@ app.commandLine.appendSwitch('lang', 'pt-BR');
 // Notebooks with two graphics cards: the integrated one draws the screen, not the NVIDIA one Chromium picked (see gpu.js).
 const renderNode = chooseRenderNode();
 if (renderNode) app.commandLine.appendSwitch('render-node-override', renderNode);
+// A graphics card that does not work (see gpu.js) takes WebGL away, and with it the bots' 3D bodies: draw them on the processor instead.
+const gpuMark = join(node, 'gpu-software.json'), gpuSign = gpuSignature(), softwareGl = softwareGlWanted({ file: gpuMark, signature: gpuSign });
+if (softwareGl) for (const [name, value] of SOFTWARE_GL_SWITCHES) value === undefined ? app.commandLine.appendSwitch(name) : app.commandLine.appendSwitch(name, value);
 // Warnings and errors of Chromium itself (graphics process, GPU, tabs) go to a file, so a black window leaves a trace.
 try { mkdirSync(node, { recursive: true, mode: 0o700 }); app.commandLine.appendSwitch('enable-logging', 'file'); app.commandLine.appendSwitch('log-file', join(node, 'electron.log')); app.commandLine.appendSwitch('log-level', '1'); } catch {}
 const first = app.requestSingleInstanceLock();
@@ -154,6 +157,7 @@ function advertise(port) {
 
 app.on('second-instance', show);
 if (first) app.whenReady().then(async () => {
+  watchGpu();
   autostart(); await startNode(); const welcomed = welcomeHandlers();
   window = new BrowserWindow({ title: 'MyBots', width: 1000, height: 760, minWidth: 420, minHeight: 560, show: false, backgroundColor: '#090B10', autoHideMenuBar: true, icon });
   window.setMenuBarVisibility(false);
@@ -206,7 +210,9 @@ if (first) app.whenReady().then(async () => {
   const fromOverlay = event => { try { return event.sender === overlay?.webContents && new URL(event.senderFrame.url).origin === UI; } catch { return false; } };
   ipcMain.handle('overlay:show', (event, state) => {
     if (!trusted(event) || !state || typeof state !== 'object') return;
-    overlayState = { bot: state.bot, working: Boolean(state.working) };
+    // The bot's picture comes drawn by the window (the bubble itself draws nothing in 3D): only a small WebP or PNG, as it came.
+    const image = typeof state.image === 'string' && state.image.length < 400000 && /^data:image\/(webp|png);base64,[A-Za-z0-9+/=]+$/.test(state.image) ? state.image : null;
+    overlayState = { bot: state.bot, working: Boolean(state.working), image };
     if (!overlay.webContents.getURL()) overlay.webContents.loadURL(`${UI}/?overlay=1`).catch(() => {});
     placeOverlay(); overlay.webContents.send('overlay:state', overlayState);
   });
@@ -234,5 +240,20 @@ if (first) app.whenReady().then(async () => {
   else window.showInactive();
   if (embedded && !welcomed) openWelcome();
 });
+// With the card on and WebGL gone, write the failure down and restart once with it switched off (it never restarts twice for the same system).
+function watchGpu() {
+  if (softwareGl || process.env.MYBOTS_SOFTWARE_GL === '0') { if (softwareGl) console.log('MyBots: placa de vídeo desligada (WebGL por software); tenta de novo depois de um reinício ou de trocar o driver.'); return; }
+  let crashes = 0, done = false;
+  app.on('child-process-gone', (event, details) => { if (details?.type === 'GPU' && ++crashes >= 3) setTimeout(check, 1500); });
+  function check() {
+    if (done) return;
+    let broken = false; try { broken = webglBroken(app.getGPUFeatureStatus()) || crashes >= 3; } catch {}
+    if (!broken || !markSoftwareGl(gpuMark, gpuSign)) return;
+    done = true; console.log('MyBots: a placa de vídeo falhou (WebGL indisponível); reiniciando com WebGL por software.');
+    quitting = true; try { child?.kill(); } catch {} try { unlinkSync(join(node, 'electron.json')); } catch {}
+    app.relaunch({ args: process.argv.slice(1) }); app.exit(0);
+  }
+  setTimeout(check, 15000); setTimeout(check, 60000);
+}
 app.on('before-quit', () => { quitting = true; try { child?.kill(); } catch {} if (first) try { unlinkSync(join(node, 'electron.json')); } catch {} });
 app.on('window-all-closed', () => {});

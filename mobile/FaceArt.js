@@ -1,14 +1,10 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { View, AccessibilityInfo, Platform } from 'react-native';
-import { MimoView } from './native';
-import { Mimo, specFromFace, particleCount, moodFor, airyMinR } from '../lib/mimo.mjs';
-import { paintFrame } from '../lib/mimo-canvas.mjs';
-import { currentTheme } from './theme';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { View, AccessibilityInfo } from 'react-native';
+import { moodFor, botColor } from '../lib/mimo.mjs';
 import { useBotMood } from './mood-director';
-import { useFaces3d } from './faces3d';
 import FaceArt3D from './FaceArt3D';
 
-// Only a handful of bots move at once (measured: eight cost nothing, thirty do); the rest of a long list wears a calm still frame.
+// Only a handful of bots move at once (measured: eight cost nothing, thirty do); the rest of a long list wears a calm still picture.
 const MAX_ANIMATED = 8; const slots = new Set();
 let reduceMotion = false;
 AccessibilityInfo.isReduceMotionEnabled?.().then(value => { reduceMotion = value; }).catch(() => {});
@@ -21,40 +17,27 @@ function useAnimation(wanted) {
   return on;
 }
 
-// The computer's window: the same simulation as the phone, drawn on a canvas (30 frames a second while it moves).
-function WebFace({ spec, mood, size, light, on }) {
-  const ref = useRef(null), sim = useRef(null), live = useRef({ mood, light }); live.current = { mood, light };
-  useEffect(() => {
-    const canvas = ref.current; if (!canvas) return undefined;
-    const dpr = Math.min(2, globalThis.devicePixelRatio || 1); canvas.width = Math.round(size * dpr); canvas.height = Math.round(size * dpr);
-    // like the phone: a small face is made at 66 units with many particles and shrunk, so its eyes and mouth stay clear
-    const ctx = canvas.getContext('2d'), small = size <= 150, V = small ? 66 : size; ctx.setTransform(dpr * size / V, 0, 0, dpr * size / V, 0, 0);
-    const m = sim.current = new Mimo(spec, { n: particleCount(size, true), fill: small ? 0.96 : 0.9, vfill: small ? 0.92 : 0.78 });
-    const paint = dt => { ctx.clearRect(0, 0, V, V); paintFrame(ctx, m.compute(V, V, { light: live.current.light === 'light', energy: 0.6, dt, minR: airyMinR(V) })); };
-    if (!on) { m.snap(live.current.mood); paint(1); return undefined; }
-    m.snap(live.current.mood); let raf = 0, last = 0;
-    const loop = now => { raf = requestAnimationFrame(loop); if (now - last < 33) return; const dt = Math.min(0.05, (now - (last || now - 33)) / 1000); last = now; m.setMood(live.current.mood); m.update(dt); paint(dt); };
-    raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
-  }, [spec, size, on]);
-  useEffect(() => { const m = sim.current, canvas = ref.current; if (!m || on || !canvas) return; const ctx = canvas.getContext('2d'), V = size <= 150 ? 66 : size; m.snap(mood); ctx.clearRect(0, 0, V, V); paintFrame(ctx, m.compute(V, V, { light: light === 'light', energy: 0.6, dt: 1, minR: airyMinR(V) })); }, [mood, light]);
-  return React.createElement('canvas', { ref, style: { width: size, height: size } });
+/**
+ * What shows in a bot's place while its 3D picture is being made (or if it cannot be, say a graphics card that does not work and no
+ * way to draw on the processor either): a soft cube in the bot's color with two eyes. It never pretends to be the bot's face.
+ */
+export function FacePlaceholder({ bot, size = 54 }) {
+  const color = botColor(bot) || '#8a8f98', eye = Math.max(2, Math.round(size * 0.075));
+  return <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size * 0.78, height: size * 0.72, borderRadius: size * 0.24, backgroundColor: color, opacity: 0.55, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: size * 0.17 }}>
+      <View style={{ width: eye, height: eye * 1.5, borderRadius: eye, backgroundColor: '#10131a' }} /><View style={{ width: eye, height: eye * 1.5, borderRadius: eye, backgroundColor: '#10131a' }} />
+    </View>
+  </View>;
 }
 
 const NAMES = { trabalhando: 'trabalhando', esperando: 'esperando você', dormindo: 'dormindo', erro: 'com erro', concluido: 'concluído', falando: 'falando', domal: 'do mal' };
 
-/** A bot's particle body in a size×size box. `animated` bots move (up to eight at a time) and follow what happens to them; the rest are still. */
+/** A bot's 3D body in a size×size box. `animated` bots move (up to eight at a time) and follow what happens to them; the rest are still. */
 function FaceArt({ bot, state = 'idle', size = 54, animated = false, mood: forced }) {
-  const faceKey = JSON.stringify([bot?.face || null, bot?.name || null, bot?.id || null]);
-  const spec = useMemo(() => specFromFace(bot?.face, bot?.name || bot?.id), [faceKey]);
-  const specJson = useMemo(() => JSON.stringify(spec), [spec]);
   const on = useAnimation(animated && size >= 28), live = useBotMood(bot?.id);
-  const mood = forced || (on && live ? live : moodFor(state)), light = currentTheme();
-  const count = particleCount(size, true), solid = useFaces3d();
+  const mood = forced || (on && live ? live : moodFor(state));
   return <View accessible accessibilityLabel={`${bot?.name || 'Bot'}${NAMES[mood] ? `, ${NAMES[mood]}` : ''}`} style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-    {MimoView ? (solid ? <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />} />
-      : <MimoView style={{ width: size, height: size }} spec={specJson} mood={mood} light={light === 'light'} energy={0.6} count={count} animated={on} fps={60} />)
-      : Platform.OS === 'web' ? solid ? <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<WebFace spec={spec} mood={mood} size={size} light={light} on={on} />} />
-        : <WebFace spec={spec} mood={mood} size={size} light={light} on={on} /> : null}
+    <FaceArt3D bot={bot} size={size} mood={mood} animated={on} fallback={<FacePlaceholder bot={bot} size={size} />} />
   </View>;
 }
 export default memo(FaceArt);

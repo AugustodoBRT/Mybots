@@ -106,10 +106,7 @@ export const BotBrowserView = native ? requireNativeViewManager('MyBotsNative', 
 let frameView;
 try { frameView = native ? requireNativeViewManager('MyBotsNative', 'BotFrameView') : null; } catch {}
 export const BotFrameView = frameView;
-let mimoView;
-try { mimoView = native ? requireNativeViewManager('MyBotsNative', 'MimoView') : null; } catch {}
-export const MimoView = mimoView;
-// 3D bots on the phone (see Avatar3d.kt). An APK from before this existed has no such function: the flat face stays.
+// 3D bots on the phone (see Avatar3d.kt). Without the function (or if the hidden WebView cannot draw) a plain placeholder shows.
 export const avatar3dAvailable = () => { try { return typeof native?.avatar3dAvailable === 'function' && Boolean(native.avatar3dAvailable()) && typeof native.avatar3dRender === 'function'; } catch { return false; } };
 // While the opening screen's 3D bot plays, the bots' pictures wait: both WebViews share one renderer process on Android, and the
 // opening bot should keep the whole frame rate.

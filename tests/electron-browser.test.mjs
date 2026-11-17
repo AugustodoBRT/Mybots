@@ -14,7 +14,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // The MyBots window for real (Electron, started hidden), with a bot's shared browser attached to its tabs.
 test('a janela em Electron hospeda o navegador dos bots: aba nova pela janela, imagem, e fechar a aba', real, async t => {
   const node = await mkdtemp(join(tmpdir(), 'mybots-electron-'));
-  const child = spawn('/usr/bin/electron', ['--ozone-platform-hint=auto', `--user-data-dir=${join(node, 'profile')}`, join(import.meta.dirname, '..', 'desktop', 'electron'), '--hidden'], { env: { ...process.env, MYBOTS_PC_DIR: node, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' }, stdio: 'ignore' });
+  const child = spawn('/usr/bin/electron', ['--ozone-platform-hint=auto', `--user-data-dir=${join(node, 'profile')}`, join(import.meta.dirname, '..', 'desktop', 'electron'), '--hidden'], { env: { ...process.env, MYBOTS_PC_DIR: node, MYBOTS_SOFTWARE_GL: '0', ELECTRON_DISABLE_SECURITY_WARNINGS: '1' }, stdio: 'ignore' });
   t.after(async () => { child.kill('SIGTERM'); await sleep(500); await rm(node, { recursive: true, force: true }); });
   for (let n = 0; n < 150 && !electronInfo(node); n++) await sleep(100);
   const info = electronInfo(node); assert.ok(info, 'a janela deixou seus dados na pasta do nó');

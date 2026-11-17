@@ -2,6 +2,11 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.30', date: '2026-11-17', items: [
+    ['melhoria', 'Os bots agora aparecem sempre em 3D, no computador e no celular: o rosto plano de partículas foi retirado do app, e o botão "Bots em 3D" dos Ajustes não existe mais.'],
+    ['correcao', 'No computador, se a placa de vídeo falhar (por exemplo, depois de uma atualização do driver sem reiniciar), o MyBots reinicia uma vez e passa a desenhar o 3D pelo processador, em vez de deixar os bots sem aparência. Ele tenta a placa de novo depois de um reinício ou de trocar o driver.'],
+    ['correcao', 'O balãozinho do bot sobre o navegador do computador mostra o bot em 3D.']
+  ] },
   { version: '0.94.29', date: '2026-11-17', items: [
     ['correcao', 'Corrige o MyBots do celular, que na versão 0.94.28 podia não iniciar (faltavam arquivos das tarefas em fundo no pacote).'],
     ['correcao', 'O aviso de que uma tarefa em fundo terminou agora chega ao MyBots que a iniciou (o do computador ou o do celular) e só some depois de confirmado; antes podia ir para o outro e o bot não acordava.']

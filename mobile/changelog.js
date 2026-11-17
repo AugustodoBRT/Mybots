@@ -2,6 +2,9 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.28', date: '2026-11-17', items: [
+    ['novo', 'Os bots agora conseguem deixar um comando demorado rodando em segundo plano (um build, um download grande, os testes) e terminar a resposta. Quando o comando acaba, o bot recebe o resultado e continua sozinho, e o aviso aparece no chat como "Tarefa em fundo". Funciona no computador e no celular.']
+  ] },
   { version: '0.94.27', date: '2026-11-17', items: [
     ['novo', 'Quando um bot Claude faz uma pergunta com opções (como no terminal), ela aparece no chat com botões e um campo para você escrever; sua resposta volta ao bot e ele continua dali.'],
     ['melhoria', 'Os bots usam primeiro a pesquisa e a leitura de páginas da própria IA para consultar a internet, que são mais rápidas, e só abrem o navegador quando precisam de login, de cliques ou quando a pesquisa não alcança o conteúdo.']

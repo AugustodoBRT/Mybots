@@ -41,6 +41,7 @@ import { encodeFrame, frameMetadata, viewSize, ViewGovernor } from './browser-fr
 import { Link } from './link.mjs';
 import { localSources, claudeSessions, codexSessions, readExport, digest, botFolders } from './history-import.mjs';
 import { Tables, Decisions } from './shared-data.mjs';
+import { Jobs } from './jobs.mjs';
 import { Canvas } from './canvas.mjs';
 import { aiStatus, aiUpdate, missingRuntimeParts } from '../lib/ai-runtimes.mjs';
 import { Skills, describeResult } from './skills.mjs';
@@ -72,7 +73,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     unlinkSync(lock);
     writeFileSync(lock, JSON.stringify({ pid: process.pid, start: processIdentity(process.pid) }), { flag: 'wx', mode: 0o600 });
   }
-  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, aiTimer, rooms, nodes, link, negotiations, decisions, decisionTimer;
+  let db, server, sockets, frameSockets, timer, pingTimer, queue, email, routines, browser, items, itemTimer, pruneTimer, aiTimer, rooms, nodes, link, negotiations, decisions, decisionTimer, jobs;
   try {
     const tokenFile = join(directory, 'token');
     try { writeFileSync(tokenFile, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
@@ -304,6 +305,10 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
         db.record('budget_warning', `${bot?.name || 'Bot'}: ${level}% do limite de gasto do mês.`, task.bot_id);
       } catch {}
     });
+    // Background jobs: a command that outlives the turn; when it ends the bot is woken with a message, like a decision's answer.
+    jobs = new Jobs({ db, directory, pc: (run, op, args) => link.command(run, op, args), pcOnline: () => link.status().state === 'online',
+      wake: (botId, text, origin) => { try { const bot = db.requireBot(botId); const task = db.enqueue(bot.id, randomUUID(), text, selectionFor(catalog(), bot), origin); broadcast('task.progress', { taskId: task.id }); queue.schedule(); } catch (error) { db.record('job_wake_failed', error.message, botId); } } });
+    tools.jobs = jobs; link.onJob = ({ botId, job, tail }) => jobs.finished(botId, job, tail);
     tools.decisions = decisions; decisionTimer = setInterval(() => { try { decisions.tick(); } catch {} }, 60000); decisionTimer.unref?.();
     // Skills run here without the IA; their result goes to the bot's chat (table, plus a spreadsheet) and a notice.
     const skills = new Skills(db, { directory, changed: broadcast }); tools.skills = skills;
@@ -1175,7 +1180,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
     writeFileSync(join(directory, 'endpoint.json'), JSON.stringify({ port: actualPort, release, instanceId }), { mode: 0o600 });
     api = { db, queue, tools, routines, decisions: () => decisions, items, negotiations, nodes, link, token, port: actualPort, rpc, state, async close() {
       if (closed) return; closed = true;
-      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(decisionTimer); clearInterval(itemTimer); clearInterval(pruneTimer); clearInterval(aiTimer); email.stop(); routines.stop(); link.close();
+      clearInterval(timer); clearInterval(pingTimer); clearInterval(viewTimer); clearInterval(decisionTimer); clearInterval(itemTimer); clearInterval(pruneTimer); clearInterval(aiTimer); email.stop(); routines.stop(); link.close(); jobs?.close();
       for (const ws of [...sockets.clients, ...frameSockets.clients]) ws.terminate();
       // Open long-polls and keep-alive sockets would hold server.close() forever, and with it the lock.
       for (const poller of pollers) poller([]); pollers.clear(); browser.close();

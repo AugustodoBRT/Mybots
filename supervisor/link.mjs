@@ -57,7 +57,7 @@ export class Link {
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
     this.commands = new Map();
     // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
-    this.watching = new Set(); this.viewOptions = new Map(); this.controls = {}; this.onFrame = () => {};
+    this.watching = new Set(); this.viewOptions = new Map(); this.controls = {}; this.onFrame = () => {}; this.onJob = () => {};
   }
   /** Usage windows the computer read (Antigravity's): kept like the ones that come with a reply. */
   takeLimits(limits) {
@@ -264,6 +264,7 @@ export class Link {
       if (message.type === 'status') { this.takeLimits(message.limits); this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
+      if (message.type === 'job_done' && typeof message.botId === 'string' && message.job && typeof message.job.id === 'string') { try { this.onJob({ botId: message.botId, job: { ...message.job, label: String(message.job.label || '').slice(0, 80), note: typeof message.job.note === 'string' ? message.job.note.slice(0, 200) : undefined }, tail: String(message.tail || '').slice(-3000) }); } catch {} return; }
       if (message.type === 'pc_result') { this.commands.get(message.rid)?.(message); return; }
       if (message.type === 'browser_frame' && typeof message.botId === 'string') { const { type, ...frame } = message; this.onFrame(frame); return; }
       const run = this.runs.get(message.id);
@@ -407,7 +408,7 @@ export class Link {
   /** An action already authorized on the phone, only for its currently running turn on this connection. */
   command(run, op, args) {
     // A bot answering on the phone has no run on the computer; its browser still lives there (browser.* only, by bot).
-    const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId) || (run.lane !== 'pc' && /^browser\./.test(op) ? [null] : null);
+    const entry = [...this.runs.entries()].find(([, item]) => item.taskId === run.taskId) || (run.lane !== 'pc' && /^(browser|job)\./.test(op) ? [null] : null);
     if (!entry || run.signal?.aborted || this.socket?.readyState !== 1) return Promise.reject(new Error('A resposta no computador já foi interrompida.'));
     return new Promise((resolve, reject) => {
       const rid = randomUUID();

@@ -19,7 +19,7 @@ import agentSkills from '../lib/agent-skills.cjs';
 const { defaultSkills, commandInside, insideSkill, githubSource, validSkills } = agentSkills;
 
 // The bot's own data: available on every level, without asking (creating a routine still asks).
-const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close', 'user.decide', 'user.decisions']);
+const OWN_TOOLS = new Set(['memory.read', 'memory.write', 'memory.delete', 'task.create_item', 'task.list_items', 'task.update_item', 'attachment.read', 'file.list', 'file.create', 'file.send', 'routine.list', 'routine.create', 'routine.update', 'skill.list', 'skill.run', 'skill.propose', 'negotiation.status', 'negotiation.offer', 'negotiation.close', 'user.decide', 'user.decisions', 'job.start', 'job.list', 'job.log', 'job.stop']);
 
 // Connector actions whose names only read. Anything that also mentions a change goes to the person.
 const READ = /(^|[_.\-])(search|list|get|read|fetch|find|query|lookup|count|view|download)([_.\-]|$)/i;
@@ -227,7 +227,7 @@ export class Tools {
     // "Pouco acesso" hides what it blocks; elsewhere a blocked tool stays listed, so the bot can say where to allow it.
     const bot = this.db.requireBot(run.botId);
     const chrome = run.lane === 'pc' && browserMode(bot) === 'claude';
-    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow' && (this.desktopAvailable?.() ?? true)) && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
+    return [...MCP_TOOLS.filter(tool => (!chrome || !BROWSER_TOOLS.includes(MCP_NAMES[tool.name]) || tool.name === 'browser_ask_user') && (!DESKTOP_TOOLS.includes(MCP_NAMES[tool.name]) || run.lane === 'pc' && this.policy(run.botId, 'desktop') === 'allow' && (this.desktopAvailable?.() ?? true)) && (!PHONE_TOOLS.includes(MCP_NAMES[tool.name]) || this.policy(run.botId, 'phone') === 'allow') && (!MCP_NAMES[tool.name]?.startsWith('job.') || this.policy(run.botId, run.lane === 'pc' ? 'computer' : 'shell') !== 'deny') && this.policy(run.botId, grantOf(MCP_NAMES[tool.name])) !== 'deny'), ...(this.apps?.toolsFor(tool => this.policy(run.botId, tool) !== 'deny') || [])];
   }
   /** Calls by MCP name, from either bridge: built-in names map to tools, x<id>_ names to connected apps. */
   /**
@@ -309,6 +309,15 @@ export class Tools {
         result = tool === 'table.list' ? this.tables.list(run.botId) : tool === 'table.read' ? this.tables.read(args, run.botId) : tool === 'table.add' ? this.tables.add(run.botId, args)
           : tool === 'table.update' ? this.tables.update(run.botId, args) : this.tables.remove(args, run.botId);
         if (tool !== 'table.list' && tool !== 'table.read') this.db.record('table_changed', `${label}: ${String(args.table).slice(0, 40)}.`, run.botId, run.taskId);
+      } else if (tool.startsWith('job.')) {
+        if (!this.jobs) throw new Error('Os jobs em fundo não estão disponíveis.');
+        if (tool === 'job.start') {
+          // The same rules as a command typed in the bot's terminal: keys refused, risky commands ask the person.
+          const verdict = await this.computerPermission(run, 'Bash', { command: args.command, ...(args.label ? { description: args.label } : {}) });
+          if (verdict.behavior !== 'allow') throw new Error(verdict.message || 'Comando não autorizado. Nada foi iniciado.');
+          this.requireGrant(run, tool);
+          result = await this.jobs.start(run, args);
+        } else result = tool === 'job.list' ? await this.jobs.list(run) : tool === 'job.log' ? { untrusted: true, ...await this.jobs.log(run, args) } : await this.jobs.stop(run, args);
       } else if (tool === 'user.decide') {
         if (!this.decisions) throw new Error('As decisões não estão disponíveis.');
         result = this.decisions.ask(run.botId, args);

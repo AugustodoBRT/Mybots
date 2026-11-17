@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+const { JobProcs } = createRequire(import.meta.url)('../lib/job-runner.cjs');
 import { personInput as cleanPersonInput } from '../supervisor/browser.mjs';
 import { createServer as createHttps } from 'node:https';
 import { createServer as createHttp } from 'node:http';
@@ -226,6 +228,10 @@ export function botFilePart(computer, input, offset = 0, part = 3 * 1024 * 1024)
 export async function createNode({ directory = dataDirectory(), port = DEFAULT_PORT, host = '0.0.0.0', execute = runReply, status = localStatus, advertise = addresses, projects = join(homedir(), 'MyBots'), uiPort = DEFAULT_UI_PORT, uiRoot, downloads, discoveryPort, discoveryLoopback = false, desktop = new Desktop(), desktopIdleMs = 60000, browser = new PcBrowser(directory), local: localOptions = null, relay = null, appPort, sync: syncOptions = {}, log = () => {} } = {}) {
   const me = identity(directory);
   const DESKTOP_IDLE_MS = desktopIdleMs;
+  // Background jobs of the bots (lib/job-runner.cjs): they outlive the turn that started them; the supervisor is told when each one ends,
+  // or on the next connection if it was away.
+  let jobSend = null;
+  const jobs = new JobProcs({ directory: join(directory, 'jobs'), onDone: (job, tail, record) => { if (jobSend?.({ type: 'job_done', botId: record.botId, job, tail })) jobs.markReported(job.id); } });
   const controls = new Set(); let owner = null, own = null, relayHost = null, sync = null, phonePath = null;
   const dictation = createDictation(directory);
   // The live view of each bot's Chrome: who watches it (the phone, the window here) and which bots the person took over.
@@ -337,6 +343,8 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       if (!phone.local) { bridge.attach(ws); phonePath = pathOf(request.socket.remoteAddress); ui.broadcast('desktop.phone', { online: true }); sync?.phone(true); }
       else { localBridge.attach(ws); sync?.kick(); }
       log(`${phone.name} conectado (${request.socket.remoteAddress || 'pelo relé'}).`);
+      jobSend = value => { if (ws.readyState !== 1) return false; ws.send(JSON.stringify(value)); return true; };
+      for (const item of jobs.unreported()) if (jobSend({ type: 'job_done', botId: item.botId, job: item.job, tail: item.tail })) jobs.markReported(item.job.id);
       send({ type: 'ready', id: me.id, name: me.name, desktop: hasDesktopControl(), ...(relay && !phone.local ? { relay } : {}), addresses: phone.local ? ['127.0.0.1'] : advertise(), port: server.address().port, ...current });
     };
     // Tool calls of the IA running here go to the phone's supervisor, which checks the run token as usual.
@@ -450,6 +458,22 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
       }
       if (message.type === 'http_reply') { waiting.get(message.rid)?.({ status: message.status, headers: message.headers || {}, body: message.body || '' }); return; }
       if (message.type === 'cancel') { runs.get(message.id)?.controller.abort('cancelled'); return; }
+      if (message.type === 'pc_command' && typeof message.op === 'string' && message.op.startsWith('job.')) {
+        try {
+          const run = message.id ? runs.get(message.id) : null, args = message.args && typeof message.args === 'object' ? message.args : {};
+          const botId = run?.bot?.id || message.botId; if (typeof botId !== 'string' || !botId) throw new Error('Job sem bot.');
+          let result;
+          if (message.op === 'job.start') {
+            if (!run || run.controller.signal.aborted || !run.tools?.computer || !run.workspace) throw new Error('Um job só começa durante uma resposta com o computador liberado.');
+            result = jobs.start({ botId, command: args.command, label: args.label, minutes: args.minutes, cwd: run.workspace, wrap: run.wrap });
+          } else if (message.op === 'job.list') result = { jobs: jobs.list(botId) };
+          else if (message.op === 'job.log') result = jobs.log(botId, String(args.id || ''), { bytes: args.bytes });
+          else if (message.op === 'job.stop') result = jobs.stop(botId, String(args.id || ''));
+          else throw new Error('Operação de job desconhecida.');
+          send({ type: 'pc_result', rid: message.rid, result });
+        } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
+        return;
+      }
       if (message.type === 'pc_command') {
         // A bot that answers on the phone has no run here: its browser ops are checked by the supervisor, and only the bot's own Chromium is reachable.
         const direct = !message.id && typeof message.botId === 'string' && (['shared', 'separate'].includes(message.mode) || ACCOUNT_SLOT.test(message.mode)) && /^browser\.(act|tabs|find|open|read|inspect|click|type|upload|wait|screenshot|login|login_fill|login_cancel|pay|pay_fill|pay_clear|thumb|viewport)$/.test(message.op);
@@ -491,6 +515,7 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         // Linux: bubblewrap is mandatory. Windows and macOS have no isolation yet: the turn runs without it and, as the owner chose
         // (12/11/2026), a bot allowed to use the computer has a free terminal there with every IA (Codex, Claude and Antigravity).
         if (!wrap && hasIsolation()) throw new Error('Instale bubblewrap no computador antes de responder; o isolamento é obrigatório.');
+        run.wrap = wrap; run.workspace = workspace;
         log(`Respondendo como ${bot.name}.`);
         const computer = message.tools ? computerFor(message.tools.computer, workspace, undefined, enabledSkills) : undefined; run.computer = computer || null;
         const reply = await execute(bot, message.prompt, {
@@ -555,5 +580,5 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   return { id: me.id, name: me.name, fingerprint: me.fingerprint, port: server.address().port, uiPort: windowPort, discoveryPort: discovery.port, refresh,
     pairing: () => { const made = startPairing(directory, server.address().port, advertise, { relay, appPort: plainServer.address().port }); relayHost?.sync(); return made; },
     phones: () => read(phonesFile, []).filter(item => !item.local).map(({ secret, ...phone }) => phone), apps: () => apps().map(({ secret, ...rest }) => rest), panic, local: () => own, relay: () => relayHost, sync: () => sync,
-    async close() { const stopped = panic(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); clearInterval(relayTimer); relayHost?.close(); sync?.close(); for (const ws of appSockets.clients) ws.terminate(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => { plainServer.close(resolve); plainServer.closeAllConnections?.(); }), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
+    async close() { const stopped = panic(); jobs.close(); dictation.close(); clearInterval(ping); clearInterval(statusTimer); clearInterval(viewTimer); for (const ws of sockets.clients) ws.terminate(); clearInterval(relayTimer); relayHost?.close(); sync?.close(); for (const ws of appSockets.clients) ws.terminate(); await Promise.all([stopped, own?.close(), new Promise(resolve => server.close(resolve)), new Promise(resolve => { plainServer.close(resolve); plainServer.closeAllConnections?.(); }), new Promise(resolve => panicServer.close(resolve)), ui.close(), discovery.close()]); } };
 }

@@ -2451,3 +2451,11 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - `AskUserQuestion` do Claude ligado (`--tools` e `--permission-prompt-tool` agora valem para qualquer bot com ferramentas). `Tools.nativeQuestions` transforma cada pergunta (até 4, até 6 opções) numa decisão do chat (`Decisions.ask`, com “Escrever minha resposta”); o turno recebe a recusa dizendo para esperar, e a resposta volta como mensagem (retomada igual à do `user_decide`). Teste com o Claude CLI real e API simulada: `tests/claude-ask.test.mjs`.
 - Codex, Antigravity e OpenCode seguem com `user_decide`: no Codex o `request_user_input` só existe fora do modo padrão (recurso ainda em desenvolvimento), e o `ask_question`/`question` das outras CLIs não funciona em modo não interativo.
 - Entrega 0.94.27 (v219): APK, Release, push, CI do PC e web app do iPhone publicados; APK baixado igual ao local. Não testado no celular físico.
+
+## 17/11/2026 — 0.94.28 (versionCode 220): tarefas em fundo entre turnos (job_start)
+
+- Novas ferramentas MCP para as quatro IAs: `job_start` (comando que continua depois da resposta; padrão 360 min, no máximo 1440; até 5 por bot), `job_list`, `job_log` e `job_stop`. Mesmo código em `lib/job-runner.cjs`: no PC roda dentro do sandbox do bot (`pc/server.mjs`, ops `job.*` pelo link, registro em `<pasta do PC>/jobs/jobs.json`); no celular roda no Linux dele (`supervisor/jobs.mjs`).
+- `job_start` passa pelas mesmas regras de um comando do terminal do bot (`computerPermission`: chaves recusadas, comando arriscado pergunta).
+- Ao terminar (ou ser parado, ou perdido por reinício do programa), o bot é acordado com uma mensagem de origem `job` (“Tarefa em fundo: …”, código de saída e fim do log como dado externo), igual à resposta de uma decisão. Se o PC estava desconectado, o aviso sai na reconexão.
+- Limites conhecidos: o job vive enquanto o programa que o roda viver (fechar o MyBots no PC ou reiniciar o supervisor no celular encerra os jobs: são avisados como “interrompido”); log limitado a 100 MB. A orientação dos bots manda usar `job_start` no lugar de segundo plano do terminal.
+- Testes: `tests/jobs.test.mjs` (runner, limites, “perdido”, acordar o bot, validação) e `tests/jobs-pc.test.mjs` (turno real no PC com sandbox: job sobrevive, acorda o bot com o log). Contagem de ferramentas MCP 70 → 74.

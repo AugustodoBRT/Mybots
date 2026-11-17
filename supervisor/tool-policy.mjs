@@ -27,6 +27,10 @@ export const TOOL_DEFINITIONS = [
   { name: 'canvas.update', label: 'Mudar cartão do canvas', description: 'Muda o conteúdo, a posição, o tamanho ou a área de um cartão do canvas.', defaultAllowed: true },
   { name: 'canvas.link', label: 'Ligar cartões', description: 'Liga dois cartões do canvas com um rótulo.', defaultAllowed: true },
   { name: 'canvas.remove', label: 'Tirar do canvas', description: 'Tira um cartão ou uma ligação do canvas.', defaultAllowed: true },
+  { name: 'job.start', label: 'Rodar em fundo', description: 'Começa um comando que continua rodando depois da resposta; o bot é avisado quando ele termina.', defaultAllowed: true },
+  { name: 'job.list', label: 'Ver jobs em fundo', description: 'Lista os comandos em fundo deste bot.', readOnly: true, defaultAllowed: true },
+  { name: 'job.log', label: 'Ver a saída de um job', description: 'Lê o fim da saída de um comando em fundo.', readOnly: true, defaultAllowed: true },
+  { name: 'job.stop', label: 'Parar um job', description: 'Para um comando em fundo deste bot.', defaultAllowed: true },
   { name: 'user.decide', label: 'Pedir uma decisão', description: 'Pergunta algo à pessoa com opções para tocar (e sempre "Escrever minha resposta"); a resposta volta como mensagem.', defaultAllowed: true },
   { name: 'user.decisions', label: 'Ver decisões', description: 'Consulta o que a pessoa já decidiu e o que está esperando resposta.', readOnly: true, defaultAllowed: true },
   { name: 'delivery.write', label: 'Registrar entrega', description: 'Cria uma entrega datada deste bot.', defaultAllowed: true },
@@ -179,6 +183,7 @@ export function toolArguments(tool, args) {
     'canvas.read': ['area'], 'canvas.add': ['kind','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h','near','label'],
     'canvas.update': ['id','title','area','text','html','chart','table','columns','rows','by','sum','file','x','y','w','h'], 'canvas.link': ['from','to','label'], 'canvas.remove': ['id'], 'browser.viewport': ['size','width','height'],
     'table.list': [], 'table.read': ['table','where','query','limit'], 'table.add': ['table','row','unique'], 'table.update': ['table','id','row'], 'table.delete': ['table','id'],
+    'job.start': ['command','label','minutes'], 'job.list': [], 'job.log': ['id','bytes'], 'job.stop': ['id'],
     'user.decide': ['question','options','deadline_hours','on_timeout','replaces','new_topic'], 'user.decisions': ['state','limit','bot'],
     'team.status': [], 'team.bots': ['bot'], 'team.rooms': [], 'team.choose_models': ['bots','recommended','alternatives'], 'team.models': [], 'team.create_bot': ['name','instructions','color','avatar','access','home','provider','model','effort'], 'team.create_room': ['name','bots','message'], 'team.add_to_room': ['room','bot'],
     'team.remove_from_room': ['room','bot'], 'team.leave_room': ['room'], 'team.close_room': ['room'], 'team.post': ['room','text'], 'team.read_room': ['room','limit'], 'team.ask': ['bot','text'], 'team.answer': ['task'], 'team.checklist': ['items'], 'team.check': ['item','done','note'],
@@ -202,6 +207,17 @@ export function toolArguments(tool, args) {
   if (/^(table|user|profile)\./.test(tool) || ['team.update_bot', 'team.routines', 'team.routine_update', 'team.usage', 'team.overlap', 'team.skills', 'team.enable_skill', 'team.install_skill'].includes(tool)) {
     if (JSON.stringify(args).length > 12000) throw new Error('Argumentos grandes demais.');
     return args;
+  }
+  if (tool === 'job.list') return {};
+  if (tool === 'job.start') {
+    const label = text('label', 80, true), minutes = args.minutes === undefined ? undefined : args.minutes;
+    if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440)) throw new Error('minutes vai de 1 a 1440.');
+    return { command: text('command', 4000), ...(label ? { label } : {}), ...(minutes ? { minutes } : {}) };
+  }
+  if (tool === 'job.log' || tool === 'job.stop') {
+    const id = text('id', 40); if (!/^[0-9a-f-]{8,36}$/i.test(id)) throw new Error('Use o id de um job (veja em job_list).');
+    if (args.bytes !== undefined && (!Number.isInteger(args.bytes) || args.bytes < 200 || args.bytes > 20000)) throw new Error('bytes vai de 200 a 20000.');
+    return { id, ...(tool === 'job.log' && args.bytes ? { bytes: args.bytes } : {}) };
   }
   if (tool === 'delivery.write') { const project = text('project', 80, true); return { topic: checkBody(text('topic', 80)), text: checkBody(text('text', 4000)), ...(project ? { project: checkBody(project) } : {}) }; }
   if (tool === 'shared.index_read') return {};

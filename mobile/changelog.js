@@ -2,6 +2,12 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.31', date: '2026-11-19', items: [
+    ['correcao', 'O aviso "Ativar o resumo semanal" agora mostra "Ativando…", confirma quando ativa, mostra o erro no próprio aviso se algo falhar e tem um "x" para descartar.'],
+    ['correcao', 'Os avisos de conexão da tela inicial (como pedir para instalar o Codex) ganharam um "x" para descartar, no computador e no celular.'],
+    ['correcao', 'No computador, o botão de atualizar não deixa mais ver o que está atrás dele enquanto baixa: ele fica sólido e mostra uma barra de progresso.'],
+    ['correcao', 'O QR de Android em Ajustes → Celular era o de parear (só o app entende, e na câmera comum aparecia como link quebrado). Agora há também o "QR para baixar o app (Android)", que abre a página do APK.']
+  ] },
   { version: '0.94.30', date: '2026-11-17', items: [
     ['melhoria', 'Os bots agora aparecem sempre em 3D, no computador e no celular: o rosto plano de partículas foi retirado do app, e o botão "Bots em 3D" dos Ajustes não existe mais.'],
     ['correcao', 'No computador, se a placa de vídeo falhar (por exemplo, depois de uma atualização do driver sem reiniciar), o MyBots reinicia uma vez e passa a desenhar o 3D pelo processador, em vez de deixar os bots sem aparência. Ele tenta a placa de novo depois de um reinício ou de trocar o driver.'],

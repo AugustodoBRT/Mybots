@@ -123,11 +123,12 @@ export function SheetHeader({ title, subtitle, onClose, icon }) {
   </View>;
 }
 
-export function Notice({ text, onRetry, onLogs, loading = false }) {
+export function Notice({ text, onRetry, onLogs, onDismiss, loading = false }) {
   if (!text) return null;
   return <View style={styles.notice}>
     <View style={styles.noticeIcon}><Icon name="alert" size={18} color={C.amber} /></View>
     <View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{loading ? 'Conectando…' : 'Atenção'}</Text><Text style={styles.noticeText}>{text}</Text></View>
+    {onDismiss ? <IconButton icon="close" label="Descartar o aviso" onPress={onDismiss} size={34} /> : null}
     <View style={styles.noticeActions}>
       {onLogs && !loading && <Pressable accessibilityRole="button" accessibilityLabel="Ver detalhes do erro" onPress={onLogs} style={styles.noticeRetry}>
         <Text style={styles.noticeLogsText}>Logs</Text>
@@ -510,20 +511,21 @@ export function DesktopPair({ call, compact = false }) {
     }, 2000);
     return () => clearInterval(timer);
   }, [qr]);
-  const show = async (iphone = false) => {
+  const show = async (iphone = false, download = false) => {
     setBusy(true); setNote('');
-    try { const result = await call('desktop.pair', iphone ? { iphone: true } : {}); setQr({ ...result, iphone, shownAt: new Date(Date.now() - 1000).toISOString() }); }
+    try { const result = await call('desktop.pair', download ? { download: true } : iphone ? { iphone: true } : {}); setQr({ ...result, iphone, download, shownAt: new Date(Date.now() - 1000).toISOString() }); }
     catch (error) { setNote(error.message); } finally { setBusy(false); }
   };
   return <View style={[styles.modeOption, compact && { alignSelf: 'stretch', marginTop: 18 }]}>
     <Text style={styles.optionLabel}>Parear um celular</Text>
     <DesktopNetwork call={call} />
-    <Text style={styles.optionDetail}>No celular, abra o MyBots e leia o QR: na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (usando o MyBots deste celular, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
-    {qr ? <View style={styles.pairQr}><View accessibilityLabel={qr.iphone ? 'QR para parear o iPhone' : 'QR para parear o celular'}><SvgXml xml={qr.svg} width={260} height={260} /></View>
-      <Text style={styles.limitMeta}>{qr.iphone ? 'Abra a câmera do iPhone, aponte para o QR e toque no link.' : 'Esperando o celular ler…'}</Text>
+    <Text style={styles.optionDetail}>Ainda sem o app no celular? Use "QR para baixar o app". Com o app instalado, abra o MyBots e leia o QR de parear (ele só funciona dentro do app, não na câmera comum): na primeira tela é "Ler o QR do computador"; no app já em uso, Ajustes → Computador → Parear de novo (usando o MyBots deste celular, Conectar computador). Ele vale por 10 minutos e uma vez só.</Text>
+    {qr ? <View style={styles.pairQr}><View accessibilityLabel={qr.download ? 'QR para baixar o app Android' : qr.iphone ? 'QR para parear o iPhone' : 'QR para parear o celular'}><SvgXml xml={qr.svg} width={260} height={260} /></View>
+      <Text style={styles.limitMeta}>{qr.download ? 'Aponte a câmera do celular e baixe o arquivo .apk (mybots-v….apk) da página que abrir. Depois de instalar, volte aqui e use o QR de parear.' : qr.iphone ? 'Abra a câmera do iPhone, aponte para o QR e toque no link.' : 'Esperando o celular ler…'}</Text>
       {qr.text ? <Pressable accessibilityRole="button" onPress={() => copyText(qr.text).then(() => setNote('Link copiado.')).catch(() => {})} style={[styles.stopButton, { marginTop: 8 }]}><Icon name="copy" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Copiar o link</Text></Pressable> : null}</View> : null}
-    <View style={{ flexDirection: 'row', gap: 14, marginTop: 10 }}>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : () => show(false)} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR (Android)'}</Text></Pressable>
+    <View style={{ flexDirection: 'row', gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={qr ? () => setQr(null) : () => show(false)} style={styles.stopButton}><Icon name={qr ? 'close' : 'phone'} size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>{qr ? 'Esconder QR' : busy ? 'Gerando…' : 'Mostrar QR de parear (Android)'}</Text></Pressable>
+      {qr ? null : <Pressable accessibilityRole="button" disabled={busy} onPress={() => show(false, true)} style={styles.stopButton}><Icon name="download" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>QR para baixar o app (Android)</Text></Pressable>}
       {qr ? null : <Pressable accessibilityRole="button" disabled={busy} onPress={() => show(true)} style={styles.stopButton}><Icon name="phone" size={13} color={C.accent} /><Text style={[styles.stopText, { color: C.accent }]}>Mostrar QR (iPhone)</Text></Pressable>}
     </View>
     {note ? <Text style={[styles.optionDetail, /pareado/.test(note) ? { color: C.accent } : { color: C.amber }]}>{note}</Text> : null}

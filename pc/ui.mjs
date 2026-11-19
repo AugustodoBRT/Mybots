@@ -10,6 +10,7 @@ import { DESKTOP_METHODS } from '../supervisor/link.mjs';
 
 export const PWA_URL = process.env.MYBOTS_PWA_URL || 'https://mybots-rele.duckdns.org/';
 /** The link the iPhone opens: the web app, with the computer's pairing text in the fragment. */
+export const DOWNLOAD_URL = 'https://github.com/AugustodoBRT/Mybots/releases/latest';
 export const iphoneLink = (link, base = PWA_URL) => `${base}#p=${encodeURIComponent(link)}`;
 import { openCommand } from './platform.mjs';
 
@@ -153,6 +154,12 @@ export function createUi({ port = DEFAULT_UI_PORT, root = fileURLToPath(new URL(
         // The pairing QR, drawn here so the window shows it (one use, 10 minutes, like `node pc/node.mjs pair`).
         else if (method === 'desktop.pair') {
           if (!pairing) throw new Error('O pareamento não está disponível.');
+          // The QR to install the app on a phone that does not have it yet: the pairing QR is a mybots:// link only the app understands.
+          if (params?.download) {
+            const { default: QR } = await import('qrcode');
+            reply(id, { result: { svg: await QR.toString(DOWNLOAD_URL, { type: 'svg', margin: 2, errorCorrectionLevel: 'M', color: { dark: '#0B0E14', light: '#FFFFFF' } }), expiresAt: Date.now() + 10 * 60000, text: DOWNLOAD_URL, download: true } });
+            return;
+          }
           const { link, name } = pairing();
           // For the iPhone the QR is a link to the web app with the pairing in the fragment (never sent to a server); it only works through the relay.
           const iphone = Boolean(params?.iphone);

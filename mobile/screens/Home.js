@@ -90,6 +90,13 @@ function RoomRow({ room, bots, data, onPress }) {
 }
 
 function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, onCreateChief, data, error, onRetry, onLogs, onCreate, onOpen, onConnection, mode, onProfile, onMaintenance, onWallet, onActivity, onRespond, approvalBusy, update, onUpdate, onUpdateDismiss, onRoom, onNewRoom, onSearch, remote = false }) {
+  const [weekly, setWeekly] = useState({ state: 'idle', error: '' }); const [hidden, setHidden] = useState({});
+  const hide = key => setHidden(value => ({ ...value, [key]: true }));
+  const activateWeekly = async () => {
+    if (weekly.state === 'busy') return;
+    setWeekly({ state: 'busy', error: '' });
+    try { await onWeekly(); setWeekly({ state: 'done', error: '' }); } catch (error) { setWeekly({ state: 'idle', error: error?.message || 'Não consegui ativar o resumo semanal.' }); }
+  };
   const [menu, setMenu] = useState(false); const [routinesOpen, setRoutinesOpen] = useState(false); const [negotiationsOpen, setNegotiationsOpen] = useState(false);
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   // The Chefe stays pinned at the top of the list, like on the computer; its conversation opens on a tap.
@@ -133,14 +140,17 @@ function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, on
         <Text style={s.today}>{summary ? <Text style={s.todayLink}>{summary}</Text> : `${bots.length} ${bots.length > 1 ? 'bots no seu time' : 'bot no seu time'}. Tudo em dia.`}</Text></Pressable>
         : <Text style={s.today}>Seu pequeno time pessoal começa aqui.</Text>}
       {bots.length && ahead.length ? <View style={{ marginTop: -14, marginBottom: 20, gap: 2 }}>{ahead.map(line => <Text key={line} style={s.facts} numberOfLines={1}>{line}</Text>)}</View> : null}
-      {onWeekly && phone && (data?.bots || []).some(bot => bot.isChief && !bot.deletedAt) && !(data?.routines || []).some(item => item.origin === 'weekly') ? <Pressable accessibilityRole="button" onPress={onWeekly} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginBottom: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface }, pressed && { opacity: 0.7 }]}>
-        <Icon name="calendar" size={18} color={C.accent} /><View style={{ flex: 1 }}><Text style={{ color: C.text, fontFamily: F.b, fontSize: 15 }}>Ativar o resumo semanal</Text>
-          <Text style={{ color: C.muted, fontFamily: F.m, fontSize: 13 }}>Todo domingo às 18h o Chefe resume o que cada bot fez, o que está pendente e o que precisa de você.</Text></View><Icon name="right" size={15} color={C.muted} /></Pressable> : null}
+      {onWeekly && phone && !hidden.weekly && (data?.bots || []).some(bot => bot.isChief && !bot.deletedAt) && !(data?.routines || []).some(item => item.origin === 'weekly') ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingRight: 6, marginBottom: 14, borderRadius: 18, borderWidth: 1, borderColor: weekly.error ? C.amber + '88' : C.line, backgroundColor: C.surface }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Ativar o resumo semanal" disabled={weekly.state !== 'idle'} onPress={activateWeekly} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }, pressed && { opacity: 0.7 }]}>
+          <Icon name="calendar" size={18} color={C.accent} /><View style={{ flex: 1 }}><Text style={{ color: C.text, fontFamily: F.b, fontSize: 15 }}>{weekly.state === 'busy' ? 'Ativando o resumo semanal…' : weekly.state === 'done' ? 'Resumo semanal ativado' : 'Ativar o resumo semanal'}</Text>
+            <Text style={{ color: weekly.error ? C.amber : C.muted, fontFamily: F.m, fontSize: 13 }}>{weekly.error || (weekly.state === 'done' ? 'Todo domingo às 18h o Chefe vai mandar o resumo. Ajuste em Rotinas.' : 'Todo domingo às 18h o Chefe resume o que cada bot fez, o que está pendente e o que precisa de você.')}</Text></View>
+          {weekly.state === 'idle' ? <Icon name="right" size={15} color={C.muted} /> : null}</Pressable>
+        <IconButton icon="close" label="Descartar o aviso" onPress={() => hide('weekly')} size={34} /></View> : null}
       {tabs && chief ? <BotRow bot={chief} data={data} onPress={() => onOpen(chief.id)} onProfile={() => onProfile(chief)} /> : null}
       {onCreateChief ? <PrimaryButton icon="plus" title="Crie o seu Chefe" onPress={onCreateChief} disabled={!data.models?.length} /> : null}
       {error ? <Notice text={error} onRetry={onRetry} onLogs={onLogs} /> : null}
-      {!data?.connection?.loggedIn && !error ? <Notice text={status} onRetry={onConnection} /> : null}
-      {data?.modelsError ? <Notice text={data.modelsError} onRetry={onConnection} /> : null}
+      {!data?.connection?.loggedIn && !error && !hidden.login ? <Notice text={status} onRetry={onConnection} onDismiss={() => hide('login')} /> : null}
+      {data?.modelsError && !hidden.models ? <Notice text={data.modelsError} onRetry={onConnection} onDismiss={() => hide('models')} /> : null}
       {update?.info?.available && !update.dismissed ? <UpdateCard update={update} onInstall={onUpdate} onDismiss={onUpdateDismiss} /> : null}
       {/* Everything waiting for the person, in one place: decisions the bots asked (tap an option or write) and approvals. */}
       {(data?.decisions || []).length ? <View style={{ gap: 10, marginBottom: 14 }}>

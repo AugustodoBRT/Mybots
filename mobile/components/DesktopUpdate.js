@@ -32,10 +32,13 @@ export function DesktopUpdate({ full = false }) {
   if (!full) {
     const label = state.phase === 'downloading' ? `Baixando ${state.percent}%` : state.phase === 'installing' ? 'Reiniciando…' : self ? `Atualizar · ${state.version}` : `Baixar · ${state.version}`;
     return <View pointerEvents="box-none" style={{ position: 'absolute', top: 8, right: 12, zIndex: 60, alignItems: 'flex-end', gap: 4 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={self ? `Atualizar para a versão ${state.version} e reiniciar` : `Baixar a versão ${state.version}`} disabled={busy} onPress={() => api.install()}
-        style={({ hovered, pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: C.accent, opacity: busy ? 0.75 : pressed ? 0.85 : hovered ? 0.95 : 1, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } })}>
-        <Icon name={busy ? 'refresh' : 'download'} size={13} color={C.accentInk} />
-        <Text style={{ color: C.accentInk, fontFamily: F.b, fontSize: 12.5 }}>{label}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={busy ? label : self ? `Atualizar para a versão ${state.version} e reiniciar` : `Baixar a versão ${state.version}`} disabled={busy} onPress={() => api.install()}
+        style={({ hovered, pressed }) => ({ overflow: 'hidden', minWidth: 118, justifyContent: 'center', height: 26, borderRadius: 13, backgroundColor: busy ? C.surface2 : C.accent, borderWidth: busy ? 1 : 0, borderColor: C.line, opacity: pressed ? 0.85 : hovered ? 0.95 : 1, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } })}>
+        {state.phase === 'downloading' ? <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(4, state.percent || 0)}%`, backgroundColor: C.accent, opacity: 0.35 }} /> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 }}>
+          <Icon name={busy ? 'refresh' : 'download'} size={13} color={busy ? C.text : C.accentInk} />
+          <Text style={{ color: busy ? C.text : C.accentInk, fontFamily: F.b, fontSize: 12.5 }}>{label}</Text>
+        </View>
       </Pressable>
       {state.error ? <Text style={{ color: C.amber, fontFamily: F.m, fontSize: 12, maxWidth: 260, textAlign: 'right' }}>{state.error}</Text> : null}
     </View>;

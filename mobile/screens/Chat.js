@@ -5,7 +5,7 @@ import { KeyboardArea } from '../keyboard';
 import { useMemo } from 'react';
 import { useStore } from '../state/useStore';
 import { selectConversation } from '../state/store';
-import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer } from '../components/shared';
+import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, Dots, seenText, findModel, EFFORT_NAMES, Notice, ModelSettings, EarlierButton, PasswordOfferCard, ApprovalCard, ToEndButton, Composer, PROVIDER_NAMES } from '../components/shared';
 import { useState, useEffect, useRef } from 'react';
 import { nativeAvailable, pickFile } from '../native';
 import { reportOpen } from '../components/Report';
@@ -74,7 +74,10 @@ function ChatView({ connectionBusy, onResume, onMemory, onTeam, onTeamRoom, inte
   const presence = data.presence?.[bot.id]; const computer = data.nodes?.find(node => node.online);
   const remote = presence?.where === 'pc' || (bot.home === 'pc' && !presence?.online);
   const own = remote ? (presence?.online ? computer?.connections?.[selection?.provider || 'codex'] || { loggedIn: false, message: 'Esta IA não está conectada no computador.' } : null) : data.connections?.[selection?.provider || 'codex'];
-  const status = error || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
+  // The bot's IA is not on offer at all: said for as long as it lasts, not only in the moment a message fails.
+  const absent = data.models?.length && selection?.provider && !data.models.some(item => (item.provider || 'codex') === selection.provider)
+    ? `O ${PROVIDER_NAMES[selection.provider] || selection.provider} não está conectado. Toque em "Escolha o modelo" para usar outra IA, ou conecte-o.` : null;
+  const status = error || absent || (own && !own.loggedIn ? own.message : !remote && !data.connection?.loggedIn ? data.connection?.message : data.modelsError);
   const phone = mode === 'phone' && nativeAvailable;
   // A bot answering from the computer browses in its own Chrome there, shown live here and in the computer's window.
   const pcBrowser = Boolean(desktop) || remote || data.browser?.pages?.[bot.id]?.where === 'pc';

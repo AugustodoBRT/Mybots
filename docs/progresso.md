@@ -2490,3 +2490,9 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - Verificado na VM (arquivos novos por cima da 0.94.31 instalada): trocar de IA e receber resposta, guia, terminal com `claude auth login`. Não verificado: instalador 0.94.32, login até o fim, macOS, celular físico.
 - A sugestão de interagir com o bot pelo cursor ficou de fora (não é erro).
 - Entrega 0.94.32 (v224): APK ARM64 com o mesmo certificado, Release v224 (baixado igual ao local), push, CI do PC (run 45570117738, Linux/Windows/macOS) e web app do iPhone publicados. Suíte: 590 passam. No emulador Android: guia aberto por Ajustes → Sobre (corrigido o título embaixo da barra de status). VM do Windows restaurada ao snapshot de antes do teste.
+
+## 25/11/2026 — 0.94.33 (versionCode 225): botão de atualizar fora de cima dos anéis e aviso de IA desconectada que fica
+
+- Relato com print: "Baixando 0%" por cima dos anéis de uso das IAs (a 0.94.31 só o tinha deixado sólido). Agora o botão faz parte da barra de cima (`DesktopUpdate inline` em `DesktopShell.js`); flutua só nas telas sem barra.
+- Achado ao testar a 0.94.32 na VM: o aviso "O Claude não está conectado" sumia ~6 s depois, quando o estado recarregava. Agora o `Chat.js` o mantém enquanto a IA do bot não está no catálogo.
+- VM (0.94.32 instalada + interface nova): cenário do relato, Tentar, troca de IA e resposta; botão "Atualizar" e "Baixando 0%" ao lado dos anéis (anéis com limites de teste).

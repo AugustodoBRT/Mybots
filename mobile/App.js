@@ -825,7 +825,7 @@ function AppMain() {
   return <View key={look} style={styles.app}>
     <ShareTargets />
     <StatusBar barStyle={look === 'light' ? 'dark-content' : 'light-content'} backgroundColor={C.bg} />
-    {desktop ? <DesktopUpdate /> : null}
+    {desktop && !data ? <DesktopUpdate /> : null}
     {desktop ? <DesktopNetwork notice call={(method, params) => supervisor.current.call(method, params)} /> : null}
     {initialLoading && !data ? <View style={styles.loading}><Avatar bot={{ name: 'MyBots', color: 'green', avatar: 'orbit' }} size={110} state="working" /><Text style={styles.loadingTitle}>mybots</Text><Text style={styles.loadingText}>Acordando seu time…</Text></View>
       : !data && setup ? <SetupScreen onScanned={pairPc} onEmbedded={embeddedSupported() ? enableEmbedded : null} busy={setupBusy} error={setupError} />

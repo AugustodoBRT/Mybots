@@ -2,6 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.33', date: '2026-11-25', items: [
+    ['correcao', 'No computador, o botão de atualizar agora fica na barra de cima, ao lado dos anéis de uso das IAs, e não mais por cima deles.'],
+    ['correcao', 'O aviso de que a IA do bot não está conectada agora fica na tela até resolver, em vez de sumir depois de alguns segundos.']
+  ] },
   { version: '0.94.32', date: '2026-11-25', items: [
     ['correcao', 'Quando a IA de um bot não estava conectada, o seletor ficava preso em "Carregando opções…" e não dava para trocar. Agora ele avisa qual IA falta e deixa escolher outra.'],
     ['correcao', 'O botão "Tentar" agora confere de novo as IAs do computador. Sem nenhuma IA conectada, o MyBots também confere sozinho a cada poucos segundos.'],

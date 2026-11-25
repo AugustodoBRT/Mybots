@@ -9,6 +9,7 @@ import { RoutinesSheet, NegotiationsSheet } from './Lists';
 import FaceArt from '../FaceArt';
 import { DesktopReveal } from './DesktopReveal';
 import { UsageRings } from './UsageRings';
+import { DesktopUpdate } from './DesktopUpdate';
 import { ReportSheet } from './Report';
 import { SideHeader, SideMenu, SideFrame, BrowserCards, BrowserFull } from './DesktopSide';
 import BotBrowserPanel, { ReturnCard } from '../BotBrowserPanel';
@@ -277,7 +278,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
       {railButton('info', 'Ajuda e atalhos', 'Ajuda', () => setHelp(true), false, false)}
       {railButton('settings', 'Ajustes', 'Ajustes', () => openPage('settings'), page === 'settings', false)}
     </View>
-    {page ? <View style={{ flex: 1 }}><View style={[s.tabs, { justifyContent: 'flex-end', height: 36 }]}><UsageRings data={data} /></View><View style={[s.panel, { marginTop: 0 }]}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
+    {page ? <View style={{ flex: 1 }}><View style={[s.tabs, { justifyContent: 'flex-end', height: 36 }]}><DesktopUpdate inline /><UsageRings data={data} /></View><View style={[s.panel, { marginTop: 0 }]}>{page === 'routines' ? <RoutinesSheet inline routines={data.routines || []} bots={data.bots || []} onOpen={onProfile} />
       : page === 'negotiations' ? <NegotiationsSheet inline negotiations={data.negotiations || []} bots={data.bots || []} onOpen={onProfile} /> : pages[page] || null}</View></View> : <>
     <View style={[s.list, { display: fileOpen && width < 900 ? 'none' : 'flex', width: compact ? 60 : listWidth, transitionProperty: 'width', transitionDuration: '240ms' }]}>
       {compact ? <View style={{ alignItems: 'center', paddingVertical: 12 }}><IconButton icon="plus" label="Novo bot" onPress={onCreate} size={38} tint={C.accent} /></View> : <>
@@ -320,12 +321,12 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
             {faceOf(tab)}<Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{nameOf(tab)}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={`Fechar a aba de ${nameOf(tab)}`} onPress={() => closeTab(tab)} hitSlop={6}><Icon name="close" size={13} color={C.faint} /></Pressable></Pressable>; })}
         </ScrollView>
-        <UsageRings data={data} />
+        <DesktopUpdate inline /><UsageRings data={data} />
         <Pressable accessibilityRole="button" accessibilityLabel="Barra lateral" accessibilityState={{ expanded: side.open }} onPress={() => setSide(old => ({ ...old, open: !old.open }))} style={({ hovered }) => [s.tool, hovered && s.rowHover, side.open && s.tabOn]}>
           <Icon name="sidebar" size={18} color={waiting && !side.open ? C.accent : C.text2} />{waiting ? <View style={s.badge}><Text style={s.badgeText}>{waiting}</Text></View> : null}</Pressable>
       </View> : null}
       {/* With no conversation open there are no tabs: the usage of the IAs still sits at the top right. */}
-      {current ? null : <View style={[s.tabs, { justifyContent: 'flex-end', zIndex: 5 }]}><UsageRings data={data} /></View>}
+      {current ? null : <View style={[s.tabs, { justifyContent: 'flex-end', zIndex: 5 }]}><DesktopUpdate inline /><UsageRings data={data} /></View>}
       <View style={[s.panel, !current && { marginTop: 0 }]}>{current || team ? children : <Welcome onCreateChief={onCreateChief} data={data} error={error} onRespond={onRespond} approvalBusy={approvalBusy} onCreate={onCreate} onNewRoom={onNewRoom} onSearch={() => setPalette(true)} onConnection={onConnection} call={call} />}</View>
     </View>
     </>}

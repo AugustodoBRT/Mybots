@@ -8,9 +8,10 @@ import { PrimaryButton } from './shared';
 /**
  * The computer app's own update, the way the phone does it: "Nova versão · Atualizar", a click downloads and installs it and the
  * app restarts by itself. Where the system cannot (macOS without a signature, the .deb) the button opens the download page.
- * `full` is the line in Ajustes → Sobre (version and a check now); without it, only the banner and only when there is something to say.
+ * `full` is the line in Ajustes → Sobre (version and a check now); without it, only the pill and only when there is something to say.
+ * `inline` puts the pill in the top bar, taking its own room; without it (screens with no bar) it floats in the corner.
  */
-export function DesktopUpdate({ full = false }) {
+export function DesktopUpdate({ full = false, inline = false }) {
   const [state, setState] = useState(null); const [checking, setChecking] = useState(false);
   const api = native?.update;
   useEffect(() => {
@@ -31,7 +32,7 @@ export function DesktopUpdate({ full = false }) {
   // Not in Ajustes: a small pill in the top corner, not a banner that pushes everything down.
   if (!full) {
     const label = state.phase === 'downloading' ? `Baixando ${state.percent}%` : state.phase === 'installing' ? 'Reiniciando…' : self ? `Atualizar · ${state.version}` : `Baixar · ${state.version}`;
-    return <View pointerEvents="box-none" style={{ position: 'absolute', top: 8, right: 12, zIndex: 60, alignItems: 'flex-end', gap: 4 }}>
+    return <View pointerEvents="box-none" style={inline ? { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginRight: 4, flexShrink: 0 } : { position: 'absolute', top: 8, right: 12, zIndex: 60, alignItems: 'flex-end', gap: 4 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={busy ? label : self ? `Atualizar para a versão ${state.version} e reiniciar` : `Baixar a versão ${state.version}`} disabled={busy} onPress={() => api.install()}
         style={({ hovered, pressed }) => ({ overflow: 'hidden', minWidth: 118, justifyContent: 'center', height: 26, borderRadius: 13, backgroundColor: busy ? C.surface2 : C.accent, borderWidth: busy ? 1 : 0, borderColor: C.line, opacity: pressed ? 0.85 : hovered ? 0.95 : 1, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } })}>
         {state.phase === 'downloading' ? <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(4, state.percent || 0)}%`, backgroundColor: C.accent, opacity: 0.35 }} /> : null}
@@ -40,7 +41,7 @@ export function DesktopUpdate({ full = false }) {
           <Text style={{ color: busy ? C.text : C.accentInk, fontFamily: F.b, fontSize: 12.5 }}>{label}</Text>
         </View>
       </Pressable>
-      {state.error ? <Text style={{ color: C.amber, fontFamily: F.m, fontSize: 12, maxWidth: 260, textAlign: 'right' }}>{state.error}</Text> : null}
+      {state.error ? <Text numberOfLines={inline ? 1 : undefined} style={{ color: C.amber, fontFamily: F.m, fontSize: 12, maxWidth: 260, textAlign: 'right' }}>{state.error}</Text> : null}
     </View>;
   }
   return <View style={[styles.modeOption, full ? null : { margin: 12, flexShrink: 1 }]}>

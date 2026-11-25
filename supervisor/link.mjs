@@ -55,7 +55,7 @@ export class Link {
     Object.assign(this, { db, nodes, port, changed, rpc, WebSocketClass, discoveryTargets, discoveryPort, discoveryTimeout });
     this.lastDiscovery = -Infinity; this.generation = 0;
     this.runs = new Map(); this.state = 'offline'; this.error = ''; this.attempt = 0; this.closed = false;
-    this.commands = new Map();
+    this.commands = new Map(); this.statusWaiting = [];
     // The bots' Chrome live views the app is watching, and who controls each browser; both are sent again on reconnect.
     this.watching = new Set(); this.viewOptions = new Map(); this.controls = {}; this.onFrame = () => {}; this.onJob = () => {};
   }
@@ -236,6 +236,17 @@ export class Link {
     if (this.closed || !this.saved()) return;
     this.timer = setTimeout(() => void this.connect().catch(() => {}), RETRY_MS[Math.min(this.attempt++, RETRY_MS.length - 1)]);
   }
+  /** Asks the computer to look at its IAs now and waits for the answer (or gives up: an older computer ignores the request). */
+  refreshStatus(timeout = 30000) {
+    const ws = this.socket;
+    if (this.state !== 'online' || ws?.readyState !== 1) { this.kick(); return Promise.resolve(); }
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(timer); resolve(); };
+      const timer = setTimeout(done, timeout); timer.unref?.();
+      this.statusWaiting.push(done);
+      ws.send(JSON.stringify({ type: 'status_refresh' }));
+    });
+  }
   /** Connects again right away (the app came to the foreground or the network changed). */
   kick() { if (!this.socket && !this.connecting && !this.closed) { clearTimeout(this.timer); this.attempt = 0; void this.connect(this.state === 'offline').catch(() => {}); } }
   attach(ws, pairing = null) {
@@ -261,7 +272,7 @@ export class Link {
         leave = this.nodes.connect({ id: message.id, name: message.name || saved?.name, connections: message.connections, models: message.models, accounts: message.accounts, desktop: message.desktop, execute: (bot, prompt, options) => this.run(send, bot, prompt, options) });
         return;
       }
-      if (message.type === 'status') { this.takeLimits(message.limits); this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
+      if (message.type === 'status') { for (const done of this.statusWaiting.splice(0)) done(); this.takeLimits(message.limits); this.nodes.update?.(this.saved()?.id, { connections: message.connections, models: message.models, accounts: message.accounts }); this.changed('connection.changed'); return; }
       if (message.type === 'http') { send({ type: 'http_reply', rid: message.rid, ...await this.local(message) }); return; }
       if (message.type === 'rpc') { send({ type: 'rpc_reply', rid: message.rid, ...await this.desktop(message) }); return; }
       if (message.type === 'job_done' && typeof message.botId === 'string' && message.job && typeof message.job.id === 'string') { try { this.onJob({ botId: message.botId, job: { ...message.job, label: String(message.job.label || '').slice(0, 80), note: typeof message.job.note === 'string' ? message.job.note.slice(0, 200) : undefined }, tail: String(message.tail || '').slice(-3000) }); send({ type: 'job_ack', id: message.job.id }); } catch {} return; }

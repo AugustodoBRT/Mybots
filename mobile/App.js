@@ -41,6 +41,8 @@ import BotProfile from './BotProfile';
 import { FilePreview } from './components/FilePreview';
 import Canvas, { canvasEvent } from './components/Canvas';
 import { WhatsNew } from './components/WhatsNew';
+import { EmbeddedConnect } from './components/EmbeddedConnect';
+import { Guide, useFirstUse } from './components/Guide';
 import { FileBadge, formatSize } from './RichMessage';
 
 const UPLOAD_PART = 3 * 1024 * 1024;
@@ -205,6 +207,7 @@ function AppMain() {
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (deskPage === 'memory' || deskPage === 'canvas') return false;
+      if (deskPage === 'guide') { setDeskPage(null); return true; }
       // The phone's Home is the list: back there leaves the app; from a conversation it comes back to the list.
       if (!desktop && route.kind === 'home') return false;
       if (desktop && !roomId && !team && (!selected || selected === chiefId)) return false;
@@ -739,7 +742,7 @@ function AppMain() {
   const roomView = data && room ? <RoomScreen savedDraft={roomText} savedFiles={roomFiles} onPin={pinMessage} room={{ ...room, messages: chatsRef.current[room.id]?.messages || [] }} data={data} phone={mode === 'phone' && nativeAvailable} call={(method, params) => supervisor.current.call(method, params)} more={Boolean(chatsRef.current[room.id]?.more)} onEarlier={() => loadChat({ roomId: room.id }, true).catch(error => setLoadError(nativeMessage(error)))} onBack={desktop ? null : goHome} onEdit={() => setRoomSheet({ room })} onRespond={respondApproval} approvalBusy={approvalBusy} onFile={openConversationFile} fileBusy={fileBusy}
           onSend={async (text, files = []) => { if (CLEAR.test(text.trim()) && !files.length) { await supervisor.current.call('room.newSession', { roomId: room.id }); await loadSupervisorState(); return; } const attachments = await uploadWebFiles((...args) => supervisor.current.call(...args), room.botIds[0], files); await supervisor.current.call('room.send', { roomId: room.id, requestId: createId(), text: text.trim(), ...(attachments.length ? { attachments } : {}) }); await loadSupervisorState(); }}
           onCancel={botId => { const task = data.tasks?.find(item => room.activeTasks?.includes(item.id) && item.bot_id === botId); if (task) cancelTask(task.id); }} /> : null;
-  const chatView = data && bot && !room ? <ChatScreen onResume={async sessionId => { try { await supervisor.current.call('bot.resumeSession', { botId: bot.id, sessionId }); visitStarted.current = true; await loadSupervisorState(); } catch (error) { setLoadError(nativeMessage(error)); } }} savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
+  const chatView = data && bot && !room ? <ChatScreen connectionBusy={connectionBusy} onResume={async sessionId => { try { await supervisor.current.call('bot.resumeSession', { botId: bot.id, sessionId }); visitStarted.current = true; await loadSupervisorState(); } catch (error) { setLoadError(nativeMessage(error)); } }} savedFiles={botFiles} onPin={pinMessage} onQueuePause={async (botId, paused) => { await supervisor.current.call('queue.pause', { botId, paused }); await loadSupervisorState(); }} onSteer={async (botId, text) => { await supervisor.current.call('task.steer', { botId, requestId: createId(), text }); await loadSupervisorState(); }} onCancelTask={cancelTask} bot={mode === 'phone' ? { ...bot, messages: chatsRef.current[bot.id]?.messages || [] } : bot} data={data}
           more={mode === 'phone' && Boolean(chatsRef.current[bot.id]?.more)} onEarlier={() => loadChat({ botId: bot.id }, true).catch(error => setLoadError(nativeMessage(error)))} error={loadError} onLogs={openLogs} draft={draft} setDraft={setDraft} sending={sending} saving={savingSettings || maintenanceBusy} mode={mode}
           onBack={desktop || bot.isChief ? null : goHome} onMemory={mode === 'phone' && !desktop ? () => setDeskPage('memory') : null} onTeam={openTeam} onTeamRoom={id => { setDeskPage(null); openDesktopRoom(id); }} onSend={send} onRetry={send} onSettings={saveSettings} onConnection={checkConnection} onProfile={() => { setProfileTab(null); setProfileId(bot.id); }} onRespond={respondApproval} approvalBusy={approvalBusy} onDelete={() => deleteBot(bot)}
           onFile={openConversationFile} fileBusy={fileBusy} incoming={incoming?.botId === bot.id ? incoming : null} onIncoming={() => setIncoming(null)}
@@ -783,7 +786,13 @@ function AppMain() {
     onFile={file => file && openConversationFile?.(file)} /> : null;
   const canvasView = !desktop && deskPage === 'canvas' && canvasPage(() => setDeskPage(null));
   const memoryView = deskPage === 'memory' && <MemoryScreen bots={data?.bots || []} call={callNotes} version={notesVersion} onClose={() => setDeskPage(null)} onOpenChief={id => { setDeskPage(null); if (desktop) openDesktopBot(id); else { setRoomId(null); setSelected(id); } }} />;
+  useFirstUse(!initialLoading && Boolean(data), () => setDeskPage('guide'));
+  useEffect(() => desktopBus.on('open-guide', () => { setMaintenanceVisible(false); setDeskPage('guide'); }), []);
+  // The phone's own AIs (inside the app) connect right in the guide.
+  const guidePage = deskPage === 'guide' && <Guide onClose={() => setDeskPage(null)} onChanged={checkConnection}
+    connect={!desktop && nativeAvailable && mode === 'phone' && backend !== 'pc' && embeddedEnabled() ? <EmbeddedConnect connections={data?.connections} reload={checkConnection} /> : null} />;
   const deskPages = desktop ? {
+    guide: guidePage,
     memory: memoryView,
     activity: <ActivityPage data={data} reload={loadSupervisorState} cancelTask={cancelTask} completeItem={completeItem} call={{ respond: respondApproval, busy: approvalBusy, method: (method, params) => supervisor.current.call(method, params) }} />,
     settings: <SettingsSheet inline onClose={() => setDeskPage(null)} a={settingsContext} />,
@@ -826,8 +835,8 @@ function AppMain() {
           onOpen={openDesktopBot} onRoom={openDesktopRoom} team={team} onTeam={openTeam} onCreateChief={canCreateChief ? startChief : null} onHome={goHome} onSearch={() => setSearchVisible(true)} onCreate={() => setCreateVisible(true)} onNewRoom={() => setRoomSheet({})}
           onProfile={(target, tab) => { setProfileTab(tab || null); setProfileId(target.id); }} onActivity={() => setActivityVisible(true)} onMaintenance={() => setMaintenanceVisible(true)} onWallet={nativeAvailable && !desktop && backend !== 'pc' ? () => setWalletVisible(true) : undefined} onRespond={respondApproval} approvalBusy={approvalBusy} onComplete={completeItem} call={(method, params) => supervisor.current.call(method, params)}>
           {roomView || chatView || teamView}</DesktopShell>
-      : <View style={{ flex: 1 }}><View style={{ flex: 1 }}>{memoryView || canvasView || roomView || chatView || teamView}</View>
-        {deskPage === 'memory' || deskPage === 'canvas' || (!roomId && !selected) ? <PhoneTabs current={deskPage === 'canvas' || deskPage === 'memory' ? deskPage : 'home'}
+      : <View style={{ flex: 1 }}><View style={{ flex: 1 }}>{guidePage || memoryView || canvasView || roomView || chatView || teamView}</View>
+        {deskPage !== 'guide' && (deskPage === 'memory' || deskPage === 'canvas' || (!roomId && !selected)) ? <PhoneTabs current={deskPage === 'canvas' || deskPage === 'memory' ? deskPage : 'home'}
           dots={{ home: Boolean((data.approvals || []).length || (data.decisions || []).length) }}
           onPick={key => key === 'home' ? goHome() : key === 'settings' ? setMaintenanceVisible(true) : setDeskPage(key)} /> : null}</View>}
     {confirm ? <Modal transparent visible animationType="fade" onRequestClose={() => { setConfirm(null); confirm.buttons.find(item => item.style === 'cancel')?.onPress?.(); }}>

@@ -9,7 +9,7 @@ import { useLiveCallback, useStickyScroll, offline, HUE_OF, IconButton, Avatar, 
 import { useState, useEffect, useRef } from 'react';
 import { nativeAvailable, pickFile } from '../native';
 import { reportOpen } from '../components/Report';
-import { desktop, pwa, desktopBus, readingColumn, pendingBrowser } from '../desktop';
+import { desktop, native, pwa, desktopBus, readingColumn, pendingBrowser } from '../desktop';
 import { FlatList, View, Pressable, Text, ScrollView } from 'react-native';
 import { styles } from '../styles';
 import { C, F, Icon } from '../theme';
@@ -29,7 +29,7 @@ const readWebFile = file => ({ id: `${Date.now()}-${Math.random().toString(36).s
 const launchPast = new Map();
 // When this visit began: the team's replies from before it are not news on the empty start.
 const visitStart = new Date().toISOString();
-function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, draftKeys, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
+function ChatView({ connectionBusy, onResume, onMemory, onTeam, onTeamRoom, interactive = true, savedFiles, drafts, draftKeys, onQueuePause, onSteer, onCancelTask, onPin, bot, data, error, onLogs, draft, setDraft, sending, saving, mode, onBack, onSend, onRetry, onSettings, onConnection, onDelete, onCancel, onProfile, onRespond, approvalBusy, onBrowserControl, browserCall, onPhoneStop, onPhoneControl, onFile, fileBusy, incoming, onIncoming, passwordAsk, onPasswordAnswer, more, onEarlier }) {
   const retryMessage = useLiveCallback(onRetry);
   const [draftTime] = useState(() => new Date().toISOString());
   const [held, setHeld] = useState(null);
@@ -172,8 +172,8 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
       {bot.isChief && !desktop ? <IconButton icon="apps" label="Início: equipe, salas, memória e ajustes" onPress={onTeam} size={40} /> : null}
     </View>
     {bot.isChief ? <ChiefStatus onTeam={onTeam} /> : null}
-    {status ? <Notice text={status} onRetry={onConnection} onLogs={error ? onLogs : null} /> : null}
-    {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={data.connections} selection={selection} disabled={busy} onChange={onSettings} aiAccounts={data.aiAccounts} home={bot.home || 'phone'} account={bot.aiAccount} /></View> : null}
+    {status ? <Notice text={status} loading={connectionBusy} onRetry={onConnection} onConnect={native?.ai && (!(data.models || []).length || /não está conectad|Entre n|Instale o|Nenhuma IA/.test(status)) ? () => desktopBus.emit('open-guide') : null} onLogs={error ? onLogs : null} /> : null}
+    {showModels && !working ? <View style={styles.modelPanel}><ModelSettings models={data.models || []} connections={remote && computer?.connections ? computer.connections : data.connections} selection={selection} disabled={busy} onChange={onSettings} aiAccounts={data.aiAccounts} home={bot.home || 'phone'} account={bot.aiAccount} /></View> : null}
     {/* While the person drives, the browser cannot be lost: the globe brings the full screen back. */}
     {side ? null : panel}
     <View style={side ? styles.chatSplit : { flex: 1 }}>
@@ -224,7 +224,7 @@ function ChatView({ onResume, onMemory, onTeam, onTeamRoom, interactive = true, 
     </View>
     {dragging ? <View pointerEvents="none" style={styles.dropOverlay}><View style={styles.dropBox}><Icon name="plus" size={28} color={C.accent} /><Text style={styles.dropText}>Solte para anexar à mensagem</Text></View></View> : null}
     <View style={[styles.composerArea, readingColumn]}>
-      {error ? <Text style={styles.composerError}>Confira a conexão antes de enviar.</Text> : null}
+      {error ? <Text style={styles.composerError}>A mensagem não foi enviada. Veja o aviso no topo.</Text> : null}
       {composerError ? <Text style={styles.composerError}>{composerError}</Text> : null}
       {files.length ? <ScrollView horizontal style={styles.fileTray} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">{files.map((file, index) =>
         <View key={index} style={styles.fileChip}><FileChip file={file} onRemove={() => setFiles(old => old.filter((_, i) => i !== index))} /></View>)}</ScrollView> : null}

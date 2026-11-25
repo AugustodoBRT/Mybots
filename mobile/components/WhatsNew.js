@@ -8,8 +8,8 @@ import { SheetHeader, PrimaryButton } from './shared';
 
 // Kept on this device: each phone and each computer shows the news once.
 const KEY = 'mybots.seenVersion';
-const readSeen = () => { try { return Platform.OS === 'web' ? globalThis.localStorage?.getItem(KEY) : prefGet(KEY); } catch { return null; } };
-const saveSeen = value => { try { if (Platform.OS === 'web') globalThis.localStorage?.setItem(KEY, value); else prefSet(KEY, value); } catch {} };
+export const readSeen = () => { try { return Platform.OS === 'web' ? globalThis.localStorage?.getItem(KEY) : prefGet(KEY); } catch { return null; } };
+export const saveSeen = value => { try { if (Platform.OS === 'web') globalThis.localStorage?.setItem(KEY, value); else prefSet(KEY, value); } catch {} };
 const tone = kind => ({ novo: C.accent, melhoria: C.sky, correcao: C.good })[kind] || C.muted;
 const date = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
 

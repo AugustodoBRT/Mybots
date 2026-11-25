@@ -101,7 +101,8 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
       // An IA that is logged in only on the computer counts too (a computer with just Claude Code is a working computer).
       const remote = Object.entries(nodes?.computer()?.connections || {}).filter(([key, item]) => item.loggedIn && !connections[key]?.loggedIn).map(([key]) => PROVIDER_NAMES[key]);
       const ready = [...Object.entries(connections).filter(([, item]) => item.loggedIn).map(([key]) => PROVIDER_NAMES[key]), ...remote];
-      return ready.length ? { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') } : connections.codex;
+      if (ready.length) return { available: true, loggedIn: true, message: ready.join(' e ') + (ready.length > 1 ? ' conectados' : ' conectado') };
+      return { available: false, loggedIn: false, message: lastCheck ? 'Nenhuma IA conectada. Conecte uma em Ajustes → IAs e contas.' : 'Verificando as IAs…' };
     };
     // A waiting turn shows what it will say (shortened), so the person can pick which to cancel.
     const publicTasks = (rows = db.tasks(200)) => rows.map(({ payload, worker_pid, worker_start, ...task }) => ({ ...task, ...(['queued', 'running', 'waiting_approval'].includes(task.state) ? { preview: String(JSON.parse(payload).text || '').slice(0, 500), ...(JSON.parse(payload).steer ? { steer: true } : {}) } : {}), ...(queue.steps.has(task.id) ? { step: queue.steps.get(task.id) } : {}) }));
@@ -532,7 +533,7 @@ export async function createSupervisor({ directory = join(homedir(), '.mybots'),
           finally { clearTimeout(timer); }
           return state();
         }
-        case 'connection.refresh': await refresh(true); return state();
+        case 'connection.refresh': await Promise.all([refresh(true), link.refreshStatus()]); return state();
         // The extra IA accounts (two Claude, two Codex...): on this device when it runs the IAs itself (the phone's supervisor) or on the
         // computer through the link. Adding one answers with the command that logs it in, to run in a terminal of that device.
         case 'ai.accounts': {

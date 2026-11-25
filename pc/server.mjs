@@ -166,9 +166,10 @@ const clientFor = (provider, env) => provider === 'codex' ? new Codex(undefined,
  */
 export async function localStatus() {
   const connections = {}, models = [], list = {};
-  for (const [key, own] of Object.entries(local)) {
-    const rows = await Promise.all([{ id: DEFAULT_ACCOUNT, label: 'Conta principal', client: own }, ...accounts.list(key).map(item => ({ id: item.id, label: item.label, client: clientFor(key, accounts.env(key, item.id)) }))]
-      .map(async row => ({ ...row, status: await row.client.status().catch(() => ({ available: false, loggedIn: false })) })));
+  // All the IAs at once: one that is slow to answer (first run, antivirus) does not hold the others back.
+  const checked = await Promise.all(Object.entries(local).map(async ([key, own]) => [key, await Promise.all([{ id: DEFAULT_ACCOUNT, label: 'Conta principal', client: own }, ...accounts.list(key).map(item => ({ id: item.id, label: item.label, client: clientFor(key, accounts.env(key, item.id)) }))]
+    .map(async row => ({ ...row, status: await row.client.status().catch(() => ({ available: false, loggedIn: false })) })))]));
+  for (const [key, rows] of checked) {
     const first = rows.find(row => row.status.loggedIn);
     connections[key] = first ? { ...first.status, loggedIn: true } : rows[0].status;
     list[key] = rows.map(row => ({ id: row.id, label: row.label, loggedIn: Boolean(row.status.loggedIn), ...(row.id === DEFAULT_ACCOUNT ? { default: true } : {}) }));
@@ -324,7 +325,13 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
   let current = { connections: {}, models: [] };
   const refresh = async () => { current = await status(); for (const ws of sockets.clients) if (ws.phone) ws.send(JSON.stringify({ type: 'status', ...current })); return current; };
   await refresh().catch(() => {});
-  const statusTimer = setInterval(() => refresh().catch(() => {}), 5 * 60000);
+  // With no IA connected it looks again soon, so an install or a login shows up by itself.
+  let checkedAt = Date.now(), checking = null;
+  const recheck = () => checking ||= refresh().catch(() => {}).finally(() => { checkedAt = Date.now(); checking = null; });
+  const statusTimer = setInterval(() => {
+    const ready = Object.values(current.connections || {}).some(item => item?.loggedIn);
+    if (Date.now() - checkedAt >= (ready ? 5 * 60000 : 20000)) recheck();
+  }, 10000);
   // The MyBots window on this computer talks to the phone through the paired phone's connection.
   const bridge = phoneBridge();
   // The computer's own supervisor is reached the same way (its link to this node), for the sync between the two.
@@ -421,6 +428,8 @@ export async function createNode({ directory = dataDirectory(), port = DEFAULT_P
         } catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }
         return;
       }
+      // "Tentar" and "Verificar" in the app: look at the IAs again now; the answer is the usual status message.
+      if (message.type === 'status_refresh') { await recheck(); return; }
       if (message.type === 'ai_accounts' && typeof message.rid === 'string') {
         try { send({ type: 'pc_result', rid: message.rid, result: await manage(message, { accounts, refresh }) }); }
         catch (error) { send({ type: 'pc_result', rid: message.rid, error: error.message }); }

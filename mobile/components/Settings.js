@@ -3,7 +3,7 @@ import { Modal, View, ScrollView, Text, Pressable, TextInput, useWindowDimension
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
 import { embeddedEnabled, embeddedSupported, nativeAvailable, passwordsList } from '../native';
-import { desktop } from '../desktop';
+import { desktop, desktopBus } from '../desktop';
 import { IconButton, Avatar, PrimaryButton, PersonName, ThemeChoice, ComputerPanel, DesktopPair, WidgetRow, PhoneAccess, ScreenOff, UpdateCard, offline } from './shared';
 import { GoogleAccounts } from './GoogleAccounts';
 import { AiAccounts } from './AiAccounts';
@@ -170,6 +170,8 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     </>;
     if (key === 'about') return <>
       {desktop ? <DesktopUpdate full /> : null}
+      <Pressable accessibilityRole="button" onPress={() => { onClose?.(); desktopBus.emit('open-guide'); }} style={[styles.modeOption, styles.rowOption]}><View style={styles.rowIcon}><Icon name="info" size={19} color={C.accent} /></View>
+        <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Como usar o MyBots</Text><Text style={styles.optionDetail}>O passo a passo da primeira vez.</Text></View></Pressable>
       {nativeAvailable ? (a.update?.info?.available ? <UpdateCard compact update={a.update} onInstall={a.installUpdate} />
         : <View style={[styles.modeOption, styles.rowOption]}>
           <View style={styles.rowIcon}><Icon name="check" size={19} color={C.good} /></View>

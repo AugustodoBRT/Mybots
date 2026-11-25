@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const ask = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 contextBridge.exposeInMainWorld('mybotsNative', {
+  // The guide's AI list: what is installed and logged in, and a terminal to install or log in.
+  ai: { check: () => ask('assistant:check'), run: (key, action) => ask('assistant:run', key, action) },
   tabs: () => ask('tabs:list'),
   onTabs: callback => { const handler = (_event, state) => callback(state); ipcRenderer.on('tabs:state', handler); return () => ipcRenderer.removeListener('tabs:state', handler); },
   create: url => ask('tabs:create', url),

@@ -92,3 +92,14 @@ test('prepare hands agy the quiet-updater variable on Windows, next to the rest 
   } finally { Object.defineProperty(process, 'platform', original); }
   assert.equal(prepare('agy', ['models'], { env: { ANTES: '1' } }).options.env.AGY_CLI_DISABLE_AUTO_UPDATE, undefined, 'not on Linux');
 });
+
+test('Windows: IAs installed by pnpm, bun, scoop and the like are found without being on the PATH', () => {
+  const profile = 'C:\\Users\\Ana', local = `${profile}\\AppData\\Local`;
+  const options = { platform: 'win32', env: { PATH: '', USERPROFILE: profile, LOCALAPPDATA: local }, registry: () => [], execPath: 'C:\\MyBots.exe' };
+  for (const [name, file] of [['codex', `${profile}\\.bun\\bin\\codex.exe`], ['claude', `${profile}\\.claude\\local\\claude.exe`], ['opencode', `${profile}\\scoop\\shims\\opencode.exe`]])
+    assert.equal(resolveCommand(name, { ...options, ...fake({ [file]: '' }) }).command, file, name);
+  // pnpm writes its launcher with %~dp0.
+  const shim = `${local}\\pnpm\\codex.cmd`;
+  const found = resolveCommand('codex', { ...options, ...fake({ [shim]: '@ECHO off\r\nnode  "%~dp0\\global\\5\\node_modules\\x\\cli.js" %*\r\n' }) });
+  assert.deepEqual(found.args, [`${local}\\pnpm\\global\\5\\node_modules\\x\\cli.js`]);
+});

@@ -33,12 +33,14 @@ export function createLocal({ directory, port = DEFAULT_LOCAL_PORT, entry = ENTR
     } catch {}
     return Boolean(endpoint);
   };
+  // A slow first start (a new version being scanned by the antivirus) still counts: while the process lives, keep waiting.
   const waitReady = async () => {
-    for (let i = 0; i < 300 && !closed; i++) {
+    for (let i = 0; i < 3000 && !closed; i++) {
       if (!child) throw new Error('O supervisor do computador parou ao iniciar.');
       if (credentials()) { try { const session = await open(() => {}); session.close(); return; } catch {} }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+    child.kill();   // five minutes without answering: start over
     throw new Error('O supervisor do computador não respondeu ao iniciar.');
   };
 

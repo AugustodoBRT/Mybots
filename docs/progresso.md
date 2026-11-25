@@ -2479,3 +2479,13 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - Não verificado: o app Android com o Kotlin removido (compilado no `build-apk`), o PC com o AppImage novo e o 3D depois do reinício do computador.
 - Entrega 0.94.30 (v222): APK compilado sem o Kotlin do rosto plano (o widget, a notificação e o compartilhar passaram a usar `BotStill.kt`, um cubo simples; o `MimoStill` dependia dele e só apareceu depois de limpar o cache do Kotlin), mesmo certificado, pacote do supervisor conferido, Release, push, CI do PC e web app do iPhone publicados. Não testado: o AppImage novo com a rede de segurança de WebGL, e o 3D depois do reinício do computador.
 - Entrega 0.94.31 (v223): avisos com x (resumo semanal com Ativando/erro/confirmação, Codex/conexão), QR para baixar o app Android (desktop.pair {download}), botão de atualizar do PC sólido com barra. APK com o mesmo certificado, Release v223 conferida (igual ao local), CI do PC disparada (run 44600872185). Não testado em celular/PC reais; `npm test` teve 1 falha intermitente em desktop.test (passa isolado).
+
+## 25/11/2026 — 0.94.32 (versionCode 224): Chefe preso numa IA desconectada, conectar IAs e guia dentro do app
+
+- Relatos do site (Windows, 0.94.30 e 0.94.31): não dava para enviar mensagem. **Reproduzido na VM**: Chefe configurado com Claude sem o Claude conectado e só outra IA pronta. Na tela: "O Claude não está conectado", "Escolha o modelo", rodapé "Iniciando o MyBots do computador…" com o supervisor rodando e **Tentar** sem efeito.
+- Causas: o seletor não mostrava "IA" quando só havia um provedor e ele não era o do bot; `connection.refresh` não pedia ao nó do PC para reconferir (só a cada 5 min); o rodapé usava qualquer `loadError`.
+- Correções: seletor sempre permite trocar; `status_refresh` entre supervisor e nó; sem IA conectada o nó reconfere a cada ~20 s; IAs conferidas em paralelo; mais pastas do Windows e atalhos do pnpm/yarn (`lib/cli-bin.cjs`); `pc/local.mjs` não desiste mais de um supervisor lento (antes, passados 30 s a janela ficava sem endpoint para sempre; achado no código, não reproduzido).
+- A janela separada "Bem-vindo ao MyBots" saiu. O guia é uma tela do app (`mobile/components/Guide.js`), com **Instalar**/**Entrar** que abrem o terminal (`desktop/electron/terminal.js`). Cuidado: o `start` do cmd só aceita o título entre aspas (`windowsVerbatimArguments`).
+- `scripts/windows-vm.sh start` agora funciona com a VM em estado salvo.
+- Verificado na VM (arquivos novos por cima da 0.94.31 instalada): trocar de IA e receber resposta, guia, terminal com `claude auth login`. Não verificado: instalador 0.94.32, login até o fim, macOS, celular físico.
+- A sugestão de interagir com o bot pelo cursor ficou de fora (não é erro).

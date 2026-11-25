@@ -123,13 +123,16 @@ export function SheetHeader({ title, subtitle, onClose, icon }) {
   </View>;
 }
 
-export function Notice({ text, onRetry, onLogs, onDismiss, loading = false }) {
+export function Notice({ text, onRetry, onLogs, onDismiss, onConnect, loading = false }) {
   if (!text) return null;
   return <View style={styles.notice}>
     <View style={styles.noticeIcon}><Icon name="alert" size={18} color={C.amber} /></View>
     <View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{loading ? 'Conectando…' : 'Atenção'}</Text><Text style={styles.noticeText}>{text}</Text></View>
     {onDismiss ? <IconButton icon="close" label="Descartar o aviso" onPress={onDismiss} size={34} /> : null}
     <View style={styles.noticeActions}>
+      {onConnect && !loading && <Pressable accessibilityRole="button" accessibilityLabel="Conectar uma IA" onPress={onConnect} style={styles.noticeRetry}>
+        <Text style={styles.noticeRetryText}>Conectar uma IA</Text>
+      </Pressable>}
       {onLogs && !loading && <Pressable accessibilityRole="button" accessibilityLabel="Ver detalhes do erro" onPress={onLogs} style={styles.noticeRetry}>
         <Text style={styles.noticeLogsText}>Logs</Text>
       </Pressable>}
@@ -207,6 +210,8 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
   const provider = providerOf(model || (selection?.provider || selection?.model ? selection : models.find(item => item.isDefault) || models[0] || selection));
   const available = models.filter(item => providerOf(item) === provider);
   const modelOptions = available.map(item => ({ value: item.model, label: item.displayName, detail: item.modelId ? `${item.modelId} · sempre a versão mais nova` : item.model }));
+  // The bot's IA is not on offer here (not installed, signed out): the person must still be able to pick another one.
+  const missing = !providers.includes(provider);
   const providerOptions = providers.map(value => ({ value, label: PROVIDER_NAMES[value] || value, detail: connections?.[value]?.message || (value === 'claude' ? 'Claude Code' : value === 'agy' ? 'Antigravity (agy)' : value === 'opencode' ? 'opencode' : 'Codex') }));
   // Another IA starts on its own default account: accounts belong to one IA.
   const pickProvider = next => { const first = models.find(item => providerOf(item) === next && item.isDefault) || models.find(item => providerOf(item) === next); if (first) onChange(first.model, first.defaultEffort ?? null, next, DEFAULT_ACCOUNT); };
@@ -218,13 +223,13 @@ export function ModelSettings({ models, selection, disabled, onChange, connectio
     : [{ value: null, label: 'Padrão do modelo' }]) : [];
   const effortName = selection?.reasoningEffort ? EFFORT_NAMES[selection.reasoningEffort] || selection.reasoningEffort : 'Padrão do modelo';
   return <View>
-    {providers.length > 1 && <View style={styles.settingsRow}><ChoiceField label="IA" value={PROVIDER_NAMES[provider]} disabled={disabled} onPress={() => setSheet('provider')} /></View>}
+    {(providers.length > 1 || (missing && providers.length > 0)) && <View style={styles.settingsRow}><ChoiceField label="IA" value={missing ? `${PROVIDER_NAMES[provider]} (desconectado)` : PROVIDER_NAMES[provider]} disabled={disabled} onPress={() => setSheet('provider')} /></View>}
     {accountList.length > 1 && <View style={styles.settingsRow}><ChoiceField label="Conta" value={accountName} disabled={disabled} onPress={() => setSheet('account')} /></View>}
     <View style={styles.settingsRow}>
-      <ChoiceField label="Modelo" value={model?.displayName} disabled={disabled || !models.length} onPress={() => setSheet('model')} />
-      <ChoiceField label="Raciocínio" value={model ? effortName : null} disabled={disabled || !model} onPress={() => setSheet('effort')} />
+      <ChoiceField label="Modelo" value={model?.displayName || (missing ? 'Indisponível' : 'Escolha')} disabled={disabled || missing} onPress={() => setSheet('model')} />
+      <ChoiceField label="Raciocínio" value={model ? effortName : missing ? 'Indisponível' : 'Escolha o modelo'} disabled={disabled || !model} onPress={() => setSheet('effort')} />
     </View>
-    <Text style={styles.settingsHint}>{disabled ? 'Aguarde esta resposta terminar.' : connections?.[provider] && !connections[provider].loggedIn ? connections[provider].message : model ? 'Acesso confirmado ao gerar uma resposta.' : 'Carregando o catálogo de modelos…'}</Text>
+    <Text style={styles.settingsHint}>{disabled ? 'Aguarde esta resposta terminar.' : !providers.length ? 'Nenhuma IA conectada. Conecte uma em Ajustes → IAs e contas.' : missing ? `O ${PROVIDER_NAMES[provider]} não está conectado. Escolha outra IA acima ou conecte-o em Ajustes → IAs e contas.` : connections?.[provider] && !connections[provider].loggedIn ? connections[provider].message : model ? 'Acesso confirmado ao gerar uma resposta.' : 'Escolha um modelo.'}</Text>
     <ChoiceSheet visible={sheet === 'provider'} title="Escolha a IA" options={providerOptions} value={provider}
       onClose={() => setSheet('')} onSelect={next => { if (next !== provider) pickProvider(next); }} />
     <ChoiceSheet visible={sheet === 'account'} title={`Conta do ${PROVIDER_NAMES[provider] || 'IA'}`} options={accountOptions} value={account || DEFAULT_ACCOUNT}

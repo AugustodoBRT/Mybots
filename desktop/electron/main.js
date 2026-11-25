@@ -67,22 +67,18 @@ function nodeCommand(...args) {
     run.on('exit', () => { clearTimeout(timer); try { resolve(JSON.parse(out.trim().split('\n').pop())); } catch { reject(new Error(err.trim().split('\n').pop() || 'Sem resposta.')); } });
   });
 }
-let welcome = null;
-function openWelcome() {
-  if (welcome && !welcome.isDestroyed()) { welcome.focus(); return; }
-  welcome = new BrowserWindow({ title: 'Bem-vindo ao MyBots', width: 700, height: 820, minWidth: 460, backgroundColor: '#090B10', autoHideMenuBar: true, icon, webPreferences: { preload: join(__dirname, 'welcome-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
-  welcome.setMenuBarVisibility(false); welcome.loadFile(join(__dirname, 'welcome.html'));
-  welcome.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); welcome.webContents.on('will-navigate', event => event.preventDefault());
-}
-const fromWelcome = event => Boolean(welcome) && !welcome.isDestroyed() && event.sender === welcome.webContents;
-function welcomeHandlers() {
-  const done = join(node, 'welcome.done');
-  ipcMain.handle('welcome:doctor', event => fromWelcome(event) ? nodeCommand('doctor') : null);
-  ipcMain.handle('welcome:pair', event => fromWelcome(event) ? nodeCommand('pair', '--json') : null);
-  ipcMain.handle('welcome:open', (event, url) => { if (fromWelcome(event) && typeof url === 'string' && /^https:\/\//.test(url)) shell.openExternal(url); });
-  ipcMain.handle('welcome:copy', (event, text) => { if (fromWelcome(event) && typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
-  ipcMain.handle('welcome:finish', event => { if (!fromWelcome(event)) return; try { writeFileSync(done, new Date().toISOString()); } catch {} welcome.close(); });
-  return existsSync(done);
+// The in-app guide: which AIs are installed and logged in, and the "Instalar" / "Entrar" buttons. The interface only says
+// which AI; the command run is the doctor's own.
+function assistantHandlers() {
+  let report = null;
+  ipcMain.handle('assistant:check', async event => trusted(event) ? report = await nodeCommand('doctor') : null);
+  ipcMain.handle('assistant:run', (event, key, action) => {
+    if (!trusted(event)) return false;
+    const item = report?.ais?.find(ai => ai.key === key); const command = action === 'install' ? item?.install : action === 'login' ? item?.login : null;
+    if (!command) return false;
+    const { ELECTRON_RUN_AS_NODE, ...env } = process.env;
+    return require('./terminal').openTerminal(command, { env: { ...env, PATH: loginPath() } });
+  });
 }
 async function nodeAnswers() { try { return (await fetch(`${UI}/health`, { signal: AbortSignal.timeout(1500) })).ok; } catch { return false; } }
 async function startNode() {
@@ -158,7 +154,7 @@ function advertise(port) {
 app.on('second-instance', show);
 if (first) app.whenReady().then(async () => {
   watchGpu();
-  autostart(); await startNode(); const welcomed = welcomeHandlers();
+  autostart(); await startNode(); assistantHandlers();
   window = new BrowserWindow({ title: 'MyBots', width: 1000, height: 760, minWidth: 420, minHeight: 560, show: false, backgroundColor: '#090B10', autoHideMenuBar: true, icon });
   window.setMenuBarVisibility(false);
   // The interface is a view of its own so the browser's tabs can sit under it (see tabs.js).
@@ -222,7 +218,7 @@ if (first) app.whenReady().then(async () => {
   ipcMain.handle('tabs:thumb', (event, id) => trusted(event) ? tabs.thumb(id) : null);
 
   tray = new Tray(icon.resize({ width: 32, height: 32 })); tray.setToolTip('MyBots');
-  const trayMenu = () => Menu.buildFromTemplate([{ label: 'Abrir o MyBots', click: show }, ...[updates?.menuItem()].filter(Boolean), { label: 'Assistente de primeira execução', click: openWelcome }, { type: 'separator' }, { label: embedded ? 'Sair do MyBots (os bots ficam offline)' : 'Fechar a janela (os bots continuam online)', click: () => { quitting = true; app.quit(); } }]);
+  const trayMenu = () => Menu.buildFromTemplate([{ label: 'Abrir o MyBots', click: show }, ...[updates?.menuItem()].filter(Boolean), { type: 'separator' }, { label: embedded ? 'Sair do MyBots (os bots ficam offline)' : 'Fechar a janela (os bots continuam online)', click: () => { quitting = true; app.quit(); } }]);
   if (embedded) {
     updates = createUpdates({ log: line => console.log('[atualização]', line), beforeInstall: () => { quitting = true; },
       changed: () => { tray?.setContextMenu(trayMenu()); try { if (ui && !ui.webContents.isDestroyed()) ui.webContents.send('update:state', updates.state()); } catch {} } });
@@ -238,7 +234,6 @@ if (first) app.whenReady().then(async () => {
   // Started with the session it waits in the tray, but still mapped (parked) so the bots' tabs paint.
   else if (onHypr()) { await hypr('keyword', 'windowrule', PARK_RULE()); window.showInactive(); }
   else window.showInactive();
-  if (embedded && !welcomed) openWelcome();
 });
 // With the card on and WebGL gone, write the failure down and restart once with it switched off (it never restarts twice for the same system).
 function watchGpu() {

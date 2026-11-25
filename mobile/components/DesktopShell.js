@@ -125,13 +125,14 @@ function Palette({ visible, onClose, bots, rooms, onOpen, onRoom, onSearch, onCr
   </Modal>;
 }
 
-function Help({ visible, onClose }) {
+function Help({ visible, onClose, onGuide }) {
   const keys = [[['Ctrl', 'K'], 'Buscar e trocar de bot ou sala'], [['Ctrl', '1'], 'Voltar para o Chefe'], [['Ctrl', 'N'], 'Criar um bot'], [['Enter'], 'Enviar a mensagem'], [['Shift', 'Enter'], 'Quebrar a linha na mensagem'], [['Esc'], 'Fechar a janela ou o painel aberto'], [['Botão direito'], 'Menu do bot ou da mensagem']];
   return <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
     <Pressable style={s.scrim} onPress={onClose}><Pressable style={[s.palette, { width: 480 }]} onPress={() => {}}>
       <View style={[s.paletteHead, { paddingVertical: 12, paddingRight: 10 }]}><Text style={[s.sideTitle, { flex: 1 }]}>Atalhos do teclado</Text><IconButton icon="close" label="Fechar os atalhos" onPress={onClose} size={30} /></View>
       <View style={{ paddingHorizontal: 18, paddingVertical: 8 }}>{keys.map(([combo, text], position) => <View key={text} style={[{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 }, position > 0 && { borderTopWidth: 1, borderTopColor: C.line }]}>
-        <Text style={[s.line, { flex: 1, fontSize: 13.5, color: C.text2 }]}>{text}</Text><View style={{ flexDirection: 'row', gap: 4 }}>{combo.map(key => <Kbd key={key}>{key}</Kbd>)}</View></View>)}</View>
+        <Text style={[s.line, { flex: 1, fontSize: 13.5, color: C.text2 }]}>{text}</Text><View style={{ flexDirection: 'row', gap: 4 }}>{combo.map(key => <Kbd key={key}>{key}</Kbd>)}</View></View>)}
+        <Pressable accessibilityRole="button" onPress={onGuide} style={{ paddingVertical: 12 }}><Text style={[s.line, { color: C.accent, fontSize: 13.5 }]}>Como usar o MyBots (passo a passo)</Text></Pressable></View>
     </Pressable></Pressable>
   </Modal>;
 }
@@ -257,7 +258,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
   const listWidthRef = useRef(264); listWidthRef.current = listWidth;
   const bot = selected ? bots.find(item => item.id === selected) : null; const chiefHome = Boolean(bot?.isChief); const room = roomId ? roomList.find(item => item.id === roomId) : null;
   const model = bot ? findModel(data.models || [], bot.model ? bot : data.defaultSelection)?.displayName : null;
-  const phoneOnline = !error && data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
+  const phoneOnline = data.supervisorConnected !== false; const waiting = (data.approvals || []).length;
   const working = (data.active || []).filter(id => !offline(data, id));
   const openPage = key => onPage(key);
   const chief = bots.find(item => item.isChief) || null; const hasChief = Boolean(chief); chiefRef.current = hasChief;
@@ -344,7 +345,7 @@ export function DesktopShell({ team, onTeam, onCreateChief, data: fallback, erro
     </DesktopReveal>
     {(() => { const shown = (fullBotId && bots.find(item => item.id === fullBotId)) || bot; return full && (shown || native) ? <BrowserFull bot={shown} data={data} call={call} onControl={who => onBrowserControl(shown.id, who)} onFile={onFile} onClose={() => setFull(false)} onSend={shown && shown.id !== bot?.id && onSendTo ? text => onSendTo(shown.id, text) : onSend} /> : null; })()}
     <Palette visible={palette} onClose={() => setPalette(false)} bots={bots} rooms={roomList} onOpen={onOpen} onRoom={onRoom} onSearch={onSearch} onCreate={onCreate} />
-    <Help visible={help} onClose={() => setHelp(false)} />
+    <Help visible={help} onClose={() => setHelp(false)} onGuide={() => { setHelp(false); onPage('guide'); }} />
     <ReportSheet visible={report} onClose={() => setReport(false)} />
     {menu ? <Modal transparent visible animationType="none" onRequestClose={() => setMenu(null)}><Pressable style={{ flex: 1 }} onPress={() => setMenu(null)} onContextMenu={event => { event?.preventDefault?.(); setMenu(null); }}>
       <View style={[s.menu, { left: menu.x, top: menu.y }]}>

@@ -36,7 +36,10 @@ travar_boot() {
   fi
   # O VirtualBox só deixa mudar o boot com a VM desligada; o `start` sempre passa por aqui antes de ligar.
   case "$(estado)" in
-    poweroff|aborted|saved|aborted-saved) VBoxManage modifyvm "$VM" --boot1 disk --boot2 none --boot3 none --boot4 none ;;
+    poweroff|aborted) VBoxManage modifyvm "$VM" --boot1 disk --boot2 none --boot3 none --boot4 none ;;
+    # Estado salvo: o VirtualBox não deixa mudar o boot, e retomar não passa pelo firmware. Basta o disco já ser o primeiro e o DVD estar vazio.
+    saved|aborted-saved)
+      VBoxManage showvminfo "$VM" --machinereadable | grep -qx 'boot1="disk"' || { echo "RECUSEI ligar: estado salvo com o boot fora do disco." >&2; exit 1; } ;;
     *) echo "(a VM está ligada: o boot só pelo disco será fixado no próximo start)" ;;
   esac
 }

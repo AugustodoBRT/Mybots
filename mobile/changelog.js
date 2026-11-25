@@ -2,6 +2,13 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.32', date: '2026-11-25', items: [
+    ['correcao', 'Quando a IA de um bot não estava conectada, o seletor ficava preso em "Carregando opções…" e não dava para trocar. Agora ele avisa qual IA falta e deixa escolher outra.'],
+    ['correcao', 'O botão "Tentar" agora confere de novo as IAs do computador. Sem nenhuma IA conectada, o MyBots também confere sozinho a cada poucos segundos.'],
+    ['correcao', 'No computador, o rodapé não mostra mais "Iniciando o MyBots…" por causa de um erro qualquer, e um início lento não deixa mais o app travado.'],
+    ['melhoria', 'No Windows, o MyBots encontra as IAs instaladas em mais lugares (pnpm, bun, scoop, Volta, Yarn e outros).'],
+    ['novo', 'Guia "Como usar" dentro do próprio app, no lugar da janela separada. No computador, os botões Instalar e Entrar abrem o terminal com o comando pronto.']
+  ] },
   { version: '0.94.31', date: '2026-11-19', items: [
     ['correcao', 'O aviso "Ativar o resumo semanal" agora mostra "Ativando…", confirma quando ativa, mostra o erro no próprio aviso se algo falhar e tem um "x" para descartar.'],
     ['correcao', 'Os avisos de conexão da tela inicial (como pedir para instalar o Codex) ganharam um "x" para descartar, no computador e no celular.'],

@@ -101,7 +101,7 @@ function HomeView({ tabs = false, onWeekly, onCanvas, onMemory, team, onHome, on
   const bots = [...(data?.bots || [])].filter(bot => !bot.isChief).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   // The Chefe stays pinned at the top of the list, like on the computer; its conversation opens on a tap.
   const chief = (data?.bots || []).find(bot => bot.isChief && !bot.deletedAt);
-  const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando Codex…';
+  const status = data?.connection?.loggedIn ? data.connection.message || 'Conectado' : data?.connection?.message || 'Verificando as IAs…';
   const working = (data?.active || []).filter(id => !offline(data, id)).length;
   const waiting = (data?.approvals || []).length + (data?.decisions || []).length;
   const openItems = (data?.pendingItems || []).filter(item => item.state === 'open').length;

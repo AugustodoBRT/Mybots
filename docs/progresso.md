@@ -2489,3 +2489,4 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - `scripts/windows-vm.sh start` agora funciona com a VM em estado salvo.
 - Verificado na VM (arquivos novos por cima da 0.94.31 instalada): trocar de IA e receber resposta, guia, terminal com `claude auth login`. Não verificado: instalador 0.94.32, login até o fim, macOS, celular físico.
 - A sugestão de interagir com o bot pelo cursor ficou de fora (não é erro).
+- Entrega 0.94.32 (v224): APK ARM64 com o mesmo certificado, Release v224 (baixado igual ao local), push, CI do PC (run 45570117738, Linux/Windows/macOS) e web app do iPhone publicados. Suíte: 590 passam. No emulador Android: guia aberto por Ajustes → Sobre (corrigido o título embaixo da barra de status). VM do Windows restaurada ao snapshot de antes do teste.

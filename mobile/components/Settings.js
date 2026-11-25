@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PhoneSetup } from './PhoneSetup';
 import { Modal, View, ScrollView, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { styles } from '../styles';
 import { C, Icon, F, themed } from '../theme';
@@ -101,7 +102,7 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     ...(phone ? [{ key: 'ai', icon: 'user', title: 'IAs e contas', summary: aiSummary(data?.aiAccounts), keywords: ['atualizar', 'atualização', 'versão', 'instaladas', 'claude', 'codex', 'antigravity', 'opencode', 'login', 'conta', 'contas', 'assinatura', 'duas contas', 'várias contas', 'trocar'] }] : []),
     { key: 'bots', icon: 'bots', title: 'Bots', summary: bots.length ? `${bots.length} ${bots.length > 1 ? 'bots' : 'bot'}: perfil, acesso e rotinas` : 'Nenhum bot ainda', keywords: ['perfil', 'acesso', 'rotinas', 'novo', 'criar', '3d', 'aparência', 'rosto', ...bots.map(bot => bot.name)] },
     { key: 'controls', icon: 'list', title: 'Tabelas e limites', summary: 'Quem lê e escreve cada tabela compartilhada, e o limite de gasto de cada bot', keywords: ['tabela', 'tabelas', 'dados', 'permissão', 'limite', 'gasto', 'custo', 'orçamento', 'dinheiro'] },
-    { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr'] },
+    { key: 'phone', icon: 'phone', title: 'Celular', summary: desktop ? 'Pareamento com o celular' : remote ? 'Avisos dos bots' : 'Tela apagada, widget e notificações', keywords: ['widget', 'notificações', 'tela apagada', 'bateria', 'pareamento', 'qr', 'tutorial', 'passo a passo', 'só no celular', 'configurar'] },
     ...(phone && !desktop ? [{ key: 'computer', icon: 'laptop', title: 'Computador', summary: remote ? (data?.supervisorConnected === false ? 'Desligado ou fora de alcance' : 'Conectado') : computers ? 'Conectado' : data?.computer ? 'Pareado, desligado agora' : 'Nenhum computador pareado', keywords: ['pc', 'pareamento', 'qr'] }] : []),
     // Asks the supervisor where it really runs: the switch alone can be on while the app is still connecting.
     ...(!desktop && embeddedSupported() && data?.device !== 'Neste celular' ? [{ key: 'embedded', icon: 'phone', title: 'Usar só neste celular', summary: 'Tudo dentro do app, sem depender do computador', keywords: ['sozinho', 'sem computador', 'celular', 'offline'] }] : []),
@@ -129,10 +130,17 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
       </Pressable>)}
       <PrimaryButton icon="plus" tone="ghost" title="Novo bot" disabled={!data?.models?.length} onPress={() => { onClose(); a.onCreate(); }} style={{ marginTop: 14 }} />
     </>;
-    if (key === 'phone') return desktop ? <><DesktopPair call={a.call} />
-      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>
-      : remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, use Ajustes → Usar só neste celular.</Text></View>
-      : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{nativeAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>;
+    if (key === 'phone' && desktop) return <><DesktopPair call={a.call} />
+      <View style={styles.modeOption}><Text style={styles.optionLabel}>MyBots no computador</Text><Text style={styles.optionDetail}>{data?.source === 'local' ? 'Esta janela usa o MyBots deste computador, que se sincroniza com o celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.' : 'Esta janela usa os dados do celular pareado. Backup e senhas de sites ficam nos Ajustes do app do celular.'}</Text></View></>;
+    if (key === 'phone') return <>
+      {nativeAvailable ? <Pressable accessibilityRole="button" onPress={() => setPage('setup')} style={[styles.modeOption, styles.rowOption]}>
+        <View style={styles.rowIcon}><Icon name="spark" size={19} color={C.accent} /></View>
+        <View style={{ flex: 1 }}><Text style={styles.optionLabel}>Passo a passo: tudo só no celular</Text><Text style={styles.optionDetail}>Baixar a IA, conectar e liberar o que precisa, conferindo o que já está pronto.</Text></View>
+        <Icon name="right" size={16} color={C.faint} /></Pressable> : null}
+      {remote ? <View style={styles.modeOption}><Text style={styles.optionLabel}>Avisos dos bots</Text><Text style={styles.optionDetail}>Com o app aberto, os avisos dos bots chegam como notificações do MyBots. Para receber com a tela apagada e controlar outros apps do celular, use Ajustes → Usar só neste celular.</Text></View>
+      : <>{phone ? <ScreenOff heartbeat={data?.heartbeat} nextRoutineAt={data?.nextRoutineAt} /> : null}{nativeAvailable ? <WidgetRow /> : null}<PhoneAccess stats={data?.notifications} lastPoll={data?.botNotices?.lastPoll} /></>}
+    </>;
+    if (key === 'setup') return <PhoneSetup data={data} remote={remote} busy={a.setupBusy} error={a.setupError} onEmbedded={a.enableEmbedded} reload={a.reload} onCreate={() => { onClose(); a.onCreate(); }} />;
     if (key === 'computer' && remote) return <><RemotePanel link={a.pcLink} state={{ supervisorConnected: data?.supervisorConnected, via: a.pcVia }} busy={a.setupBusy} note={a.setupError} onScanned={a.pairPc} onForget={() => a.forgetPc()} />{computers ? <PcUpdate call={a.call} /> : null}</>;
     if (key === 'controls') return <ControlsPage call={a.call} reload={a.reload} bots={bots} budgets={data?.budgets || {}} usage={data?.usage} />;
     if (key === 'embedded') return <>
@@ -184,12 +192,12 @@ export function SettingsSheet({ visible, inline, onClose, a }) {
     </>;
     return null;
   };
-  const back = page === 'passwords' ? 'secrets' : null;
+  const back = page === 'passwords' ? 'secrets' : page === 'setup' ? 'phone' : null;
   const wide = inline || (Boolean(desktop) && useWindowDimensions().width >= 860);
   // On the computer the categories stay on the left and the open one fills the right.
   const active = wide && !page ? 'account' : page;
   const activeCategory = categories.find(item => item.key === active);
-  const title = active === 'passwords' ? 'Senhas guardadas' : activeCategory ? activeCategory.title : 'Ajustes';
+  const title = active === 'setup' ? 'Tudo só no celular' : active === 'passwords' ? 'Senhas guardadas' : activeCategory ? activeCategory.title : 'Ajustes';
   const search = <View style={s.search}><Icon name="search" size={18} color={C.faint} />
     <TextInput accessibilityLabel="Buscar nos ajustes" style={s.searchInput} value={query} onChangeText={setQuery} placeholder="Buscar nos ajustes" placeholderTextColor={C.faint} autoCorrect={false} /></View>;
   const rows = shown.map(category => <Pressable key={category.key} accessibilityRole="button" accessibilityLabel={`${category.title}. ${category.summary}`} accessibilityState={{ selected: wide && (active === category.key || (active === 'passwords' && category.key === 'secrets')) }} onPress={() => setPage(category.key)}

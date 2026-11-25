@@ -2,6 +2,10 @@
 // ainda não viu. A primeira entrada precisa ser a versão do app (versionName): um teste confere a cada entrega.
 // kind: 'novo' (algo que não existia), 'melhoria' (algo que ficou melhor) ou 'correcao' (algo que estava errado).
 export const CHANGELOG = [
+  { version: '0.94.34', date: '2026-11-25', items: [
+    ['novo', 'Em Ajustes → Celular há um passo a passo para rodar tudo só no celular: baixar e conectar a IA, avisos, tela apagada e permissões, mostrando o que já está pronto.'],
+    ['correcao', 'Os textos sobre bateria não falam mais em HyperOS para quem não tem Xiaomi, Redmi ou POCO.']
+  ] },
   { version: '0.94.33', date: '2026-11-25', items: [
     ['correcao', 'No computador, o botão de atualizar agora fica na barra de cima, ao lado dos anéis de uso das IAs, e não mais por cima deles.'],
     ['correcao', 'O aviso de que a IA do bot não está conectada agora fica na tela até resolver, em vez de sumir depois de alguns segundos.']

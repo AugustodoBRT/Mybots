@@ -395,7 +395,7 @@ export function BotNoticeStatus({ lastPoll }) {
     <Text style={styles.optionLabel}>Notificações dos bots · {allowed ? (recent ? 'Pelo MyBots' : 'Pelo MyBots com o app aberto') : 'Bloqueadas'}</Text>
     <Text style={styles.optionDetail}>{!allowed ? 'O Android está bloqueando as notificações do MyBots. Libere em Notificações do MyBots.'
       : recent ? 'Chegam como MyBots, aparecem na tela e abrem a conversa do bot ao tocar.'
-      : 'Com o app fechado, o HyperOS pode parar o MyBots e os avisos não chegam. Para evitar: Configurações → Apps → MyBots → Economia de bateria: Sem restrições, e ligue o Início automático.'}</Text>
+      : 'Com o app fechado, a economia de bateria do celular pode parar o MyBots e os avisos não chegam. Para evitar, siga o passo a passo no alto desta tela.'}</Text>
     <View style={styles.appActions}>
       {!allowed ? <Pressable onPress={() => notificationPermission().then(check).then(() => openNotificationSettings()).catch(() => {})}><Text style={styles.deleteText}>Liberar notificações do MyBots</Text></Pressable> : null}
       {allowed && !recent ? <Pressable onPress={() => openAppSettings('com.mybots.app').catch(() => {})}><Text style={styles.deleteText}>Abrir configurações do MyBots</Text></Pressable> : null}
@@ -412,7 +412,7 @@ const PHONE_PERMISSIONS = [
 const BACKGROUND_LOCATION = 'android.permission.ACCESS_BACKGROUND_LOCATION';
 
 /** With everything inside the app, these are MyBots' own Android permissions: nothing is asked behind the person's back when a bot needs one. */
-function PhonePermissions() {
+export function PhonePermissions() {
   const [granted, setGranted] = useState({});
   const check = useCallback(async () => {
     const next = {};
@@ -749,7 +749,7 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
   const toggle = () => { setBusy(true); setKeepAlive(!status.enabled).then(setStatus).catch(() => {}).finally(() => setBusy(false)); };
   const state = !status.enabled ? 'Desligado' : status.downSince ? 'Supervisor parado' : status.running ? 'Ativo' : 'Parado pelo Android';
   const checks = [
-    { ok: status.batteryUnrestricted, label: 'Bateria do MyBots sem restrições', actions: [['Liberar', 'battery'], ...(status.xiaomi ? [['Economia de bateria do HyperOS', 'hyperosBattery']] : [])] },
+    { ok: status.batteryUnrestricted, label: 'Bateria do MyBots sem restrições', actions: [['Liberar', 'battery'], ...(status.xiaomi ? [['Economia de bateria do fabricante', 'hyperosBattery']] : [])] },
     { ok: status.exactAlarms, label: 'Alarmes no horário exato (rotinas)', actions: [['Permitir', 'exactAlarm']] },
     { ok: !status.backgroundRestricted, label: 'Atividade em segundo plano permitida', actions: [['Abrir', 'details']] },
   ];
@@ -766,7 +766,7 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
       {!item.ok ? <View style={styles.appActions}>{item.actions.map(([title, target]) => <Pressable key={target} onPress={() => open(target)}><Text style={styles.deleteText}>{title}</Text></Pressable>)}</View> : null}
     </View>) : null}
     {status.enabled && status.xiaomi ? <View style={styles.appRow}>
-      <Text style={styles.optionDetail}>No HyperOS ligue também o Início automático do MyBots (o sistema não informa se está ligado).</Text>
+      <Text style={styles.optionDetail}>Neste Xiaomi, Redmi ou POCO, ligue também o Início automático do MyBots (o sistema não informa se está ligado).</Text>
       <View style={styles.appActions}><Pressable onPress={() => open('autostart')}><Text style={styles.deleteText}>Abrir Início automático</Text></Pressable></View>
     </View> : null}
     {status.enabled && !status.notifications ? <Text style={styles.optionDetail}>As notificações do MyBots estão bloqueadas: o serviço funciona, mas sem o aviso “MyBots ativo” e sem os avisos dos bots.</Text> : null}

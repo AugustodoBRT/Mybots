@@ -2509,3 +2509,4 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 ## 25/11/2026 — 0.94.35 (versionCode 227): sem nome de marca nos textos
 
 - Pedido: os textos devem dizer só "celular". Saíram Xiaomi/Redmi/POCO/HyperOS do passo a passo, de Ajustes → Celular e das novidades; os botões específicos seguem aparecendo pela detecção do aparelho. 590 testes passam; mudança só de texto, não conferida em tela.
+- Entrega 0.94.35 (v227): APK com o mesmo certificado, Release (baixado igual ao local), push, CI do PC (run 45590626290) e web app do iPhone.

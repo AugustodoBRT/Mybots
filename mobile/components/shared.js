@@ -749,7 +749,7 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
   const toggle = () => { setBusy(true); setKeepAlive(!status.enabled).then(setStatus).catch(() => {}).finally(() => setBusy(false)); };
   const state = !status.enabled ? 'Desligado' : status.downSince ? 'Supervisor parado' : status.running ? 'Ativo' : 'Parado pelo Android';
   const checks = [
-    { ok: status.batteryUnrestricted, label: 'Bateria do MyBots sem restrições', actions: [['Liberar', 'battery'], ...(status.xiaomi ? [['Economia de bateria do fabricante', 'hyperosBattery']] : [])] },
+    { ok: status.batteryUnrestricted, label: 'Bateria do MyBots sem restrições', actions: [['Liberar', 'battery'], ...(status.xiaomi ? [['Economia de bateria do celular', 'hyperosBattery']] : [])] },
     { ok: status.exactAlarms, label: 'Alarmes no horário exato (rotinas)', actions: [['Permitir', 'exactAlarm']] },
     { ok: !status.backgroundRestricted, label: 'Atividade em segundo plano permitida', actions: [['Abrir', 'details']] },
   ];
@@ -766,7 +766,7 @@ export function ScreenOff({ heartbeat, nextRoutineAt }) {
       {!item.ok ? <View style={styles.appActions}>{item.actions.map(([title, target]) => <Pressable key={target} onPress={() => open(target)}><Text style={styles.deleteText}>{title}</Text></Pressable>)}</View> : null}
     </View>) : null}
     {status.enabled && status.xiaomi ? <View style={styles.appRow}>
-      <Text style={styles.optionDetail}>Neste Xiaomi, Redmi ou POCO, ligue também o Início automático do MyBots (o sistema não informa se está ligado).</Text>
+      <Text style={styles.optionDetail}>Neste celular, ligue também o Início automático do MyBots (o sistema não informa se está ligado).</Text>
       <View style={styles.appActions}><Pressable onPress={() => open('autostart')}><Text style={styles.deleteText}>Abrir Início automático</Text></Pressable></View>
     </View> : null}
     {status.enabled && !status.notifications ? <Text style={styles.optionDetail}>As notificações do MyBots estão bloqueadas: o serviço funciona, mas sem o aviso “MyBots ativo” e sem os avisos dos bots.</Text> : null}

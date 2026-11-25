@@ -80,11 +80,11 @@ export function PhoneSetup({ data, remote, busy, error, onEmbedded, onCreate, re
         <Detail>{!alive.backgroundRestricted ? '✓' : '!'}  Atividade em segundo plano</Detail>
         {alive.backgroundRestricted ? <Action title="Abrir informações do app" onPress={() => open('details')} /> : null}
         {alive.xiaomi ? <>
-          <Detail>Seu celular é Xiaomi, Redmi ou POCO, que tem duas travas a mais (o app não consegue ler se estão ligadas): em Economia de bateria escolha Sem restrições, e ligue o Início automático.</Detail>
+          <Detail>Seu celular tem duas travas a mais (o app não consegue ler se estão ligadas): em Economia de bateria escolha Sem restrições, e ligue o Início automático.</Detail>
           <Action title="Abrir a economia de bateria" onPress={() => open('hyperosBattery')} />
           <Action title="Abrir o Início automático" onPress={() => open('autostart')} />
         </> : <>
-          <Detail>Muitos fabricantes têm uma economia de bateria própria. Nas informações do app, em Bateria, escolha a opção sem restrições e tire o MyBots de listas de apps em repouso.</Detail>
+          <Detail>Muitos celulares têm uma economia de bateria própria. Nas informações do app, em Bateria, escolha a opção sem restrições e tire o MyBots de listas de apps em repouso.</Detail>
           <Action title="Abrir informações do app" onPress={() => open('details')} />
         </>}
       </>}
@@ -109,7 +109,7 @@ export function PhoneSetup({ data, remote, busy, error, onEmbedded, onCreate, re
     <WidgetRow />
 
     <Step number={8} title="Se o MyBots continuar parando sozinho">
-      <Detail>Só neste caso. Ative as Opções do desenvolvedor (Configurações → Sobre o telefone → toque 7 vezes no número da versão ou compilação). Lá, procure “Desativar restrições de processos filhos” e ligue. O nome e o lugar mudam um pouco de um fabricante para outro.</Detail>
+      <Detail>Só neste caso. Ative as Opções do desenvolvedor (Configurações → Sobre o telefone → toque 7 vezes no número da versão ou compilação). Lá, procure “Desativar restrições de processos filhos” e ligue. O nome e o lugar mudam um pouco de um celular para outro.</Detail>
     </Step>
   </View>;
 }

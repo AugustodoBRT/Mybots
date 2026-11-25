@@ -2505,3 +2505,7 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - `mobile/components/PhoneSetup.js`: passos com o estado real do aparelho (rodar no celular, IA, Chefe, avisos, tela apagada; opcionais: ler notificações, controle e permissões, widget, restrição de processos filhos). Dicas de Xiaomi/Redmi/POCO só nesses aparelhos.
 - Emulador (não Xiaomi): textos genéricos e marcas conferidas. Não testado: celular Xiaomi real, preparação do zero e o login das IAs por essa tela.
 - Entrega 0.94.34 (v226): APK ARM64 com o mesmo certificado, Release (baixado igual ao local), push, CI do PC (run 45587600980) e web app do iPhone. Suíte: 590 passam.
+
+## 25/11/2026 — 0.94.35 (versionCode 227): sem nome de marca nos textos
+
+- Pedido: os textos devem dizer só "celular". Saíram Xiaomi/Redmi/POCO/HyperOS do passo a passo, de Ajustes → Celular e das novidades; os botões específicos seguem aparecendo pela detecção do aparelho. 590 testes passam; mudança só de texto, não conferida em tela.

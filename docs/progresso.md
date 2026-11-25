@@ -2498,3 +2498,10 @@ Pedido: segurar APK/release e corrigir telas vazias ao enviar ao Chefe, saltos n
 - VM (0.94.32 instalada + interface nova): cenário do relato, Tentar, troca de IA e resposta; botão "Atualizar" e "Baixando 0%" ao lado dos anéis (anéis com limites de teste).
 - Entrega 0.94.33 (v225): APK ARM64 com o mesmo certificado, Release (baixado igual ao local), push, CI do PC (run 45576515765) e web app do iPhone. Suíte: 588 passam; os 2 testes de Electron que falharam com a VM ligada passam isolados.
 - VM do Windows com o instalador publicado, atualizada de 0.94.32 para 0.94.33 pelo botão do app: aviso persistente, Tentar, troca de IA com resposta e botão ao lado dos anéis. Três relatos marcados como resolvidos no site. VM restaurada ao snapshot `antes-0.94.32`.
+
+## 25/11/2026 — 0.94.34 (versionCode 226): passo a passo para rodar só no celular
+
+- Pedido: tutorial em Ajustes → Celular para fazer tudo rodar só no celular; havia texto "HyperOS" aparecendo para qualquer aparelho (aviso de notificações dos bots).
+- `mobile/components/PhoneSetup.js`: passos com o estado real do aparelho (rodar no celular, IA, Chefe, avisos, tela apagada; opcionais: ler notificações, controle e permissões, widget, restrição de processos filhos). Dicas de Xiaomi/Redmi/POCO só nesses aparelhos.
+- Emulador (não Xiaomi): textos genéricos e marcas conferidas. Não testado: celular Xiaomi real, preparação do zero e o login das IAs por essa tela.
+- Entrega 0.94.34 (v226): APK ARM64 com o mesmo certificado, Release (baixado igual ao local), push, CI do PC (run 45587600980) e web app do iPhone. Suíte: 590 passam.
